@@ -238,14 +238,14 @@ static const struct {
     { VK_BACK,                  0x0E,           TRUE },     /* kVK_Delete */
     { 0,                        0,              FALSE },    /* 0x34 unused */
     { VK_ESCAPE,                0x01,           TRUE },     /* kVK_Escape */
-    { VK_RMENU,                 0x38 | 0x100,   TRUE },     /* kVK_RightCommand */
-    { VK_LMENU,                 0x38,           TRUE },     /* kVK_Command */
+    { VK_RCONTROL,              0x5C | 0x100,   TRUE },     /* kVK_RightCommand */  // CCP see http://www.columbia.edu/~em36/winekeymap.html
+    { VK_LCONTROL,              0x5B,           TRUE },     /* kVK_Command */       // CCP
     { VK_LSHIFT,                0x2A,           TRUE },     /* kVK_Shift */
     { VK_CAPITAL,               0x3A,           TRUE },     /* kVK_CapsLock */
-    { 0,                        0,              FALSE },    /* kVK_Option */
+    { VK_LMENU,                 0x38,           TRUE },     /* kVK_Option */        // CCP
     { VK_LCONTROL,              0x1D,           TRUE },     /* kVK_Control */
     { VK_RSHIFT,                0x36,           TRUE },     /* kVK_RightShift */
-    { 0,                        0,              FALSE },    /* kVK_RightOption */
+    { VK_RMENU,                 0x38,           TRUE },     /* kVK_RightOption */   // CCP
     { VK_RCONTROL,              0x1D | 0x100,   TRUE },     /* kVK_RightControl */
     { 0,                        0,              FALSE },    /* kVK_Function */
     { VK_F17,                   0x68,           TRUE },     /* kVK_F17 */
