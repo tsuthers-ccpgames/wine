@@ -3850,6 +3850,20 @@ DWORD WINAPI CoGetCurrentProcess(void)
 	return GetCurrentProcessId();
 }
 
+/***********************************************************************
+ *              CoGetCurrentLogicalThreadId        [OLE32.@]
+ */
+HRESULT WINAPI CoGetCurrentLogicalThreadId(GUID *id)
+{
+    TRACE("(%p)\n", id);
+
+    if (!id)
+        return E_INVALIDARG;
+
+    *id = COM_CurrentCausalityId();
+    return S_OK;
+}
+
 /******************************************************************************
  *		CoRegisterMessageFilter	[OLE32.@]
  *
@@ -4617,7 +4631,6 @@ typedef struct Context
     IContextCallback IContextCallback_iface;
     IObjContext IObjContext_iface;
     LONG refs;
-    APTTYPE apttype;
 } Context;
 
 static inline Context *impl_from_IComThreadingInfo( IComThreadingInfo *iface )
@@ -4670,10 +4683,15 @@ static ULONG Context_AddRef(Context *This)
 
 static ULONG Context_Release(Context *This)
 {
-    ULONG refs = InterlockedDecrement(&This->refs);
-    if (!refs)
+    /* Context instance is initially created with CoGetContextToken() with refcount set to 0,
+       releasing context while refcount is at 0 destroys it. */
+    if (!This->refs)
+    {
         HeapFree(GetProcessHeap(), 0, This);
-    return refs;
+        return 0;
+    }
+
+    return InterlockedDecrement(&This->refs);
 }
 
 static HRESULT WINAPI Context_CTI_QueryInterface(IComThreadingInfo *iface, REFIID riid, LPVOID *ppv)
@@ -4696,21 +4714,26 @@ static ULONG WINAPI Context_CTI_Release(IComThreadingInfo *iface)
 
 static HRESULT WINAPI Context_CTI_GetCurrentApartmentType(IComThreadingInfo *iface, APTTYPE *apttype)
 {
-    Context *This = impl_from_IComThreadingInfo(iface);
+    APTTYPEQUALIFIER qualifier;
 
     TRACE("(%p)\n", apttype);
 
-    *apttype = This->apttype;
-    return S_OK;
+    return CoGetApartmentType(apttype, &qualifier);
 }
 
 static HRESULT WINAPI Context_CTI_GetCurrentThreadType(IComThreadingInfo *iface, THDTYPE *thdtype)
 {
-    Context *This = impl_from_IComThreadingInfo(iface);
+    APTTYPEQUALIFIER qualifier;
+    APTTYPE apttype;
+    HRESULT hr;
+
+    hr = CoGetApartmentType(&apttype, &qualifier);
+    if (FAILED(hr))
+        return hr;
 
     TRACE("(%p)\n", thdtype);
 
-    switch (This->apttype)
+    switch (apttype)
     {
     case APTTYPE_STA:
     case APTTYPE_MAINSTA:
@@ -4725,8 +4748,8 @@ static HRESULT WINAPI Context_CTI_GetCurrentThreadType(IComThreadingInfo *iface,
 
 static HRESULT WINAPI Context_CTI_GetCurrentLogicalThreadId(IComThreadingInfo *iface, GUID *logical_thread_id)
 {
-    FIXME("(%p): stub\n", logical_thread_id);
-    return E_NOTIMPL;
+    TRACE("(%p)\n", logical_thread_id);
+    return CoGetCurrentLogicalThreadId(logical_thread_id);
 }
 
 static HRESULT WINAPI Context_CTI_SetCurrentLogicalThreadId(IComThreadingInfo *iface, REFGUID logical_thread_id)
@@ -4906,44 +4929,18 @@ static const IObjContextVtbl Context_Object_Vtbl =
  */
 HRESULT WINAPI CoGetObjectContext(REFIID riid, void **ppv)
 {
-    APARTMENT *apt = COM_CurrentApt();
-    Context *context;
+    IObjContext *context;
     HRESULT hr;
 
     TRACE("(%s, %p)\n", debugstr_guid(riid), ppv);
 
     *ppv = NULL;
-    if (!apt)
-    {
-        if (!(apt = apartment_find_multi_threaded()))
-        {
-            ERR("apartment not initialised\n");
-            return CO_E_NOTINITIALIZED;
-        }
-        apartment_release(apt);
-    }
+    hr = CoGetContextToken((ULONG_PTR*)&context);
+    if (FAILED(hr))
+        return hr;
 
-    context = HeapAlloc(GetProcessHeap(), 0, sizeof(*context));
-    if (!context)
-        return E_OUTOFMEMORY;
-
-    context->IComThreadingInfo_iface.lpVtbl = &Context_Threading_Vtbl;
-    context->IContextCallback_iface.lpVtbl = &Context_Callback_Vtbl;
-    context->IObjContext_iface.lpVtbl = &Context_Object_Vtbl;
-    context->refs = 1;
-    if (apt->multi_threaded)
-        context->apttype = APTTYPE_MTA;
-    else if (apt->main)
-        context->apttype = APTTYPE_MAINSTA;
-    else
-        context->apttype = APTTYPE_STA;
-
-    hr = IComThreadingInfo_QueryInterface(&context->IComThreadingInfo_iface, riid, ppv);
-    IComThreadingInfo_Release(&context->IComThreadingInfo_iface);
-
-    return hr;
+    return IObjContext_QueryInterface(context, riid, ppv);
 }
-
 
 /***********************************************************************
  *           CoGetContextToken [OLE32.@]
@@ -4973,16 +4970,24 @@ HRESULT WINAPI CoGetContextToken( ULONG_PTR *token )
 
     if (!info->context_token)
     {
-        HRESULT hr;
-        IObjContext *ctx;
+        Context *context;
 
-        hr = CoGetObjectContext(&IID_IObjContext, (void **)&ctx);
-        if (FAILED(hr)) return hr;
-        info->context_token = ctx;
+        context = HeapAlloc(GetProcessHeap(), 0, sizeof(*context));
+        if (!context)
+            return E_OUTOFMEMORY;
+
+        context->IComThreadingInfo_iface.lpVtbl = &Context_Threading_Vtbl;
+        context->IContextCallback_iface.lpVtbl = &Context_Callback_Vtbl;
+        context->IObjContext_iface.lpVtbl = &Context_Object_Vtbl;
+        /* Context token does not take a reference, it's always zero until
+           interface is explicitely requested with CoGetObjectContext(). */
+        context->refs = 0;
+
+        info->context_token = &context->IObjContext_iface;
     }
 
     *token = (ULONG_PTR)info->context_token;
-    TRACE("apt->context_token=%p\n", info->context_token);
+    TRACE("context_token=%p\n", info->context_token);
 
     return S_OK;
 }

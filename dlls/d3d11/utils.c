@@ -154,6 +154,14 @@ const char *debug_dxgi_format(DXGI_FORMAT format)
 
 #undef WINE_D3D_TO_STR
 
+const char *debug_float4(const float *values)
+{
+    if (!values)
+        return "(null)";
+    return wine_dbg_sprintf("{%.8e, %.8e, %.8e, %.8e}",
+            values[0], values[1], values[2], values[3]);
+}
+
 DXGI_FORMAT dxgi_format_from_wined3dformat(enum wined3d_format_id format)
 {
     switch(format)
@@ -591,6 +599,24 @@ DWORD wined3d_map_flags_from_d3d11_map_type(D3D11_MAP map_type)
             FIXME("Unhandled map_type %#x.\n", map_type);
             return 0;
     }
+}
+
+DWORD wined3d_clear_flags_from_d3d11_clear_flags(UINT clear_flags)
+{
+    DWORD wined3d_clear_flags = 0;
+
+    if (clear_flags & D3D11_CLEAR_DEPTH)
+        wined3d_clear_flags |= WINED3DCLEAR_ZBUFFER;
+    if (clear_flags & D3D11_CLEAR_STENCIL)
+        wined3d_clear_flags |= WINED3DCLEAR_STENCIL;
+
+    if (clear_flags & ~(D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL))
+    {
+        FIXME("Unhandled clear flags %#x.\n",
+                clear_flags & ~(D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL));
+    }
+
+    return wined3d_clear_flags;
 }
 
 HRESULT d3d_get_private_data(struct wined3d_private_store *store,

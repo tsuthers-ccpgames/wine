@@ -1103,14 +1103,39 @@ static void D3DXIntersectTriTest(void)
 
     exp_res = TRUE; exp_u = 0.5f; exp_v = 0.25f; exp_dist = 8.0f;
 
-    got_res = D3DXIntersectTri(&vertex[0],&vertex[1],&vertex[2],&position,&ray,&got_u,&got_v,&got_dist);
-    ok( got_res == exp_res, "Expected result = %d, got %d\n",exp_res,got_res);
-    ok( compare(exp_u,got_u), "Expected u = %f, got %f\n",exp_u,got_u);
-    ok( compare(exp_v,got_v), "Expected v = %f, got %f\n",exp_v,got_v);
-    ok( compare(exp_dist,got_dist), "Expected distance = %f, got %f\n",exp_dist,got_dist);
+    got_res = D3DXIntersectTri(&vertex[0], &vertex[1], &vertex[2], &position, &ray, &got_u, &got_v, &got_dist);
+    ok(got_res == exp_res, "Expected result %d, got %d.\n", exp_res, got_res);
+    ok(compare(exp_u, got_u), "Expected u %f, got %f.\n", exp_u, got_u);
+    ok(compare(exp_v, got_v), "Expected v %f, got %f.\n", exp_v, got_v);
+    ok(compare(exp_dist, got_dist), "Expected distance %f, got %f.\n", exp_dist, got_dist);
 
     got_res = D3DXIntersectTri(&vertex[0], &vertex[1], &vertex[2], &position, &ray, NULL, NULL, NULL);
-    ok(got_res == exp_res, "Expected result = %d, got %d\n", exp_res, got_res);
+    ok(got_res == exp_res, "Expected result %d, got %d.\n", exp_res, got_res);
+
+    vertex[2].x = 1.0f; vertex[2].y = 0.0f; vertex[2].z = 0.0f;
+    vertex[1].x = 2.0f; vertex[1].y = 0.0f; vertex[1].z = 0.0f;
+    vertex[0].x = 1.0f; vertex[0].y = 1.0f; vertex[0].z = 0.0f;
+
+    got_u = got_v = got_dist = 0.0f;
+    got_res = D3DXIntersectTri(&vertex[0], &vertex[1], &vertex[2], &position, &ray, &got_u, &got_v, &got_dist);
+    ok(got_res == exp_res, "Expected result %d, got %d.\n", exp_res, got_res);
+    ok(compare(exp_u, got_u), "Expected u %f, got %f.\n", exp_u, got_u);
+    ok(compare(exp_v, got_v), "Expected v %f, got %f.\n", exp_v, got_v);
+    ok(compare(exp_dist, got_dist), "Expected distance %f, got %f.\n", exp_dist, got_dist);
+
+    vertex[2].x = 1.0f; vertex[2].y = 0.0f; vertex[2].z = 0.0f;
+    vertex[1].x = 2.0f; vertex[1].y = 0.0f; vertex[1].z = -0.5f;
+    vertex[0].x = 1.0f; vertex[0].y = 1.0f; vertex[0].z = -1.0f;
+    exp_u = 0.375f;
+    exp_v = 0.5625f;
+    exp_dist = 7.9375f;
+    got_u = got_v = got_dist = 0.0f;
+    got_res = D3DXIntersectTri(&vertex[0], &vertex[1], &vertex[2], &position, &ray, &got_u, &got_v, &got_dist);
+    ok(got_res == exp_res, "Expected result %d, got %d.\n", exp_res, got_res);
+    ok(compare(exp_u, got_u), "Expected u %f, got %f.\n", exp_u, got_u);
+    ok(compare(exp_v, got_v), "Expected v %f, got %f.\n", exp_v, got_v);
+    ok(compare(exp_dist, got_dist), "Expected distance %f, got %f.\n", exp_dist, got_dist);
+
 
 /*Only positive ray is taken in account*/
 
@@ -4401,7 +4426,7 @@ static void D3DXCreateTextTest(void)
     ok(hr == D3D_OK, "Got result %x, expected %x (D3D_OK)\n", hr, D3D_OK);
     number_of_vertices = d3dxmesh->lpVtbl->GetNumVertices(d3dxmesh);
     number_of_faces = d3dxmesh->lpVtbl->GetNumFaces(d3dxmesh);
-    if (SUCCEEDED(hr) && d3dxmesh) d3dxmesh->lpVtbl->Release(d3dxmesh);
+    d3dxmesh->lpVtbl->Release(d3dxmesh);
 
     hr = D3DXCreateTextA(device, hdc, "wine", 0.0f, 0.4f, &d3dxmesh, NULL, NULL);
     ok(hr == D3D_OK, "Got result %x, expected %x (D3D_OK)\n", hr, D3D_OK);
@@ -4411,7 +4436,7 @@ static void D3DXCreateTextTest(void)
     ok(number_of_faces == d3dxmesh->lpVtbl->GetNumFaces(d3dxmesh),
        "Got %d faces, expected %d\n",
        d3dxmesh->lpVtbl->GetNumVertices(d3dxmesh), number_of_faces);
-    if (SUCCEEDED(hr) && d3dxmesh) d3dxmesh->lpVtbl->Release(d3dxmesh);
+    d3dxmesh->lpVtbl->Release(d3dxmesh);
 
 if (0)
 {

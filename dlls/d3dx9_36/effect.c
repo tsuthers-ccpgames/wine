@@ -19,13 +19,8 @@
 
 #include "config.h"
 #include "wine/port.h"
-#define NONAMELESSUNION
-#include "wine/debug.h"
-#include "wine/unicode.h"
 
-#include "windef.h"
-#include "wingdi.h"
-#include "d3dx9_36_private.h"
+#include "d3dx9_private.h"
 #include "d3dcompiler.h"
 
 /* Constants for special INT/FLOAT conversation */
@@ -539,9 +534,6 @@ static void free_parameter(struct d3dx_parameter *param, BOOL element, BOOL chil
 
     TRACE("Free parameter %p, name %s, type %s, child %s\n", param, param->name,
             debug_d3dxparameter_type(param->type), child ? "yes" : "no");
-
-    if (!param)
-        return;
 
     if (param->annotations)
     {

@@ -603,21 +603,20 @@ static void STDMETHODCALLTYPE d3d11_immediate_context_OMSetRenderTargetsAndUnord
 }
 
 static void STDMETHODCALLTYPE d3d11_immediate_context_OMSetBlendState(ID3D11DeviceContext *iface,
-        ID3D11BlendState *blend_state, const FLOAT blend_factor[4], UINT sample_mask)
+        ID3D11BlendState *blend_state, const float blend_factor[4], UINT sample_mask)
 {
     struct d3d_device *device = device_from_immediate_ID3D11DeviceContext(iface);
     static const float default_blend_factor[] = {1.0f, 1.0f, 1.0f, 1.0f};
     const D3D11_BLEND_DESC *desc;
 
-    TRACE("iface %p, blend_state %p, blend_factor %p, sample_mask 0x%08x.\n",
-            iface, blend_state, blend_factor, sample_mask);
+    TRACE("iface %p, blend_state %p, blend_factor %s, sample_mask 0x%08x.\n",
+            iface, blend_state, debug_float4(blend_factor), sample_mask);
 
     if (!blend_factor)
         blend_factor = default_blend_factor;
 
     if (blend_factor[0] != 1.0f || blend_factor[1] != 1.0f || blend_factor[2] != 1.0f || blend_factor[3] != 1.0f)
-        FIXME("Ignoring blend factor {%.8e %.8e %.8e %.8e}.\n",
-                blend_factor[0], blend_factor[1], blend_factor[2], blend_factor[3]);
+        FIXME("Ignoring blend factor %s.\n", debug_float4(blend_factor));
 
     wined3d_mutex_lock();
     memcpy(device->blend_factor, blend_factor, 4 * sizeof(*blend_factor));
@@ -670,7 +669,55 @@ static void STDMETHODCALLTYPE d3d11_immediate_context_OMSetBlendState(ID3D11Devi
 static void STDMETHODCALLTYPE d3d11_immediate_context_OMSetDepthStencilState(ID3D11DeviceContext *iface,
         ID3D11DepthStencilState *depth_stencil_state, UINT stencil_ref)
 {
-    FIXME("iface %p, depth_stencil_state %p, stencil_ref %u stub!\n", iface, depth_stencil_state, stencil_ref);
+    struct d3d_device *device = device_from_immediate_ID3D11DeviceContext(iface);
+    const D3D11_DEPTH_STENCILOP_DESC *stencil_desc;
+    const D3D11_DEPTH_STENCIL_DESC *desc;
+
+    TRACE("iface %p, depth_stencil_state %p, stencil_ref %u.\n",
+            iface, depth_stencil_state, stencil_ref);
+
+    wined3d_mutex_lock();
+    device->stencil_ref = stencil_ref;
+    if (!(device->depth_stencil_state = unsafe_impl_from_ID3D11DepthStencilState(depth_stencil_state)))
+    {
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_ZENABLE, TRUE);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_ZWRITEENABLE, D3D11_DEPTH_WRITE_MASK_ALL);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_ZFUNC, D3D11_COMPARISON_LESS);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_STENCILENABLE, FALSE);
+        wined3d_mutex_unlock();
+        return;
+    }
+
+    desc = &device->depth_stencil_state->desc;
+
+    if (desc->FrontFace.StencilFailOp != desc->BackFace.StencilFailOp
+            || desc->FrontFace.StencilDepthFailOp != desc->BackFace.StencilDepthFailOp
+            || desc->FrontFace.StencilPassOp != desc->BackFace.StencilPassOp
+            || desc->FrontFace.StencilFunc != desc->BackFace.StencilFunc)
+        FIXME("Two-sided stencil testing not supported.\n");
+
+    stencil_desc = &desc->FrontFace;
+
+    wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_ZENABLE, desc->DepthEnable);
+    if (desc->DepthEnable)
+    {
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_ZWRITEENABLE, desc->DepthWriteMask);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_ZFUNC, desc->DepthFunc);
+    }
+
+    wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_STENCILENABLE, desc->StencilEnable);
+    if (desc->StencilEnable)
+    {
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_STENCILMASK, desc->StencilReadMask);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_STENCILWRITEMASK, desc->StencilWriteMask);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_STENCILFAIL, stencil_desc->StencilFailOp);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_STENCILZFAIL,
+                stencil_desc->StencilDepthFailOp);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_STENCILPASS, stencil_desc->StencilPassOp);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_STENCILFUNC, stencil_desc->StencilFunc);
+        wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_STENCILREF, stencil_ref);
+    }
+    wined3d_mutex_unlock();
 }
 
 static void STDMETHODCALLTYPE d3d11_immediate_context_SOSetTargets(ID3D11DeviceContext *iface, UINT buffer_count,
@@ -898,18 +945,19 @@ static void STDMETHODCALLTYPE d3d11_immediate_context_CopyStructureCount(ID3D11D
 }
 
 static void STDMETHODCALLTYPE d3d11_immediate_context_ClearRenderTargetView(ID3D11DeviceContext *iface,
-        ID3D11RenderTargetView *render_target_view, const FLOAT color_rgba[4])
+        ID3D11RenderTargetView *render_target_view, const float color_rgba[4])
 {
     struct d3d_device *device = device_from_immediate_ID3D11DeviceContext(iface);
     struct d3d_rendertarget_view *view = unsafe_impl_from_ID3D11RenderTargetView(render_target_view);
     const struct wined3d_color color = {color_rgba[0], color_rgba[1], color_rgba[2], color_rgba[3]};
     HRESULT hr;
 
-    TRACE("iface %p, render_target_view %p, color_rgba {%.8e %.8e %.8e %.8e}.\n",
-            iface, render_target_view, color_rgba[0], color_rgba[1], color_rgba[2], color_rgba[3]);
+    TRACE("iface %p, render_target_view %p, color_rgba %s.\n",
+            iface, render_target_view, debug_float4(color_rgba));
 
     wined3d_mutex_lock();
-    if (FAILED(hr = wined3d_device_clear_rendertarget_view(device->wined3d_device, view->wined3d_view, NULL, &color)))
+    if (FAILED(hr = wined3d_device_clear_rendertarget_view(device->wined3d_device, view->wined3d_view, NULL,
+            WINED3DCLEAR_TARGET, &color, 0.0f, 0)))
         ERR("Failed to clear view, hr %#x.\n", hr);
     wined3d_mutex_unlock();
 }
@@ -922,17 +970,30 @@ static void STDMETHODCALLTYPE d3d11_immediate_context_ClearUnorderedAccessViewUi
 }
 
 static void STDMETHODCALLTYPE d3d11_immediate_context_ClearUnorderedAccessViewFloat(ID3D11DeviceContext *iface,
-        ID3D11UnorderedAccessView *unordered_access_view, const FLOAT values[4])
+        ID3D11UnorderedAccessView *unordered_access_view, const float values[4])
 {
-    FIXME("iface %p, unordered_access_view %p, values {%.8e %.8e %.8e %.8e} stub!\n",
-            iface, unordered_access_view, values[0], values[1], values[2], values[3]);
+    FIXME("iface %p, unordered_access_view %p, values %s stub!\n",
+            iface, unordered_access_view, debug_float4(values));
 }
 
 static void STDMETHODCALLTYPE d3d11_immediate_context_ClearDepthStencilView(ID3D11DeviceContext *iface,
         ID3D11DepthStencilView *depth_stencil_view, UINT flags, FLOAT depth, UINT8 stencil)
 {
-    FIXME("iface %p, depth_stencil_view %p, flags %#x, depth %f, stencil %u stub!\n",
+    struct d3d_device *device = device_from_immediate_ID3D11DeviceContext(iface);
+    struct d3d_depthstencil_view *view = unsafe_impl_from_ID3D11DepthStencilView(depth_stencil_view);
+    DWORD wined3d_flags;
+    HRESULT hr;
+
+    TRACE("iface %p, depth_stencil_view %p, flags %#x, depth %.8e, stencil %u.\n",
             iface, depth_stencil_view, flags, depth, stencil);
+
+    wined3d_flags = wined3d_clear_flags_from_d3d11_clear_flags(flags);
+
+    wined3d_mutex_lock();
+    if (FAILED(hr = wined3d_device_clear_rendertarget_view(device->wined3d_device, view->wined3d_view, NULL,
+            wined3d_flags, NULL, depth, stencil)))
+        ERR("Failed to clear view, hr %#x.\n", hr);
+    wined3d_mutex_unlock();
 }
 
 static void STDMETHODCALLTYPE d3d11_immediate_context_GenerateMips(ID3D11DeviceContext *iface,
@@ -2219,13 +2280,37 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CreateDepthStencilState(ID3D11Devi
      * it as a key in the rbtree. */
     memset(&tmp_desc, 0, sizeof(tmp_desc));
     tmp_desc.DepthEnable = desc->DepthEnable;
-    tmp_desc.DepthWriteMask = desc->DepthWriteMask;
-    tmp_desc.DepthFunc = desc->DepthFunc;
+    if (desc->DepthEnable)
+    {
+        tmp_desc.DepthWriteMask = desc->DepthWriteMask;
+        tmp_desc.DepthFunc = desc->DepthFunc;
+    }
+    else
+    {
+        tmp_desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+        tmp_desc.DepthFunc = D3D11_COMPARISON_LESS;
+    }
     tmp_desc.StencilEnable = desc->StencilEnable;
-    tmp_desc.StencilReadMask = desc->StencilReadMask;
-    tmp_desc.StencilWriteMask = desc->StencilWriteMask;
-    tmp_desc.FrontFace = desc->FrontFace;
-    tmp_desc.BackFace = desc->BackFace;
+    if (desc->StencilEnable)
+    {
+        tmp_desc.StencilReadMask = desc->StencilReadMask;
+        tmp_desc.StencilWriteMask = desc->StencilWriteMask;
+        tmp_desc.FrontFace = desc->FrontFace;
+        tmp_desc.BackFace = desc->BackFace;
+    }
+    else
+    {
+        tmp_desc.StencilReadMask = D3D11_DEFAULT_STENCIL_READ_MASK;
+        tmp_desc.StencilWriteMask = D3D11_DEFAULT_STENCIL_WRITE_MASK;
+        tmp_desc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+        tmp_desc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+        tmp_desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+        tmp_desc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+        tmp_desc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+        tmp_desc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+        tmp_desc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+        tmp_desc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+    }
 
     wined3d_mutex_lock();
     if ((entry = wine_rb_get(&device->depthstencil_states, &tmp_desc)))
@@ -2536,9 +2621,11 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_SetPrivateDataInterface(ID3D11Devi
 
 static D3D_FEATURE_LEVEL STDMETHODCALLTYPE d3d11_device_GetFeatureLevel(ID3D11Device *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d3d_device *device = impl_from_ID3D11Device(iface);
 
-    return D3D_FEATURE_LEVEL_10_0;
+    TRACE("iface %p.\n", iface);
+
+    return device->feature_level;
 }
 
 static UINT STDMETHODCALLTYPE d3d11_device_GetCreationFlags(ID3D11Device *iface)
@@ -3114,13 +3201,13 @@ static void STDMETHODCALLTYPE d3d10_device_OMSetRenderTargets(ID3D10Device1 *ifa
 }
 
 static void STDMETHODCALLTYPE d3d10_device_OMSetBlendState(ID3D10Device1 *iface,
-        ID3D10BlendState *blend_state, const FLOAT blend_factor[4], UINT sample_mask)
+        ID3D10BlendState *blend_state, const float blend_factor[4], UINT sample_mask)
 {
     struct d3d_device *device = impl_from_ID3D10Device(iface);
     struct d3d_blend_state *blend_state_object;
 
-    TRACE("iface %p, blend_state %p, blend_factor %p, sample_mask 0x%08x.\n",
-            iface, blend_state, blend_factor, sample_mask);
+    TRACE("iface %p, blend_state %p, blend_factor %s, sample_mask 0x%08x.\n",
+            iface, blend_state, debug_float4(blend_factor), sample_mask);
 
     blend_state_object = unsafe_impl_from_ID3D10BlendState(blend_state);
     d3d11_immediate_context_OMSetBlendState(&device->immediate_context.ID3D11DeviceContext_iface,
@@ -3131,12 +3218,14 @@ static void STDMETHODCALLTYPE d3d10_device_OMSetDepthStencilState(ID3D10Device1 
         ID3D10DepthStencilState *depth_stencil_state, UINT stencil_ref)
 {
     struct d3d_device *device = impl_from_ID3D10Device(iface);
+    struct d3d_depthstencil_state *ds_state_object;
 
     TRACE("iface %p, depth_stencil_state %p, stencil_ref %u.\n",
             iface, depth_stencil_state, stencil_ref);
 
-    device->depth_stencil_state = unsafe_impl_from_ID3D10DepthStencilState(depth_stencil_state);
-    device->stencil_ref = stencil_ref;
+    ds_state_object = unsafe_impl_from_ID3D10DepthStencilState(depth_stencil_state);
+    d3d11_immediate_context_OMSetDepthStencilState(&device->immediate_context.ID3D11DeviceContext_iface,
+            ds_state_object ? &ds_state_object->ID3D11DepthStencilState_iface : NULL, stencil_ref);
 }
 
 static void STDMETHODCALLTYPE d3d10_device_SOSetTargets(ID3D10Device1 *iface,
@@ -3288,18 +3377,19 @@ static void STDMETHODCALLTYPE d3d10_device_UpdateSubresource(ID3D10Device1 *ifac
 }
 
 static void STDMETHODCALLTYPE d3d10_device_ClearRenderTargetView(ID3D10Device1 *iface,
-        ID3D10RenderTargetView *render_target_view, const FLOAT color_rgba[4])
+        ID3D10RenderTargetView *render_target_view, const float color_rgba[4])
 {
     struct d3d_device *device = impl_from_ID3D10Device(iface);
     struct d3d_rendertarget_view *view = unsafe_impl_from_ID3D10RenderTargetView(render_target_view);
     const struct wined3d_color color = {color_rgba[0], color_rgba[1], color_rgba[2], color_rgba[3]};
     HRESULT hr;
 
-    TRACE("iface %p, render_target_view %p, color_rgba {%.8e, %.8e, %.8e, %.8e}.\n",
-            iface, render_target_view, color_rgba[0], color_rgba[1], color_rgba[2], color_rgba[3]);
+    TRACE("iface %p, render_target_view %p, color_rgba %s.\n",
+            iface, render_target_view, debug_float4(color_rgba));
 
     wined3d_mutex_lock();
-    if (FAILED(hr = wined3d_device_clear_rendertarget_view(device->wined3d_device, view->wined3d_view, NULL, &color)))
+    if (FAILED(hr = wined3d_device_clear_rendertarget_view(device->wined3d_device, view->wined3d_view, NULL,
+            WINED3DCLEAR_TARGET, &color, 0.0f, 0)))
         ERR("Failed to clear view, hr %#x.\n", hr);
     wined3d_mutex_unlock();
 }
@@ -3307,8 +3397,21 @@ static void STDMETHODCALLTYPE d3d10_device_ClearRenderTargetView(ID3D10Device1 *
 static void STDMETHODCALLTYPE d3d10_device_ClearDepthStencilView(ID3D10Device1 *iface,
         ID3D10DepthStencilView *depth_stencil_view, UINT flags, FLOAT depth, UINT8 stencil)
 {
-    FIXME("iface %p, depth_stencil_view %p, flags %#x, depth %f, stencil %u stub!\n",
+    struct d3d_device *device = impl_from_ID3D10Device(iface);
+    struct d3d_depthstencil_view *view = unsafe_impl_from_ID3D10DepthStencilView(depth_stencil_view);
+    DWORD wined3d_flags;
+    HRESULT hr;
+
+    TRACE("iface %p, depth_stencil_view %p, flags %#x, depth %.8e, stencil %u.\n",
             iface, depth_stencil_view, flags, depth, stencil);
+
+    wined3d_flags = wined3d_clear_flags_from_d3d11_clear_flags(flags);
+
+    wined3d_mutex_lock();
+    if (FAILED(hr = wined3d_device_clear_rendertarget_view(device->wined3d_device, view->wined3d_view, NULL,
+            wined3d_flags, NULL, depth, stencil)))
+        ERR("Failed to clear view, hr %#x.\n", hr);
+    wined3d_mutex_unlock();
 }
 
 static void STDMETHODCALLTYPE d3d10_device_GenerateMips(ID3D10Device1 *iface,
@@ -4557,9 +4660,11 @@ static void STDMETHODCALLTYPE d3d10_device_GetTextFilterSize(ID3D10Device1 *ifac
 
 static D3D10_FEATURE_LEVEL1 STDMETHODCALLTYPE d3d10_device_GetFeatureLevel(ID3D10Device1 *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d3d_device *device = impl_from_ID3D10Device(iface);
 
-    return D3D10_FEATURE_LEVEL_10_1;
+    TRACE("iface %p.\n", iface);
+
+    return device->feature_level;
 }
 
 static const struct ID3D10Device1Vtbl d3d10_device1_vtbl =
@@ -4845,7 +4950,7 @@ static HRESULT CDECL device_parent_create_swapchain_texture(struct wined3d_devic
     FIXME("device_parent %p, container_parent %p, wined3d_desc %p, wined3d_texture %p partial stub!\n",
             device_parent, container_parent, wined3d_desc, wined3d_texture);
 
-    FIXME("Implement DXGI<->wined3d usage conversion\n");
+    FIXME("Implement DXGI<->wined3d usage conversion.\n");
 
     desc.Width = wined3d_desc->width;
     desc.Height = wined3d_desc->height;
@@ -4862,7 +4967,7 @@ static HRESULT CDECL device_parent_create_swapchain_texture(struct wined3d_devic
     if (FAILED(hr = d3d10_device_CreateTexture2D(&device->ID3D10Device1_iface,
             &desc, NULL, &texture_iface)))
     {
-        ERR("CreateTexture2D failed, returning %#x\n", hr);
+        WARN("CreateTexture2D failed, returning %#x.\n", hr);
         return hr;
     }
 

@@ -285,6 +285,7 @@ HRESULT WINAPI CoInitialize(LPVOID lpReserved);
 HRESULT WINAPI CoInitializeEx(LPVOID lpReserved, DWORD dwCoInit);
 void WINAPI CoUninitialize(void);
 DWORD WINAPI CoGetCurrentProcess(void);
+HRESULT WINAPI CoGetCurrentLogicalThreadId(GUID *id);
 HRESULT WINAPI CoGetApartmentType(APTTYPE *type, APTTYPEQUALIFIER *qualifier);
 
 HINSTANCE WINAPI CoLoadLibrary(LPOLESTR lpszLibName, BOOL bAutoFree);
@@ -369,6 +370,8 @@ HRESULT WINAPI CoGetTreatAsClass(REFCLSID clsidOld, LPCLSID pClsidNew);
 HRESULT WINAPI CoTreatAsClass(REFCLSID clsidOld, REFCLSID clsidNew);
 HRESULT WINAPI CoAllowSetForegroundWindow(IUnknown *pUnk, LPVOID lpvReserved);
 HRESULT WINAPI CoGetObjectContext(REFIID riid, LPVOID *ppv);
+HRESULT WINAPI CoRegisterInitializeSpy(IInitializeSpy *spy, ULARGE_INTEGER *cookie);
+HRESULT WINAPI CoRevokeInitializeSpy(ULARGE_INTEGER cookie);
 
 HRESULT WINAPI CoCreateGuid(GUID* pguid);
 BOOL WINAPI CoIsOle1Class(REFCLSID rclsid);

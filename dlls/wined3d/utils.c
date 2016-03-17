@@ -3002,6 +3002,10 @@ static void apply_format_fixups(struct wined3d_adapter *adapter, struct wined3d_
     gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
     idx = get_format_idx(WINED3DFMT_ATI2N);
     gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
+    idx = get_format_idx(WINED3DFMT_BC4_UNORM);
+    gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
+    idx = get_format_idx(WINED3DFMT_BC5_UNORM);
+    gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
 }
 
 static BOOL init_format_vertex_info(struct wined3d_gl_info *gl_info)
@@ -3272,6 +3276,14 @@ const char *debug_box(const struct wined3d_box *box)
     return wine_dbg_sprintf("(%u, %u, %u)-(%u, %u, %u)",
             box->left, box->top, box->front,
             box->right, box->bottom, box->back);
+}
+
+const char *debug_color(const struct wined3d_color *color)
+{
+    if (!color)
+        return "(null)";
+    return wine_dbg_sprintf("{%.8e, %.8e, %.8e, %.8e}",
+            color->r, color->g, color->b, color->a);
 }
 
 const char *debug_d3dformat(enum wined3d_format_id format_id)

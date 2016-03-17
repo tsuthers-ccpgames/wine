@@ -474,6 +474,18 @@ BOOL WINAPI EnumDisplayMonitors( HDC hdc, LPRECT rect, MONITORENUMPROC proc, LPA
     return USER_Driver->pEnumDisplayMonitors( hdc, rect, proc, lp );
 }
 
+
+/***********************************************************************
+ *              QueryDisplayConfig (USER32.@)
+ */
+LONG WINAPI QueryDisplayConfig(UINT32 flags, UINT32 *numpathelements, DISPLAYCONFIG_PATH_INFO *pathinfo,
+                               UINT32 *numinfoelements, DISPLAYCONFIG_MODE_INFO *modeinfo,
+                               DISPLAYCONFIG_TOPOLOGY_ID *topologyid)
+{
+   FIXME("(%08x %p %p %p %p %p)\n", flags, numpathelements, pathinfo, numinfoelements, modeinfo, topologyid);
+   return ERROR_CALL_NOT_IMPLEMENTED;
+}
+
 /***********************************************************************
  *		RegisterSystemThread (USER32.@)
  */
@@ -727,6 +739,16 @@ BOOL WINAPI UnregisterPowerSettingNotification(HPOWERNOTIFY handle)
 {
     FIXME("(%p): stub\n", handle);
     return TRUE;
+}
+
+/*****************************************************************************
+ * GetGestureConfig (USER32.@)
+ */
+BOOL WINAPI GetGestureConfig( HWND hwnd, DWORD reserved, DWORD flags, UINT *count, GESTURECONFIG *config, UINT size )
+{
+    FIXME("(%p %08x %08x %p %p %u): stub\n", hwnd, reserved, flags, count, config, size);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
 }
 
 /**********************************************************************

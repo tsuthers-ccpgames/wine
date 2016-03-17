@@ -43,6 +43,7 @@ static const WCHAR closeelementW[] = {'<','/'};
 static const WCHAR closepiW[] = {'?','>'};
 static const WCHAR ltW[] = {'<'};
 static const WCHAR gtW[] = {'>'};
+static const WCHAR spaceW[] = {' '};
 
 struct output_buffer
 {
@@ -555,13 +556,58 @@ static HRESULT WINAPI xmlwriter_WriteAttributeString(IXmlWriter *iface, LPCWSTR 
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI xmlwriter_WriteCData(IXmlWriter *iface, LPCWSTR pwszText)
+static void write_cdata_section(xmlwriteroutput *output, const WCHAR *data, int len)
+{
+    static const WCHAR cdataopenW[] = {'<','!','[','C','D','A','T','A','['};
+    static const WCHAR cdatacloseW[] = {']',']','>'};
+    write_output_buffer(output, cdataopenW, ARRAY_SIZE(cdataopenW));
+    if (data)
+        write_output_buffer(output, data, len);
+    write_output_buffer(output, cdatacloseW, ARRAY_SIZE(cdatacloseW));
+}
+
+static HRESULT WINAPI xmlwriter_WriteCData(IXmlWriter *iface, LPCWSTR data)
 {
     xmlwriter *This = impl_from_IXmlWriter(iface);
+    int len;
 
-    FIXME("%p %s\n", This, wine_dbgstr_w(pwszText));
+    TRACE("%p %s\n", This, debugstr_w(data));
 
-    return E_NOTIMPL;
+    switch (This->state)
+    {
+    case XmlWriterState_Initial:
+        return E_UNEXPECTED;
+    case XmlWriterState_ElemStarted:
+        writer_close_starttag(This);
+        break;
+    case XmlWriterState_DocClosed:
+        return WR_E_INVALIDACTION;
+    default:
+        ;
+    }
+
+    len = data ? strlenW(data) : 0;
+
+    if (!len)
+        write_cdata_section(This->output, NULL, 0);
+    else {
+        static const WCHAR cdatacloseW[] = {']',']','>',0};
+        while (len) {
+            const WCHAR *str = strstrW(data, cdatacloseW);
+            if (str) {
+                str += 2;
+                write_cdata_section(This->output, data, str - data);
+                len -= str - data;
+                data = str;
+            }
+            else {
+                write_cdata_section(This->output, data, len);
+                break;
+            }
+        }
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlwriter_WriteCharEntity(IXmlWriter *iface, WCHAR wch)
@@ -578,9 +624,49 @@ static HRESULT WINAPI xmlwriter_WriteChars(IXmlWriter *iface, const WCHAR *pwch,
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI xmlwriter_WriteComment(IXmlWriter *iface, LPCWSTR pwszComment)
+static HRESULT WINAPI xmlwriter_WriteComment(IXmlWriter *iface, LPCWSTR comment)
 {
-    return E_NOTIMPL;
+    static const WCHAR copenW[] = {'<','!','-','-'};
+    static const WCHAR ccloseW[] = {'-','-','>'};
+    xmlwriter *This = impl_from_IXmlWriter(iface);
+
+    TRACE("%p %s\n", This, debugstr_w(comment));
+
+    switch (This->state)
+    {
+    case XmlWriterState_Initial:
+        return E_UNEXPECTED;
+    case XmlWriterState_ElemStarted:
+        writer_close_starttag(This);
+        break;
+    case XmlWriterState_DocClosed:
+        return WR_E_INVALIDACTION;
+    default:
+        ;
+    }
+
+    write_output_buffer(This->output, copenW, ARRAY_SIZE(copenW));
+    if (comment) {
+        int len = strlenW(comment), i;
+
+        /* Make sure there's no two hyphen sequences in a string, space is used as a separator to produce compliant
+           comment string */
+        if (len > 1) {
+            for (i = 0; i < len; i++) {
+                write_output_buffer(This->output, comment + i, 1);
+                if (comment[i] == '-' && (i + 1 < len) && comment[i+1] == '-')
+                    write_output_buffer(This->output, spaceW, ARRAY_SIZE(spaceW));
+            }
+        }
+        else
+            write_output_buffer(This->output, comment, len);
+
+        if (len && comment[len-1] == '-')
+            write_output_buffer(This->output, spaceW, ARRAY_SIZE(spaceW));
+    }
+    write_output_buffer(This->output, ccloseW, ARRAY_SIZE(ccloseW));
+
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlwriter_WriteDocType(IXmlWriter *iface, LPCWSTR pwszName, LPCWSTR pwszPublicId,
@@ -763,7 +849,6 @@ static HRESULT WINAPI xmlwriter_WriteProcessingInstruction(IXmlWriter *iface, LP
     xmlwriter *This = impl_from_IXmlWriter(iface);
     static const WCHAR xmlW[] = {'x','m','l',0};
     static const WCHAR openpiW[] = {'<','?'};
-    static const WCHAR spaceW[] = {' '};
 
     TRACE("(%p)->(%s %s)\n", This, wine_dbgstr_w(name), wine_dbgstr_w(text));
 

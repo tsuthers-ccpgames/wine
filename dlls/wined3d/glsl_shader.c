@@ -323,26 +323,22 @@ static void shader_glsl_append_imm_vec4(struct wined3d_string_buffer *buffer, co
 static void shader_glsl_append_imm_ivec(struct wined3d_string_buffer *buffer,
         const int *values, unsigned int size)
 {
-    const char *fmt = "%#x";
-    char str[4][17] = {{0}};
     int i;
 
-    if (1 > size || size > 4)
+    if (!size || size > 4)
     {
         ERR("Invalid vector size %u.\n", size);
         return;
     }
 
-    for (i = size - 1; i >= 0; --i)
-    {
-        sprintf(str[i], fmt, values[i]);
-        fmt = "%#x, ";
-    }
+    if (size > 1)
+        shader_addline(buffer, "ivec%u(", size);
+
+    for (i = 0; i < size; ++i)
+        shader_addline(buffer, i ? ", %#x" : "%#x", values[i]);
 
     if (size > 1)
-        shader_addline(buffer, "ivec%u(%s%s%s%s)", size, str[0], str[1], str[2], str[3]);
-    else
-        shader_addline(buffer, str[0]);
+        shader_addline(buffer, ")");
 }
 
 static const char *get_info_log_line(const char **ptr)
@@ -2747,7 +2743,7 @@ static void shader_glsl_get_sample_function(const struct wined3d_shader_context 
     {
         static const DWORD texel_fetch_flags = WINED3D_GLSL_SAMPLE_LOAD | WINED3D_GLSL_SAMPLE_OFFSET;
         if (flags & ~texel_fetch_flags)
-            ERR("Unexpected flags for texelFetch %#x.\n", flags & ~texel_fetch_flags);
+            ERR("Unexpected flags %#x for texelFetch.\n", flags & ~texel_fetch_flags);
 
         base = "texelFetch";
         type_part = "";
@@ -8009,7 +8005,13 @@ static void shader_glsl_get_caps(const struct wined3d_gl_info *gl_info, struct s
 {
     UINT shader_model;
 
-    if (gl_info->glsl_version >= MAKEDWORD_VERSION(1, 50) && gl_info->supported[WINED3D_GL_VERSION_3_2]
+    /* FIXME: Check for the specific extensions required for SM5 support
+     * (ARB_compute_shader, ARB_tessellation_shader, ARB_gpu_shader5, ...) as
+     * soon as we introduce them, adjusting the GL / GLSL version checks
+     * accordingly. */
+    if (gl_info->glsl_version >= MAKEDWORD_VERSION(4, 30) && gl_info->supported[WINED3D_GL_VERSION_4_3])
+        shader_model = 5;
+    else if (gl_info->glsl_version >= MAKEDWORD_VERSION(1, 50) && gl_info->supported[WINED3D_GL_VERSION_3_2]
             && gl_info->supported[ARB_SHADER_BIT_ENCODING] && gl_info->supported[ARB_SAMPLER_OBJECTS])
         shader_model = 4;
     /* ARB_shader_texture_lod or EXT_gpu_shader4 is required for the SM3

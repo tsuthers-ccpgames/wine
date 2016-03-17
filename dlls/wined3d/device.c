@@ -203,7 +203,7 @@ void device_switch_onscreen_ds(struct wined3d_device *device,
 {
     if (device->onscreen_depth_stencil)
     {
-        surface_load_ds_location(device->onscreen_depth_stencil, context, WINED3D_LOCATION_TEXTURE_RGB);
+        surface_load_location(device->onscreen_depth_stencil, context, WINED3D_LOCATION_TEXTURE_RGB);
 
         surface_modify_ds_location(device->onscreen_depth_stencil, WINED3D_LOCATION_TEXTURE_RGB,
                 device->onscreen_depth_stencil->ds_current_size.cx,
@@ -280,7 +280,7 @@ static void prepare_ds_clear(struct wined3d_surface *ds, struct wined3d_context 
     }
 
     /* Full load. */
-    surface_load_ds_location(ds, context, location);
+    surface_load_location(ds, context, location);
     SetRect(out_rect, 0, 0, ds->ds_current_size.cx, ds->ds_current_size.cy);
 }
 
@@ -1559,14 +1559,13 @@ HRESULT CDECL wined3d_device_set_light(struct wined3d_device *device,
     }
 
     /* Initialize the object. */
-    TRACE("Light %d setting to type %d, Diffuse(%f,%f,%f,%f), Specular(%f,%f,%f,%f), Ambient(%f,%f,%f,%f)\n",
-            light_idx, light->type,
-            light->diffuse.r, light->diffuse.g, light->diffuse.b, light->diffuse.a,
-            light->specular.r, light->specular.g, light->specular.b, light->specular.a,
-            light->ambient.r, light->ambient.g, light->ambient.b, light->ambient.a);
-    TRACE("... Pos(%f,%f,%f), Dir(%f,%f,%f)\n", light->position.x, light->position.y, light->position.z,
-            light->direction.x, light->direction.y, light->direction.z);
-    TRACE("... Range(%f), Falloff(%f), Theta(%f), Phi(%f)\n",
+    TRACE("Light %u setting to type %#x, diffuse %s, specular %s, ambient %s, "
+            "position {%.8e, %.8e, %.8e}, direction {%.8e, %.8e, %.8e}, "
+            "range %.8e, falloff %.8e, theta %.8e, phi %.8e.\n",
+            light_idx, light->type, debug_color(&light->diffuse),
+            debug_color(&light->specular), debug_color(&light->ambient),
+            light->position.x, light->position.y, light->position.z,
+            light->direction.x, light->direction.y, light->direction.z,
             light->range, light->falloff, light->theta, light->phi);
 
     /* Update the live definitions if the light is currently assigned a glIndex. */
@@ -1900,18 +1899,10 @@ void CDECL wined3d_device_get_material(const struct wined3d_device *device, stru
 
     *material = device->state.material;
 
-    TRACE("diffuse {%.8e, %.8e, %.8e, %.8e}\n",
-            material->diffuse.r, material->diffuse.g,
-            material->diffuse.b, material->diffuse.a);
-    TRACE("ambient {%.8e, %.8e, %.8e, %.8e}\n",
-            material->ambient.r, material->ambient.g,
-            material->ambient.b, material->ambient.a);
-    TRACE("specular {%.8e, %.8e, %.8e, %.8e}\n",
-            material->specular.r, material->specular.g,
-            material->specular.b, material->specular.a);
-    TRACE("emissive {%.8e, %.8e, %.8e, %.8e}\n",
-            material->emissive.r, material->emissive.g,
-            material->emissive.b, material->emissive.a);
+    TRACE("diffuse %s\n", debug_color(&material->diffuse));
+    TRACE("ambient %s\n", debug_color(&material->ambient));
+    TRACE("specular %s\n", debug_color(&material->specular));
+    TRACE("emissive %s\n", debug_color(&material->emissive));
     TRACE("power %.8e.\n", material->power);
 }
 
@@ -3373,8 +3364,8 @@ HRESULT CDECL wined3d_device_end_scene(struct wined3d_device *device)
 HRESULT CDECL wined3d_device_clear(struct wined3d_device *device, DWORD rect_count,
         const RECT *rects, DWORD flags, const struct wined3d_color *color, float depth, DWORD stencil)
 {
-    TRACE("device %p, rect_count %u, rects %p, flags %#x, color {%.8e, %.8e, %.8e, %.8e}, depth %.8e, stencil %u.\n",
-            device, rect_count, rects, flags, color->r, color->g, color->b, color->a, depth, stencil);
+    TRACE("device %p, rect_count %u, rects %p, flags %#x, color %s, depth %.8e, stencil %u.\n",
+            device, rect_count, rects, flags, debug_color(color), depth, stencil);
 
     if (!rect_count && rects)
     {
@@ -4087,13 +4078,19 @@ void CDECL wined3d_device_update_sub_resource(struct wined3d_device *device, str
 }
 
 HRESULT CDECL wined3d_device_clear_rendertarget_view(struct wined3d_device *device,
-        struct wined3d_rendertarget_view *view, const RECT *rect, const struct wined3d_color *color)
+        struct wined3d_rendertarget_view *view, const RECT *rect, DWORD flags,
+        const struct wined3d_color *color, float depth, DWORD stencil)
 {
+    const struct blit_shader *blitter;
     struct wined3d_resource *resource;
+    enum wined3d_blit_op blit_op;
     RECT r;
 
-    TRACE("device %p, view %p, rect %s, color {%.8e, %.8e, %.8e, %.8e}.\n",
-            device, view, wine_dbgstr_rect(rect), color->r, color->g, color->b, color->a);
+    TRACE("device %p, view %p, rect %s, flags %#x, color %s, depth %.8e, stencil %u.\n",
+            device, view, wine_dbgstr_rect(rect), flags, debug_color(color), depth, stencil);
+
+    if (!flags)
+        return WINED3D_OK;
 
     resource = view->resource;
     if (resource->type != WINED3D_RTYPE_TEXTURE_2D)
@@ -4114,9 +4111,22 @@ HRESULT CDECL wined3d_device_clear_rendertarget_view(struct wined3d_device *devi
         rect = &r;
     }
 
-    resource = wined3d_texture_get_sub_resource(wined3d_texture_from_resource(resource), view->sub_resource_idx);
+    if (flags & WINED3DCLEAR_TARGET)
+        blit_op = WINED3D_BLIT_OP_COLOR_FILL;
+    else
+        blit_op = WINED3D_BLIT_OP_DEPTH_FILL;
 
-    return surface_color_fill(surface_from_resource(resource), rect, color);
+    if (!(blitter = wined3d_select_blitter(&device->adapter->gl_info, &device->adapter->d3d_info,
+            blit_op, NULL, 0, 0, NULL, rect, resource->usage, resource->pool, resource->format)))
+    {
+        FIXME("No blitter is capable of performing the requested fill operation.\n");
+        return WINED3DERR_INVALIDCALL;
+    }
+
+    if (blit_op == WINED3D_BLIT_OP_COLOR_FILL)
+        return blitter->color_fill(device, view, rect, color);
+    else
+        return blitter->depth_fill(device, view, rect, flags, depth, stencil);
 }
 
 struct wined3d_rendertarget_view * CDECL wined3d_device_get_rendertarget_view(const struct wined3d_device *device,

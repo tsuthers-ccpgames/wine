@@ -886,6 +886,7 @@ enable_api_ms_win_core_fibers_l1_1_0
 enable_api_ms_win_core_fibers_l1_1_1
 enable_api_ms_win_core_file_l1_1_0
 enable_api_ms_win_core_file_l1_2_0
+enable_api_ms_win_core_file_l1_2_1
 enable_api_ms_win_core_file_l2_1_0
 enable_api_ms_win_core_file_l2_1_1
 enable_api_ms_win_core_handle_l1_1_0
@@ -907,6 +908,7 @@ enable_api_ms_win_core_localization_obsolete_l1_1_0
 enable_api_ms_win_core_localregistry_l1_1_0
 enable_api_ms_win_core_memory_l1_1_0
 enable_api_ms_win_core_memory_l1_1_1
+enable_api_ms_win_core_memory_l1_1_2
 enable_api_ms_win_core_misc_l1_1_0
 enable_api_ms_win_core_namedpipe_l1_1_0
 enable_api_ms_win_core_namedpipe_l1_2_0
@@ -923,6 +925,7 @@ enable_api_ms_win_core_rtlsupport_l1_1_0
 enable_api_ms_win_core_rtlsupport_l1_2_0
 enable_api_ms_win_core_shlwapi_legacy_l1_1_0
 enable_api_ms_win_core_string_l1_1_0
+enable_api_ms_win_core_string_l2_1_0
 enable_api_ms_win_core_synch_l1_1_0
 enable_api_ms_win_core_synch_l1_2_0
 enable_api_ms_win_core_sysinfo_l1_1_0
@@ -933,6 +936,7 @@ enable_api_ms_win_core_threadpool_legacy_l1_1_0
 enable_api_ms_win_core_timezone_l1_1_0
 enable_api_ms_win_core_url_l1_1_0
 enable_api_ms_win_core_util_l1_1_0
+enable_api_ms_win_core_version_l1_1_0
 enable_api_ms_win_core_winrt_error_l1_1_0
 enable_api_ms_win_core_winrt_error_l1_1_1
 enable_api_ms_win_core_winrt_l1_1_0
@@ -1387,6 +1391,7 @@ enable_wintab32
 enable_wintrust
 enable_wlanapi
 enable_wldap32
+enable_wmasf
 enable_wmi
 enable_wmiutils
 enable_wmp
@@ -17324,6 +17329,7 @@ wine_fn_config_dll api-ms-win-core-fibers-l1-1-0 enable_api_ms_win_core_fibers_l
 wine_fn_config_dll api-ms-win-core-fibers-l1-1-1 enable_api_ms_win_core_fibers_l1_1_1
 wine_fn_config_dll api-ms-win-core-file-l1-1-0 enable_api_ms_win_core_file_l1_1_0
 wine_fn_config_dll api-ms-win-core-file-l1-2-0 enable_api_ms_win_core_file_l1_2_0
+wine_fn_config_dll api-ms-win-core-file-l1-2-1 enable_api_ms_win_core_file_l1_2_1
 wine_fn_config_dll api-ms-win-core-file-l2-1-0 enable_api_ms_win_core_file_l2_1_0
 wine_fn_config_dll api-ms-win-core-file-l2-1-1 enable_api_ms_win_core_file_l2_1_1
 wine_fn_config_dll api-ms-win-core-handle-l1-1-0 enable_api_ms_win_core_handle_l1_1_0
@@ -17345,6 +17351,7 @@ wine_fn_config_dll api-ms-win-core-localization-obsolete-l1-1-0 enable_api_ms_wi
 wine_fn_config_dll api-ms-win-core-localregistry-l1-1-0 enable_api_ms_win_core_localregistry_l1_1_0
 wine_fn_config_dll api-ms-win-core-memory-l1-1-0 enable_api_ms_win_core_memory_l1_1_0
 wine_fn_config_dll api-ms-win-core-memory-l1-1-1 enable_api_ms_win_core_memory_l1_1_1
+wine_fn_config_dll api-ms-win-core-memory-l1-1-2 enable_api_ms_win_core_memory_l1_1_2
 wine_fn_config_dll api-ms-win-core-misc-l1-1-0 enable_api_ms_win_core_misc_l1_1_0
 wine_fn_config_dll api-ms-win-core-namedpipe-l1-1-0 enable_api_ms_win_core_namedpipe_l1_1_0
 wine_fn_config_dll api-ms-win-core-namedpipe-l1-2-0 enable_api_ms_win_core_namedpipe_l1_2_0
@@ -17361,6 +17368,7 @@ wine_fn_config_dll api-ms-win-core-rtlsupport-l1-1-0 enable_api_ms_win_core_rtls
 wine_fn_config_dll api-ms-win-core-rtlsupport-l1-2-0 enable_api_ms_win_core_rtlsupport_l1_2_0
 wine_fn_config_dll api-ms-win-core-shlwapi-legacy-l1-1-0 enable_api_ms_win_core_shlwapi_legacy_l1_1_0
 wine_fn_config_dll api-ms-win-core-string-l1-1-0 enable_api_ms_win_core_string_l1_1_0
+wine_fn_config_dll api-ms-win-core-string-l2-1-0 enable_api_ms_win_core_string_l2_1_0
 wine_fn_config_dll api-ms-win-core-synch-l1-1-0 enable_api_ms_win_core_synch_l1_1_0
 wine_fn_config_dll api-ms-win-core-synch-l1-2-0 enable_api_ms_win_core_synch_l1_2_0
 wine_fn_config_dll api-ms-win-core-sysinfo-l1-1-0 enable_api_ms_win_core_sysinfo_l1_1_0
@@ -17371,6 +17379,7 @@ wine_fn_config_dll api-ms-win-core-threadpool-legacy-l1-1-0 enable_api_ms_win_co
 wine_fn_config_dll api-ms-win-core-timezone-l1-1-0 enable_api_ms_win_core_timezone_l1_1_0
 wine_fn_config_dll api-ms-win-core-url-l1-1-0 enable_api_ms_win_core_url_l1_1_0
 wine_fn_config_dll api-ms-win-core-util-l1-1-0 enable_api_ms_win_core_util_l1_1_0
+wine_fn_config_dll api-ms-win-core-version-l1-1-0 enable_api_ms_win_core_version_l1_1_0
 wine_fn_config_dll api-ms-win-core-winrt-error-l1-1-0 enable_api_ms_win_core_winrt_error_l1_1_0
 wine_fn_config_dll api-ms-win-core-winrt-error-l1-1-1 enable_api_ms_win_core_winrt_error_l1_1_1
 wine_fn_config_dll api-ms-win-core-winrt-l1-1-0 enable_api_ms_win_core_winrt_l1_1_0
@@ -18053,6 +18062,7 @@ wine_fn_config_test dlls/wintrust/tests wintrust_test
 wine_fn_config_dll wlanapi enable_wlanapi
 wine_fn_config_dll wldap32 enable_wldap32 clean,implib
 wine_fn_config_test dlls/wldap32/tests wldap32_test
+wine_fn_config_dll wmasf enable_wmasf
 wine_fn_config_dll wmi enable_wmi
 wine_fn_config_dll wmiutils enable_wmiutils clean
 wine_fn_config_test dlls/wmiutils/tests wmiutils_test

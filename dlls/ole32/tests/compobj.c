@@ -1774,7 +1774,7 @@ static void test_CoGetObjectContext(void)
 {
     HRESULT hr;
     ULONG refs;
-    IComThreadingInfo *pComThreadingInfo;
+    IComThreadingInfo *pComThreadingInfo, *threadinginfo2;
     IContextCallback *pContextCallback;
     IObjContext *pObjContext;
     APTTYPE apttype;
@@ -1782,10 +1782,11 @@ static void test_CoGetObjectContext(void)
     struct info info;
     HANDLE thread;
     DWORD tid, exitcode;
+    GUID id, id2;
 
     if (!pCoGetObjectContext)
     {
-        skip("CoGetObjectContext not present\n");
+        win_skip("CoGetObjectContext not present\n");
         return;
     }
 
@@ -1810,6 +1811,23 @@ static void test_CoGetObjectContext(void)
     pComThreadingInfo = NULL;
     hr = pCoGetObjectContext(&IID_IComThreadingInfo, (void **)&pComThreadingInfo);
     ok(hr == S_OK, "Expected S_OK, got 0x%08x\n", hr);
+
+    threadinginfo2 = NULL;
+    hr = pCoGetObjectContext(&IID_IComThreadingInfo, (void **)&threadinginfo2);
+    ok(hr == S_OK, "Expected S_OK, got 0x%08x\n", hr);
+    ok(pComThreadingInfo == threadinginfo2, "got different instance\n");
+    IComThreadingInfo_Release(threadinginfo2);
+
+    hr = IComThreadingInfo_GetCurrentLogicalThreadId(pComThreadingInfo, NULL);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    id = id2 = GUID_NULL;
+    hr = IComThreadingInfo_GetCurrentLogicalThreadId(pComThreadingInfo, &id);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = CoGetCurrentLogicalThreadId(&id2);
+    ok(IsEqualGUID(&id, &id2), "got %s, expected %s\n", wine_dbgstr_guid(&id), wine_dbgstr_guid(&id2));
+
     IComThreadingInfo_Release(pComThreadingInfo);
 
     SetEvent(info.stop);
@@ -1842,11 +1860,8 @@ static void test_CoGetObjectContext(void)
     hr = pCoGetObjectContext(&IID_IContextCallback, (void **)&pContextCallback);
     ok_ole_success(hr, "CoGetObjectContext(ContextCallback)");
 
-    if (hr == S_OK)
-    {
-        refs = IContextCallback_Release(pContextCallback);
-        ok(refs == 0, "pContextCallback should have 0 refs instead of %d refs\n", refs);
-    }
+    refs = IContextCallback_Release(pContextCallback);
+    ok(refs == 0, "pContextCallback should have 0 refs instead of %d refs\n", refs);
 
     CoUninitialize();
 
@@ -1869,11 +1884,8 @@ static void test_CoGetObjectContext(void)
     hr = pCoGetObjectContext(&IID_IContextCallback, (void **)&pContextCallback);
     ok_ole_success(hr, "CoGetObjectContext(ContextCallback)");
 
-    if (hr == S_OK)
-    {
-        refs = IContextCallback_Release(pContextCallback);
-        ok(refs == 0, "pContextCallback should have 0 refs instead of %d refs\n", refs);
-    }
+    refs = IContextCallback_Release(pContextCallback);
+    ok(refs == 0, "pContextCallback should have 0 refs instead of %d refs\n", refs);
 
     hr = pCoGetObjectContext(&IID_IObjContext, (void **)&pObjContext);
     ok_ole_success(hr, "CoGetObjectContext");
@@ -1995,7 +2007,7 @@ static void test_CoGetContextToken(void)
 {
     HRESULT hr;
     ULONG refs;
-    ULONG_PTR token;
+    ULONG_PTR token, token2;
     IObjContext *ctx;
     struct info info;
     HANDLE thread;
@@ -2030,6 +2042,11 @@ static void test_CoGetContextToken(void)
     hr = pCoGetContextToken(&token);
     ok(hr == S_OK, "Expected S_OK, got 0x%08x\n", hr);
 
+    token2 = 0;
+    hr = pCoGetContextToken(&token2);
+    ok(hr == S_OK, "Expected S_OK, got 0x%08x\n", hr);
+    ok(token == token2, "got different token\n");
+
     SetEvent(info.stop);
     ok( !WaitForSingleObject(thread, 10000), "wait timed out\n" );
 
@@ -2051,18 +2068,23 @@ static void test_CoGetContextToken(void)
     ok(hr == S_OK, "Expected S_OK, got 0x%08x\n", hr);
     ok(token, "Expected token != 0\n");
 
+    token2 = 0;
+    hr = pCoGetContextToken(&token2);
+    ok(hr == S_OK, "Expected S_OK, got 0x%08x\n", hr);
+    ok(token2 == token, "got different token\n");
+
     refs = IUnknown_AddRef((IUnknown *)token);
-    todo_wine ok(refs == 1, "Expected 1, got %u\n", refs);
+    ok(refs == 1, "Expected 1, got %u\n", refs);
 
     hr = pCoGetObjectContext(&IID_IObjContext, (void **)&ctx);
     ok(hr == S_OK, "Expected S_OK, got 0x%08x\n", hr);
-    todo_wine ok(ctx == (IObjContext *)token, "Expected interface pointers to be the same\n");
+    ok(ctx == (IObjContext *)token, "Expected interface pointers to be the same\n");
 
     refs = IObjContext_AddRef(ctx);
-    todo_wine ok(refs == 3, "Expected 3, got %u\n", refs);
+    ok(refs == 3, "Expected 3, got %u\n", refs);
 
     refs = IObjContext_Release(ctx);
-    todo_wine ok(refs == 2, "Expected 2, got %u\n", refs);
+    ok(refs == 2, "Expected 2, got %u\n", refs);
 
     refs = IUnknown_Release((IUnknown *)token);
     ok(refs == 1, "Expected 1, got %u\n", refs);
@@ -2072,7 +2094,7 @@ static void test_CoGetContextToken(void)
     hr = pCoGetContextToken(&token);
     ok(hr == S_OK, "Expected S_OK, got 0x%08x\n", hr);
     ok(token, "Expected token != 0\n");
-    todo_wine ok(ctx == (IObjContext *)token, "Expected interface pointers to be the same\n");
+    ok(ctx == (IObjContext *)token, "Expected interface pointers to be the same\n");
 
     refs = IObjContext_AddRef(ctx);
     ok(refs == 2, "Expected 1, got %u\n", refs);
@@ -3093,6 +3115,152 @@ static void test_IMallocSpy(void)
     ok(hr == CO_E_OBJNOTREG, "got 0x%08x\n", hr);
 }
 
+static void test_CoGetCurrentLogicalThreadId(void)
+{
+    HRESULT hr;
+    GUID id;
+
+    hr = CoGetCurrentLogicalThreadId(NULL);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    id = GUID_NULL;
+    hr = CoGetCurrentLogicalThreadId(&id);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(!IsEqualGUID(&id, &GUID_NULL), "got null id\n");
+}
+
+static HRESULT WINAPI testinitialize_QI(IInitializeSpy *iface, REFIID riid, void **obj)
+{
+    if (IsEqualIID(riid, &IID_IInitializeSpy) || IsEqualIID(riid, &IID_IUnknown))
+    {
+        *obj = iface;
+        IInitializeSpy_AddRef(iface);
+        return S_OK;
+    }
+
+    *obj = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI testinitialize_AddRef(IInitializeSpy *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI testinitialize_Release(IInitializeSpy *iface)
+{
+    return 1;
+}
+
+static HRESULT WINAPI testinitialize_PreInitialize(IInitializeSpy *iface, DWORD coinit, DWORD aptrefs)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI testinitialize_PostInitialize(IInitializeSpy *iface, HRESULT hr, DWORD coinit, DWORD aptrefs)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI testinitialize_PreUninitialize(IInitializeSpy *iface, DWORD aptrefs)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI testinitialize_PostUninitialize(IInitializeSpy *iface, DWORD aptrefs)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static const IInitializeSpyVtbl testinitializevtbl =
+{
+    testinitialize_QI,
+    testinitialize_AddRef,
+    testinitialize_Release,
+    testinitialize_PreInitialize,
+    testinitialize_PostInitialize,
+    testinitialize_PreUninitialize,
+    testinitialize_PostUninitialize
+};
+
+static IInitializeSpy testinitialize = { &testinitializevtbl };
+
+static void test_IInitializeSpy(void)
+{
+    ULARGE_INTEGER cookie, cookie1, cookie2;
+    HRESULT hr;
+
+    hr = CoRegisterInitializeSpy(NULL, NULL);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    cookie.QuadPart = 1;
+    hr = CoRegisterInitializeSpy(NULL, &cookie);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+    ok(cookie.QuadPart == 1, "got wrong cookie\n");
+
+    hr = CoRegisterInitializeSpy(&testinitialize, NULL);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    cookie.HighPart = 0;
+    cookie.LowPart = 1;
+    hr = CoRegisterInitializeSpy(&testinitialize, &cookie);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+todo_wine {
+    ok(cookie.HighPart == GetCurrentThreadId(), "got high part 0x%08x, expected 0x%08x\n", cookie.HighPart,
+        GetCurrentThreadId());
+    ok(cookie.LowPart == 0, "got wrong low part 0x%x\n", cookie.LowPart);
+}
+    /* register same instance one more time */
+    cookie1.HighPart = 0;
+    cookie1.LowPart = 0;
+    hr = CoRegisterInitializeSpy(&testinitialize, &cookie1);
+todo_wine {
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(cookie1.HighPart == GetCurrentThreadId(), "got high part 0x%08x, expected 0x%08x\n", cookie1.HighPart,
+        GetCurrentThreadId());
+    ok(cookie1.LowPart == 1, "got wrong low part 0x%x\n", cookie1.LowPart);
+}
+    cookie2.HighPart = 0;
+    cookie2.LowPart = 0;
+    hr = CoRegisterInitializeSpy(&testinitialize, &cookie2);
+todo_wine {
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(cookie2.HighPart == GetCurrentThreadId(), "got high part 0x%08x, expected 0x%08x\n", cookie2.HighPart,
+        GetCurrentThreadId());
+    ok(cookie2.LowPart == 2, "got wrong low part 0x%x\n", cookie2.LowPart);
+}
+    hr = CoRevokeInitializeSpy(cookie1);
+todo_wine
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = CoRevokeInitializeSpy(cookie1);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    cookie1.HighPart = 0;
+    cookie1.LowPart = 0;
+    hr = CoRegisterInitializeSpy(&testinitialize, &cookie1);
+todo_wine {
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(cookie1.HighPart == GetCurrentThreadId(), "got high part 0x%08x, expected 0x%08x\n", cookie1.HighPart,
+        GetCurrentThreadId());
+    ok(cookie1.LowPart == 1, "got wrong low part 0x%x\n", cookie1.LowPart);
+}
+    hr = CoRevokeInitializeSpy(cookie);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = CoRevokeInitializeSpy(cookie1);
+todo_wine
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = CoRevokeInitializeSpy(cookie2);
+todo_wine
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+}
+
 static void init_funcs(void)
 {
     HMODULE hOle32 = GetModuleHandleA("ole32");
@@ -3161,4 +3329,6 @@ START_TEST(compobj)
     test_OleRegGetUserType();
     test_CoGetApartmentType();
     test_IMallocSpy();
+    test_CoGetCurrentLogicalThreadId();
+    test_IInitializeSpy();
 }

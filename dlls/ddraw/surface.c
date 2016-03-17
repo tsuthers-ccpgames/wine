@@ -531,7 +531,14 @@ static void ddraw_surface_cleanup(struct ddraw_surface *surface)
 
 ULONG ddraw_surface_release_iface(struct ddraw_surface *This)
 {
-    ULONG iface_count = InterlockedDecrement(&This->iface_count);
+    ULONG iface_count;
+
+    /* Prevent the surface from being destroyed if it's still attached to
+     * another surface. It will be destroyed when the root is destroyed. */
+    if (This->iface_count == 1 && This->attached_iface)
+        IUnknown_AddRef(This->attached_iface);
+    iface_count = InterlockedDecrement(&This->iface_count);
+
     TRACE("%p decreasing iface count to %u.\n", This, iface_count);
 
     if (iface_count == 0)
@@ -1975,24 +1982,29 @@ static HRESULT ddraw_surface_delete_attached_surface(struct ddraw_surface *surfa
     }
 
     /* Find the predecessor of the detached surface */
-    while (prev)
+    while (prev->next_attached != attachment)
     {
-        if (prev->next_attached == attachment)
-            break;
-        prev = prev->next_attached;
+        if (!(prev = prev->next_attached))
+        {
+            ERR("Failed to find predecessor of %p.\n", attachment);
+            wined3d_mutex_unlock();
+            return DDERR_SURFACENOTATTACHED;
+        }
     }
-
-    /* There must be a surface, otherwise there's a bug */
-    assert(prev);
 
     /* Unchain the surface */
     prev->next_attached = attachment->next_attached;
     attachment->next_attached = NULL;
     attachment->first_attached = attachment;
 
-    /* Check if the wined3d depth stencil needs updating. */
-    if (surface->ddraw->d3ddevice)
-        d3d_device_update_depth_stencil(surface->ddraw->d3ddevice);
+    /* Check if the wined3d depth stencil needs updating. Note that we don't
+     * just call d3d_device_update_depth_stencil() here since it uses
+     * QueryInterface(). Some applications, SCP - Containment Breach in
+     * particular, modify the QueryInterface() pointer in the surface vtbl
+     * but don't cleanup properly after the relevant dll is unloaded. */
+    if (attachment->surface_desc.ddsCaps.dwCaps & DDSCAPS_ZBUFFER
+            && wined3d_device_get_depth_stencil_view(surface->ddraw->wined3d_device) == surface->wined3d_rtv)
+        wined3d_device_set_depth_stencil_view(surface->ddraw->wined3d_device, NULL);
     wined3d_mutex_unlock();
 
     /* Set attached_iface to NULL before releasing it, the surface may go
@@ -5623,20 +5635,10 @@ static void STDMETHODCALLTYPE ddraw_surface_wined3d_object_destroyed(void *paren
 
     TRACE("surface %p.\n", surface);
 
-    /* Check for attached surfaces and detach them. */
+    /* This shouldn't happen, ddraw_surface_release_iface() should prevent the
+     * surface from being destroyed in this case. */
     if (surface->first_attached != surface)
-    {
-        /* Well, this shouldn't happen: The surface being attached is
-         * referenced in AddAttachedSurface(), so it shouldn't be released
-         * until DeleteAttachedSurface() is called, because the refcount is
-         * held. It looks like the application released it often enough to
-         * force this. */
-        WARN("Surface is still attached to surface %p.\n", surface->first_attached);
-
-        /* The refcount will drop to -1 here */
-        if (FAILED(ddraw_surface_delete_attached_surface(surface->first_attached, surface, surface->attached_iface)))
-            ERR("DeleteAttachedSurface failed.\n");
-    }
+        ERR("Surface is still attached to surface %p.\n", surface->first_attached);
 
     while (surface->next_attached)
         if (FAILED(ddraw_surface_delete_attached_surface(surface,
