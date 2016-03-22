@@ -263,7 +263,7 @@ static void prepare_ds_clear(struct wined3d_surface *ds, struct wined3d_context 
     {
         /* draw_rect ⊇ current_rect, test if we're doing a full clear. */
 
-        if (!clear_rect)
+        if (!rect_count)
         {
             /* Full clear, modify only. */
             *out_rect = *draw_rect;
@@ -285,13 +285,12 @@ static void prepare_ds_clear(struct wined3d_surface *ds, struct wined3d_context 
 }
 
 void device_clear_render_targets(struct wined3d_device *device, UINT rt_count, const struct wined3d_fb_state *fb,
-        UINT rect_count, const RECT *rects, const RECT *draw_rect, DWORD flags, const struct wined3d_color *color,
+        UINT rect_count, const RECT *clear_rect, const RECT *draw_rect, DWORD flags, const struct wined3d_color *color,
         float depth, DWORD stencil)
 {
     struct wined3d_surface *target = rt_count ? wined3d_rendertarget_view_get_surface(fb->render_targets[0]) : NULL;
     struct wined3d_surface *depth_stencil = fb->depth_stencil
             ? wined3d_rendertarget_view_get_surface(fb->depth_stencil) : NULL;
-    const RECT *clear_rect = (rect_count > 0 && rects) ? (const RECT *)rects : NULL;
     const struct wined3d_gl_info *gl_info;
     UINT drawable_width, drawable_height;
     struct wined3d_color corrected_color;
@@ -325,7 +324,7 @@ void device_clear_render_targets(struct wined3d_device *device, UINT rt_count, c
 
         if (rt && rtv->format->id != WINED3DFMT_NULL)
         {
-            if (flags & WINED3DCLEAR_TARGET && !is_full_clear(target, draw_rect, clear_rect))
+            if (flags & WINED3DCLEAR_TARGET && !is_full_clear(target, draw_rect, rect_count ? clear_rect : NULL))
                 surface_load_location(rt, context, rtv->resource->draw_binding);
             else
                 wined3d_surface_prepare(rt, context, rtv->resource->draw_binding);
@@ -440,7 +439,7 @@ void device_clear_render_targets(struct wined3d_device *device, UINT rt_count, c
         clear_mask = clear_mask | GL_COLOR_BUFFER_BIT;
     }
 
-    if (!clear_rect)
+    if (!rect_count)
     {
         if (render_offscreen)
         {
@@ -3866,6 +3865,15 @@ void CDECL wined3d_device_copy_resource(struct wined3d_device *device,
         return;
     }
 
+    if (dst_resource->type == WINED3D_RTYPE_BUFFER)
+    {
+        if (FAILED(hr = wined3d_buffer_copy(buffer_from_resource(dst_resource), 0,
+                buffer_from_resource(src_resource), 0,
+                dst_resource->size)))
+            ERR("Failed to copy buffer, hr %#x.\n", hr);
+        return;
+    }
+
     if (dst_resource->type != WINED3D_RTYPE_TEXTURE_2D)
     {
         FIXME("Not implemented for %s resources.\n", debug_d3dresourcetype(dst_resource->type));
@@ -3914,6 +3922,14 @@ HRESULT CDECL wined3d_device_copy_sub_resource_region(struct wined3d_device *dev
             device, dst_resource, dst_sub_resource_idx, dst_x, dst_y, dst_z,
             src_resource, src_sub_resource_idx, debug_box(src_box));
 
+    if (src_box && (src_box->left >= src_box->right
+            || src_box->top >= src_box->bottom
+            || src_box->front >= src_box->back))
+    {
+        WARN("Invalid box %s specified.\n", debug_box(src_box));
+        return WINED3DERR_INVALIDCALL;
+    }
+
     if (src_resource == dst_resource && src_sub_resource_idx == dst_sub_resource_idx)
     {
         WARN("Source and destination are the same sub-resource.\n");
@@ -3934,6 +3950,46 @@ HRESULT CDECL wined3d_device_copy_sub_resource_region(struct wined3d_device *dev
                 debug_d3dformat(dst_resource->format->id),
                 debug_d3dformat(src_resource->format->id));
         return WINED3DERR_INVALIDCALL;
+    }
+
+    if (dst_resource->type == WINED3D_RTYPE_BUFFER)
+    {
+        unsigned int src_offset, size;
+
+        if (dst_sub_resource_idx)
+        {
+            WARN("Invalid dst_sub_resource_idx %u.\n", dst_sub_resource_idx);
+            return WINED3DERR_INVALIDCALL;
+        }
+        if (src_sub_resource_idx)
+        {
+            WARN("Invalid src_sub_resource_idx %u.\n", src_sub_resource_idx);
+            return WINED3DERR_INVALIDCALL;
+        }
+
+        if (src_box)
+        {
+            src_offset = src_box->left;
+            size = src_box->right - src_box->left;
+        }
+        else
+        {
+            src_offset = 0;
+            size = src_resource->size;
+        }
+
+        if (src_offset > src_resource->size
+                || size > src_resource->size - src_offset
+                || dst_x > dst_resource->size
+                || size > dst_resource->size - dst_x)
+        {
+            WARN("Invalid range specified, dst_offset %u, src_offset %u, size %u.\n",
+                    dst_x, src_offset, size);
+            return WINED3DERR_INVALIDCALL;
+        }
+
+        return wined3d_buffer_copy(buffer_from_resource(dst_resource), dst_x,
+                buffer_from_resource(src_resource), src_offset, size);
     }
 
     if (dst_resource->type != WINED3D_RTYPE_TEXTURE_2D)
@@ -3959,19 +4015,9 @@ HRESULT CDECL wined3d_device_copy_sub_resource_region(struct wined3d_device *dev
     src_surface = surface_from_resource(tmp);
 
     if (src_box)
-    {
-        if (src_box->front >= src_box->back)
-        {
-            WARN("Invalid box %s specified.\n", debug_box(src_box));
-            return WINED3DERR_INVALIDCALL;
-        }
-
         SetRect(&src_rect, src_box->left, src_box->top, src_box->right, src_box->bottom);
-    }
     else
-    {
         SetRect(&src_rect, 0, 0, src_surface->resource.width, src_surface->resource.height);
-    }
 
     SetRect(&dst_rect, dst_x, dst_y, dst_x + (src_rect.right - src_rect.left),
             dst_y + (src_rect.bottom - src_rect.top));

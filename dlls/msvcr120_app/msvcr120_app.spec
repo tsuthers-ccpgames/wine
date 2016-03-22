@@ -819,19 +819,19 @@
 @ cdecl -arch=i386 _CItan() msvcr120._CItan
 @ cdecl -arch=i386 _CItanh() msvcr120._CItanh
 @ stub _Cbuild
-@ stub _CreateFrameInfo
+@ cdecl _CreateFrameInfo(ptr ptr) msvcr120._CreateFrameInfo
 @ stdcall _CxxThrowException(long long) msvcr120._CxxThrowException
 @ cdecl -arch=i386 -norelay _EH_prolog() msvcr120._EH_prolog
 @ stub -arch=arm _FPE_Raise
 @ stub _FCbuild
-@ stub _FindAndUnlinkFrame
+@ cdecl _FindAndUnlinkFrame(ptr) msvcr120._FindAndUnlinkFrame
 @ stub -arch=win64 _GetImageBase
 @ stub -arch=win64 _GetThrowImageBase
 @ cdecl _Getdays() msvcr120._Getdays
 @ cdecl _Getmonths() msvcr120._Getmonths
 @ cdecl _Gettnames() msvcr120._Gettnames
 @ extern _HUGE msvcr120._HUGE
-@ cdecl -arch=i386,x86_64,arm _IsExceptionObjectToBeDestroyed(ptr) msvcr120._IsExceptionObjectToBeDestroyed
+@ cdecl _IsExceptionObjectToBeDestroyed(ptr) msvcr120._IsExceptionObjectToBeDestroyed
 @ stub _LCbuild
 @ stub -arch=i386 _NLG_Dispatch2
 @ stub -arch=arm,win64 __NLG_Dispatch2
@@ -859,9 +859,9 @@
 @ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr) msvcr120.__CxxFrameHandler3
 @ stdcall -arch=i386 __CxxLongjmpUnwind(ptr) msvcr120.__CxxLongjmpUnwind
 @ cdecl -arch=i386,x86_64,arm __CxxQueryExceptionSize() msvcr120.__CxxQueryExceptionSize
-@ stub __CxxRegisterExceptionObject
-@ stub __CxxUnregisterExceptionObject
-@ stub __DestructExceptionObject
+@ cdecl __CxxRegisterExceptionObject(ptr ptr) msvcr120.__CxxRegisterExceptionObject
+@ cdecl __CxxUnregisterExceptionObject(ptr long) msvcr120.__CxxUnregisterExceptionObject
+@ cdecl __DestructExceptionObject(ptr) msvcr120.__DestructExceptionObject
 @ stub __FrameUnwindFilter
 @ stub __GetPlatformExceptionInfo
 @ cdecl __RTCastToVoid(ptr) msvcr120.__RTCastToVoid

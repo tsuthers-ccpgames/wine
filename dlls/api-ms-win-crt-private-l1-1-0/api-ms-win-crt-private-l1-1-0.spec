@@ -1,10 +1,10 @@
-@ stub _CreateFrameInfo
+@ cdecl _CreateFrameInfo(ptr ptr) ucrtbase._CreateFrameInfo
 @ stdcall _CxxThrowException(long long) ucrtbase._CxxThrowException
 @ cdecl -arch=i386 -norelay _EH_prolog() ucrtbase._EH_prolog
-@ stub _FindAndUnlinkFrame
+@ cdecl _FindAndUnlinkFrame(ptr) ucrtbase._FindAndUnlinkFrame
 @ stub _GetImageBase
 @ stub _GetThrowImageBase
-@ cdecl -arch=i386,x86_64,arm _IsExceptionObjectToBeDestroyed(ptr) ucrtbase._IsExceptionObjectToBeDestroyed
+@ cdecl _IsExceptionObjectToBeDestroyed(ptr) ucrtbase._IsExceptionObjectToBeDestroyed
 @ stub _NLG_Dispatch2
 @ stub _NLG_Return
 @ stub _NLG_Return2
@@ -22,9 +22,9 @@
 @ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr) ucrtbase.__CxxFrameHandler3
 @ stdcall -arch=i386 __CxxLongjmpUnwind(ptr) ucrtbase.__CxxLongjmpUnwind
 @ cdecl -arch=i386,x86_64,arm __CxxQueryExceptionSize() ucrtbase.__CxxQueryExceptionSize
-@ stub __CxxRegisterExceptionObject
-@ stub __CxxUnregisterExceptionObject
-@ stub __DestructExceptionObject
+@ cdecl __CxxRegisterExceptionObject(ptr ptr) ucrtbase.__CxxRegisterExceptionObject
+@ cdecl __CxxUnregisterExceptionObject(ptr long) ucrtbase.__CxxUnregisterExceptionObject
+@ cdecl __DestructExceptionObject(ptr) ucrtbase.__DestructExceptionObject
 @ stub __FrameUnwindFilter
 @ stub __GetPlatformExceptionInfo
 @ stub __NLG_Dispatch2

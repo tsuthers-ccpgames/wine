@@ -1646,11 +1646,9 @@ static void shader_generate_glsl_declarations(const struct wined3d_context *cont
         const struct wined3d_shader_reg_maps *reg_maps, const struct shader_glsl_ctx_priv *ctx_priv)
 {
     const struct wined3d_shader_version *version = &reg_maps->shader_version;
-    const struct wined3d_state *state = &shader->device->state;
     const struct vs_compile_args *vs_args = ctx_priv->cur_vs_args;
     const struct ps_compile_args *ps_args = ctx_priv->cur_ps_args;
     const struct wined3d_gl_info *gl_info = context->gl_info;
-    const struct wined3d_fb_state *fb = &shader->device->fb;
     unsigned int i, extra_constants_needed = 0;
     const struct wined3d_shader_lconst *lconst;
     const char *prefix;
@@ -1953,7 +1951,7 @@ static void shader_generate_glsl_declarations(const struct wined3d_context *cont
         {
             UINT in_count = min(vec4_varyings(version->major, gl_info), shader->limits->packed_input);
 
-            if (use_vs(state))
+            if (ps_args->vp_mode == vertexshader)
                 declare_in_varying(gl_info, buffer, FALSE, "vec4 %s_link[%u];\n", prefix, in_count);
             shader_addline(buffer, "vec4 %s_in[%u];\n", prefix, in_count);
         }
@@ -1986,32 +1984,13 @@ static void shader_generate_glsl_declarations(const struct wined3d_context *cont
         }
         if (reg_maps->vpos || reg_maps->usesdsy)
         {
-            if (shader->limits->constant_float + extra_constants_needed
-                    + 1 < gl_info->limits.glsl_ps_float_constants)
-            {
-                shader_addline(buffer, "uniform vec4 ycorrection;\n");
-                extra_constants_needed++;
-            }
-            else
-            {
-                float ycorrection[] =
-                {
-                    context->render_offscreen ? 0.0f : fb->render_targets[0]->height,
-                    context->render_offscreen ? 1.0f : -1.0f,
-                    0.0f,
-                    0.0f,
-                };
-
-                /* This happens because we do not have proper tracking of the
-                 * constant registers that are actually used, only the max
-                 * limit of the shader version. */
-                FIXME("Cannot find a free uniform for vpos correction params\n");
-                shader_addline(buffer, "const vec4 ycorrection = ");
-                shader_glsl_append_imm_vec4(buffer, ycorrection);
-                shader_addline(buffer, ";\n");
-            }
+            ++extra_constants_needed;
+            shader_addline(buffer, "uniform vec4 ycorrection;\n");
             shader_addline(buffer, "vec4 vpos;\n");
         }
+
+        if (shader->limits->constant_float + extra_constants_needed >= gl_info->limits.glsl_ps_float_constants)
+            FIXME("Insufficient uniforms to run this shader.\n");
     }
 
     /* Declare output register temporaries */
@@ -8115,7 +8094,11 @@ static const SHADER_HANDLER shader_glsl_instruction_handler_table[WINED3DSIH_TAB
     /* WINED3DSIH_DP4                           */ shader_glsl_dot,
     /* WINED3DSIH_DST                           */ shader_glsl_dst,
     /* WINED3DSIH_DSX                           */ shader_glsl_map2gl,
+    /* WINED3DSIH_DSX_COARSE                    */ NULL,
+    /* WINED3DSIH_DSX_FINE                      */ NULL,
     /* WINED3DSIH_DSY                           */ shader_glsl_map2gl,
+    /* WINED3DSIH_DSY_COARSE                    */ NULL,
+    /* WINED3DSIH_DSY_FINE                      */ NULL,
     /* WINED3DSIH_ELSE                          */ shader_glsl_else,
     /* WINED3DSIH_EMIT                          */ shader_glsl_emit,
     /* WINED3DSIH_ENDIF                         */ shader_glsl_end,
@@ -8144,6 +8127,7 @@ static const SHADER_HANDLER shader_glsl_instruction_handler_table[WINED3DSIH_TAB
     /* WINED3DSIH_ITOF                          */ shader_glsl_to_float,
     /* WINED3DSIH_LABEL                         */ shader_glsl_label,
     /* WINED3DSIH_LD                            */ shader_glsl_ld,
+    /* WINED3DSIH_LD_STRUCTURED                 */ NULL,
     /* WINED3DSIH_LIT                           */ shader_glsl_lit,
     /* WINED3DSIH_LOG                           */ shader_glsl_scalar_op,
     /* WINED3DSIH_LOGP                          */ shader_glsl_scalar_op,

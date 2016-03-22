@@ -137,6 +137,7 @@ IDL_SRCS = \
 	servprov.idl \
 	sesprp.idl \
 	shdeprecated.idl \
+	shimgdata.idl \
 	shldisp.idl \
 	shobjidl.idl \
 	shtypes.idl \
@@ -200,6 +201,7 @@ HEADER_SRCS = \
 	atlwin.h \
 	audevcod.h \
 	audiosessiontypes.h \
+	authz.h \
 	aviriff.h \
 	avrt.h \
 	basetsd.h \
@@ -208,6 +210,8 @@ HEADER_SRCS = \
 	bdaiface_enums.h \
 	bdatypes.h \
 	bitsmsg.h \
+	bluetoothapis.h \
+	bthsdpdef.h \
 	cderr.h \
 	cfgmgr32.h \
 	cguid.h \

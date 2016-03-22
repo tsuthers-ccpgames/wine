@@ -61,7 +61,6 @@ struct wined3d_cs_present
     struct wined3d_swapchain *swapchain;
     const RECT *src_rect;
     const RECT *dst_rect;
-    const RGNDATA *dirty_region;
     DWORD flags;
 };
 
@@ -237,13 +236,13 @@ struct wined3d_cs_set_clip_plane
 {
     enum wined3d_cs_op opcode;
     UINT plane_idx;
-    const struct wined3d_vec4 *plane;
+    struct wined3d_vec4 plane;
 };
 
 struct wined3d_cs_set_material
 {
     enum wined3d_cs_op opcode;
-    const struct wined3d_material *material;
+    struct wined3d_material material;
 };
 
 struct wined3d_cs_reset_state
@@ -259,13 +258,11 @@ static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
     swapchain = op->swapchain;
     wined3d_swapchain_set_window(swapchain, op->dst_window_override);
 
-    swapchain->swapchain_ops->swapchain_present(swapchain,
-            op->src_rect, op->dst_rect, op->dirty_region, op->flags);
+    swapchain->swapchain_ops->swapchain_present(swapchain, op->src_rect, op->dst_rect, op->flags);
 }
 
 void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *swapchain,
-        const RECT *src_rect, const RECT *dst_rect, HWND dst_window_override,
-        const RGNDATA *dirty_region, DWORD flags)
+        const RECT *src_rect, const RECT *dst_rect, HWND dst_window_override, DWORD flags)
 {
     struct wined3d_cs_present *op;
 
@@ -275,7 +272,6 @@ void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *sw
     op->swapchain = swapchain;
     op->src_rect = src_rect;
     op->dst_rect = dst_rect;
-    op->dirty_region = dirty_region;
     op->flags = flags;
 
     cs->ops->submit(cs);
@@ -880,7 +876,7 @@ static void wined3d_cs_exec_set_clip_plane(struct wined3d_cs *cs, const void *da
 {
     const struct wined3d_cs_set_clip_plane *op = data;
 
-    cs->state.clip_planes[op->plane_idx] = *op->plane;
+    cs->state.clip_planes[op->plane_idx] = op->plane;
     device_invalidate_state(cs->device, STATE_CLIPPLANE(op->plane_idx));
 }
 
@@ -891,7 +887,7 @@ void wined3d_cs_emit_set_clip_plane(struct wined3d_cs *cs, UINT plane_idx, const
     op = cs->ops->require_space(cs, sizeof(*op));
     op->opcode = WINED3D_CS_OP_SET_CLIP_PLANE;
     op->plane_idx = plane_idx;
-    op->plane = plane;
+    op->plane = *plane;
 
     cs->ops->submit(cs);
 }
@@ -983,7 +979,7 @@ static void wined3d_cs_exec_set_material(struct wined3d_cs *cs, const void *data
 {
     const struct wined3d_cs_set_material *op = data;
 
-    cs->state.material = *op->material;
+    cs->state.material = op->material;
     device_invalidate_state(cs->device, STATE_MATERIAL);
 }
 
@@ -993,7 +989,7 @@ void wined3d_cs_emit_set_material(struct wined3d_cs *cs, const struct wined3d_ma
 
     op = cs->ops->require_space(cs, sizeof(*op));
     op->opcode = WINED3D_CS_OP_SET_MATERIAL;
-    op->material = material;
+    op->material = *material;
 
     cs->ops->submit(cs);
 }

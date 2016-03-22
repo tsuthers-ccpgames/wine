@@ -17,20 +17,20 @@
 @ stub _Cbuild
 @ stub _Cmulcc
 @ stub _Cmulcr
-@ stub _CreateFrameInfo
+@ cdecl _CreateFrameInfo(ptr ptr)
 @ stdcall _CxxThrowException(long long)
 @ cdecl -arch=i386 -norelay _EH_prolog()
 @ stub _Exit
 @ stub _FCbuild
 @ stub _FCmulcc
 @ stub _FCmulcr
-@ stub _FindAndUnlinkFrame
+@ cdecl _FindAndUnlinkFrame(ptr)
 @ stub _GetImageBase
 @ stub _GetThrowImageBase
 @ cdecl _Getdays()
 @ cdecl _Getmonths()
 @ cdecl _Gettnames()
-@ cdecl -arch=i386,x86_64,arm _IsExceptionObjectToBeDestroyed(ptr)
+@ cdecl _IsExceptionObjectToBeDestroyed(ptr)
 @ stub _LCbuild
 @ stub _LCmulcc
 @ stub _LCmulcr
@@ -56,9 +56,9 @@
 @ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr) __CxxFrameHandler
 @ stdcall -arch=i386 __CxxLongjmpUnwind(ptr)
 @ cdecl -arch=i386,x86_64,arm __CxxQueryExceptionSize()
-@ stub __CxxRegisterExceptionObject
-@ stub __CxxUnregisterExceptionObject
-@ stub __DestructExceptionObject
+@ cdecl __CxxRegisterExceptionObject(ptr ptr)
+@ cdecl __CxxUnregisterExceptionObject(ptr long)
+@ cdecl __DestructExceptionObject(ptr)
 @ stub __FrameUnwindFilter
 @ stub __GetPlatformExceptionInfo
 @ stub __NLG_Dispatch2

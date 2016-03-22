@@ -183,6 +183,11 @@ enum wined3d_sm4_opcode
     WINED3D_SM4_OP_DCL_OUTPUT_SIV       = 0x67,
     WINED3D_SM4_OP_DCL_TEMPS            = 0x68,
     WINED3D_SM4_OP_DCL_GLOBAL_FLAGS     = 0x6a,
+    WINED3D_SM5_OP_DERIV_RTX_COARSE     = 0x7a,
+    WINED3D_SM5_OP_DERIV_RTX_FINE       = 0x7b,
+    WINED3D_SM5_OP_DERIV_RTY_COARSE     = 0x7c,
+    WINED3D_SM5_OP_DERIV_RTY_FINE       = 0x7d,
+    WINED3D_SM5_OP_LD_STRUCTURED        = 0xa7,
 };
 
 enum wined3d_sm4_register_type
@@ -384,6 +389,11 @@ static const struct wined3d_sm4_opcode_info opcode_table[] =
     {WINED3D_SM4_OP_DCL_OUTPUT_SIV,         WINED3DSIH_DCL_OUTPUT_SIV,                "",     ""},
     {WINED3D_SM4_OP_DCL_TEMPS,              WINED3DSIH_DCL_TEMPS,                     "",     ""},
     {WINED3D_SM4_OP_DCL_GLOBAL_FLAGS,       WINED3DSIH_DCL_GLOBAL_FLAGS,              "",     ""},
+    {WINED3D_SM5_OP_DERIV_RTX_COARSE,       WINED3DSIH_DSX_COARSE,                    "F",    "F"},
+    {WINED3D_SM5_OP_DERIV_RTX_FINE,         WINED3DSIH_DSX_FINE,                      "F",    "F"},
+    {WINED3D_SM5_OP_DERIV_RTY_COARSE,       WINED3DSIH_DSY_COARSE,                    "F",    "F"},
+    {WINED3D_SM5_OP_DERIV_RTY_FINE,         WINED3DSIH_DSY_FINE,                      "F",    "F"},
+    {WINED3D_SM5_OP_LD_STRUCTURED,          WINED3DSIH_LD_STRUCTURED,                 "U",    "UUR"},
 };
 
 static const enum wined3d_shader_register_type register_type_table[] =

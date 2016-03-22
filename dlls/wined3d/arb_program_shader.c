@@ -5252,7 +5252,11 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_DP4                           */ shader_hw_map2gl,
     /* WINED3DSIH_DST                           */ shader_hw_map2gl,
     /* WINED3DSIH_DSX                           */ shader_hw_map2gl,
+    /* WINED3DSIH_DSX_COARSE                    */ NULL,
+    /* WINED3DSIH_DSX_FINE                      */ NULL,
     /* WINED3DSIH_DSY                           */ shader_hw_dsy,
+    /* WINED3DSIH_DSY_COARSE                    */ NULL,
+    /* WINED3DSIH_DSY_FINE                      */ NULL,
     /* WINED3DSIH_ELSE                          */ shader_hw_else,
     /* WINED3DSIH_EMIT                          */ NULL,
     /* WINED3DSIH_ENDIF                         */ shader_hw_endif,
@@ -5281,6 +5285,7 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_ITOF                          */ NULL,
     /* WINED3DSIH_LABEL                         */ shader_hw_label,
     /* WINED3DSIH_LD                            */ NULL,
+    /* WINED3DSIH_LD_STRUCTURED                 */ NULL,
     /* WINED3DSIH_LIT                           */ shader_hw_map2gl,
     /* WINED3DSIH_LOG                           */ shader_hw_scalar_op,
     /* WINED3DSIH_LOGP                          */ shader_hw_scalar_op,
@@ -6934,7 +6939,7 @@ struct arbfp_blit_type
 
 struct arbfp_blit_desc
 {
-    GLenum shader;
+    GLuint shader;
     struct arbfp_blit_type type;
     struct wine_rb_entry entry;
 };
@@ -7388,7 +7393,7 @@ static BOOL gen_nv12_read(struct wined3d_string_buffer *buffer, const struct arb
 static GLuint gen_p8_shader(struct arbfp_blit_priv *priv,
         const struct wined3d_gl_info *gl_info, const struct arbfp_blit_type *type)
 {
-    GLenum shader;
+    GLuint shader;
     struct wined3d_string_buffer buffer;
     const char *tex_target = arbfp_texture_target(type->res_type);
 
@@ -7477,7 +7482,7 @@ static void upload_palette(const struct wined3d_texture *texture, struct wined3d
 static GLuint gen_yuv_shader(struct arbfp_blit_priv *priv, const struct wined3d_gl_info *gl_info,
         const struct arbfp_blit_type *type)
 {
-    GLenum shader;
+    GLuint shader;
     struct wined3d_string_buffer buffer;
     char luminance_component;
 
@@ -7602,7 +7607,7 @@ static GLuint gen_yuv_shader(struct arbfp_blit_priv *priv, const struct wined3d_
 static GLuint arbfp_gen_plain_shader(struct arbfp_blit_priv *priv,
         const struct wined3d_gl_info *gl_info, const struct arbfp_blit_type *type)
 {
-    GLenum shader;
+    GLuint shader;
     struct wined3d_string_buffer buffer;
     const char *tex_target = arbfp_texture_target(type->res_type);
 
@@ -7656,7 +7661,7 @@ static GLuint arbfp_gen_plain_shader(struct arbfp_blit_priv *priv,
 static HRESULT arbfp_blit_set(void *blit_priv, struct wined3d_context *context, const struct wined3d_surface *surface,
         const struct wined3d_color_key *color_key)
 {
-    GLenum shader;
+    GLuint shader;
     float size[4] = {(float) surface->pow2Width, (float) surface->pow2Height, 1.0f, 1.0f};
     const struct wined3d_texture *texture = surface->container;
     struct arbfp_blit_priv *priv = blit_priv;

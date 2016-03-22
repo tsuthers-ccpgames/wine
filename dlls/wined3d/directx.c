@@ -109,6 +109,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
     /* ARB */
     {"GL_ARB_blend_func_extended",          ARB_BLEND_FUNC_EXTENDED       },
     {"GL_ARB_color_buffer_float",           ARB_COLOR_BUFFER_FLOAT        },
+    {"GL_ARB_copy_buffer",                  ARB_COPY_BUFFER               },
     {"GL_ARB_debug_output",                 ARB_DEBUG_OUTPUT              },
     {"GL_ARB_depth_buffer_float",           ARB_DEPTH_BUFFER_FLOAT        },
     {"GL_ARB_depth_texture",                ARB_DEPTH_TEXTURE             },
@@ -1281,6 +1282,10 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX770,     "NVIDIA GeForce GTX 770",           DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX780,     "NVIDIA GeForce GTX 780",           DRIVER_NVIDIA_GEFORCE8,  3072},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX780TI,   "NVIDIA GeForce GTX 780 Ti",        DRIVER_NVIDIA_GEFORCE8,  3072},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX950,     "NVIDIA GeForce GTX 950",           DRIVER_NVIDIA_GEFORCE8,  2048},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX950M,    "NVIDIA GeForce GTX 950M",          DRIVER_NVIDIA_GEFORCE8,  4096},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX960,     "NVIDIA GeForce GTX 960",           DRIVER_NVIDIA_GEFORCE8,  4096},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX960M,    "NVIDIA GeForce GTX 960M",          DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX970,     "NVIDIA GeForce GTX 970",           DRIVER_NVIDIA_GEFORCE8,  4096},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX970M,    "NVIDIA GeForce GTX 970M",          DRIVER_NVIDIA_GEFORCE8,  3072},
 
@@ -1729,6 +1734,10 @@ cards_nvidia_binary[] =
     /* Direct 3D 11 */
     {"GTX 970M",                    CARD_NVIDIA_GEFORCE_GTX970M},   /* GeForce 900 - highend mobile*/
     {"GTX 970",                     CARD_NVIDIA_GEFORCE_GTX970},    /* GeForce 900 - highend */
+    {"GTX 960M",                    CARD_NVIDIA_GEFORCE_GTX960M},   /* GeForce 900 - midend high mobile */
+    {"GTX 960",                     CARD_NVIDIA_GEFORCE_GTX960},    /* GeForce 900 - midend high */
+    {"GTX 950M",                    CARD_NVIDIA_GEFORCE_GTX950M},   /* GeForce 900 - midend mobile */
+    {"GTX 950",                     CARD_NVIDIA_GEFORCE_GTX950},    /* GeForce 900 - midend */
     {"GTX 780 Ti",                  CARD_NVIDIA_GEFORCE_GTX780TI},  /* Geforce 700 - highend */
     {"GTX 780",                     CARD_NVIDIA_GEFORCE_GTX780},    /* Geforce 700 - highend */
     {"GTX 770M",                    CARD_NVIDIA_GEFORCE_GTX770M},   /* Geforce 700 - midend high mobile */
@@ -2491,6 +2500,8 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
     USE_GL_FUNC(glGetFragDataIndex)
     /* GL_ARB_color_buffer_float */
     USE_GL_FUNC(glClampColorARB)
+    /* GL_ARB_copy_buffer */
+    USE_GL_FUNC(glCopyBufferSubData)
     /* GL_ARB_debug_output */
     USE_GL_FUNC(glDebugMessageCallbackARB)
     USE_GL_FUNC(glDebugMessageControlARB)
@@ -3444,6 +3455,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter, DWORD 
          * EXT_framebuffer_multisample and EXT_packed_depth_stencil
          * are integrated into ARB_framebuffer_object. */
 
+        {ARB_COPY_BUFFER,                  MAKEDWORD_VERSION(3, 1)},
         {ARB_DRAW_INSTANCED,               MAKEDWORD_VERSION(3, 1)},
         {ARB_UNIFORM_BUFFER_OBJECT,        MAKEDWORD_VERSION(3, 1)},
         {EXT_TEXTURE_SNORM,                MAKEDWORD_VERSION(3, 1)},

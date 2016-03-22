@@ -133,12 +133,13 @@ void CDECL wined3d_swapchain_set_window(struct wined3d_swapchain *swapchain, HWN
 }
 
 HRESULT CDECL wined3d_swapchain_present(struct wined3d_swapchain *swapchain,
-        const RECT *src_rect, const RECT *dst_rect, HWND dst_window_override,
-        const RGNDATA *dirty_region, DWORD flags)
+        const RECT *src_rect, const RECT *dst_rect, HWND dst_window_override, DWORD flags)
 {
-    TRACE("swapchain %p, src_rect %s, dst_rect %s, dst_window_override %p, dirty_region %p, flags %#x.\n",
+    RECT s, d;
+
+    TRACE("swapchain %p, src_rect %s, dst_rect %s, dst_window_override %p, flags %#x.\n",
             swapchain, wine_dbgstr_rect(src_rect), wine_dbgstr_rect(dst_rect),
-            dst_window_override, dirty_region, flags);
+            dst_window_override, flags);
 
     if (flags)
         FIXME("Ignoring flags %#x.\n", flags);
@@ -149,8 +150,21 @@ HRESULT CDECL wined3d_swapchain_present(struct wined3d_swapchain *swapchain,
         return WINED3DERR_INVALIDCALL;
     }
 
+    if (!src_rect)
+    {
+        SetRect(&s, 0, 0, swapchain->desc.backbuffer_width,
+                swapchain->desc.backbuffer_height);
+        src_rect = &s;
+    }
+
+    if (!dst_rect)
+    {
+        GetClientRect(swapchain->win_handle, &d);
+        dst_rect = &d;
+    }
+
     wined3d_cs_emit_present(swapchain->device->cs, swapchain, src_rect,
-            dst_rect, dst_window_override, dirty_region, flags);
+            dst_rect, dst_window_override, flags);
 
     return WINED3D_OK;
 }
@@ -467,8 +481,8 @@ static void wined3d_swapchain_rotate(struct wined3d_swapchain *swapchain, struct
     device_invalidate_state(swapchain->device, STATE_FRAMEBUFFER);
 }
 
-static void swapchain_gl_present(struct wined3d_swapchain *swapchain, const RECT *src_rect_in,
-        const RECT *dst_rect_in, const RGNDATA *dirty_region, DWORD flags)
+static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
+        const RECT *src_rect, const RECT *dst_rect, DWORD flags)
 {
     struct wined3d_surface *back_buffer = surface_from_resource(
             wined3d_texture_get_sub_resource(swapchain->back_buffers[0], 0));
@@ -476,7 +490,6 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain, const RECT
     const struct wined3d_gl_info *gl_info;
     struct wined3d_context *context;
     struct wined3d_surface *front;
-    RECT src_rect, dst_rect;
     BOOL render_to_fbo;
 
     context = context_acquire(swapchain->device, back_buffer);
@@ -531,32 +544,13 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain, const RECT
 
     TRACE("Presenting HDC %p.\n", context->hdc);
 
-    render_to_fbo = swapchain->render_to_fbo;
-
-    if (src_rect_in)
-    {
-        src_rect = *src_rect_in;
-        if (!render_to_fbo && (src_rect.left || src_rect.top
-                || src_rect.right != swapchain->desc.backbuffer_width
-                || src_rect.bottom != swapchain->desc.backbuffer_height))
-        {
-            render_to_fbo = TRUE;
-        }
-    }
-    else
-    {
-        SetRect(&src_rect, 0, 0, swapchain->desc.backbuffer_width,
-                swapchain->desc.backbuffer_height);
-    }
-
-    if (dst_rect_in)
-        dst_rect = *dst_rect_in;
-    else
-        GetClientRect(swapchain->win_handle, &dst_rect);
-
-    if (!render_to_fbo && (dst_rect.left || dst_rect.top
-            || dst_rect.right != swapchain->desc.backbuffer_width
-            || dst_rect.bottom != swapchain->desc.backbuffer_height))
+    if (!(render_to_fbo = swapchain->render_to_fbo)
+            && (src_rect->left || src_rect->top
+            || src_rect->right != swapchain->desc.backbuffer_width
+            || src_rect->bottom != swapchain->desc.backbuffer_height
+            || dst_rect->left || dst_rect->top
+            || dst_rect->right != swapchain->desc.backbuffer_width
+            || dst_rect->bottom != swapchain->desc.backbuffer_height))
         render_to_fbo = TRUE;
 
     /* Rendering to a window of different size, presenting partial rectangles,
@@ -585,7 +579,7 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain, const RECT
         if (swapchain->desc.swap_effect == WINED3D_SWAP_EFFECT_FLIP && !once++)
             FIXME("WINED3D_SWAP_EFFECT_FLIP not implemented.\n");
 
-        swapchain_blit(swapchain, context, &src_rect, &dst_rect);
+        swapchain_blit(swapchain, context, src_rect, dst_rect);
     }
 
     if (swapchain->num_contexts > 1)
@@ -709,8 +703,8 @@ static void swapchain_gdi_frontbuffer_updated(struct wined3d_swapchain *swapchai
     SetRectEmpty(&swapchain->front_buffer_update);
 }
 
-static void swapchain_gdi_present(struct wined3d_swapchain *swapchain, const RECT *src_rect_in,
-        const RECT *dst_rect_in, const RGNDATA *dirty_region, DWORD flags)
+static void swapchain_gdi_present(struct wined3d_swapchain *swapchain,
+        const RECT *src_rect, const RECT *dst_rect, DWORD flags)
 {
     struct wined3d_surface *front, *back;
 

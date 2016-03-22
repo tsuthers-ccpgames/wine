@@ -532,7 +532,11 @@ enum WINED3D_SHADER_INSTRUCTION_HANDLER
     WINED3DSIH_DP4,
     WINED3DSIH_DST,
     WINED3DSIH_DSX,
+    WINED3DSIH_DSX_COARSE,
+    WINED3DSIH_DSX_FINE,
     WINED3DSIH_DSY,
+    WINED3DSIH_DSY_COARSE,
+    WINED3DSIH_DSY_FINE,
     WINED3DSIH_ELSE,
     WINED3DSIH_EMIT,
     WINED3DSIH_ENDIF,
@@ -561,6 +565,7 @@ enum WINED3D_SHADER_INSTRUCTION_HANDLER
     WINED3DSIH_ITOF,
     WINED3DSIH_LABEL,
     WINED3DSIH_LD,
+    WINED3DSIH_LD_STRUCTURED,
     WINED3DSIH_LIT,
     WINED3DSIH_LOG,
     WINED3DSIH_LOGP,
@@ -1711,6 +1716,10 @@ enum wined3d_pci_device
     CARD_NVIDIA_GEFORCE_GTX770      = 0x1184,
     CARD_NVIDIA_GEFORCE_GTX780      = 0x1004,
     CARD_NVIDIA_GEFORCE_GTX780TI    = 0x100a,
+    CARD_NVIDIA_GEFORCE_GTX950      = 0x1402,
+    CARD_NVIDIA_GEFORCE_GTX950M     = 0x139a,
+    CARD_NVIDIA_GEFORCE_GTX960      = 0x1401,
+    CARD_NVIDIA_GEFORCE_GTX960M     = 0x139B,
     CARD_NVIDIA_GEFORCE_GTX970      = 0x13c2,
     CARD_NVIDIA_GEFORCE_GTX970M     = 0x13d8,
 
@@ -2772,8 +2781,7 @@ void wined3d_cs_emit_clear(struct wined3d_cs *cs, DWORD rect_count, const RECT *
 void wined3d_cs_emit_draw(struct wined3d_cs *cs, UINT start_idx, UINT index_count,
         UINT start_instance, UINT instance_count, BOOL indexed) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *swapchain,
-        const RECT *src_rect, const RECT *dst_rect, HWND dst_window_override,
-        const RGNDATA *dirty_region, DWORD flags) DECLSPEC_HIDDEN;
+        const RECT *src_rect, const RECT *dst_rect, HWND dst_window_override, DWORD flags) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_reset_state(struct wined3d_cs *cs) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_set_clip_plane(struct wined3d_cs *cs, UINT plane_idx,
         const struct wined3d_vec4 *plane) DECLSPEC_HIDDEN;
@@ -2895,6 +2903,8 @@ BYTE *buffer_get_sysmem(struct wined3d_buffer *This, struct wined3d_context *con
 void buffer_internal_preload(struct wined3d_buffer *buffer, struct wined3d_context *context,
         const struct wined3d_state *state) DECLSPEC_HIDDEN;
 void buffer_mark_used(struct wined3d_buffer *buffer) DECLSPEC_HIDDEN;
+HRESULT wined3d_buffer_copy(struct wined3d_buffer *dst_buffer, unsigned int dst_offset,
+        struct wined3d_buffer *src_buffer, unsigned int src_offset, unsigned int size) DECLSPEC_HIDDEN;
 HRESULT wined3d_buffer_upload_data(struct wined3d_buffer *buffer,
         const struct wined3d_box *box, const void *data) DECLSPEC_HIDDEN;
 
@@ -2943,8 +2953,8 @@ struct wined3d_shader_resource_view
 
 struct wined3d_swapchain_ops
 {
-    void (*swapchain_present)(struct wined3d_swapchain *swapchain, const RECT *src_rect,
-            const RECT *dst_rect, const RGNDATA *dirty_region, DWORD flags);
+    void (*swapchain_present)(struct wined3d_swapchain *swapchain,
+            const RECT *src_rect, const RECT *dst_rect, DWORD flags);
     void (*swapchain_frontbuffer_updated)(struct wined3d_swapchain *swaphchain);
 };
 
