@@ -226,12 +226,18 @@ static ULONG WINAPI TextStoreACP_Release(ITextStoreACP *iface)
 static HRESULT WINAPI TextStoreACP_AdviseSink(ITextStoreACP *iface,
     REFIID riid, IUnknown *punk, DWORD dwMask)
 {
+    ITextStoreACPServices *services;
     HRESULT hr;
 
     sink_fire_ok(&test_ACP_AdviseSink,"TextStoreACP_AdviseSink");
 
-    hr = IUnknown_QueryInterface(punk, &IID_ITextStoreACPSink,(LPVOID*)(&ACPSink));
+    hr = IUnknown_QueryInterface(punk, &IID_ITextStoreACPSink, (void**)&ACPSink);
     ok(SUCCEEDED(hr),"Unable to QueryInterface on sink\n");
+
+    hr = ITextStoreACPSink_QueryInterface(ACPSink, &IID_ITextStoreACPServices, (void**)&services);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ITextStoreACPServices_Release(services);
+
     return S_OK;
 }
 
@@ -1421,13 +1427,16 @@ static void test_startSession(void)
     ok(cid == cid2, "Second activate client ID does not match\n");
 
     hr = ITfThreadMgr_QueryInterface(g_tm, &IID_ITfThreadMgrEx, (void **)&tmex);
-    ok(SUCCEEDED(hr), "Unable to acquire ITfThreadMgrEx interface\n");
+    if (hr == S_OK)
+    {
+        hr = ITfThreadMgrEx_ActivateEx(tmex, &cid2, 0);
+        ok(SUCCEEDED(hr), "Failed to Activate\n");
+        ok(cid == cid2, "ActivateEx client ID does not match\n");
 
-    hr = ITfThreadMgrEx_ActivateEx(tmex, &cid2, 0);
-    ok(SUCCEEDED(hr), "Failed to Activate\n");
-    ok(cid == cid2, "ActivateEx client ID does not match\n");
-
-    ITfThreadMgrEx_Release(tmex);
+        ITfThreadMgrEx_Release(tmex);
+    }
+    else
+        win_skip("ITfThreadMgrEx is not supported\n");
 
     hr = ITfThreadMgr_Deactivate(g_tm);
     ok(SUCCEEDED(hr), "Failed to Deactivate\n");

@@ -32,6 +32,7 @@ WS_XML_STRING *alloc_xml_string( const unsigned char *, ULONG ) DECLSPEC_HIDDEN;
 WS_XML_UTF8_TEXT *alloc_utf8_text( const unsigned char *, ULONG ) DECLSPEC_HIDDEN;
 HRESULT append_attribute( WS_XML_ELEMENT_NODE *, WS_XML_ATTRIBUTE * ) DECLSPEC_HIDDEN;
 void free_attribute( WS_XML_ATTRIBUTE * ) DECLSPEC_HIDDEN;
+ULONG get_field_size( const WS_STRUCT_DESCRIPTION *, ULONG ) DECLSPEC_HIDDEN;
 
 struct node
 {
@@ -44,6 +45,11 @@ struct node
 struct node *alloc_node( WS_XML_NODE_TYPE ) DECLSPEC_HIDDEN;
 void free_node( struct node * ) DECLSPEC_HIDDEN;
 void destroy_nodes( struct node * ) DECLSPEC_HIDDEN;
+
+static inline WS_XML_NODE_TYPE node_type( const struct node *node )
+{
+    return node->hdr.node.nodeType;
+}
 
 static inline void *heap_alloc( SIZE_T size )
 {

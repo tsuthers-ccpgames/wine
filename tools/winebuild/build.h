@@ -116,6 +116,7 @@ typedef struct
     char            *src_name;           /* file name of the source spec file */
     char            *file_name;          /* file name of the dll */
     char            *dll_name;           /* internal name of the dll */
+    char            *c_name;             /* internal name of the dll, as a C-compatible identifier */
     char            *init_func;          /* initialization routine */
     char            *main_module;        /* main Win32 module for Win16 specs */
     SPEC_TYPE        type;               /* type of dll (Win16/Win32) */
@@ -232,6 +233,7 @@ extern char *strmake(const char* fmt, ...) __attribute__((__format__ (__printf__
 extern struct strarray strarray_fromstring( const char *str, const char *delim );
 extern void strarray_add( struct strarray *array, ... );
 extern void strarray_addv( struct strarray *array, char * const *argv );
+extern void strarray_addall( struct strarray *array, struct strarray args );
 extern DECLSPEC_NORETURN void fatal_error( const char *msg, ... )
    __attribute__ ((__format__ (__printf__, 1, 2)));
 extern DECLSPEC_NORETURN void fatal_perror( const char *msg, ... )
@@ -259,7 +261,7 @@ extern int remove_stdcall_decoration( char *name );
 extern void assemble_file( const char *src_file, const char *obj_file );
 extern DLLSPEC *alloc_dll_spec(void);
 extern void free_dll_spec( DLLSPEC *spec );
-extern const char *make_c_identifier( const char *str );
+extern char *make_c_identifier( const char *str );
 extern const char *get_stub_name( const ORDDEF *odp, const DLLSPEC *spec );
 extern int get_cpu_from_name( const char *name );
 extern unsigned int get_alignment(unsigned int align);
@@ -283,7 +285,6 @@ extern void read_undef_symbols( DLLSPEC *spec, char **argv );
 extern void resolve_imports( DLLSPEC *spec );
 extern int is_undefined( const char *name );
 extern int has_imports(void);
-extern int has_relays( DLLSPEC *spec );
 extern void output_get_pc_thunk(void);
 extern void output_module( DLLSPEC *spec );
 extern void output_stubs( DLLSPEC *spec );
@@ -362,5 +363,6 @@ extern struct strarray nm_command;
 extern char *cpu_option;
 extern char *arch_option;
 extern int thumb_mode;
+extern int needs_get_pc_thunk;
 
 #endif  /* __WINE_BUILD_H */

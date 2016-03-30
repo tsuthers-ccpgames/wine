@@ -63,6 +63,10 @@ static const WCHAR textareaW[] = {'T','E','X','T','A','R','E','A',0};
 static const WCHAR title_tagW[]= {'T','I','T','L','E',0};
 static const WCHAR trW[]       = {'T','R',0};
 
+#define ATTRFLAG_CASESENSITIVE  0x0001
+#define ATTRFLAG_ASSTRING       0x0002
+#define ATTRFLAG_EXPANDURL      0x0004
+
 typedef struct {
     const WCHAR *name;
     HRESULT (*constructor)(HTMLDocumentNode*,nsIDOMHTMLElement*,HTMLElement**);
@@ -608,14 +612,27 @@ static HRESULT WINAPI HTMLElement_Invoke(IHTMLElement *iface, DISPID dispIdMembe
             wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
 }
 
+static HRESULT set_elem_attr_value_by_dispid(HTMLElement *elem, DISPID dispid, VARIANT *v)
+{
+    DISPID propput_dispid = DISPID_PROPERTYPUT;
+    DISPPARAMS dp = {v, &propput_dispid, 1, 1};
+    EXCEPINFO ei;
+
+    if(dispid == DISPID_IHTMLELEMENT_STYLE) {
+        TRACE("Ignoring call on style attribute\n");
+        return S_OK;
+    }
+
+    return IDispatchEx_InvokeEx(&elem->node.event_target.dispex.IDispatchEx_iface, dispid,
+            LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYPUT, &dp, NULL, &ei, NULL);
+}
+
 static HRESULT WINAPI HTMLElement_setAttribute(IHTMLElement *iface, BSTR strAttributeName,
                                                VARIANT AttributeValue, LONG lFlags)
 {
     HTMLElement *This = impl_from_IHTMLElement(iface);
+    DISPID dispid;
     HRESULT hres;
-    DISPID dispid, dispidNamed = DISPID_PROPERTYPUT;
-    DISPPARAMS dispParams;
-    EXCEPINFO excep;
 
     TRACE("(%p)->(%s %s %08x)\n", This, debugstr_w(strAttributeName), debugstr_variant(&AttributeValue), lFlags);
 
@@ -624,53 +641,42 @@ static HRESULT WINAPI HTMLElement_setAttribute(IHTMLElement *iface, BSTR strAttr
     if(FAILED(hres))
         return hres;
 
-    if(dispid == DISPID_IHTMLELEMENT_STYLE) {
-        TRACE("Ignoring call on style attribute\n");
-        return S_OK;
-    }
-
-    dispParams.cArgs = 1;
-    dispParams.cNamedArgs = 1;
-    dispParams.rgdispidNamedArgs = &dispidNamed;
-    dispParams.rgvarg = &AttributeValue;
-
-    return IDispatchEx_InvokeEx(&This->node.event_target.dispex.IDispatchEx_iface, dispid,
-            LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYPUT, &dispParams, NULL, &excep, NULL);
+    return set_elem_attr_value_by_dispid(This, dispid, &AttributeValue);
 }
 
-HRESULT get_elem_attr_value_by_dispid(HTMLElement *elem, DISPID dispid, DWORD flags, VARIANT *ret)
+HRESULT get_elem_attr_value_by_dispid(HTMLElement *elem, DISPID dispid, VARIANT *ret)
 {
     DISPPARAMS dispParams = {NULL, NULL, 0, 0};
     EXCEPINFO excep;
+
+    return IDispatchEx_InvokeEx(&elem->node.event_target.dispex.IDispatchEx_iface, dispid, LOCALE_SYSTEM_DEFAULT,
+            DISPATCH_PROPERTYGET, &dispParams, ret, &excep, NULL);
+}
+
+HRESULT attr_value_to_string(VARIANT *v)
+{
     HRESULT hres;
 
     static const WCHAR nullW[] = {'n','u','l','l',0};
 
-    hres = IDispatchEx_InvokeEx(&elem->node.event_target.dispex.IDispatchEx_iface, dispid, LOCALE_SYSTEM_DEFAULT,
-            DISPATCH_PROPERTYGET, &dispParams, ret, &excep, NULL);
-    if(FAILED(hres))
-        return hres;
-
-    if(flags & ATTRFLAG_ASSTRING) {
-        switch(V_VT(ret)) {
-        case VT_BSTR:
-            break;
-        case VT_NULL:
-            V_BSTR(ret) = SysAllocString(nullW);
-            if(!V_BSTR(ret))
-                return E_OUTOFMEMORY;
-            V_VT(ret) = VT_BSTR;
-            break;
-        case VT_DISPATCH:
-            IDispatch_Release(V_DISPATCH(ret));
-            V_VT(ret) = VT_BSTR;
-            V_BSTR(ret) = SysAllocString(NULL);
-            break;
-        default:
-            hres = VariantChangeType(ret, ret, 0, VT_BSTR);
-            if(FAILED(hres))
-                return hres;
-        }
+    switch(V_VT(v)) {
+    case VT_BSTR:
+        break;
+    case VT_NULL:
+        V_BSTR(v) = SysAllocString(nullW);
+        if(!V_BSTR(v))
+            return E_OUTOFMEMORY;
+        V_VT(v) = VT_BSTR;
+        break;
+    case VT_DISPATCH:
+        IDispatch_Release(V_DISPATCH(v));
+        V_VT(v) = VT_BSTR;
+        V_BSTR(v) = SysAllocString(NULL);
+        break;
+    default:
+        hres = VariantChangeType(v, v, 0, VT_BSTR);
+        if(FAILED(hres))
+            return hres;
     }
 
     return S_OK;
@@ -700,7 +706,10 @@ static HRESULT WINAPI HTMLElement_getAttribute(IHTMLElement *iface, BSTR strAttr
         return hres;
     }
 
-    return get_elem_attr_value_by_dispid(This, dispid, lFlags, AttributeValue);
+    hres = get_elem_attr_value_by_dispid(This, dispid, AttributeValue);
+    if(SUCCEEDED(hres) && (lFlags & ATTRFLAG_ASSTRING))
+        hres = attr_value_to_string(AttributeValue);
+    return hres;
 }
 
 static HRESULT WINAPI HTMLElement_removeAttribute(IHTMLElement *iface, BSTR strAttributeName,
@@ -3711,8 +3720,68 @@ static HRESULT WINAPI HTMLElement4_setAttributeNode(IHTMLElement4 *iface, IHTMLD
         IHTMLDOMAttribute **ppretAttribute)
 {
     HTMLElement *This = impl_from_IHTMLElement4(iface);
-    FIXME("(%p)->(%p %p)\n", This, pattr, ppretAttribute);
-    return E_NOTIMPL;
+    HTMLDOMAttribute *attr, *iter, *replace = NULL;
+    HTMLAttributeCollection *attrs;
+    DISPID dispid;
+    HRESULT hres;
+
+    TRACE("(%p)->(%p %p)\n", This, pattr, ppretAttribute);
+
+    attr = unsafe_impl_from_IHTMLDOMAttribute(pattr);
+    if(!attr)
+        return E_INVALIDARG;
+
+    if(attr->elem) {
+        WARN("Tried to set already attached attribute.\n");
+        return E_INVALIDARG;
+    }
+
+    hres = IDispatchEx_GetDispID(&This->node.event_target.dispex.IDispatchEx_iface,
+            attr->name, fdexNameCaseInsensitive|fdexNameEnsure, &dispid);
+    if(FAILED(hres))
+        return hres;
+
+    hres = HTMLElement_get_attr_col(&This->node, &attrs);
+    if(FAILED(hres))
+        return hres;
+
+    LIST_FOR_EACH_ENTRY(iter, &attrs->attrs, HTMLDOMAttribute, entry) {
+        if(iter->dispid == dispid) {
+            replace = iter;
+            break;
+        }
+    }
+
+    if(replace) {
+        hres = get_elem_attr_value_by_dispid(This, dispid, &replace->value);
+        if(FAILED(hres)) {
+            WARN("could not get attr value: %08x\n", hres);
+            V_VT(&replace->value) = VT_EMPTY;
+        }
+        if(!replace->name) {
+            replace->name = attr->name;
+            attr->name = NULL;
+        }
+        list_add_head(&replace->entry, &attr->entry);
+        list_remove(&replace->entry);
+        replace->elem = NULL;
+    }else {
+        list_add_tail(&attrs->attrs, &attr->entry);
+    }
+
+    IHTMLDOMAttribute_AddRef(&attr->IHTMLDOMAttribute_iface);
+    attr->elem = This;
+    attr->dispid = dispid;
+
+    IHTMLAttributeCollection_Release(&attrs->IHTMLAttributeCollection_iface);
+
+    hres = set_elem_attr_value_by_dispid(This, dispid, &attr->value);
+    if(FAILED(hres))
+        WARN("Could not set attribute value: %08x\n", hres);
+    VariantClear(&attr->value);
+
+    *ppretAttribute = replace ? &replace->IHTMLDOMAttribute_iface : NULL;
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLElement4_removeAttributeNode(IHTMLElement4 *iface, IHTMLDOMAttribute *pattr,

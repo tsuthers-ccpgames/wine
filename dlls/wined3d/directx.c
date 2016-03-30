@@ -156,6 +156,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
     {"GL_ARB_texture_rectangle",            ARB_TEXTURE_RECTANGLE         },
     {"GL_ARB_texture_rg",                   ARB_TEXTURE_RG                },
     {"GL_ARB_texture_rgb10_a2ui",           ARB_TEXTURE_RGB10_A2UI        },
+    {"GL_ARB_texture_swizzle",              ARB_TEXTURE_SWIZZLE           },
     {"GL_ARB_timer_query",                  ARB_TIMER_QUERY               },
     {"GL_ARB_uniform_buffer_object",        ARB_UNIFORM_BUFFER_OBJECT     },
     {"GL_ARB_vertex_array_bgra",            ARB_VERTEX_ARRAY_BGRA         },
@@ -1150,7 +1151,7 @@ static const struct driver_version_information driver_version_table[] =
     {DRIVER_AMD_R300,           DRIVER_MODEL_NT5X,  "ati2dvag.dll", 14, 10, 6764},
     {DRIVER_AMD_R600,           DRIVER_MODEL_NT5X,  "ati2dvag.dll", 17, 10, 1280},
     {DRIVER_AMD_R300,           DRIVER_MODEL_NT6X,  "atiumdag.dll", 14, 10, 741 },
-    {DRIVER_AMD_R600,           DRIVER_MODEL_NT6X,  "atiumdag.dll", 17, 10, 1280 },
+    {DRIVER_AMD_R600,           DRIVER_MODEL_NT6X,  "atiumdag.dll", 17, 10, 1280},
 
     /* Intel
      * The drivers are unified but not all versions support all GPUs. At some point the 2k/xp
@@ -1282,12 +1283,14 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX770,     "NVIDIA GeForce GTX 770",           DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX780,     "NVIDIA GeForce GTX 780",           DRIVER_NVIDIA_GEFORCE8,  3072},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX780TI,   "NVIDIA GeForce GTX 780 Ti",        DRIVER_NVIDIA_GEFORCE8,  3072},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX860M,    "NVIDIA GeForce GTX 860M",          DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX950,     "NVIDIA GeForce GTX 950",           DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX950M,    "NVIDIA GeForce GTX 950M",          DRIVER_NVIDIA_GEFORCE8,  4096},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX960,     "NVIDIA GeForce GTX 960",           DRIVER_NVIDIA_GEFORCE8,  4096},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX960M,    "NVIDIA GeForce GTX 960M",          DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX970,     "NVIDIA GeForce GTX 970",           DRIVER_NVIDIA_GEFORCE8,  4096},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX970M,    "NVIDIA GeForce GTX 970M",          DRIVER_NVIDIA_GEFORCE8,  3072},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX980,     "NVIDIA GeForce GTX 980",           DRIVER_NVIDIA_GEFORCE8,  4096},
 
     /* AMD cards */
     {HW_VENDOR_AMD,        CARD_AMD_RAGE_128PRO,           "ATI Rage Fury",                    DRIVER_AMD_RAGE_128PRO,  16  },
@@ -1513,6 +1516,11 @@ static void init_driver_info(struct wined3d_driver_info *driver_info,
                 }
                 break;
 
+            case 10:
+                driver_os_version = 10;
+                driver_model = DRIVER_MODEL_NT6X;
+                break;
+
             default:
                 FIXME("Unhandled OS version %u.%u, reporting 2000/XP.\n",
                         os_version.dwMajorVersion, os_version.dwMinorVersion);
@@ -1533,8 +1541,7 @@ static void init_driver_info(struct wined3d_driver_info *driver_info,
      * In order to avoid this application bug we limit the amount of video memory
      * to LONG_MAX for older Windows versions.
      */
-    if (os_version.dwMajorVersion <= 5 && os_version.dwMinorVersion <= 2
-            && driver_info->vram_bytes > LONG_MAX)
+    if (driver_model < DRIVER_MODEL_NT6X && driver_info->vram_bytes > LONG_MAX)
     {
         TRACE("Limiting amount of video memory to %#lx bytes for OS version older than Vista.\n", LONG_MAX);
         driver_info->vram_bytes = LONG_MAX;
@@ -1732,12 +1739,14 @@ static const struct wined3d_renderer_table
 cards_nvidia_binary[] =
 {
     /* Direct 3D 11 */
+    {"GTX 980",                     CARD_NVIDIA_GEFORCE_GTX980},    /* GeForce 900 - highend */
     {"GTX 970M",                    CARD_NVIDIA_GEFORCE_GTX970M},   /* GeForce 900 - highend mobile*/
     {"GTX 970",                     CARD_NVIDIA_GEFORCE_GTX970},    /* GeForce 900 - highend */
     {"GTX 960M",                    CARD_NVIDIA_GEFORCE_GTX960M},   /* GeForce 900 - midend high mobile */
     {"GTX 960",                     CARD_NVIDIA_GEFORCE_GTX960},    /* GeForce 900 - midend high */
     {"GTX 950M",                    CARD_NVIDIA_GEFORCE_GTX950M},   /* GeForce 900 - midend mobile */
     {"GTX 950",                     CARD_NVIDIA_GEFORCE_GTX950},    /* GeForce 900 - midend */
+    {"GTX 860M",                    CARD_NVIDIA_GEFORCE_GTX860M},   /* GeForce 800 - mobile */
     {"GTX 780 Ti",                  CARD_NVIDIA_GEFORCE_GTX780TI},  /* Geforce 700 - highend */
     {"GTX 780",                     CARD_NVIDIA_GEFORCE_GTX780},    /* Geforce 700 - highend */
     {"GTX 770M",                    CARD_NVIDIA_GEFORCE_GTX770M},   /* Geforce 700 - midend high mobile */
@@ -3474,6 +3483,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter, DWORD 
         {ARB_SAMPLER_OBJECTS,              MAKEDWORD_VERSION(3, 3)},
         {ARB_SHADER_BIT_ENCODING,          MAKEDWORD_VERSION(3, 3)},
         {ARB_TEXTURE_RGB10_A2UI,           MAKEDWORD_VERSION(3, 3)},
+        {ARB_TEXTURE_SWIZZLE,              MAKEDWORD_VERSION(3, 3)},
         {ARB_TIMER_QUERY,                  MAKEDWORD_VERSION(3, 3)},
 
         {ARB_ES2_COMPATIBILITY,            MAKEDWORD_VERSION(4, 1)},
@@ -3602,6 +3612,11 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter, DWORD 
         gl_info->supported[WINED3D_GL_VERSION_3_2] = TRUE;
     if (gl_version >= MAKEDWORD_VERSION(4, 3))
         gl_info->supported[WINED3D_GL_VERSION_4_3] = TRUE;
+
+    /* All the points are actually point sprites in core contexts, the APIs from
+     * ARB_point_sprite are not supported anymore. */
+    if (!gl_info->supported[WINED3D_GL_LEGACY_CONTEXT])
+        gl_info->supported[ARB_POINT_SPRITE] = FALSE;
 
     if (gl_info->supported[APPLE_FENCE])
     {
@@ -3761,6 +3776,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter, DWORD 
     adapter->shader_backend->shader_get_caps(gl_info, &shader_caps);
     adapter->d3d_info.vs_clipping = shader_caps.wined3d_caps & WINED3D_SHADER_CAP_VS_CLIPPING;
     adapter->d3d_info.limits.vs_version = shader_caps.vs_version;
+    adapter->d3d_info.limits.hs_version = shader_caps.hs_version;
     adapter->d3d_info.limits.gs_version = shader_caps.gs_version;
     adapter->d3d_info.limits.ps_version = shader_caps.ps_version;
     adapter->d3d_info.limits.vs_uniform_count = shader_caps.vs_uniform_count;

@@ -7184,7 +7184,6 @@ LDEXECFLAGS=""
 LIBEXT="so"
 DLLEXT=".so"
 IMPLIBEXT="def"
-STATIC_IMPLIBEXT="def.a"
 # Extract the first word of "ldd", so it can be a program name with args.
 set dummy ldd; ac_word=$2
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
@@ -7622,28 +7621,17 @@ fi
     if wine_fn_has_flag staticimplib
     then
         wine_fn_append_rule \
-"__builddeps__: $ac_file.$IMPLIBEXT $ac_file.$STATIC_IMPLIBEXT
-$ac_file.$STATIC_IMPLIBEXT $ac_file.cross.a: $ac_deps
-$ac_file.def: $srcdir/$ac_dir/$ac_name.spec \$(WINEBUILD)
-	\$(WINEBUILD) \$(TARGETFLAGS)$ac_implibflags -w --def -o \$@ --export $srcdir/$ac_dir/$ac_name.spec
-$ac_file.$STATIC_IMPLIBEXT: dummy
-	@cd $ac_dir && \$(MAKE) lib$ac_implib.$STATIC_IMPLIBEXT
+"__builddeps__: $ac_file.a
+$ac_file.a $ac_file.cross.a: $ac_deps
+$ac_file.a: dummy
+	@cd $ac_dir && \$(MAKE) lib$ac_implib.a
 .PHONY: $ac_dir/install-dev $ac_dir/uninstall
-$ac_dir/install-dev:: $ac_file.$IMPLIBEXT
-	\$(INSTALL_DATA) $ac_file.$IMPLIBEXT \$(DESTDIR)\$(dlldir)/lib$ac_implib.$IMPLIBEXT
+$ac_dir/install-dev:: $ac_file.a
+	\$(INSTALL_DATA) $ac_file.a \$(DESTDIR)\$(dlldir)/lib$ac_implib.a
 $ac_dir/uninstall::
-	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.$IMPLIBEXT
+	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.a
 install install-dev:: $ac_dir/install-dev
 __uninstall__: $ac_dir/uninstall"
-
-        if test "$IMPLIBEXT" != "$STATIC_IMPLIBEXT"
-        then
-            wine_fn_append_rule \
-"$ac_dir/install-dev:: $ac_file.$STATIC_IMPLIBEXT __builddeps__
-	\$(INSTALL_DATA) $ac_file.$STATIC_IMPLIBEXT \$(DESTDIR)\$(dlldir)/lib$ac_implib.$STATIC_IMPLIBEXT
-$ac_dir/uninstall::
-	\$(RM) \$(DESTDIR)\$(dlldir)/lib$ac_implib.$STATIC_IMPLIBEXT"
-        fi
 
         if test -n "$CROSSTARGET" -a -z "$ac_implibflags"
         then
@@ -7921,7 +7909,6 @@ fi
     LIBEXT="dll"
     DLLEXT=""
     IMPLIBEXT="a"
-    STATIC_IMPLIBEXT="a"
         enable_iphlpapi=${enable_iphlpapi:-no}
     enable_kernel32=${enable_kernel32:-no}
     enable_msvcrt=${enable_msvcrt:-no}
@@ -8563,35 +8550,6 @@ fi
 
       case $host_cpu in
         *i[3456789]86* | x86_64)
-          { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the compiler supports -Wl,--section-start,.interp=0x7bf00400" >&5
-$as_echo_n "checking whether the compiler supports -Wl,--section-start,.interp=0x7bf00400... " >&6; }
-if ${ac_cv_cflags__Wl___section_start__interp_0x7bf00400+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_wine_try_cflags_saved=$CFLAGS
-CFLAGS="$CFLAGS -Wl,--section-start,.interp=0x7bf00400"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-int main(int argc, char **argv) { return 0; }
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_cflags__Wl___section_start__interp_0x7bf00400=yes
-else
-  ac_cv_cflags__Wl___section_start__interp_0x7bf00400=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-CFLAGS=$ac_wine_try_cflags_saved
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_cflags__Wl___section_start__interp_0x7bf00400" >&5
-$as_echo "$ac_cv_cflags__Wl___section_start__interp_0x7bf00400" >&6; }
-if test "x$ac_cv_cflags__Wl___section_start__interp_0x7bf00400" = xyes; then :
-  case $host_os in
-                           freebsd* | kfreebsd*-gnu) LDEXECFLAGS="$LDEXECFLAGS -Wl,--section-start,.interp=0x60000400" ;;
-                           *) LDEXECFLAGS="$LDEXECFLAGS -Wl,--section-start,.interp=0x7bf00400" ;;
-                           esac
-
-fi
           { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the compiler supports -Wl,-Ttext-segment=0x7bc00000" >&5
 $as_echo_n "checking whether the compiler supports -Wl,-Ttext-segment=0x7bc00000... " >&6; }
 if ${ac_cv_cflags__Wl__Ttext_segment_0x7bc00000+:} false; then :
@@ -8615,9 +8573,40 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_cflags__Wl__Ttext_segment_0x7bc00000" >&5
 $as_echo "$ac_cv_cflags__Wl__Ttext_segment_0x7bc00000" >&6; }
 if test "x$ac_cv_cflags__Wl__Ttext_segment_0x7bc00000" = xyes; then :
-  :
+  case $host_os in
+                           freebsd* | kfreebsd*-gnu) LDEXECFLAGS="$LDEXECFLAGS -Wl,-Ttext-segment=0x60000000" ;;
+                           *) LDEXECFLAGS="$LDEXECFLAGS -Wl,-Ttext-segment=0x7c000000" ;;
+                           esac
 else
-  # Extract the first word of "prelink", so it can be a program name with args.
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the compiler supports -Wl,--section-start,.interp=0x7c000400" >&5
+$as_echo_n "checking whether the compiler supports -Wl,--section-start,.interp=0x7c000400... " >&6; }
+if ${ac_cv_cflags__Wl___section_start__interp_0x7c000400+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_wine_try_cflags_saved=$CFLAGS
+CFLAGS="$CFLAGS -Wl,--section-start,.interp=0x7c000400"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int main(int argc, char **argv) { return 0; }
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_cflags__Wl___section_start__interp_0x7c000400=yes
+else
+  ac_cv_cflags__Wl___section_start__interp_0x7c000400=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+CFLAGS=$ac_wine_try_cflags_saved
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_cflags__Wl___section_start__interp_0x7c000400" >&5
+$as_echo "$ac_cv_cflags__Wl___section_start__interp_0x7c000400" >&6; }
+if test "x$ac_cv_cflags__Wl___section_start__interp_0x7c000400" = xyes; then :
+  case $host_os in
+                                              freebsd* | kfreebsd*-gnu) LDEXECFLAGS="$LDEXECFLAGS -Wl,--section-start,.interp=0x60000400" ;;
+                                              *) LDEXECFLAGS="$LDEXECFLAGS -Wl,--section-start,.interp=0x7c000400" ;;
+                                           esac
+fi
+                           # Extract the first word of "prelink", so it can be a program name with args.
 set dummy prelink; ac_word=$2
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
 $as_echo_n "checking for $ac_word... " >&6; }
@@ -8662,6 +8651,31 @@ fi
                            then
                                as_fn_append wine_warnings "|prelink not found and linker does not support relocation, base address of core dlls won't be set correctly."
                            fi
+fi
+          { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether the compiler supports -Wl,-z,max-page-size=0x1000" >&5
+$as_echo_n "checking whether the compiler supports -Wl,-z,max-page-size=0x1000... " >&6; }
+if ${ac_cv_cflags__Wl__z_max_page_size_0x1000+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_wine_try_cflags_saved=$CFLAGS
+CFLAGS="$CFLAGS -Wl,-z,max-page-size=0x1000"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int main(int argc, char **argv) { return 0; }
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_cflags__Wl__z_max_page_size_0x1000=yes
+else
+  ac_cv_cflags__Wl__z_max_page_size_0x1000=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+CFLAGS=$ac_wine_try_cflags_saved
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_cflags__Wl__z_max_page_size_0x1000" >&5
+$as_echo "$ac_cv_cflags__Wl__z_max_page_size_0x1000" >&6; }
+if test "x$ac_cv_cflags__Wl__z_max_page_size_0x1000" = xyes; then :
+  LDEXECFLAGS="$LDEXECFLAGS -Wl,-z,max-page-size=0x1000"
 fi
           ;;
       esac

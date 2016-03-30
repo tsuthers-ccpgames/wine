@@ -24,7 +24,7 @@
 #include "wine/port.h"
 #include "wined3d_private.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(d3d_texture);
+WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
 
@@ -35,6 +35,52 @@ BOOL wined3d_texture_use_pbo(const struct wined3d_texture *texture, const struct
             && gl_info->supported[ARB_PIXEL_BUFFER_OBJECT]
             && !texture->resource.format->convert
             && !(texture->flags & (WINED3D_TEXTURE_PIN_SYSMEM | WINED3D_TEXTURE_COND_NP2_EMULATED));
+}
+
+GLenum wined3d_texture_get_gl_buffer(const struct wined3d_texture *texture)
+{
+    const struct wined3d_swapchain *swapchain = texture->swapchain;
+
+    TRACE("texture %p.\n", texture);
+
+    if (!swapchain)
+    {
+        ERR("Texture %p is not part of a swapchain.\n", texture);
+        return GL_NONE;
+    }
+
+    if (swapchain->back_buffers && swapchain->back_buffers[0] == texture)
+    {
+        if (swapchain->render_to_fbo)
+        {
+            TRACE("Returning GL_COLOR_ATTACHMENT0.\n");
+            return GL_COLOR_ATTACHMENT0;
+        }
+        TRACE("Returning GL_BACK.\n");
+        return GL_BACK;
+    }
+    else if (texture == swapchain->front_buffer)
+    {
+        TRACE("Returning GL_FRONT.\n");
+        return GL_FRONT;
+    }
+
+    FIXME("Higher back buffer, returning GL_BACK.\n");
+    return GL_BACK;
+}
+
+void wined3d_texture_validate_location(struct wined3d_texture *texture,
+        unsigned int sub_resource_idx, DWORD location)
+{
+    struct wined3d_texture_sub_resource *sub_resource;
+
+    TRACE("texture %p, sub_resource_idx %u, location %s.\n",
+            texture, sub_resource_idx, wined3d_debug_location(location));
+
+    sub_resource = &texture->sub_resources[sub_resource_idx];
+    sub_resource->locations |= location;
+
+    TRACE("New locations flags are %s.\n", wined3d_debug_location(sub_resource->locations));
 }
 
 static HRESULT wined3d_texture_init(struct wined3d_texture *texture, const struct wined3d_texture_ops *texture_ops,
@@ -79,7 +125,7 @@ static HRESULT wined3d_texture_init(struct wined3d_texture *texture, const struc
     texture->level_count = level_count;
     texture->filter_type = (desc->usage & WINED3DUSAGE_AUTOGENMIPMAP) ? WINED3D_TEXF_LINEAR : WINED3D_TEXF_NONE;
     texture->lod = 0;
-    texture->flags = WINED3D_TEXTURE_POW2_MAT_IDENT | WINED3D_TEXTURE_NORMALIZED_COORDS;
+    texture->flags |= WINED3D_TEXTURE_POW2_MAT_IDENT | WINED3D_TEXTURE_NORMALIZED_COORDS;
     if (flags & WINED3D_TEXTURE_CREATE_PIN_SYSMEM)
         texture->flags |= WINED3D_TEXTURE_PIN_SYSMEM;
 
@@ -187,6 +233,8 @@ void wined3d_texture_bind(struct wined3d_texture *texture,
         struct wined3d_context *context, BOOL srgb)
 {
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    const struct wined3d_format *format = texture->resource.format;
+    const struct color_fixup_desc fixup = format->color_fixup;
     struct gl_texture *gl_tex;
     GLenum target;
 
@@ -297,6 +345,31 @@ void wined3d_texture_bind(struct wined3d_texture *texture,
     {
         gl_info->gl_ops.gl.p_glTexParameteri(target, GL_DEPTH_TEXTURE_MODE_ARB, GL_INTENSITY);
         checkGLcall("glTexParameteri(GL_DEPTH_TEXTURE_MODE_ARB, GL_INTENSITY)");
+    }
+
+    if (!is_identity_fixup(fixup) && can_use_texture_swizzle(gl_info, format))
+    {
+        static const GLenum swizzle_source[] =
+        {
+            GL_ZERO,  /* CHANNEL_SOURCE_ZERO */
+            GL_ONE,   /* CHANNEL_SOURCE_ONE */
+            GL_RED,   /* CHANNEL_SOURCE_X */
+            GL_GREEN, /* CHANNEL_SOURCE_Y */
+            GL_BLUE,  /* CHANNEL_SOURCE_Z */
+            GL_ALPHA, /* CHANNEL_SOURCE_W */
+        };
+        struct
+        {
+            GLint x, y, z, w;
+        }
+        swizzle;
+
+        swizzle.x = swizzle_source[fixup.x_source];
+        swizzle.y = swizzle_source[fixup.y_source];
+        swizzle.z = swizzle_source[fixup.z_source];
+        swizzle.w = swizzle_source[fixup.w_source];
+        gl_info->gl_ops.gl.p_glTexParameteriv(target, GL_TEXTURE_SWIZZLE_RGBA, &swizzle.x);
+        checkGLcall("glTexParameteriv(GL_TEXTURE_SWIZZLE_RGBA)");
     }
 }
 
@@ -676,6 +749,7 @@ HRESULT CDECL wined3d_texture_update_desc(struct wined3d_texture *texture, UINT 
     const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
     const struct wined3d_format *format = wined3d_get_format(gl_info, format_id);
     UINT resource_size = wined3d_format_calculate_size(format, device->surface_alignment, width, height, 1);
+    struct wined3d_texture_sub_resource *sub_resource;
     struct wined3d_surface *surface;
     DWORD valid_location = 0;
     BOOL create_dib = FALSE;
@@ -712,8 +786,9 @@ HRESULT CDECL wined3d_texture_update_desc(struct wined3d_texture *texture, UINT 
         return WINED3DERR_INVALIDCALL;
     }
 
-    surface = texture->sub_resources[0].u.surface;
-    if (surface->resource.map_count || (surface->flags & SFLAG_DCINUSE))
+    sub_resource = &texture->sub_resources[0];
+    surface = sub_resource->u.surface;
+    if (sub_resource->resource->map_count || (surface->flags & SFLAG_DCINUSE))
     {
         WARN("Surface is mapped or the DC is in use.\n");
         return WINED3DERR_INVALIDCALL;
@@ -733,7 +808,7 @@ HRESULT CDECL wined3d_texture_update_desc(struct wined3d_texture *texture, UINT 
         create_dib = TRUE;
     }
 
-    wined3d_resource_free_sysmem(&surface->resource);
+    wined3d_resource_free_sysmem(sub_resource->resource);
 
     if ((texture->row_pitch = pitch))
         texture->slice_pitch = height * pitch;
@@ -748,12 +823,12 @@ HRESULT CDECL wined3d_texture_update_desc(struct wined3d_texture *texture, UINT 
     texture->resource.width = width;
     texture->resource.height = height;
 
-    surface->resource.format = format;
-    surface->resource.multisample_type = multisample_type;
-    surface->resource.multisample_quality = multisample_quality;
-    surface->resource.width = width;
-    surface->resource.height = height;
-    surface->resource.size = texture->slice_pitch;
+    sub_resource->resource->format = format;
+    sub_resource->resource->multisample_type = multisample_type;
+    sub_resource->resource->multisample_quality = multisample_quality;
+    sub_resource->resource->width = width;
+    sub_resource->resource->height = height;
+    sub_resource->resource->size = texture->slice_pitch;
 
     if (((width & (width - 1)) || (height & (height - 1))) && !gl_info->supported[ARB_TEXTURE_NON_POWER_OF_TWO]
             && !gl_info->supported[ARB_TEXTURE_RECTANGLE] && !gl_info->supported[WINED3D_GL_NORMALIZED_TEXRECT])
@@ -772,11 +847,11 @@ HRESULT CDECL wined3d_texture_update_desc(struct wined3d_texture *texture, UINT 
         surface->pow2Height = height;
     }
 
-    surface->locations = 0;
+    sub_resource->locations = 0;
 
     if ((texture->user_memory = mem))
     {
-        surface->resource.map_binding = WINED3D_LOCATION_USER_MEMORY;
+        sub_resource->resource->map_binding = WINED3D_LOCATION_USER_MEMORY;
         valid_location = WINED3D_LOCATION_USER_MEMORY;
     }
     else if (create_dib && SUCCEEDED(surface_create_dib_section(surface)))
@@ -793,10 +868,10 @@ HRESULT CDECL wined3d_texture_update_desc(struct wined3d_texture *texture, UINT 
      * If the surface didn't use PBOs previously but could now, don't
      * change it - whatever made us not use PBOs might come back, e.g.
      * color keys. */
-    if (surface->resource.map_binding == WINED3D_LOCATION_BUFFER && !wined3d_texture_use_pbo(texture, gl_info))
-        surface->resource.map_binding = surface->dib.DIBsection ? WINED3D_LOCATION_DIB : WINED3D_LOCATION_SYSMEM;
+    if (sub_resource->resource->map_binding == WINED3D_LOCATION_BUFFER && !wined3d_texture_use_pbo(texture, gl_info))
+        sub_resource->resource->map_binding = surface->dib.DIBsection ? WINED3D_LOCATION_DIB : WINED3D_LOCATION_SYSMEM;
 
-    surface_validate_location(surface, valid_location);
+    wined3d_texture_validate_location(texture, 0, valid_location);
 
     return WINED3D_OK;
 }
@@ -822,6 +897,21 @@ void wined3d_texture_prepare_buffer_object(struct wined3d_texture *texture,
             *buffer_object, texture, sub_resource_idx);
 }
 
+static void wined3d_texture_force_reload(struct wined3d_texture *texture)
+{
+    unsigned int sub_count = texture->level_count * texture->layer_count;
+    unsigned int i;
+
+    texture->flags &= ~(WINED3D_TEXTURE_RGB_ALLOCATED | WINED3D_TEXTURE_SRGB_ALLOCATED
+            | WINED3D_TEXTURE_CONVERTED);
+    texture->async.flags &= ~WINED3D_TEXTURE_ASYNC_COLOR_KEY;
+    for (i = 0; i < sub_count; ++i)
+    {
+        texture->texture_ops->texture_sub_resource_invalidate_location(texture->sub_resources[i].resource,
+                WINED3D_LOCATION_TEXTURE_RGB | WINED3D_LOCATION_TEXTURE_SRGB);
+    }
+}
+
 void wined3d_texture_prepare_texture(struct wined3d_texture *texture, struct wined3d_context *context, BOOL srgb)
 {
     DWORD alloc_flag = srgb ? WINED3D_TEXTURE_SRGB_ALLOCATED : WINED3D_TEXTURE_RGB_ALLOCATED;
@@ -842,21 +932,6 @@ void wined3d_texture_prepare_texture(struct wined3d_texture *texture, struct win
 
     texture->texture_ops->texture_prepare_texture(texture, context, srgb);
     texture->flags |= alloc_flag;
-}
-
-void wined3d_texture_force_reload(struct wined3d_texture *texture)
-{
-    unsigned int sub_count = texture->level_count * texture->layer_count;
-    unsigned int i;
-
-    texture->flags &= ~(WINED3D_TEXTURE_RGB_ALLOCATED | WINED3D_TEXTURE_SRGB_ALLOCATED
-            | WINED3D_TEXTURE_CONVERTED);
-    texture->async.flags &= ~WINED3D_TEXTURE_ASYNC_COLOR_KEY;
-    for (i = 0; i < sub_count; ++i)
-    {
-        texture->texture_ops->texture_sub_resource_invalidate_location(texture->sub_resources[i].resource,
-                WINED3D_LOCATION_TEXTURE_RGB | WINED3D_LOCATION_TEXTURE_SRGB);
-    }
 }
 
 void CDECL wined3d_texture_generate_mipmaps(struct wined3d_texture *texture)
@@ -939,7 +1014,7 @@ static HRESULT wined3d_texture_upload_data(struct wined3d_texture *texture,
         struct wined3d_resource *sub_resource = texture->sub_resources[i].resource;
 
         texture->texture_ops->texture_sub_resource_upload_data(sub_resource, context, &data[i]);
-        texture->texture_ops->texture_sub_resource_validate_location(sub_resource, WINED3D_LOCATION_TEXTURE_RGB);
+        wined3d_texture_validate_location(texture, i, WINED3D_LOCATION_TEXTURE_RGB);
         texture->texture_ops->texture_sub_resource_invalidate_location(sub_resource, ~WINED3D_LOCATION_TEXTURE_RGB);
     }
 
@@ -959,13 +1034,6 @@ static void texture2d_sub_resource_invalidate_location(struct wined3d_resource *
     struct wined3d_surface *surface = surface_from_resource(sub_resource);
 
     surface_invalidate_location(surface, location);
-}
-
-static void texture2d_sub_resource_validate_location(struct wined3d_resource *sub_resource, DWORD location)
-{
-    struct wined3d_surface *surface = surface_from_resource(sub_resource);
-
-    surface_validate_location(surface, location);
 }
 
 static void texture2d_sub_resource_upload_data(struct wined3d_resource *sub_resource,
@@ -1080,7 +1148,6 @@ static const struct wined3d_texture_ops texture2d_ops =
 {
     texture2d_sub_resource_load,
     texture2d_sub_resource_invalidate_location,
-    texture2d_sub_resource_validate_location,
     texture2d_sub_resource_upload_data,
     texture2d_load_location,
     texture2d_prepare_location,
@@ -1192,7 +1259,7 @@ static HRESULT texture_resource_sub_resource_map(struct wined3d_resource *resour
                 wined3d_debug_location(sub_resource->map_binding));
         if ((ret = texture->texture_ops->texture_prepare_location(texture,
                 sub_resource_idx, context, sub_resource->map_binding)))
-            texture->texture_ops->texture_sub_resource_validate_location(sub_resource, sub_resource->map_binding);
+            wined3d_texture_validate_location(texture, sub_resource_idx, sub_resource->map_binding);
     }
     else
     {
@@ -1361,7 +1428,8 @@ static HRESULT texture_resource_sub_resource_unmap(struct wined3d_resource *reso
     {
         struct wined3d_surface *surface = texture->sub_resources[sub_resource_idx].u.surface;
 
-        if (!(surface->locations & (WINED3D_LOCATION_DRAWABLE | WINED3D_LOCATION_TEXTURE_RGB)))
+        if (!(surface_get_sub_resource(surface)->locations
+                & (WINED3D_LOCATION_DRAWABLE | WINED3D_LOCATION_TEXTURE_RGB)))
             texture->swapchain->swapchain_ops->swapchain_frontbuffer_updated(texture->swapchain);
     }
     else if (resource->format_flags & (WINED3DFMT_FLAG_DEPTH | WINED3DFMT_FLAG_STENCIL))
@@ -1403,37 +1471,68 @@ static HRESULT texture_init(struct wined3d_texture *texture, const struct wined3
         return WINED3DERR_INVALIDCALL;
     }
 
-    /* Non-power2 support. */
-    if (gl_info->supported[ARB_TEXTURE_NON_POWER_OF_TWO])
+    pow2_width = desc->width;
+    pow2_height = desc->height;
+    if (((desc->width & (desc->width - 1)) || (desc->height & (desc->height - 1)))
+            && !gl_info->supported[ARB_TEXTURE_NON_POWER_OF_TWO])
     {
-        pow2_width = desc->width;
-        pow2_height = desc->height;
-    }
-    else
-    {
-        /* Find the nearest pow2 match. */
-        pow2_width = pow2_height = 1;
-        while (pow2_width < desc->width)
-            pow2_width <<= 1;
-        while (pow2_height < desc->height)
-            pow2_height <<= 1;
-
-        if (pow2_width != desc->width || pow2_height != desc->height)
+        /* level_count == 0 returns an error as well. */
+        if (level_count != 1 || desc->usage & WINED3DUSAGE_LEGACY_CUBEMAP)
         {
-            /* level_count == 0 returns an error as well */
-            if (level_count != 1 || desc->usage & WINED3DUSAGE_LEGACY_CUBEMAP)
+            if (desc->pool != WINED3D_POOL_SCRATCH)
             {
-                if (desc->pool == WINED3D_POOL_SCRATCH)
-                {
-                    WARN("Creating a scratch mipmapped/cube NPOT texture despite lack of HW support.\n");
-                }
-                else
-                {
-                    WARN("Attempted to create a mipmapped/cube NPOT texture without unconditional NPOT support.\n");
-                    return WINED3DERR_INVALIDCALL;
-                }
+                WARN("Attempted to create a mipmapped/cube NPOT texture without unconditional NPOT support.\n");
+                return WINED3DERR_INVALIDCALL;
             }
+
+            WARN("Creating a scratch mipmapped/cube NPOT texture despite lack of HW support.\n");
         }
+        texture->flags |= WINED3D_TEXTURE_COND_NP2;
+
+        if (!gl_info->supported[ARB_TEXTURE_RECTANGLE] && !gl_info->supported[WINED3D_GL_NORMALIZED_TEXRECT])
+        {
+            const struct wined3d_format *format = wined3d_get_format(gl_info, desc->format);
+
+            /* TODO: Add support for non-power-of-two compressed textures. */
+            if (format->flags[WINED3D_GL_RES_TYPE_TEX_2D]
+                    & (WINED3DFMT_FLAG_COMPRESSED | WINED3DFMT_FLAG_HEIGHT_SCALE))
+            {
+                FIXME("Compressed or height scaled non-power-of-two (%ux%u) textures are not supported.\n",
+                        desc->width, desc->height);
+                return WINED3DERR_NOTAVAILABLE;
+            }
+
+            /* Find the nearest pow2 match. */
+            pow2_width = pow2_height = 1;
+            while (pow2_width < desc->width)
+                pow2_width <<= 1;
+            while (pow2_height < desc->height)
+                pow2_height <<= 1;
+            texture->flags |= WINED3D_TEXTURE_COND_NP2_EMULATED;
+        }
+    }
+
+    if ((pow2_width > gl_info->limits.texture_size || pow2_height > gl_info->limits.texture_size)
+            && (desc->usage & WINED3DUSAGE_TEXTURE))
+    {
+        /* One of four options:
+         * 1: Do the same as we do with NPOT and scale the texture. (Any
+         *    texture ops would require the texture to be scaled which is
+         *    potentially slow.)
+         * 2: Set the texture to the maximum size (bad idea).
+         * 3: WARN and return WINED3DERR_NOTAVAILABLE.
+         * 4: Create the surface, but allow it to be used only for DirectDraw
+         *    Blts. Some apps (e.g. Swat 3) create textures with a height of
+         *    16 and a width > 3000 and blt 16x16 letter areas from them to
+         *    the render target. */
+        if (desc->pool == WINED3D_POOL_DEFAULT || desc->pool == WINED3D_POOL_MANAGED)
+        {
+            WARN("Dimensions (%ux%u) exceed the maximum texture size.\n", pow2_width, pow2_height);
+            return WINED3DERR_NOTAVAILABLE;
+        }
+
+        /* We should never use this surface in combination with OpenGL. */
+        TRACE("Creating an oversized (%ux%u) surface.\n", pow2_width, pow2_height);
     }
 
     /* Calculate levels for mip mapping. */
@@ -1464,40 +1563,30 @@ static HRESULT texture_init(struct wined3d_texture *texture, const struct wined3
     {
         texture->pow2_matrix[0] = (float)desc->width;
         texture->pow2_matrix[5] = (float)desc->height;
-        texture->pow2_matrix[10] = 1.0f;
-        texture->pow2_matrix[15] = 1.0f;
-        texture->target = GL_TEXTURE_RECTANGLE_ARB;
-        texture->flags |= WINED3D_TEXTURE_COND_NP2;
         texture->flags &= ~(WINED3D_TEXTURE_POW2_MAT_IDENT | WINED3D_TEXTURE_NORMALIZED_COORDS);
+        texture->target = GL_TEXTURE_RECTANGLE_ARB;
     }
     else
     {
-        if (desc->usage & WINED3DUSAGE_LEGACY_CUBEMAP)
-            texture->target = GL_TEXTURE_CUBE_MAP_ARB;
-        else
-            texture->target = GL_TEXTURE_2D;
-        if (desc->width == pow2_width && desc->height == pow2_height)
-        {
-            texture->pow2_matrix[0] = 1.0f;
-            texture->pow2_matrix[5] = 1.0f;
-        }
-        else if (gl_info->supported[WINED3D_GL_NORMALIZED_TEXRECT])
-        {
-            texture->pow2_matrix[0] = 1.0f;
-            texture->pow2_matrix[5] = 1.0f;
-            texture->flags |= WINED3D_TEXTURE_COND_NP2;
-        }
-        else
+        if (texture->flags & WINED3D_TEXTURE_COND_NP2_EMULATED)
         {
             texture->pow2_matrix[0] = (((float)desc->width) / ((float)pow2_width));
             texture->pow2_matrix[5] = (((float)desc->height) / ((float)pow2_height));
             texture->flags &= ~WINED3D_TEXTURE_POW2_MAT_IDENT;
-            texture->flags |= WINED3D_TEXTURE_COND_NP2_EMULATED;
         }
-        texture->pow2_matrix[10] = 1.0f;
-        texture->pow2_matrix[15] = 1.0f;
+        else
+        {
+            texture->pow2_matrix[0] = 1.0f;
+            texture->pow2_matrix[5] = 1.0f;
+        }
+        if (desc->usage & WINED3DUSAGE_LEGACY_CUBEMAP)
+            texture->target = GL_TEXTURE_CUBE_MAP_ARB;
+        else
+            texture->target = GL_TEXTURE_2D;
     }
-    TRACE("xf(%f) yf(%f)\n", texture->pow2_matrix[0], texture->pow2_matrix[5]);
+    texture->pow2_matrix[10] = 1.0f;
+    texture->pow2_matrix[15] = 1.0f;
+    TRACE("x scale %.8e, y scale %.8e.\n", texture->pow2_matrix[0], texture->pow2_matrix[5]);
 
     if (!(surfaces = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*surfaces) * level_count * layer_count)))
     {
@@ -1573,13 +1662,6 @@ static void texture3d_sub_resource_invalidate_location(struct wined3d_resource *
     wined3d_volume_invalidate_location(volume, location);
 }
 
-static void texture3d_sub_resource_validate_location(struct wined3d_resource *sub_resource, DWORD location)
-{
-    struct wined3d_volume *volume = volume_from_resource(sub_resource);
-
-    wined3d_volume_validate_location(volume, location);
-}
-
 static void texture3d_sub_resource_upload_data(struct wined3d_resource *sub_resource,
         const struct wined3d_context *context, const struct wined3d_sub_resource_data *data)
 {
@@ -1653,7 +1735,6 @@ static const struct wined3d_texture_ops texture3d_ops =
 {
     texture3d_sub_resource_load,
     texture3d_sub_resource_invalidate_location,
-    texture3d_sub_resource_validate_location,
     texture3d_sub_resource_upload_data,
     texture3d_load_location,
     texture3d_prepare_location,

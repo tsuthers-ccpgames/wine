@@ -9063,7 +9063,6 @@ static void test_shademode(void)
     DWORD color0, color1;
     IDirectDraw2 *ddraw;
     D3DLVERTEX *quad;
-    IDirect3D2 *d3d;
     ULONG refcount;
     UINT i, count;
     HWND window;
@@ -9113,8 +9112,6 @@ static void test_shademode(void)
         return;
     }
 
-    hr = IDirect3DDevice2_GetDirect3D(device, &d3d);
-    ok(SUCCEEDED(hr), "Failed to get d3d interface, hr %#x.\n", hr);
     hr = IDirect3DDevice2_GetRenderTarget(device, &rt);
     ok(SUCCEEDED(hr), "Failed to get render target, hr %#x.\n", hr);
 
@@ -9164,7 +9161,6 @@ static void test_shademode(void)
     destroy_viewport(device, viewport);
     destroy_material(background);
     IDirectDrawSurface_Release(rt);
-    IDirect3D2_Release(d3d);
     refcount = IDirect3DDevice2_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
     IDirectDraw_Release(ddraw);
@@ -9604,6 +9600,86 @@ done:
     DestroyWindow(window);
 }
 
+static void test_blt(void)
+{
+    IDirectDrawSurface *surface, *rt;
+    DDSURFACEDESC surface_desc;
+    IDirect3DDevice2 *device;
+    IDirectDraw2 *ddraw;
+    unsigned int i;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+
+    static struct
+    {
+        RECT src_rect;
+        RECT dst_rect;
+        HRESULT hr;
+    }
+    test_data[] =
+    {
+        {{160,   0, 640, 480}, {  0,   0, 480, 480}, DD_OK},             /* Overlapped blit. */
+        {{160, 480, 640,   0}, {  0,   0, 480, 480}, DDERR_INVALIDRECT}, /* Overlapped blit, flipped source. */
+        {{640,   0, 160, 480}, {  0,   0, 480, 480}, DDERR_INVALIDRECT}, /* Overlapped blit, mirrored source. */
+        {{160,   0, 480, 480}, {  0,   0, 480, 480}, DD_OK},             /* Overlapped blit, stretched x. */
+        {{160, 160, 640, 480}, {  0,   0, 480, 480}, DD_OK},             /* Overlapped blit, stretched y. */
+        {{  0,   0, 640, 480}, {  0,   0, 640, 480}, DD_OK},             /* Full surface blit. */
+        {{  0,   0, 640, 480}, {  0, 480, 640,   0}, DDERR_INVALIDRECT}, /* Full surface, flipped destination. */
+        {{  0,   0, 640, 480}, {640,   0,   0, 480}, DDERR_INVALIDRECT}, /* Full surface, mirrored destination. */
+        {{  0, 480, 640,   0}, {  0,   0, 640, 480}, DDERR_INVALIDRECT}, /* Full surface, flipped source. */
+        {{640,   0,   0, 480}, {  0,   0, 640, 480}, DDERR_INVALIDRECT}, /* Full surface, mirrored source. */
+    };
+
+    window = CreateWindowA("static", "ddraw_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, 0, 0, 0, 0);
+    ddraw = create_ddraw();
+    ok(!!ddraw, "Failed to create a ddraw object.\n");
+    if (!(device = create_device(ddraw, window, DDSCL_NORMAL)))
+    {
+        skip("Failed to create a 3D device, skipping test.\n");
+        IDirectDraw2_Release(ddraw);
+        DestroyWindow(window);
+        return;
+    }
+
+    hr = IDirect3DDevice2_GetRenderTarget(device, &rt);
+    ok(SUCCEEDED(hr), "Failed to get render target, hr %#x.\n", hr);
+
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+    surface_desc.dwFlags = DDSD_WIDTH | DDSD_HEIGHT | DDSD_CAPS;
+    surface_desc.dwWidth = 640;
+    surface_desc.dwHeight = 480;
+    surface_desc.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
+    hr = IDirectDraw2_CreateSurface(ddraw, &surface_desc, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create surface, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface_Blt(surface, NULL, surface, NULL, 0, NULL);
+    ok(SUCCEEDED(hr), "Failed to blit, hr %#x.\n", hr);
+
+    hr = IDirectDrawSurface_Blt(surface, NULL, rt, NULL, 0, NULL);
+    ok(SUCCEEDED(hr), "Failed to blit, hr %#x.\n", hr);
+
+    for (i = 0; i < sizeof(test_data) / sizeof(*test_data); ++i)
+    {
+        hr = IDirectDrawSurface_Blt(surface, &test_data[i].dst_rect,
+                surface, &test_data[i].src_rect, DDBLT_WAIT, NULL);
+        ok(hr == test_data[i].hr, "Test %u: Got unexpected hr %#x, expected %#x.\n", i, hr, test_data[i].hr);
+
+        hr = IDirectDrawSurface_Blt(surface, &test_data[i].dst_rect,
+                rt, &test_data[i].src_rect, DDBLT_WAIT, NULL);
+        ok(hr == test_data[i].hr, "Test %u: Got unexpected hr %#x, expected %#x.\n", i, hr, test_data[i].hr);
+    }
+
+    IDirectDrawSurface_Release(surface);
+    IDirectDrawSurface_Release(rt);
+    refcount = IDirect3DDevice2_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirectDraw2_Release(ddraw);
+    DestroyWindow(window);
+}
+
 START_TEST(ddraw2)
 {
     IDirectDraw2 *ddraw;
@@ -9687,4 +9763,5 @@ START_TEST(ddraw2)
     test_yv12_overlay();
     test_offscreen_overlay();
     test_overlay_rect();
+    test_blt();
 }

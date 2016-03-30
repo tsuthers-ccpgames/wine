@@ -3305,7 +3305,6 @@ static void test_mxwriter_flush(void)
     pos2.QuadPart = 0;
     hr = IStream_Seek(stream, pos, STREAM_SEEK_CUR, &pos2);
     EXPECT_HR(hr, S_OK);
-todo_wine
     ok(pos2.QuadPart != 0, "unexpected stream beginning\n");
 
     hr = IMXWriter_get_output(writer, NULL);
@@ -4146,7 +4145,6 @@ static void test_mxwriter_stream(void)
         V_UNKNOWN(&dest) = (IUnknown*)&mxstream;
         hr = IMXWriter_put_output(writer, dest);
         ok(hr == S_OK, "put_output failed with %08x on test %d\n", hr, current_stream_test_index);
-        VariantClear(&dest);
 
         hr = IMXWriter_put_byteOrderMark(writer, test->bom);
         ok(hr == S_OK, "put_byteOrderMark failed with %08x on test %d\n", hr, current_stream_test_index);
@@ -4996,11 +4994,22 @@ static void test_mxwriter_dtd(void)
         _bstr_("sysid"), strlen("sysid"));
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
+    hr = ISAXDeclHandler_externalEntityDecl(decl, _bstr_("name"), strlen("name"), NULL, 0, _bstr_("sysid"), strlen("sysid"));
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = ISAXDeclHandler_externalEntityDecl(decl, _bstr_("name"), strlen("name"), _bstr_("pubid"), strlen("pubid"),
+        NULL, 0);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
     V_VT(&dest) = VT_EMPTY;
     hr = IMXWriter_get_output(writer, &dest);
     ok(hr == S_OK, "got 0x%08x\n", hr);
     ok(V_VT(&dest) == VT_BSTR, "got %d\n", V_VT(&dest));
-    ok(!lstrcmpW(_bstr_("<!ENTITY name PUBLIC \"pubid\" \"sysid\">\r\n"), V_BSTR(&dest)), "got wrong content %s\n", wine_dbgstr_w(V_BSTR(&dest)));
+    ok(!lstrcmpW(_bstr_(
+        "<!ENTITY name PUBLIC \"pubid\" \"sysid\">\r\n"
+        "<!ENTITY name SYSTEM \"sysid\">\r\n"),
+        V_BSTR(&dest)), "got wrong content %s\n", wine_dbgstr_w(V_BSTR(&dest)));
+
     VariantClear(&dest);
 
     ISAXContentHandler_Release(content);
@@ -5582,7 +5591,7 @@ START_TEST(saxreader)
 
     if(FAILED(hr))
     {
-        skip("Failed to create SAXXMLReader instance\n");
+        win_skip("Failed to create SAXXMLReader instance\n");
         CoUninitialize();
         return;
     }
@@ -5632,7 +5641,7 @@ START_TEST(saxreader)
         test_mxattr_dispex();
     }
     else
-        skip("SAXAttributes not supported\n");
+        win_skip("SAXAttributes not supported\n");
 
     CoUninitialize();
 }

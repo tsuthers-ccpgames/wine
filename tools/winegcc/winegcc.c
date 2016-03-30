@@ -958,7 +958,7 @@ static void build(struct options* opts)
                 strarray_add(link_args, name);
                 break;
             case 'a':
-                if (strchr(name, '/'))
+                if (!opts->lib_suffix && strchr(name, '/'))
                 {
                     /* turn the path back into -Ldir -lfoo options
                      * this makes sure that we use the specified libs even
@@ -1135,6 +1135,8 @@ static void build(struct options* opts)
     default:
         if (opts->image_base)
         {
+            if (!try_link(opts->prefix, link_args, "-Wl,-z,max-page-size=0x1000"))
+                strarray_add(link_args, "-Wl,-z,max-page-size=0x1000");
             if (!try_link(opts->prefix, link_args, strmake("-Wl,-Ttext-segment=%s", opts->image_base)))
                 strarray_add(link_args, strmake("-Wl,-Ttext-segment=%s", opts->image_base));
             else

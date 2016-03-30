@@ -601,8 +601,8 @@ static struct node *write_find_parent_element( struct writer *writer )
 {
     struct node *node = writer->current;
 
-    if (node->hdr.node.nodeType == WS_XML_NODE_TYPE_ELEMENT) return node;
-    if (node->parent->hdr.node.nodeType == WS_XML_NODE_TYPE_ELEMENT) return node->parent;
+    if (node_type( node ) == WS_XML_NODE_TYPE_ELEMENT) return node;
+    if (node_type( node->parent ) == WS_XML_NODE_TYPE_ELEMENT) return node->parent;
     return NULL;
 }
 
@@ -894,15 +894,15 @@ static HRESULT write_add_element_node( struct writer *writer, const WS_XML_STRIN
                                        const WS_XML_STRING *localname, const WS_XML_STRING *ns )
 {
     struct node *node;
-    WS_XML_ELEMENT_NODE *elem, *current = &writer->current->hdr;
+    WS_XML_ELEMENT_NODE *elem;
     HRESULT hr;
 
     /* flush current start element if necessary */
     if (writer->state == WRITER_STATE_STARTELEMENT && ((hr = write_endstartelement( writer )) != S_OK))
         return hr;
 
-    if (!prefix && current->node.nodeType == WS_XML_NODE_TYPE_ELEMENT)
-        prefix = current->prefix;
+    if (!prefix && node_type( writer->current ) == WS_XML_NODE_TYPE_ELEMENT)
+        prefix = writer->current->hdr.prefix;
 
     if (!(node = alloc_node( WS_XML_NODE_TYPE_ELEMENT ))) return E_OUTOFMEMORY;
     elem = &node->hdr;
@@ -1378,7 +1378,7 @@ static HRESULT write_type_struct_field( struct writer *writer, const WS_FIELD_DE
     return S_OK;
 }
 
-static ULONG get_field_size( const WS_STRUCT_DESCRIPTION *desc, ULONG index )
+ULONG get_field_size( const WS_STRUCT_DESCRIPTION *desc, ULONG index )
 {
     if (index < desc->fieldCount - 1) return desc->fields[index + 1]->offset - desc->fields[index]->offset;
     return desc->size - desc->fields[index]->offset;
