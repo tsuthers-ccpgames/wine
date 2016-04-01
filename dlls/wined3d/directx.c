@@ -1334,6 +1334,7 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R3,             "AMD Radeon HD 8400 / R3 Series",   DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R7,             "AMD Radeon(TM) R7 Graphics",       DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9,             "AMD Radeon R9 290",                DRIVER_AMD_R600,         4096},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M380,        "AMD Radeon R9 M380 OpenGL Engine", DRIVER_AMD_R600,         2048},
 
     /* VMware */
     {HW_VENDOR_VMWARE,     CARD_VMWARE_SVGA3D,             "VMware SVGA 3D (Microsoft Corporation - WDDM)",             DRIVER_VMWARE,        1024},
@@ -1878,6 +1879,9 @@ cards_nvidia_binary[] =
  * eg HD 4800 is returned for multiple cards, even for RV790 based ones. */
 cards_amd_binary[] =
 {
+    {"R9 290",                      CARD_AMD_RADEON_R9},
+    {"R9 M380",                     CARD_AMD_RADEON_R9_M380},
+
     /* Southern Islands */
     {"HD 7900",                     CARD_AMD_RADEON_HD7900},
     {"HD 7800",                     CARD_AMD_RADEON_HD7800},
