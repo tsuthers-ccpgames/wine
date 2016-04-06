@@ -480,8 +480,10 @@ static struct fbo_entry *context_find_fbo_entry(struct wined3d_context *context,
 
     if (depth_stencil && render_targets[0])
     {
-        if (depth_stencil->resource.width < render_targets[0]->resource.width ||
-            depth_stencil->resource.height < render_targets[0]->resource.height)
+        if (wined3d_texture_get_level_width(depth_stencil->container, depth_stencil->texture_level)
+                < wined3d_texture_get_level_width(render_targets[0]->container, render_targets[0]->texture_level)
+                || wined3d_texture_get_level_height(depth_stencil->container, depth_stencil->texture_level)
+                < wined3d_texture_get_level_height(render_targets[0]->container, render_targets[0]->texture_level))
         {
             WARN("Depth stencil is smaller than the primary color buffer, disabling\n");
             depth_stencil = NULL;
@@ -1580,7 +1582,6 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
     HGLRC ctx, share_ctx;
     int pixel_format;
     unsigned int s;
-    int swap_interval;
     DWORD state;
     HDC hdc = 0;
     BOOL hdc_is_private = FALSE;
@@ -1836,36 +1837,6 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
         }
     }
 
-    switch (swapchain->desc.swap_interval)
-    {
-        case WINED3DPRESENT_INTERVAL_IMMEDIATE:
-            swap_interval = 0;
-            break;
-        case WINED3DPRESENT_INTERVAL_DEFAULT:
-        case WINED3DPRESENT_INTERVAL_ONE:
-            swap_interval = 1;
-            break;
-        case WINED3DPRESENT_INTERVAL_TWO:
-            swap_interval = 2;
-            break;
-        case WINED3DPRESENT_INTERVAL_THREE:
-            swap_interval = 3;
-            break;
-        case WINED3DPRESENT_INTERVAL_FOUR:
-            swap_interval = 4;
-            break;
-        default:
-            FIXME("Unknown swap interval %#x.\n", swapchain->desc.swap_interval);
-            swap_interval = 1;
-    }
-
-    if (gl_info->supported[WGL_EXT_SWAP_CONTROL])
-    {
-        if (!GL_EXTCALL(wglSwapIntervalEXT(swap_interval)))
-            ERR("wglSwapIntervalEXT failed to set swap interval %d for context %p, last error %#x\n",
-                swap_interval, ret, GetLastError());
-    }
-
     gl_info->gl_ops.gl.p_glGetIntegerv(GL_AUX_BUFFERS, &ret->aux_buffers);
 
     TRACE("Setting up the screen\n");
@@ -1959,7 +1930,8 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
     ret->shader_update_mask = (1u << WINED3D_SHADER_TYPE_PIXEL)
             | (1u << WINED3D_SHADER_TYPE_VERTEX)
             | (1u << WINED3D_SHADER_TYPE_GEOMETRY)
-            | (1u << WINED3D_SHADER_TYPE_HULL);
+            | (1u << WINED3D_SHADER_TYPE_HULL)
+            | (1u << WINED3D_SHADER_TYPE_DOMAIN);
 
     /* If this happens to be the first context for the device, dummy textures
      * are not created yet. In that case, they will be created (and bound) by
@@ -3479,14 +3451,12 @@ static void context_setup_target(struct wined3d_context *context,
         {
             unsigned int prev_sub_resource_idx = context->current_rt.sub_resource_idx;
             struct wined3d_texture *prev_texture = context->current_rt.texture;
-            struct wined3d_surface *prev_surface;
 
             /* Read the back buffer of the old drawable into the destination texture. */
             if (prev_texture->texture_srgb.name)
                 wined3d_texture_load(prev_texture, context, TRUE);
             wined3d_texture_load(prev_texture, context, FALSE);
-            prev_surface = prev_texture->sub_resources[prev_sub_resource_idx].u.surface;
-            surface_invalidate_location(prev_surface, WINED3D_LOCATION_DRAWABLE);
+            wined3d_texture_invalidate_location(prev_texture, prev_sub_resource_idx, WINED3D_LOCATION_DRAWABLE);
         }
     }
 

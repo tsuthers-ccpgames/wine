@@ -4833,7 +4833,8 @@ static void shader_arb_disable(void *shader_priv, struct wined3d_context *contex
     context->shader_update_mask = (1u << WINED3D_SHADER_TYPE_PIXEL)
             | (1u << WINED3D_SHADER_TYPE_VERTEX)
             | (1u << WINED3D_SHADER_TYPE_GEOMETRY)
-            | (1u << WINED3D_SHADER_TYPE_HULL);
+            | (1u << WINED3D_SHADER_TYPE_HULL)
+            | (1u << WINED3D_SHADER_TYPE_DOMAIN);
 }
 
 /* Context activation is done by the caller. */
@@ -5122,6 +5123,7 @@ static void shader_arb_get_caps(const struct wined3d_gl_info *gl_info, struct sh
     }
 
     caps->hs_version = 0;
+    caps->ds_version = 0;
     caps->gs_version = 0;
 
     if (gl_info->supported[ARB_FRAGMENT_PROGRAM])
@@ -5230,6 +5232,8 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_DCL                              */ shader_hw_nop,
     /* WINED3DSIH_DCL_CONSTANT_BUFFER              */ shader_hw_nop,
     /* WINED3DSIH_DCL_GLOBAL_FLAGS                 */ NULL,
+    /* WINED3DSIH_DCL_HS_FORK_PHASE_INSTANCE_COUNT */ NULL,
+    /* WINED3DSIH_DCL_HS_MAX_TESSFACTOR            */ NULL,
     /* WINED3DSIH_DCL_IMMEDIATE_CONSTANT_BUFFER    */ NULL,
     /* WINED3DSIH_DCL_INPUT                        */ NULL,
     /* WINED3DSIH_DCL_INPUT_CONTROL_POINT_COUNT    */ NULL,
@@ -5246,6 +5250,9 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_DCL_RESOURCE_STRUCTURED          */ NULL,
     /* WINED3DSIH_DCL_SAMPLER                      */ NULL,
     /* WINED3DSIH_DCL_TEMPS                        */ NULL,
+    /* WINED3DSIH_DCL_TESSELLATOR_DOMAIN           */ NULL,
+    /* WINED3DSIH_DCL_TESSELLATOR_OUTPUT_PRIMITIVE */ NULL,
+    /* WINED3DSIH_DCL_TESSELLATOR_PARTITIONING     */ NULL,
     /* WINED3DSIH_DCL_UAV_TYPED                    */ NULL,
     /* WINED3DSIH_DCL_VERTICES_OUT                 */ shader_hw_nop,
     /* WINED3DSIH_DEF                              */ shader_hw_nop,
@@ -5275,8 +5282,10 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_FTOI                             */ NULL,
     /* WINED3DSIH_FTOU                             */ NULL,
     /* WINED3DSIH_GE                               */ NULL,
+    /* WINED3DSIH_HS_CONTROL_POINT_PHASE           */ NULL,
     /* WINED3DSIH_HS_DECLS                         */ NULL,
     /* WINED3DSIH_HS_FORK_PHASE                    */ NULL,
+    /* WINED3DSIH_HS_JOIN_PHASE                    */ NULL,
     /* WINED3DSIH_IADD                             */ NULL,
     /* WINED3DSIH_IEQ                              */ NULL,
     /* WINED3DSIH_IF                               */ NULL /* Hardcoded into the shader */,
@@ -5366,6 +5375,7 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_TEXREG2RGB                       */ pshader_hw_texreg2rgb,
     /* WINED3DSIH_UDIV                             */ NULL,
     /* WINED3DSIH_UGE                              */ NULL,
+    /* WINED3DSIH_ULT                              */ NULL,
     /* WINED3DSIH_USHR                             */ NULL,
     /* WINED3DSIH_UTOF                             */ NULL,
     /* WINED3DSIH_XOR                              */ NULL,
@@ -7903,8 +7913,8 @@ static void arbfp_blit_surface(struct wined3d_device *device, enum wined3d_blit_
          * rectangle instead. */
         surface_load_fb_texture(src_surface, FALSE, context);
 
-        src_rect.top = src_surface->resource.height - src_rect.top;
-        src_rect.bottom = src_surface->resource.height - src_rect.bottom;
+        src_rect.top = wined3d_texture_get_level_height(src_texture, src_surface->texture_level) - src_rect.top;
+        src_rect.bottom = wined3d_texture_get_level_height(src_texture, src_surface->texture_level) - src_rect.bottom;
     }
     else
         wined3d_texture_load(src_texture, context, FALSE);
@@ -7937,7 +7947,7 @@ static void arbfp_blit_surface(struct wined3d_device *device, enum wined3d_blit_
     context_release(context);
 
     wined3d_texture_validate_location(dst_texture, dst_sub_resource_idx, dst_texture->resource.draw_binding);
-    surface_invalidate_location(dst_surface, ~dst_texture->resource.draw_binding);
+    wined3d_texture_invalidate_location(dst_texture, dst_sub_resource_idx, ~dst_texture->resource.draw_binding);
 }
 
 static HRESULT arbfp_blit_color_fill(struct wined3d_device *device, struct wined3d_rendertarget_view *view,

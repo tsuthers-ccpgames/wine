@@ -518,7 +518,7 @@
 @ stub KeClearEvent
 @ stub KeConnectInterrupt
 @ stub KeDcacheFlushCount
-@ stub KeDelayExecutionThread
+@ stdcall KeDelayExecutionThread(long long ptr)
 @ stub KeDeregisterBugCheckCallback
 @ stub KeDeregisterBugCheckReasonCallback
 @ stub KeDetachProcess
@@ -899,7 +899,7 @@
 @ stub PsReferenceImpersonationToken
 @ stub PsReferencePrimaryToken
 @ stdcall PsRemoveCreateThreadNotifyRoutine(ptr)
-@ stub PsRemoveLoadImageNotifyRoutine
+@ stdcall PsRemoveLoadImageNotifyRoutine(ptr)
 @ stub PsRestoreImpersonation
 @ stub PsReturnPoolQuota
 @ stub PsReturnProcessNonPagedPoolQuota

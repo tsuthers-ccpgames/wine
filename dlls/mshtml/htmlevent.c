@@ -84,6 +84,9 @@ static const WCHAR onfocusW[] = {'o','n','f','o','c','u','s',0};
 static const WCHAR focusinW[] = {'f','o','c','u','s','i','n',0};
 static const WCHAR onfocusinW[] = {'o','n','f','o','c','u','s','i','n',0};
 
+static const WCHAR focusoutW[] = {'f','o','c','u','s','o','u','t',0};
+static const WCHAR onfocusoutW[] = {'o','n','f','o','c','u','s','o','u','t',0};
+
 static const WCHAR helpW[] = {'h','e','l','p',0};
 static const WCHAR onhelpW[] = {'o','n','h','e','l','p',0};
 
@@ -98,6 +101,9 @@ static const WCHAR onkeyupW[] = {'o','n','k','e','y','u','p',0};
 
 static const WCHAR loadW[] = {'l','o','a','d',0};
 static const WCHAR onloadW[] = {'o','n','l','o','a','d',0};
+
+static const WCHAR messageW[] = {'m','e','s','s','a','g','e',0};
+static const WCHAR onmessageW[] = {'o','n','m','e','s','s','a','g','e',0};
 
 static const WCHAR mousedownW[] = {'m','o','u','s','e','d','o','w','n',0};
 static const WCHAR onmousedownW[] = {'o','n','m','o','u','s','e','d','o','w','n',0};
@@ -195,6 +201,8 @@ static const event_info_t event_info[] = {
         EVENT_DEFAULTLISTENER},
     {focusinW,           onfocusinW,           EVENTT_HTML,   DISPID_EVMETH_ONFOCUSIN,
         EVENT_BUBBLE},
+    {focusoutW,          onfocusoutW,          EVENTT_HTML,   DISPID_EVMETH_ONFOCUSOUT,
+        EVENT_BUBBLE},
     {helpW,              onhelpW,              EVENTT_KEY,    DISPID_EVMETH_ONHELP,
         EVENT_BUBBLE|EVENT_CANCELABLE},
     {keydownW,           onkeydownW,           EVENTT_KEY,    DISPID_EVMETH_ONKEYDOWN,
@@ -205,6 +213,8 @@ static const event_info_t event_info[] = {
         EVENT_DEFAULTLISTENER|EVENT_BUBBLE},
     {loadW,              onloadW,              EVENTT_HTML,   DISPID_EVMETH_ONLOAD,
         EVENT_BIND_TO_BODY},
+    {messageW,           onmessageW,           EVENTT_NONE,   DISPID_EVMETH_ONMESSAGE,
+        EVENT_FORWARDBODY /* FIXME: remove when we get the target right */ },
     {mousedownW,         onmousedownW,         EVENTT_MOUSE,  DISPID_EVMETH_ONMOUSEDOWN,
         EVENT_DEFAULTLISTENER|EVENT_BUBBLE|EVENT_CANCELABLE},
     {mousemoveW,         onmousemoveW,         EVENTT_MOUSE,  DISPID_EVMETH_ONMOUSEMOVE,
@@ -1085,7 +1095,7 @@ void call_event_handlers(HTMLDocumentNode *doc, HTMLEventObj *event_obj, EventTa
 }
 
 static void fire_event_obj(HTMLDocumentNode *doc, eventid_t eid, HTMLEventObj *event_obj,
-        nsIDOMNode *target, IDispatch *script_this)
+        HTMLDOMNode *target, IDispatch *script_this)
 {
     IHTMLEventObj *prev_event;
     nsIDOMNode *parent, *nsnode;
@@ -1109,8 +1119,8 @@ static void fire_event_obj(HTMLDocumentNode *doc, eventid_t eid, HTMLEventObj *e
     prev_event = window->event;
     window->event = event_obj ? &event_obj->IHTMLEventObj_iface : NULL;
 
-    nsIDOMNode_GetNodeType(target, &node_type);
-    nsnode = target;
+    nsIDOMNode_GetNodeType(target->nsnode, &node_type);
+    nsnode = target->nsnode;
     nsIDOMNode_AddRef(nsnode);
 
     switch(node_type) {
@@ -1173,8 +1183,8 @@ static void fire_event_obj(HTMLDocumentNode *doc, eventid_t eid, HTMLEventObj *e
     window->event = prev_event;
 
     if(!prevent_default && (event_info[eid].flags & EVENT_HASDEFAULTHANDLERS)) {
-        nsIDOMNode_AddRef(target);
-        nsnode = target;
+        nsnode = target->nsnode;
+        nsIDOMNode_AddRef(nsnode);
 
         do {
             hres = get_node(doc, nsnode, TRUE, &node);
@@ -1209,24 +1219,18 @@ static void fire_event_obj(HTMLDocumentNode *doc, eventid_t eid, HTMLEventObj *e
     htmldoc_release(&doc->basedoc);
 }
 
-void fire_event(HTMLDocumentNode *doc, eventid_t eid, BOOL set_event, nsIDOMNode *target, nsIDOMEvent *nsevent,
+void fire_event(HTMLDocumentNode *doc, eventid_t eid, BOOL set_event, HTMLDOMNode *target, nsIDOMEvent *nsevent,
         IDispatch *script_this)
 {
     HTMLEventObj *event_obj = NULL;
-    HTMLDOMNode *node;
     HRESULT hres;
 
     if(set_event) {
-        hres = get_node(doc, target, TRUE, &node);
-        if(FAILED(hres))
-            return;
-
         event_obj = create_event();
-        node_release(node);
         if(!event_obj)
             return;
 
-        hres = set_event_info(event_obj, node, eid, nsevent);
+        hres = set_event_info(event_obj, target, eid, nsevent);
         if(FAILED(hres)) {
             IHTMLEventObj_Release(&event_obj->IHTMLEventObj_iface);
             return;
@@ -1278,18 +1282,13 @@ HRESULT dispatch_event(HTMLDOMNode *node, const WCHAR *event_name, VARIANT *even
     if(event_obj) {
         hres = set_event_info(event_obj, node, eid, NULL);
         if(SUCCEEDED(hres))
-            fire_event_obj(node->doc, eid, event_obj, node->nsnode, NULL);
+            fire_event_obj(node->doc, eid, event_obj, node, NULL);
 
         IHTMLEventObj_Release(&event_obj->IHTMLEventObj_iface);
         if(FAILED(hres))
             return hres;
     }else {
-        if(!(event_info[eid].flags & EVENT_DEFAULTLISTENER)) {
-            FIXME("not EVENT_DEFAULTEVENTHANDLER\n");
-            return E_NOTIMPL;
-        }
-
-        fire_event(node->doc, eid, TRUE, node->nsnode, NULL, NULL);
+        fire_event(node->doc, eid, TRUE, node, NULL, NULL);
     }
 
     *cancelled = VARIANT_TRUE; /* FIXME */
@@ -1308,7 +1307,7 @@ HRESULT call_fire_event(HTMLDOMNode *node, eventid_t eid)
             return hres;
     }
 
-    fire_event(node->doc, eid, TRUE, node->nsnode, NULL, NULL);
+    fire_event(node->doc, eid, TRUE, node, NULL, NULL);
     return S_OK;
 }
 
@@ -1339,7 +1338,23 @@ HRESULT ensure_doc_nsevent_handler(HTMLDocumentNode *doc, eventid_t eid)
 
     TRACE("%s\n", debugstr_w(event_info[eid].name));
 
-    if(!doc->nsdoc || doc->event_vector[eid] || !(event_info[eid].flags & (EVENT_DEFAULTLISTENER|EVENT_BIND_TO_BODY)))
+    if(!doc->nsdoc)
+        return S_OK;
+
+    switch(eid) {
+    case EVENTID_FOCUSIN:
+        doc->event_vector[eid] = TRUE;
+        eid = EVENTID_FOCUS;
+        break;
+    case EVENTID_FOCUSOUT:
+        doc->event_vector[eid] = TRUE;
+        eid = EVENTID_BLUR;
+        break;
+    default:
+        break;
+    }
+
+    if(doc->event_vector[eid] || !(event_info[eid].flags & (EVENT_DEFAULTLISTENER|EVENT_BIND_TO_BODY)))
         return S_OK;
 
     if(event_info[eid].flags & EVENT_BIND_TO_BODY) {

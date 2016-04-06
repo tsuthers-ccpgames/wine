@@ -83,6 +83,71 @@ void wined3d_texture_validate_location(struct wined3d_texture *texture,
     TRACE("New locations flags are %s.\n", wined3d_debug_location(sub_resource->locations));
 }
 
+void wined3d_texture_invalidate_location(struct wined3d_texture *texture,
+        unsigned int sub_resource_idx, DWORD location)
+{
+    struct wined3d_texture_sub_resource *sub_resource;
+
+    TRACE("texture %p, sub_resource_idx %u, location %s.\n",
+            texture, sub_resource_idx, wined3d_debug_location(location));
+
+    if (location & (WINED3D_LOCATION_TEXTURE_RGB | WINED3D_LOCATION_TEXTURE_SRGB))
+        wined3d_texture_set_dirty(texture);
+
+    sub_resource = &texture->sub_resources[sub_resource_idx];
+    sub_resource->locations &= ~location;
+
+    TRACE("New locations flags are %s.\n", wined3d_debug_location(sub_resource->locations));
+
+    if (!sub_resource->locations)
+        ERR("Sub-resource %u of texture %p does not have any up to date location.\n",
+                sub_resource_idx, texture);
+}
+
+void wined3d_texture_get_memory(struct wined3d_texture *texture, unsigned int sub_resource_idx,
+        struct wined3d_bo_address *data, DWORD locations)
+{
+    struct wined3d_texture_sub_resource *sub_resource;
+
+    TRACE("texture %p, sub_resource_idx %u, data %p, locations %s.\n",
+            texture, sub_resource_idx, data, wined3d_debug_location(locations));
+
+    sub_resource = &texture->sub_resources[sub_resource_idx];
+    if (locations & WINED3D_LOCATION_BUFFER)
+    {
+        data->addr = NULL;
+        data->buffer_object = sub_resource->buffer_object;
+        return;
+    }
+    if (locations & WINED3D_LOCATION_USER_MEMORY)
+    {
+        data->addr = texture->user_memory;
+        data->buffer_object = 0;
+        return;
+    }
+    if (locations & WINED3D_LOCATION_DIB)
+    {
+        if (texture->resource.type == WINED3D_RTYPE_TEXTURE_2D)
+        {
+            data->addr = sub_resource->u.surface->dib.bitmap_data;
+            data->buffer_object = 0;
+            return;
+        }
+        ERR("Invalid location WINED3D_LOCATION_DIB for resource type %s.\n",
+                debug_d3dresourcetype(texture->resource.type));
+    }
+    if (locations & WINED3D_LOCATION_SYSMEM)
+    {
+        data->addr = sub_resource->resource->heap_memory;
+        data->buffer_object = 0;
+        return;
+    }
+
+    ERR("Unexpected locations %s.\n", wined3d_debug_location(locations));
+    data->addr = NULL;
+    data->buffer_object = 0;
+}
+
 static HRESULT wined3d_texture_init(struct wined3d_texture *texture, const struct wined3d_texture_ops *texture_ops,
         UINT layer_count, UINT level_count, const struct wined3d_resource_desc *desc, DWORD flags,
         struct wined3d_device *device, void *parent, const struct wined3d_parent_ops *parent_ops,
@@ -141,8 +206,7 @@ void wined3d_texture_remove_buffer_object(struct wined3d_texture *texture,
     buffer_object = &texture->sub_resources[sub_resource_idx].buffer_object;
     GL_EXTCALL(glDeleteBuffers(1, buffer_object));
     checkGLcall("glDeleteBuffers");
-    texture->texture_ops->texture_sub_resource_invalidate_location(
-            texture->sub_resources[sub_resource_idx].resource, WINED3D_LOCATION_BUFFER);
+    wined3d_texture_invalidate_location(texture, sub_resource_idx, WINED3D_LOCATION_BUFFER);
     *buffer_object = 0;
 
     TRACE("Deleted buffer object %u for texture %p, sub-resource %u.\n",
@@ -584,8 +648,7 @@ void wined3d_texture_load(struct wined3d_texture *texture,
             if (!texture->texture_ops->texture_load_location(texture, i, context, sub_resource->map_binding))
                 ERR("Failed to load location %s.\n", wined3d_debug_location(sub_resource->map_binding));
             else
-                texture->texture_ops->texture_sub_resource_invalidate_location(sub_resource,
-                        ~sub_resource->map_binding);
+                wined3d_texture_invalidate_location(texture, i, ~sub_resource->map_binding);
         }
 
         texture->async.gl_color_key = texture->async.src_blt_color_key;
@@ -907,7 +970,7 @@ static void wined3d_texture_force_reload(struct wined3d_texture *texture)
     texture->async.flags &= ~WINED3D_TEXTURE_ASYNC_COLOR_KEY;
     for (i = 0; i < sub_count; ++i)
     {
-        texture->texture_ops->texture_sub_resource_invalidate_location(texture->sub_resources[i].resource,
+        wined3d_texture_invalidate_location(texture, i,
                 WINED3D_LOCATION_TEXTURE_RGB | WINED3D_LOCATION_TEXTURE_SRGB);
     }
 }
@@ -940,8 +1003,8 @@ void CDECL wined3d_texture_generate_mipmaps(struct wined3d_texture *texture)
     FIXME("texture %p stub!\n", texture);
 }
 
-struct wined3d_resource *wined3d_texture_get_sub_resource(const struct wined3d_texture *texture,
-        UINT sub_resource_idx)
+struct wined3d_texture_sub_resource *wined3d_texture_get_sub_resource(struct wined3d_texture *texture,
+        unsigned int sub_resource_idx)
 {
     UINT sub_count = texture->level_count * texture->layer_count;
 
@@ -953,13 +1016,13 @@ struct wined3d_resource *wined3d_texture_get_sub_resource(const struct wined3d_t
         return NULL;
     }
 
-    return texture->sub_resources[sub_resource_idx].resource;
+    return &texture->sub_resources[sub_resource_idx];
 }
 
 HRESULT CDECL wined3d_texture_add_dirty_region(struct wined3d_texture *texture,
         UINT layer, const struct wined3d_box *dirty_region)
 {
-    struct wined3d_resource *sub_resource;
+    struct wined3d_texture_sub_resource *sub_resource;
     struct wined3d_context *context;
     unsigned int sub_resource_idx;
 
@@ -976,13 +1039,14 @@ HRESULT CDECL wined3d_texture_add_dirty_region(struct wined3d_texture *texture,
         FIXME("Ignoring dirty_region %s.\n", debug_box(dirty_region));
 
     context = context_acquire(texture->resource.device, NULL);
-    if (!texture->texture_ops->texture_load_location(texture, sub_resource_idx, context, sub_resource->map_binding))
+    if (!texture->texture_ops->texture_load_location(texture, sub_resource_idx,
+            context, sub_resource->resource->map_binding))
     {
-        ERR("Failed to load location %s.\n", wined3d_debug_location(sub_resource->map_binding));
+        ERR("Failed to load location %s.\n", wined3d_debug_location(sub_resource->resource->map_binding));
         context_release(context);
         return E_OUTOFMEMORY;
     }
-    texture->texture_ops->texture_sub_resource_invalidate_location(sub_resource, ~sub_resource->map_binding);
+    wined3d_texture_invalidate_location(texture, sub_resource_idx, ~sub_resource->resource->map_binding);
     context_release(context);
 
     return WINED3D_OK;
@@ -1015,7 +1079,7 @@ static HRESULT wined3d_texture_upload_data(struct wined3d_texture *texture,
 
         texture->texture_ops->texture_sub_resource_upload_data(sub_resource, context, &data[i]);
         wined3d_texture_validate_location(texture, i, WINED3D_LOCATION_TEXTURE_RGB);
-        texture->texture_ops->texture_sub_resource_invalidate_location(sub_resource, ~WINED3D_LOCATION_TEXTURE_RGB);
+        wined3d_texture_invalidate_location(texture, i, ~WINED3D_LOCATION_TEXTURE_RGB);
     }
 
     context_release(context);
@@ -1027,13 +1091,6 @@ static void texture2d_sub_resource_load(struct wined3d_resource *sub_resource,
         struct wined3d_context *context, BOOL srgb)
 {
     surface_load(surface_from_resource(sub_resource), context, srgb);
-}
-
-static void texture2d_sub_resource_invalidate_location(struct wined3d_resource *sub_resource, DWORD location)
-{
-    struct wined3d_surface *surface = surface_from_resource(sub_resource);
-
-    surface_invalidate_location(surface, location);
 }
 
 static void texture2d_sub_resource_upload_data(struct wined3d_resource *sub_resource,
@@ -1147,7 +1204,6 @@ static void texture2d_cleanup_sub_resources(struct wined3d_texture *texture)
 static const struct wined3d_texture_ops texture2d_ops =
 {
     texture2d_sub_resource_load,
-    texture2d_sub_resource_invalidate_location,
     texture2d_sub_resource_upload_data,
     texture2d_load_location,
     texture2d_prepare_location,
@@ -1198,12 +1254,13 @@ static HRESULT texture_resource_sub_resource_map(struct wined3d_resource *resour
         struct wined3d_map_desc *map_desc, const struct wined3d_box *box, DWORD flags)
 {
     const struct wined3d_format *format = resource->format;
+    struct wined3d_texture_sub_resource *sub_resource;
     struct wined3d_device *device = resource->device;
     unsigned int fmt_flags = resource->format_flags;
     const struct wined3d_gl_info *gl_info = NULL;
     struct wined3d_context *context = NULL;
-    struct wined3d_resource *sub_resource;
     struct wined3d_texture *texture;
+    struct wined3d_bo_address data;
     unsigned int texture_level;
     BYTE *base_memory;
     BOOL ret;
@@ -1239,7 +1296,7 @@ static HRESULT texture_resource_sub_resource_map(struct wined3d_resource *resour
             return WINED3DERR_INVALIDCALL;
     }
 
-    if (sub_resource->map_count)
+    if (sub_resource->resource->map_count)
     {
         WARN("Sub-resource is already mapped.\n");
         return WINED3DERR_INVALIDCALL;
@@ -1256,17 +1313,17 @@ static HRESULT texture_resource_sub_resource_map(struct wined3d_resource *resour
     if (flags & WINED3D_MAP_DISCARD)
     {
         TRACE("WINED3D_MAP_DISCARD flag passed, marking %s as up to date.\n",
-                wined3d_debug_location(sub_resource->map_binding));
+                wined3d_debug_location(sub_resource->resource->map_binding));
         if ((ret = texture->texture_ops->texture_prepare_location(texture,
-                sub_resource_idx, context, sub_resource->map_binding)))
-            wined3d_texture_validate_location(texture, sub_resource_idx, sub_resource->map_binding);
+                sub_resource_idx, context, sub_resource->resource->map_binding)))
+            wined3d_texture_validate_location(texture, sub_resource_idx, sub_resource->resource->map_binding);
     }
     else
     {
         if (resource->usage & WINED3DUSAGE_DYNAMIC)
             WARN_(d3d_perf)("Mapping a dynamic texture without WINED3D_MAP_DISCARD.\n");
         ret = texture->texture_ops->texture_load_location(texture,
-                sub_resource_idx, context, sub_resource->map_binding);
+                sub_resource_idx, context, sub_resource->resource->map_binding);
     }
 
     if (!ret)
@@ -1277,50 +1334,33 @@ static HRESULT texture_resource_sub_resource_map(struct wined3d_resource *resour
     }
 
     if (!(flags & (WINED3D_MAP_NO_DIRTY_UPDATE | WINED3D_MAP_READONLY)))
-        texture->texture_ops->texture_sub_resource_invalidate_location(sub_resource, ~sub_resource->map_binding);
+        wined3d_texture_invalidate_location(texture, sub_resource_idx, ~sub_resource->resource->map_binding);
 
-    switch (sub_resource->map_binding)
+    wined3d_texture_get_memory(texture, sub_resource_idx, &data, sub_resource->resource->map_binding);
+    if (!data.buffer_object)
     {
-        case WINED3D_LOCATION_SYSMEM:
-            base_memory = sub_resource->heap_memory;
-            break;
+        base_memory = data.addr;
+    }
+    else
+    {
+        GL_EXTCALL(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, data.buffer_object));
 
-        case WINED3D_LOCATION_USER_MEMORY:
-            base_memory = texture->user_memory;
-            break;
+        if (gl_info->supported[ARB_MAP_BUFFER_RANGE])
+        {
+            GLbitfield map_flags = wined3d_resource_gl_map_flags(flags);
+            map_flags &= ~GL_MAP_FLUSH_EXPLICIT_BIT;
+            base_memory = GL_EXTCALL(glMapBufferRange(GL_PIXEL_UNPACK_BUFFER,
+                    (INT_PTR)data.addr, sub_resource->resource->size, map_flags));
+        }
+        else
+        {
+            GLenum access = wined3d_resource_gl_legacy_map_flags(flags);
+            base_memory = GL_EXTCALL(glMapBuffer(GL_PIXEL_UNPACK_BUFFER, access));
+            base_memory += (INT_PTR)data.addr;
+        }
 
-        case WINED3D_LOCATION_DIB:
-            if (resource->type != WINED3D_RTYPE_TEXTURE_2D)
-                ERR("Invalid map binding %#x for resource type %#x.\n",
-                        sub_resource->map_binding, resource->type);
-            base_memory = texture->sub_resources[sub_resource_idx].u.surface->dib.bitmap_data;
-            break;
-
-        case WINED3D_LOCATION_BUFFER:
-            GL_EXTCALL(glBindBuffer(GL_PIXEL_UNPACK_BUFFER,
-                    texture->sub_resources[sub_resource_idx].buffer_object));
-
-            if (gl_info->supported[ARB_MAP_BUFFER_RANGE])
-            {
-                GLbitfield map_flags = wined3d_resource_gl_map_flags(flags);
-                map_flags &= ~GL_MAP_FLUSH_EXPLICIT_BIT;
-                base_memory = GL_EXTCALL(glMapBufferRange(GL_PIXEL_UNPACK_BUFFER,
-                        0, sub_resource->size, map_flags));
-            }
-            else
-            {
-                GLenum access = wined3d_resource_gl_legacy_map_flags(flags);
-                base_memory = GL_EXTCALL(glMapBuffer(GL_PIXEL_UNPACK_BUFFER, access));
-            }
-
-            GL_EXTCALL(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0));
-            checkGLcall("Map PBO");
-            break;
-
-        default:
-            ERR("Unexpected map binding %s.\n", wined3d_debug_location(sub_resource->map_binding));
-            base_memory = NULL;
-            break;
+        GL_EXTCALL(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0));
+        checkGLcall("Map PBO");
     }
 
     if (context)
@@ -1373,7 +1413,7 @@ static HRESULT texture_resource_sub_resource_map(struct wined3d_resource *resour
         TRACE("Mapped front buffer %s.\n", wine_dbgstr_rect(r));
     }
 
-    ++sub_resource->map_count;
+    ++sub_resource->resource->map_count;
 
     TRACE("Returning memory %p, row pitch %u, slice pitch %u.\n",
             map_desc->data, map_desc->row_pitch, map_desc->slice_pitch);
@@ -1383,8 +1423,8 @@ static HRESULT texture_resource_sub_resource_map(struct wined3d_resource *resour
 
 static HRESULT texture_resource_sub_resource_unmap(struct wined3d_resource *resource, unsigned int sub_resource_idx)
 {
+    struct wined3d_texture_sub_resource *sub_resource;
     const struct wined3d_gl_info *gl_info;
-    struct wined3d_resource *sub_resource;
     struct wined3d_texture *texture;
     struct wined3d_context *context;
 
@@ -1394,13 +1434,13 @@ static HRESULT texture_resource_sub_resource_unmap(struct wined3d_resource *reso
     if (!(sub_resource = wined3d_texture_get_sub_resource(texture, sub_resource_idx)))
         return E_INVALIDARG;
 
-    if (!sub_resource->map_count)
+    if (!sub_resource->resource->map_count)
     {
         WARN("Trying to unmap unmapped sub-resource.\n");
         return WINEDDERR_NOTLOCKED;
     }
 
-    switch (sub_resource->map_binding)
+    switch (sub_resource->resource->map_binding)
     {
         case WINED3D_LOCATION_SYSMEM:
         case WINED3D_LOCATION_USER_MEMORY:
@@ -1420,7 +1460,7 @@ static HRESULT texture_resource_sub_resource_unmap(struct wined3d_resource *reso
             break;
 
         default:
-            ERR("Unexpected map binding %s.\n", wined3d_debug_location(sub_resource->map_binding));
+            ERR("Unexpected map binding %s.\n", wined3d_debug_location(sub_resource->resource->map_binding));
             break;
     }
 
@@ -1437,7 +1477,7 @@ static HRESULT texture_resource_sub_resource_unmap(struct wined3d_resource *reso
         FIXME("Depth / stencil buffer locking is not implemented.\n");
     }
 
-    --sub_resource->map_count;
+    --sub_resource->resource->map_count;
 
     return WINED3D_OK;
 }
@@ -1655,13 +1695,6 @@ static void texture3d_sub_resource_load(struct wined3d_resource *sub_resource,
     wined3d_volume_load(volume_from_resource(sub_resource), context, srgb);
 }
 
-static void texture3d_sub_resource_invalidate_location(struct wined3d_resource *sub_resource, DWORD location)
-{
-    struct wined3d_volume *volume = volume_from_resource(sub_resource);
-
-    wined3d_volume_invalidate_location(volume, location);
-}
-
 static void texture3d_sub_resource_upload_data(struct wined3d_resource *sub_resource,
         const struct wined3d_context *context, const struct wined3d_sub_resource_data *data)
 {
@@ -1734,7 +1767,6 @@ static void texture3d_cleanup_sub_resources(struct wined3d_texture *texture)
 static const struct wined3d_texture_ops texture3d_ops =
 {
     texture3d_sub_resource_load,
-    texture3d_sub_resource_invalidate_location,
     texture3d_sub_resource_upload_data,
     texture3d_load_location,
     texture3d_prepare_location,
@@ -1905,7 +1937,7 @@ HRESULT CDECL wined3d_texture_blt(struct wined3d_texture *dst_texture, unsigned 
         const RECT *dst_rect, struct wined3d_texture *src_texture, unsigned int src_sub_resource_idx,
         const RECT *src_rect, DWORD flags, const struct wined3d_blt_fx *fx, enum wined3d_texture_filter_type filter)
 {
-    struct wined3d_resource *dst_resource, *src_resource = NULL;
+    struct wined3d_texture_sub_resource *dst_resource, *src_resource = NULL;
 
     TRACE("dst_texture %p, dst_sub_resource_idx %u, dst_rect %s, src_texture %p, "
             "src_sub_resource_idx %u, src_rect %s, flags %#x, fx %p, filter %s.\n",
@@ -1913,36 +1945,35 @@ HRESULT CDECL wined3d_texture_blt(struct wined3d_texture *dst_texture, unsigned 
             src_sub_resource_idx, wine_dbgstr_rect(src_rect), flags, fx, debug_d3dtexturefiltertype(filter));
 
     if (!(dst_resource = wined3d_texture_get_sub_resource(dst_texture, dst_sub_resource_idx))
-            || dst_resource->type != WINED3D_RTYPE_SURFACE)
+            || dst_texture->resource.type != WINED3D_RTYPE_TEXTURE_2D)
         return WINED3DERR_INVALIDCALL;
 
     if (src_texture)
     {
         if (!(src_resource = wined3d_texture_get_sub_resource(src_texture, src_sub_resource_idx))
-                || src_resource->type != WINED3D_RTYPE_SURFACE)
+                || src_texture->resource.type != WINED3D_RTYPE_TEXTURE_2D)
             return WINED3DERR_INVALIDCALL;
     }
 
-    return wined3d_surface_blt(surface_from_resource(dst_resource), dst_rect,
-            src_resource ? surface_from_resource(src_resource) : NULL, src_rect, flags, fx, filter);
+    return wined3d_surface_blt(dst_resource->u.surface, dst_rect,
+            src_resource ? src_resource->u.surface : NULL, src_rect, flags, fx, filter);
 }
 
 HRESULT CDECL wined3d_texture_get_overlay_position(const struct wined3d_texture *texture,
         unsigned int sub_resource_idx, LONG *x, LONG *y)
 {
-    struct wined3d_resource *sub_resource;
     struct wined3d_surface *surface;
 
     TRACE("texture %p, sub_resource_idx %u, x %p, y %p.\n", texture, sub_resource_idx, x, y);
 
     if (!(texture->resource.usage & WINED3DUSAGE_OVERLAY) || texture->resource.type != WINED3D_RTYPE_TEXTURE_2D
-            || !(sub_resource = wined3d_texture_get_sub_resource(texture, sub_resource_idx)))
+            || sub_resource_idx >= texture->level_count * texture->layer_count)
     {
         WARN("Invalid sub-resource specified.\n");
         return WINEDDERR_NOTAOVERLAYSURFACE;
     }
 
-    surface = surface_from_resource(sub_resource);
+    surface = texture->sub_resources[sub_resource_idx].u.surface;
     if (!surface->overlay_dest)
     {
         TRACE("Overlay not visible.\n");
@@ -1962,7 +1993,7 @@ HRESULT CDECL wined3d_texture_get_overlay_position(const struct wined3d_texture 
 HRESULT CDECL wined3d_texture_set_overlay_position(struct wined3d_texture *texture,
         unsigned int sub_resource_idx, LONG x, LONG y)
 {
-    struct wined3d_resource *sub_resource;
+    struct wined3d_texture_sub_resource *sub_resource;
     struct wined3d_surface *surface;
     LONG w, h;
 
@@ -1975,7 +2006,7 @@ HRESULT CDECL wined3d_texture_set_overlay_position(struct wined3d_texture *textu
         return WINEDDERR_NOTAOVERLAYSURFACE;
     }
 
-    surface = surface_from_resource(sub_resource);
+    surface = sub_resource->u.surface;
     w = surface->overlay_destrect.right - surface->overlay_destrect.left;
     h = surface->overlay_destrect.bottom - surface->overlay_destrect.top;
     surface->overlay_destrect.left = x;
@@ -1990,7 +2021,7 @@ HRESULT CDECL wined3d_texture_update_overlay(struct wined3d_texture *texture, un
         const RECT *src_rect, struct wined3d_texture *dst_texture, unsigned int dst_sub_resource_idx,
         const RECT *dst_rect, DWORD flags)
 {
-    struct wined3d_resource *sub_resource, *dst_sub_resource;
+    struct wined3d_texture_sub_resource *sub_resource, *dst_sub_resource;
     struct wined3d_surface *surface, *dst_surface;
 
     TRACE("texture %p, sub_resource_idx %u, src_rect %s, dst_texture %p, "
@@ -2012,13 +2043,13 @@ HRESULT CDECL wined3d_texture_update_overlay(struct wined3d_texture *texture, un
         return WINED3DERR_INVALIDCALL;
     }
 
-    surface = surface_from_resource(sub_resource);
+    surface = sub_resource->u.surface;
     if (src_rect)
         surface->overlay_srcrect = *src_rect;
     else
         SetRect(&surface->overlay_srcrect, 0, 0, surface->resource.width, surface->resource.height);
 
-    dst_surface = surface_from_resource(dst_sub_resource);
+    dst_surface = dst_sub_resource->u.surface;
     if (dst_rect)
         surface->overlay_destrect = *dst_rect;
     else
@@ -2194,8 +2225,8 @@ HRESULT CDECL wined3d_texture_create(struct wined3d_device *device, const struct
 HRESULT CDECL wined3d_texture_get_dc(struct wined3d_texture *texture, unsigned int sub_resource_idx, HDC *dc)
 {
     struct wined3d_device *device = texture->resource.device;
+    struct wined3d_texture_sub_resource *sub_resource;
     struct wined3d_context *context = NULL;
-    struct wined3d_resource *sub_resource;
     struct wined3d_surface *surface;
     HRESULT hr;
 
@@ -2204,13 +2235,13 @@ HRESULT CDECL wined3d_texture_get_dc(struct wined3d_texture *texture, unsigned i
     if (!(sub_resource = wined3d_texture_get_sub_resource(texture, sub_resource_idx)))
         return WINED3DERR_INVALIDCALL;
 
-    if (sub_resource->type != WINED3D_RTYPE_SURFACE)
+    if (texture->resource.type != WINED3D_RTYPE_TEXTURE_2D)
     {
         WARN("Not supported on %s resources.\n", debug_d3dresourcetype(texture->resource.type));
         return WINED3DERR_INVALIDCALL;
     }
 
-    surface = surface_from_resource(sub_resource);
+    surface = sub_resource->u.surface;
 
     /* Give more detailed info for ddraw. */
     if (surface->flags & SFLAG_DCINUSE)
@@ -2239,7 +2270,7 @@ HRESULT CDECL wined3d_texture_get_dc(struct wined3d_texture *texture, unsigned i
     }
 
     surface_load_location(surface, context, WINED3D_LOCATION_DIB);
-    surface_invalidate_location(surface, ~WINED3D_LOCATION_DIB);
+    wined3d_texture_invalidate_location(texture, sub_resource_idx, ~WINED3D_LOCATION_DIB);
 
     if (context)
         context_release(context);
@@ -2256,8 +2287,8 @@ HRESULT CDECL wined3d_texture_get_dc(struct wined3d_texture *texture, unsigned i
 HRESULT CDECL wined3d_texture_release_dc(struct wined3d_texture *texture, unsigned int sub_resource_idx, HDC dc)
 {
     struct wined3d_device *device = texture->resource.device;
+    struct wined3d_texture_sub_resource *sub_resource;
     struct wined3d_context *context = NULL;
-    struct wined3d_resource *sub_resource;
     struct wined3d_surface *surface;
 
     TRACE("texture %p, sub_resource_idx %u, dc %p.\n", texture, sub_resource_idx, dc);
@@ -2265,13 +2296,13 @@ HRESULT CDECL wined3d_texture_release_dc(struct wined3d_texture *texture, unsign
     if (!(sub_resource = wined3d_texture_get_sub_resource(texture, sub_resource_idx)))
         return WINED3DERR_INVALIDCALL;
 
-    if (sub_resource->type != WINED3D_RTYPE_SURFACE)
+    if (texture->resource.type != WINED3D_RTYPE_TEXTURE_2D)
     {
         WARN("Not supported on %s resources.\n", debug_d3dresourcetype(texture->resource.type));
         return WINED3DERR_INVALIDCALL;
     }
 
-    surface = surface_from_resource(sub_resource);
+    surface = sub_resource->u.surface;
 
     if (!(surface->flags & SFLAG_DCINUSE))
         return WINEDDERR_NODC;
@@ -2302,7 +2333,7 @@ HRESULT CDECL wined3d_texture_release_dc(struct wined3d_texture *texture, unsign
             context = context_acquire(device, NULL);
 
         surface_load_location(surface, context, surface->resource.map_binding);
-        surface_invalidate_location(surface, WINED3D_LOCATION_DIB);
+        wined3d_texture_invalidate_location(texture, sub_resource_idx, WINED3D_LOCATION_DIB);
         if (context)
             context_release(context);
     }

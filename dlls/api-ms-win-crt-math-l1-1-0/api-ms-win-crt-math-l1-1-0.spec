@@ -129,9 +129,9 @@
 @ stub acoshl
 @ cdecl asin(double) ucrtbase.asin
 @ cdecl -arch=arm,x86_64 asinf(float) ucrtbase.asinf
-@ stub asinh
-@ stub asinhf
-@ stub asinhl
+@ cdecl asinh(double double) ucrtbase.asinh
+@ cdecl asinhf(float float) ucrtbase.asinhf
+@ cdecl asinhl(double double) ucrtbase.asinhl
 @ cdecl atan(double) ucrtbase.atan
 @ cdecl atan2(double double) ucrtbase.atan2
 @ cdecl -arch=arm,x86_64 atan2f(float float) ucrtbase.atan2f
@@ -316,12 +316,12 @@
 @ cdecl round(double) ucrtbase.round
 @ cdecl roundf(float) ucrtbase.roundf
 @ cdecl roundl(double) ucrtbase.roundl
-@ stub scalbln
-@ stub scalblnf
-@ stub scalblnl
-@ stub scalbn
-@ stub scalbnf
-@ stub scalbnl
+@ cdecl scalbln(double long) ucrtbase.scalbln
+@ cdecl scalblnf(float long) ucrtbase.scalblnf
+@ cdecl scalblnl(double long) ucrtbase.scalblnl
+@ cdecl scalbn(double long) ucrtbase.scalbn
+@ cdecl scalbnf(float long) ucrtbase.scalbnf
+@ cdecl scalbnl(double long) ucrtbase.scalbnl
 @ cdecl sin(double) ucrtbase.sin
 @ cdecl -arch=arm,x86_64 sinf(float) ucrtbase.sinf
 @ cdecl sinh(double) ucrtbase.sinh

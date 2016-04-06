@@ -2199,10 +2199,22 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CreateHullShader(ID3D11Device *ifa
 static HRESULT STDMETHODCALLTYPE d3d11_device_CreateDomainShader(ID3D11Device *iface, const void *byte_code,
         SIZE_T byte_code_length, ID3D11ClassLinkage *class_linkage, ID3D11DomainShader **shader)
 {
-    FIXME("iface %p, byte_code %p, byte_code_length %lu, class_linkage %p, shader %p stub!\n",
+    struct d3d_device *device = impl_from_ID3D11Device(iface);
+    struct d3d11_domain_shader *object;
+    HRESULT hr;
+
+    TRACE("iface %p, byte_code %p, byte_code_length %lu, class_linkage %p, shader %p.\n",
             iface, byte_code, byte_code_length, class_linkage, shader);
 
-    return E_NOTIMPL;
+    if (class_linkage)
+        FIXME("Class linkage is not implemented yet.\n");
+
+    if (FAILED(hr = d3d11_domain_shader_create(device, byte_code, byte_code_length, &object)))
+        return hr;
+
+    *shader = &object->ID3D11DomainShader_iface;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d3d11_device_CreateComputeShader(ID3D11Device *iface, const void *byte_code,
@@ -2474,9 +2486,14 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CreateQuery(ID3D11Device *iface,
     if (FAILED(hr = d3d_query_create(device, desc, FALSE, &object)))
         return hr;
 
-    *query = &object->ID3D11Query_iface;
+    if (query)
+    {
+        *query = &object->ID3D11Query_iface;
+        return S_OK;
+    }
 
-    return S_OK;
+    ID3D11Query_Release(&object->ID3D11Query_iface);
+    return S_FALSE;
 }
 
 static HRESULT STDMETHODCALLTYPE d3d11_device_CreatePredicate(ID3D11Device *iface, const D3D11_QUERY_DESC *desc,
@@ -2491,9 +2508,14 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CreatePredicate(ID3D11Device *ifac
     if (FAILED(hr = d3d_query_create(device, desc, TRUE, &object)))
         return hr;
 
-    *predicate = (ID3D11Predicate *)&object->ID3D11Query_iface;
+    if (predicate)
+    {
+        *predicate = (ID3D11Predicate *)&object->ID3D11Query_iface;
+        return S_OK;
+    }
 
-    return S_OK;
+    ID3D11Query_Release(&object->ID3D11Query_iface);
+    return S_FALSE;
 }
 
 static HRESULT STDMETHODCALLTYPE d3d11_device_CreateCounter(ID3D11Device *iface, const D3D11_COUNTER_DESC *desc,
@@ -4588,9 +4610,14 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreateQuery(ID3D10Device1 *iface,
     if (FAILED(hr = d3d_query_create(device, (const D3D11_QUERY_DESC *)desc, FALSE, &object)))
         return hr;
 
-    *query = &object->ID3D10Query_iface;
+    if (query)
+    {
+        *query = &object->ID3D10Query_iface;
+        return S_OK;
+    }
 
-    return S_OK;
+    ID3D10Query_Release(&object->ID3D10Query_iface);
+    return S_FALSE;
 }
 
 static HRESULT STDMETHODCALLTYPE d3d10_device_CreatePredicate(ID3D10Device1 *iface,
@@ -4605,9 +4632,14 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreatePredicate(ID3D10Device1 *ifa
     if (FAILED(hr = d3d_query_create(device, (const D3D11_QUERY_DESC *)desc, TRUE, &object)))
         return hr;
 
-    *predicate = (ID3D10Predicate *)&object->ID3D10Query_iface;
+    if (predicate)
+    {
+        *predicate = (ID3D10Predicate *)&object->ID3D10Query_iface;
+        return S_OK;
+    }
 
-    return S_OK;
+    ID3D10Query_Release(&object->ID3D10Query_iface);
+    return S_FALSE;
 }
 
 static HRESULT STDMETHODCALLTYPE d3d10_device_CreateCounter(ID3D10Device1 *iface,

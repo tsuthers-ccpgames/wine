@@ -2927,7 +2927,6 @@ static void test_mxwriter_handlers(void)
         ok(hr == S_OK, "%s, expected S_OK, got %08x\n", wine_dbgstr_guid(riids[i]), hr);
         ok(writer2 == writer, "got %p, expected %p\n", writer2, writer);
         EXPECT_REF(writer, 3);
-        EXPECT_REF(writer2, 3);
         IMXWriter_Release(writer2);
         IUnknown_Release(handler);
     }
@@ -4789,6 +4788,7 @@ static void test_mxwriter_dtd(void)
     ISAXLexicalHandler *lexical;
     IVBSAXDeclHandler *vbdecl;
     ISAXDeclHandler *decl;
+    ISAXDTDHandler *dtd;
     IMXWriter *writer;
     VARIANT dest;
     HRESULT hr;
@@ -4987,6 +4987,9 @@ static void test_mxwriter_dtd(void)
     hr = IVBSAXDeclHandler_externalEntityDecl(vbdecl, NULL, NULL, NULL);
     ok(hr == E_POINTER, "got 0x%08x\n", hr);
 
+    hr = ISAXDeclHandler_externalEntityDecl(decl, _bstr_("name"), 0, NULL, 0, NULL, 0);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
     hr = ISAXDeclHandler_externalEntityDecl(decl, _bstr_("name"), -1, NULL, 0, NULL, 0);
     ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
@@ -5011,6 +5014,43 @@ static void test_mxwriter_dtd(void)
         V_BSTR(&dest)), "got wrong content %s\n", wine_dbgstr_w(V_BSTR(&dest)));
 
     VariantClear(&dest);
+
+    /* notation declaration */
+    hr = IMXWriter_QueryInterface(writer, &IID_ISAXDTDHandler, (void**)&dtd);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    V_VT(&dest) = VT_EMPTY;
+    hr = IMXWriter_put_output(writer, dest);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = ISAXDTDHandler_notationDecl(dtd, NULL, 0, NULL, 0, NULL, 0);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    hr = ISAXDTDHandler_notationDecl(dtd, _bstr_("name"), strlen("name"), NULL, 0, NULL, 0);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+
+    hr = ISAXDTDHandler_notationDecl(dtd, _bstr_("name"), strlen("name"), _bstr_("pubid"), strlen("pubid"), NULL, 0);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = ISAXDTDHandler_notationDecl(dtd, _bstr_("name"), strlen("name"), _bstr_("pubid"), strlen("pubid"), _bstr_("sysid"), strlen("sysid"));
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = ISAXDTDHandler_notationDecl(dtd, _bstr_("name"), strlen("name"), NULL, 0, _bstr_("sysid"), strlen("sysid"));
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IMXWriter_get_output(writer, &dest);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(V_VT(&dest) == VT_BSTR, "got %d\n", V_VT(&dest));
+    ok(!lstrcmpW(_bstr_(
+        "<!NOTATION name"
+        "<!NOTATION name PUBLIC \"pubid\">\r\n"
+        "<!NOTATION name PUBLIC \"pubid\" \"sysid\">\r\n"
+        "<!NOTATION name SYSTEM \"sysid\">\r\n"),
+        V_BSTR(&dest)), "got wrong content %s\n", wine_dbgstr_w(V_BSTR(&dest)));
+
+    VariantClear(&dest);
+
+    ISAXDTDHandler_Release(dtd);
 
     ISAXContentHandler_Release(content);
     ISAXLexicalHandler_Release(lexical);

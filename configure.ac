@@ -2516,6 +2516,8 @@ then
 fi
 
 AC_CHECK_FUNCS(\
+	asinh \
+	asinhf \
 	cbrt \
 	cbrtf \
 	erf \
@@ -3266,7 +3268,8 @@ WINE_CONFIG_DLL(svrapi)
 WINE_CONFIG_DLL(sxs,,[implib])
 WINE_CONFIG_TEST(dlls/sxs/tests)
 WINE_CONFIG_DLL(system.drv16,enable_win16)
-WINE_CONFIG_DLL(t2embed)
+WINE_CONFIG_DLL(t2embed,,[implib])
+WINE_CONFIG_TEST(dlls/t2embed/tests)
 WINE_CONFIG_DLL(tapi32,,[implib])
 WINE_CONFIG_DLL(taskschd,,[clean])
 WINE_CONFIG_TEST(dlls/taskschd/tests)

@@ -2148,6 +2148,16 @@ NTSTATUS WINAPI PsRemoveCreateThreadNotifyRoutine( PCREATE_THREAD_NOTIFY_ROUTINE
 
 
 /***********************************************************************
+ *           PsRemoveLoadImageNotifyRoutine  (NTOSKRNL.EXE.@)
+ */
+ NTSTATUS WINAPI PsRemoveLoadImageNotifyRoutine(PLOAD_IMAGE_NOTIFY_ROUTINE NotifyRoutine)
+ {
+    FIXME( "stub: %p\n", NotifyRoutine );
+    return STATUS_SUCCESS;
+ }
+
+
+/***********************************************************************
  *           PsTerminateSystemThread   (NTOSKRNL.EXE.@)
  */
 NTSTATUS WINAPI PsTerminateSystemThread(NTSTATUS ExitStatus)
@@ -2476,5 +2486,14 @@ NTSTATUS WINAPI CmRegisterCallback(EX_CALLBACK_FUNCTION *function, void *context
 NTSTATUS WINAPI CmUnRegisterCallback(LARGE_INTEGER cookie)
 {
     FIXME("(%s): stub\n", wine_dbgstr_longlong(cookie.QuadPart));
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/***********************************************************************
+ *           KeDelayExecutionThread  (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI KeDelayExecutionThread(KPROCESSOR_MODE waitmode, BOOLEAN alertable, PLARGE_INTEGER interval)
+{
+    FIXME("(%u, %u, %p): stub\n", waitmode, alertable, interval);
     return STATUS_NOT_IMPLEMENTED;
 }

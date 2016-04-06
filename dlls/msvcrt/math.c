@@ -331,15 +331,6 @@ float CDECL MSVCRT_frexpf( float x, int *exp )
 }
 
 /*********************************************************************
- *      _scalbf (MSVCRT.@)
- */
-float CDECL MSVCRT__scalbf(float num, MSVCRT_long power)
-{
-  if (!finitef(num)) *MSVCRT__errno() = MSVCRT_EDOM;
-  return ldexpf(num, power);
-}
-
-/*********************************************************************
  *      modff (MSVCRT.@)
  */
 float CDECL MSVCRT_modff( float x, float *iptr )
@@ -815,15 +806,6 @@ double CDECL MSVCRT__logb(double num)
 {
   if (!isfinite(num)) *MSVCRT__errno() = MSVCRT_EDOM;
   return logb(num);
-}
-
-/*********************************************************************
- *		_scalb (MSVCRT.@)
- */
-double CDECL MSVCRT__scalb(double num, MSVCRT_long power)
-{
-  if (!isfinite(num)) *MSVCRT__errno() = MSVCRT_EDOM;
-  return ldexp(num, power);
 }
 
 /*********************************************************************
@@ -2742,4 +2724,69 @@ double CDECL MSVCR120_fmin(double x, double y)
     if(x==0 && y==0)
         return signbit(x) ? x : y;
     return x<y ? x : y;
+}
+
+/*********************************************************************
+ *      asinh (MSVCR120.@)
+ */
+double CDECL MSVCR120_asinh(double x)
+{
+#ifdef HAVE_ASINH
+    return asinh(x);
+#else
+    FIXME( "not implemented\n" );
+    return 0.0;
+#endif
+}
+
+/*********************************************************************
+ *      asinhf (MSVCR120.@)
+ */
+float CDECL MSVCR120_asinhf(float x)
+{
+#ifdef HAVE_ASINHF
+    return asinhf(x);
+#else
+    FIXME( "not implemented\n" );
+    return 0.0f;
+#endif
+}
+
+/*********************************************************************
+ *      asinhl (MSVCR120.@)
+ */
+LDOUBLE CDECL MSVCR120_asinhl(LDOUBLE x)
+{
+    return MSVCR120_asinh(x);
+}
+
+/*********************************************************************
+ *      _scalb  (MSVCRT.@)
+ *      scalbn  (MSVCR120.@)
+ *      scalbln (MSVCR120.@)
+ */
+double CDECL MSVCRT__scalb(double num, MSVCRT_long power)
+{
+  if (!isfinite(num)) *MSVCRT__errno() = MSVCRT_EDOM;
+  return ldexp(num, power);
+}
+
+/*********************************************************************
+ *      _scalbf  (MSVCRT.@)
+ *      scalbnf  (MSVCR120.@)
+ *      scalblnf (MSVCR120.@)
+ */
+float CDECL MSVCRT__scalbf(float num, MSVCRT_long power)
+{
+  if (!finitef(num)) *MSVCRT__errno() = MSVCRT_EDOM;
+  return ldexpf(num, power);
+}
+
+/*********************************************************************
+ *      scalbnl  (MSVCR120.@)
+ *      scalblnl (MSVCR120.@)
+ */
+LDOUBLE CDECL MSVCR120_scalbnl(LDOUBLE num, MSVCRT_long power)
+{
+    return MSVCRT__scalb(num, power);
 }

@@ -625,7 +625,9 @@ BOOL WINAPI GetOverlappedResult(HANDLE hFile, LPOVERLAPPED lpOverlapped,
         if (WaitForSingleObject( lpOverlapped->hEvent ? lpOverlapped->hEvent : hFile,
                                  INFINITE ) == WAIT_FAILED)
             return FALSE;
+
         status = lpOverlapped->Internal;
+        if (status == STATUS_PENDING) status = STATUS_SUCCESS;
     }
 
     *lpTransferred = lpOverlapped->InternalHigh;
@@ -1629,6 +1631,7 @@ HANDLE WINAPI CreateFileA( LPCSTR filename, DWORD access, DWORD sharing,
 {
     WCHAR *nameW;
 
+    if ((GetVersion() & 0x80000000) && IsBadStringPtrA(filename, -1)) return INVALID_HANDLE_VALUE;
     if (!(nameW = FILE_name_AtoW( filename, FALSE ))) return INVALID_HANDLE_VALUE;
     return CreateFileW( nameW, access, sharing, sa, creation, attributes, template );
 }

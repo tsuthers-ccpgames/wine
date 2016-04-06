@@ -56,6 +56,8 @@ static const char * const shader_opcode_names[] =
     /* WINED3DSIH_DCL                              */ "dcl",
     /* WINED3DSIH_DCL_CONSTANT_BUFFER              */ "dcl_constantBuffer",
     /* WINED3DSIH_DCL_GLOBAL_FLAGS                 */ "dcl_globalFlags",
+    /* WINED3DSIH_DCL_HS_FORK_PHASE_INSTANCE_COUNT */ "dcl_hs_fork_phase_instance_count",
+    /* WINED3DSIH_DCL_HS_MAX_TESSFACTOR            */ "dcl_hs_max_tessfactor",
     /* WINED3DSIH_DCL_IMMEDIATE_CONSTANT_BUFFER    */ "dcl_immediateConstantBuffer",
     /* WINED3DSIH_DCL_INPUT                        */ "dcl_input",
     /* WINED3DSIH_DCL_INPUT_CONTROL_POINT_COUNT    */ "dcl_input_control_point_count",
@@ -72,6 +74,9 @@ static const char * const shader_opcode_names[] =
     /* WINED3DSIH_DCL_RESOURCE_STRUCTURED          */ "dcl_resource_structured",
     /* WINED3DSIH_DCL_SAMPLER                      */ "dcl_sampler",
     /* WINED3DSIH_DCL_TEMPS                        */ "dcl_temps",
+    /* WINED3DSIH_DCL_TESSELLATOR_DOMAIN           */ "dcl_tessellator_domain",
+    /* WINED3DSIH_DCL_TESSELLATOR_OUTPUT_PRIMITIVE */ "dcl_tessellator_output_primitive",
+    /* WINED3DSIH_DCL_TESSELLATOR_PARTITIONING     */ "dcl_tessellator_partitioning",
     /* WINED3DSIH_DCL_UAV_TYPED                    */ "dcl_uav_typed",
     /* WINED3DSIH_DCL_VERTICES_OUT                 */ "dcl_maxOutputVertexCount",
     /* WINED3DSIH_DEF                              */ "def",
@@ -101,8 +106,10 @@ static const char * const shader_opcode_names[] =
     /* WINED3DSIH_FTOI                             */ "ftoi",
     /* WINED3DSIH_FTOU                             */ "ftou",
     /* WINED3DSIH_GE                               */ "ge",
+    /* WINED3DSIH_HS_CONTROL_POINT_PHASE           */ "hs_control_point_phase",
     /* WINED3DSIH_HS_DECLS                         */ "hs_decls",
     /* WINED3DSIH_HS_FORK_PHASE                    */ "hs_fork_phase",
+    /* WINED3DSIH_HS_JOIN_PHASE                    */ "hs_join_phase",
     /* WINED3DSIH_IADD                             */ "iadd",
     /* WINED3DSIH_IEQ                              */ "ieq",
     /* WINED3DSIH_IF                               */ "if",
@@ -192,6 +199,7 @@ static const char * const shader_opcode_names[] =
     /* WINED3DSIH_TEXREG2RGB                       */ "texreg2rgb",
     /* WINED3DSIH_UDIV                             */ "udiv",
     /* WINED3DSIH_UGE                              */ "uge",
+    /* WINED3DSIH_ULT                              */ "ult",
     /* WINED3DSIH_USHR                             */ "ushr",
     /* WINED3DSIH_UTOF                             */ "utof",
     /* WINED3DSIH_XOR                              */ "xor",
@@ -222,11 +230,23 @@ static const struct
 }
 sysval_semantic_names[] =
 {
-    {WINED3D_SV_POSITION,    "SV_Position"},
-    {WINED3D_SV_INSTANCEID,  "SV_InstanceID"},
-    {WINED3D_SV_PRIMITIVEID, "SV_PrimitiveID"},
-    {WINED3D_SV_ISFRONTFACE, "SV_IsFrontFace"},
-    {WINED3D_SV_SAMPLEINDEX, "SV_SampleIndex"},
+    {WINED3D_SV_POSITION,                   "SV_Position"},
+    {WINED3D_SV_INSTANCE_ID,                "SV_InstanceID"},
+    {WINED3D_SV_PRIMITIVE_ID,               "SV_PrimitiveID"},
+    {WINED3D_SV_IS_FRONT_FACE,              "SV_IsFrontFace"},
+    {WINED3D_SV_SAMPLE_INDEX,               "SV_SampleIndex"},
+    {WINED3D_SV_QUAD_U0_TESS_FACTOR,        "finalQuadUeq0EdgeTessFactor"},
+    {WINED3D_SV_QUAD_V0_TESS_FACTOR,        "finalQuadVeq0EdgeTessFactor"},
+    {WINED3D_SV_QUAD_U1_TESS_FACTOR,        "finalQuadUeq1EdgeTessFactor"},
+    {WINED3D_SV_QUAD_V1_TESS_FACTOR,        "finalQuadVeq1EdgeTessFactor"},
+    {WINED3D_SV_QUAD_U_INNER_TESS_FACTOR,   "finalQuadUInsideTessFactor"},
+    {WINED3D_SV_QUAD_V_INNER_TESS_FACTOR,   "finalQuadVInsideTessFactor"},
+    {WINED3D_SV_TRIANGLE_U_TESS_FACTOR,     "finalTriUeq0EdgeTessFactor"},
+    {WINED3D_SV_TRIANGLE_V_TESS_FACTOR,     "finalTriVeq0EdgeTessFactor"},
+    {WINED3D_SV_TRIANGLE_W_TESS_FACTOR,     "finalTriWeq0EdgeTessFactor"},
+    {WINED3D_SV_TRIANGLE_INNER_TESS_FACTOR, "finalTriInsideTessFactor"},
+    {WINED3D_SV_LINE_DETAIL_TESS_FACTOR,    "finalLineDetailTessFactor"},
+    {WINED3D_SV_LINE_DENSITY_TESS_FACTOR,   "finalLineDensityTessFactor"},
 };
 
 static void shader_dump_src_param(struct wined3d_string_buffer *buffer,
@@ -302,6 +322,7 @@ static const struct wined3d_shader_frontend *shader_select_frontend(DWORD versio
         case WINED3D_SM4_VS:
         case WINED3D_SM4_GS:
         case WINED3D_SM5_HS:
+        case WINED3D_SM5_DS:
             return &sm4_shader_frontend;
 
         default:
@@ -509,6 +530,11 @@ static void shader_set_limits(struct wined3d_shader *shader)
         /* min_version, max_version, sampler, constant_int, constant_float, constant_bool, packed_output, packet_input */
         {WINED3D_SHADER_VERSION(5, 0), WINED3D_SHADER_VERSION(5, 0), {16,  0,   0,  0, 32, 32}},
     },
+    ds_limits[] =
+    {
+        /* min_version, max_version, sampler, constant_int, constant_float, constant_bool, packed_output, packet_input */
+        {WINED3D_SHADER_VERSION(5, 0), WINED3D_SHADER_VERSION(5, 0), {16,  0,   0,  0, 32, 32}},
+    },
     gs_limits[] =
     {
         /* min_version, max_version, sampler, constant_int, constant_float, constant_bool, packed_output, packed_input */
@@ -542,6 +568,9 @@ static void shader_set_limits(struct wined3d_shader *shader)
             break;
         case WINED3D_SHADER_TYPE_HULL:
             limits_array = hs_limits;
+            break;
+        case WINED3D_SHADER_TYPE_DOMAIN:
+            limits_array = ds_limits;
             break;
         case WINED3D_SHADER_TYPE_GEOMETRY:
             limits_array = gs_limits;
@@ -1283,6 +1312,72 @@ static void shader_dump_global_flags(struct wined3d_string_buffer *buffer, DWORD
         shader_addline(buffer, "unknown_flags(%#x)", global_flags);
 }
 
+static void shader_dump_tessellator_domain(struct wined3d_string_buffer *buffer,
+        enum wined3d_tessellator_domain domain)
+{
+    switch (domain)
+    {
+        case WINED3D_TESSELLATOR_DOMAIN_LINE:
+            shader_addline(buffer, "line");
+            break;
+        case WINED3D_TESSELLATOR_DOMAIN_TRIANGLE:
+            shader_addline(buffer, "triangle");
+            break;
+        case WINED3D_TESSELLATOR_DOMAIN_QUAD:
+            shader_addline(buffer, "quad");
+            break;
+        default:
+            shader_addline(buffer, "unknown_tessellator_domain(%#x)", domain);
+            break;
+    }
+}
+
+static void shader_dump_tessellator_output_primitive(struct wined3d_string_buffer *buffer,
+        enum wined3d_tessellator_output_primitive output_primitive)
+{
+    switch (output_primitive)
+    {
+        case WINED3D_TESSELLATOR_OUTPUT_POINT:
+            shader_addline(buffer, "point");
+            break;
+        case WINED3D_TESSELLATOR_OUTPUT_LINE:
+            shader_addline(buffer, "line");
+            break;
+        case WINED3D_TESSELLATOR_OUTPUT_TRIANGLE_CW:
+            shader_addline(buffer, "triangle_cw");
+            break;
+        case WINED3D_TESSELLATOR_OUTPUT_TRIANGLE_CCW:
+            shader_addline(buffer, "triangle_ccw");
+            break;
+        default:
+            shader_addline(buffer, "unknown_tessellator_output_primitive(%#x)", output_primitive);
+            break;
+    }
+}
+
+static void shader_dump_tessellator_partitioning(struct wined3d_string_buffer *buffer,
+        enum wined3d_tessellator_partitioning partitioning)
+{
+    switch (partitioning)
+    {
+        case WINED3D_TESSELLATOR_PARTITIONING_INTEGER:
+            shader_addline(buffer, "integer");
+            break;
+        case WINED3D_TESSELLATOR_PARTITIONING_POW2:
+            shader_addline(buffer, "pow2");
+            break;
+        case WINED3D_TESSELLATOR_PARTITIONING_FRACTIONAL_ODD:
+            shader_addline(buffer, "fractional_odd");
+            break;
+        case WINED3D_TESSELLATOR_PARTITIONING_FRACTIONAL_EVEN:
+            shader_addline(buffer, "fractional_even");
+            break;
+        default:
+            shader_addline(buffer, "unknown_tessellator_partitioning(%#x)", partitioning);
+            break;
+    }
+}
+
 static void shader_dump_sysval_semantic(struct wined3d_string_buffer *buffer, enum wined3d_sysval_semantic semantic)
 {
     unsigned int i;
@@ -1592,6 +1687,26 @@ static void shader_dump_register(struct wined3d_string_buffer *buffer,
 
         case WINED3DSPR_UAV:
             shader_addline(buffer, "u");
+            break;
+
+        case WINED3DSPR_OUTPOINTID:
+            shader_addline(buffer, "vOutputControlPointID");
+            break;
+
+        case WINED3DSPR_FORKINSTID:
+            shader_addline(buffer, "vForkInstanceId");
+            break;
+
+        case WINED3DSPR_INCONTROLPOINT:
+            shader_addline(buffer, "vicp");
+            break;
+
+        case WINED3DSPR_PATCHCONST:
+            shader_addline(buffer, "vpc");
+            break;
+
+        case WINED3DSPR_TESSCOORD:
+            shader_addline(buffer, "vDomainLocation");
             break;
 
         default:
@@ -1951,6 +2066,10 @@ static void shader_trace_init(const struct wined3d_shader_frontend *fe, void *fe
             type_prefix = "hs";
             break;
 
+        case WINED3D_SHADER_TYPE_DOMAIN:
+            type_prefix = "ds";
+            break;
+
         case WINED3D_SHADER_TYPE_GEOMETRY:
             type_prefix = "gs";
             break;
@@ -1997,6 +2116,11 @@ static void shader_trace_init(const struct wined3d_shader_frontend *fe, void *fe
         {
             shader_addline(&buffer, "%s ", shader_opcode_names[ins.handler_idx]);
             shader_dump_global_flags(&buffer, ins.flags);
+        }
+        else if (ins.handler_idx == WINED3DSIH_DCL_HS_MAX_TESSFACTOR)
+        {
+            shader_addline(&buffer, "%s %.8e", shader_opcode_names[ins.handler_idx],
+                    ins.declaration.max_tessellation_factor);
         }
         else if (ins.handler_idx == WINED3DSIH_DCL_IMMEDIATE_CONSTANT_BUFFER)
         {
@@ -2064,10 +2188,26 @@ static void shader_trace_init(const struct wined3d_shader_frontend *fe, void *fe
         }
         else if (ins.handler_idx == WINED3DSIH_DCL_TEMPS
                 || ins.handler_idx == WINED3DSIH_DCL_VERTICES_OUT
+                || ins.handler_idx == WINED3DSIH_DCL_HS_FORK_PHASE_INSTANCE_COUNT
                 || ins.handler_idx == WINED3DSIH_DCL_INPUT_CONTROL_POINT_COUNT
                 || ins.handler_idx == WINED3DSIH_DCL_OUTPUT_CONTROL_POINT_COUNT)
         {
             shader_addline(&buffer, "%s %u", shader_opcode_names[ins.handler_idx], ins.declaration.count);
+        }
+        else if (ins.handler_idx == WINED3DSIH_DCL_TESSELLATOR_DOMAIN)
+        {
+            shader_addline(&buffer, "%s ", shader_opcode_names[ins.handler_idx]);
+            shader_dump_tessellator_domain(&buffer, ins.declaration.tessellator_domain);
+        }
+        else if (ins.handler_idx == WINED3DSIH_DCL_TESSELLATOR_OUTPUT_PRIMITIVE)
+        {
+            shader_addline(&buffer, "%s ", shader_opcode_names[ins.handler_idx]);
+            shader_dump_tessellator_output_primitive(&buffer, ins.declaration.tessellator_output_primitive);
+        }
+        else if (ins.handler_idx == WINED3DSIH_DCL_TESSELLATOR_PARTITIONING)
+        {
+            shader_addline(&buffer, "%s ", shader_opcode_names[ins.handler_idx]);
+            shader_dump_tessellator_partitioning(&buffer, ins.declaration.tessellator_partitioning);
         }
         else if (ins.handler_idx == WINED3DSIH_DEF)
         {
@@ -2229,7 +2369,8 @@ static void shader_none_disable(void *shader_priv, struct wined3d_context *conte
     context->shader_update_mask = (1u << WINED3D_SHADER_TYPE_PIXEL)
             | (1u << WINED3D_SHADER_TYPE_VERTEX)
             | (1u << WINED3D_SHADER_TYPE_GEOMETRY)
-            | (1u << WINED3D_SHADER_TYPE_HULL);
+            | (1u << WINED3D_SHADER_TYPE_HULL)
+            | (1u << WINED3D_SHADER_TYPE_DOMAIN);
 }
 
 static HRESULT shader_none_alloc(struct wined3d_device *device, const struct wined3d_vertex_pipe_ops *vertex_pipe,
@@ -2288,6 +2429,7 @@ static void shader_none_get_caps(const struct wined3d_gl_info *gl_info, struct s
     /* Set the shader caps to 0 for the none shader backend */
     caps->vs_version = 0;
     caps->hs_version = 0;
+    caps->ds_version = 0;
     caps->gs_version = 0;
     caps->ps_version = 0;
     caps->vs_uniform_count = 0;
@@ -2390,6 +2532,9 @@ static HRESULT shader_set_function(struct wined3d_shader *shader, const DWORD *b
             break;
         case WINED3D_SHADER_TYPE_HULL:
             backend_version = d3d_info->limits.hs_version;
+            break;
+        case WINED3D_SHADER_TYPE_DOMAIN:
+            backend_version = d3d_info->limits.ds_version;
             break;
         case WINED3D_SHADER_TYPE_GEOMETRY:
             backend_version = d3d_info->limits.gs_version;
@@ -2664,7 +2809,7 @@ static HRESULT shader_init(struct wined3d_shader *shader, struct wined3d_device 
     return hr;
 }
 
-static HRESULT vertexshader_init(struct wined3d_shader *shader, struct wined3d_device *device,
+static HRESULT vertex_shader_init(struct wined3d_shader *shader, struct wined3d_device *device,
         const struct wined3d_shader_desc *desc, void *parent, const struct wined3d_parent_ops *parent_ops)
 {
     struct wined3d_shader_reg_maps *reg_maps = &shader->reg_maps;
@@ -2693,7 +2838,20 @@ static HRESULT vertexshader_init(struct wined3d_shader *shader, struct wined3d_d
     return WINED3D_OK;
 }
 
-static HRESULT hullshader_init(struct wined3d_shader *shader, struct wined3d_device *device,
+static HRESULT domain_shader_init(struct wined3d_shader *shader, struct wined3d_device *device,
+        const struct wined3d_shader_desc *desc, void *parent, const struct wined3d_parent_ops *parent_ops)
+{
+    HRESULT hr;
+
+    if (FAILED(hr = shader_init(shader, device, desc, 0, WINED3D_SHADER_TYPE_DOMAIN, parent, parent_ops)))
+        return hr;
+
+    shader->load_local_constsF = shader->lconst_inf_or_nan;
+
+    return WINED3D_OK;
+}
+
+static HRESULT hull_shader_init(struct wined3d_shader *shader, struct wined3d_device *device,
         const struct wined3d_shader_desc *desc, void *parent, const struct wined3d_parent_ops *parent_ops)
 {
     HRESULT hr;
@@ -2706,7 +2864,7 @@ static HRESULT hullshader_init(struct wined3d_shader *shader, struct wined3d_dev
     return WINED3D_OK;
 }
 
-static HRESULT geometryshader_init(struct wined3d_shader *shader, struct wined3d_device *device,
+static HRESULT geometry_shader_init(struct wined3d_shader *shader, struct wined3d_device *device,
         const struct wined3d_shader_desc *desc, void *parent, const struct wined3d_parent_ops *parent_ops)
 {
     HRESULT hr;
@@ -2937,7 +3095,7 @@ void find_ps_compile_args(const struct wined3d_state *state, const struct wined3
         args->flatshading = state->render_states[WINED3D_RS_SHADEMODE] == WINED3D_SHADE_FLAT;
 }
 
-static HRESULT pixelshader_init(struct wined3d_shader *shader, struct wined3d_device *device,
+static HRESULT pixel_shader_init(struct wined3d_shader *shader, struct wined3d_device *device,
         const struct wined3d_shader_desc *desc, void *parent, const struct wined3d_parent_ops *parent_ops)
 {
     const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
@@ -3024,6 +3182,31 @@ void pixelshader_update_resource_types(struct wined3d_shader *shader, WORD tex_t
     }
 }
 
+HRESULT CDECL wined3d_shader_create_ds(struct wined3d_device *device, const struct wined3d_shader_desc *desc,
+        void *parent, const struct wined3d_parent_ops *parent_ops, struct wined3d_shader **shader)
+{
+    struct wined3d_shader *object;
+    HRESULT hr;
+
+    TRACE("device %p, desc %p, parent %p, parent_ops %p, shader %p.\n",
+            device, desc, parent, parent_ops, shader);
+
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    if (FAILED(hr = domain_shader_init(object, device, desc, parent, parent_ops)))
+    {
+        WARN("Failed to initialize domain shader, hr %#x.\n", hr);
+        HeapFree(GetProcessHeap(), 0, object);
+        return hr;
+    }
+
+    TRACE("Created domain shader %p.\n", object);
+    *shader = object;
+
+    return WINED3D_OK;
+}
+
 HRESULT CDECL wined3d_shader_create_gs(struct wined3d_device *device, const struct wined3d_shader_desc *desc,
         void *parent, const struct wined3d_parent_ops *parent_ops, struct wined3d_shader **shader)
 {
@@ -3037,7 +3220,7 @@ HRESULT CDECL wined3d_shader_create_gs(struct wined3d_device *device, const stru
     if (!object)
         return E_OUTOFMEMORY;
 
-    if (FAILED(hr = geometryshader_init(object, device, desc, parent, parent_ops)))
+    if (FAILED(hr = geometry_shader_init(object, device, desc, parent, parent_ops)))
     {
         WARN("Failed to initialize geometry shader, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
@@ -3062,7 +3245,7 @@ HRESULT CDECL wined3d_shader_create_hs(struct wined3d_device *device, const stru
     if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    if (FAILED(hr = hullshader_init(object, device, desc, parent, parent_ops)))
+    if (FAILED(hr = hull_shader_init(object, device, desc, parent, parent_ops)))
     {
         WARN("Failed to initialize hull shader, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
@@ -3088,7 +3271,7 @@ HRESULT CDECL wined3d_shader_create_ps(struct wined3d_device *device, const stru
     if (!object)
         return E_OUTOFMEMORY;
 
-    if (FAILED(hr = pixelshader_init(object, device, desc, parent, parent_ops)))
+    if (FAILED(hr = pixel_shader_init(object, device, desc, parent, parent_ops)))
     {
         WARN("Failed to initialize pixel shader, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
@@ -3114,7 +3297,7 @@ HRESULT CDECL wined3d_shader_create_vs(struct wined3d_device *device, const stru
     if (!object)
         return E_OUTOFMEMORY;
 
-    if (FAILED(hr = vertexshader_init(object, device, desc, parent, parent_ops)))
+    if (FAILED(hr = vertex_shader_init(object, device, desc, parent, parent_ops)))
     {
         WARN("Failed to initialize vertex shader, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);

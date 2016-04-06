@@ -328,6 +328,13 @@ static const IID * const frame_iids[] = {
     NULL
 };
 
+static const IID * const html_iids[] = {
+    ELEM_IFACES,
+    &IID_IHTMLHtmlElement,
+    &IID_IConnectionPointContainer,
+    NULL
+};
+
 static const IID * const head_iids[] = {
     ELEM_IFACES,
     &IID_IHTMLHeadElement,
@@ -449,7 +456,7 @@ typedef struct {
 
 static const elem_type_info_t elem_type_infos[] = {
     {"",          none_iids,        NULL},
-    {"HTML",      elem_iids,        NULL},
+    {"HTML",      html_iids,        &DIID_DispHTMLHtmlElement},
     {"HEAD",      head_iids,        &DIID_DispHTMLHeadElement},
     {"TITLE",     title_iids,       &DIID_DispHTMLTitleElement},
     {"BODY",      body_iids,        &DIID_DispHTMLBody},
@@ -2802,6 +2809,44 @@ static void _test_elem_set_innertext(unsigned line, IHTMLElement *elem, const ch
         IHTMLDOMChildrenCollection_Release(col);
     }
 
+}
+
+#define test_elem_outertext(e,t) _test_elem_outertext(__LINE__,e,t)
+static void _test_elem_outertext(unsigned line, IHTMLElement *elem, const char *extext)
+{
+    BSTR text = NULL;
+    HRESULT hres;
+
+    hres = IHTMLElement_get_outerText(elem, &text);
+    ok_(__FILE__,line) (hres == S_OK, "get_outerText failed: %08x\n", hres);
+    if(extext)
+        ok_(__FILE__,line) (!strcmp_wa(text, extext), "get_outerText returned %s expected %s\n",
+                            wine_dbgstr_w(text), extext);
+    else
+        ok_(__FILE__,line) (!text, "get_outerText returned %s expected NULL\n", wine_dbgstr_w(text));
+    SysFreeString(text);
+}
+
+#define test_elem_set_outertext(e,t) _test_elem_set_outertext(__LINE__,e,t)
+static void _test_elem_set_outertext(unsigned line, IHTMLElement *elem, const char *text)
+{
+    BSTR str = a2bstr(text);
+    HRESULT hres;
+
+    hres = IHTMLElement_put_outerText(elem, str);
+    ok_(__FILE__,line) (hres == S_OK, "put_outerText failed: %08x\n", hres);
+    SysFreeString(str);
+}
+
+#define test_elem_set_outertext_fail(a) _test_elem_set_outertext_fail(__LINE__,a)
+static void _test_elem_set_outertext_fail(unsigned line, IHTMLElement *elem)
+{
+    BSTR str = a2bstr("test");
+    HRESULT hres;
+
+    hres = IHTMLElement_put_outerText(elem, str);
+    ok_(__FILE__,line) (hres == 0x800a0258, "put_outerText failed: %08x\n", hres);
+    SysFreeString(str);
 }
 
 #define test_elem_innerhtml(e,t) _test_elem_innerhtml(__LINE__,e,t)
@@ -6315,6 +6360,7 @@ static void test_doc_elem(IHTMLDocument2 *doc)
 
     test_node_name((IUnknown*)elem, "HTML");
     test_elem_tag((IUnknown*)elem, "HTML");
+    test_elem_set_outertext_fail(elem);
 
     doc_node = get_doc_node(doc);
     owner_doc = get_owner_doc((IUnknown*)elem);
@@ -6726,6 +6772,8 @@ static void test_defaults(IHTMLDocument2 *doc)
     test_default_body(body);
     test_body_funs(body);
     IHTMLBodyElement_Release(body);
+
+    test_elem_set_outertext_fail(elem);
 
     test_elem_istextedit(elem, VARIANT_TRUE);
 
@@ -8909,6 +8957,18 @@ static void test_elems2(IHTMLDocument2 *doc)
             IHTMLElement_Release(elem);
         }
         IHTMLElement_Release(elem2);
+    }
+
+    test_elem_set_innerhtml((IUnknown*)div, "<div id=\"elemid\">test</div>");
+    elem = get_elem_by_id(doc, "elemid", TRUE);
+    if(elem) {
+        test_elem_outertext(elem, "test");
+        test_elem_set_outertext(elem, "outer text");
+        test_elem_outertext(elem, NULL);
+        test_elem_all((IUnknown*)div, NULL, 0);
+        elem2 = test_elem_get_parent((IUnknown*)elem);
+        ok(!elem2, "parent != NULL\n");
+        IHTMLElement_Release(elem);
     }
 
     test_attr(doc, div);

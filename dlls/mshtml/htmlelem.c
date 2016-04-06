@@ -46,6 +46,7 @@ static const WCHAR embedW[]    = {'E','M','B','E','D',0};
 static const WCHAR formW[]     = {'F','O','R','M',0};
 static const WCHAR frameW[]    = {'F','R','A','M','E',0};
 static const WCHAR headW[]     = {'H','E','A','D',0};
+static const WCHAR htmlW[]     = {'H','T','M','L',0};
 static const WCHAR iframeW[]   = {'I','F','R','A','M','E',0};
 static const WCHAR imgW[]      = {'I','M','G',0};
 static const WCHAR inputW[]    = {'I','N','P','U','T',0};
@@ -81,6 +82,7 @@ static const tag_desc_t tag_descs[] = {
     {formW,      HTMLFormElement_Create},
     {frameW,     HTMLFrameElement_Create},
     {headW,      HTMLHeadElement_Create},
+    {htmlW,      HTMLHtmlElement_Create},
     {iframeW,    HTMLIFrame_Create},
     {imgW,       HTMLImgElement_Create},
     {inputW,     HTMLInputElement_Create},
@@ -1552,15 +1554,61 @@ static HRESULT WINAPI HTMLElement_get_outerHTML(IHTMLElement *iface, BSTR *p)
 static HRESULT WINAPI HTMLElement_put_outerText(IHTMLElement *iface, BSTR v)
 {
     HTMLElement *This = impl_from_IHTMLElement(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_w(v));
-    return E_NOTIMPL;
+    nsIDOMText *text_node;
+    nsIDOMRange *range;
+    nsAString nsstr;
+    nsresult nsres;
+
+    TRACE("(%p)->(%s)\n", This, debugstr_w(v));
+
+    if(This->node.vtbl->is_settable && !This->node.vtbl->is_settable(&This->node, DISPID_IHTMLELEMENT_OUTERTEXT)) {
+        WARN("Called on element that does not support setting the property.\n");
+        return 0x800a0258; /* undocumented error code */
+    }
+
+    if(!This->node.doc->nsdoc) {
+        FIXME("NULL nsdoc\n");
+        return E_FAIL;
+    }
+
+    nsAString_InitDepend(&nsstr, v);
+    nsres = nsIDOMHTMLDocument_CreateTextNode(This->node.doc->nsdoc, &nsstr, &text_node);
+    nsAString_Finish(&nsstr);
+    if(NS_FAILED(nsres)) {
+        ERR("CreateTextNode failed\n");
+        return E_FAIL;
+    }
+
+    nsres = nsIDOMHTMLDocument_CreateRange(This->node.doc->nsdoc, &range);
+    if(NS_SUCCEEDED(nsres)) {
+        nsres = nsIDOMRange_SelectNode(range, This->node.nsnode);
+        if(NS_SUCCEEDED(nsres))
+            nsres = nsIDOMRange_DeleteContents(range);
+        if(NS_SUCCEEDED(nsres))
+            nsres = nsIDOMRange_InsertNode(range, (nsIDOMNode*)text_node);
+        if(NS_SUCCEEDED(nsres))
+            nsres = nsIDOMRange_SelectNodeContents(range, This->node.nsnode);
+        if(NS_SUCCEEDED(nsres))
+            nsres = nsIDOMRange_DeleteContents(range);
+        nsIDOMRange_Release(range);
+    }
+    nsIDOMText_Release(text_node);
+    if(NS_FAILED(nsres)) {
+        ERR("failed to set text: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLElement_get_outerText(IHTMLElement *iface, BSTR *p)
 {
     HTMLElement *This = impl_from_IHTMLElement(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    /* getter is the same as innerText */
+    return IHTMLElement_get_innerText(&This->IHTMLElement_iface, p);
 }
 
 static HRESULT insert_adjacent_node(HTMLElement *This, const WCHAR *where, nsIDOMNode *nsnode, HTMLDOMNode **ret_node)
@@ -3810,7 +3858,7 @@ static HRESULT WINAPI HTMLElement4_put_onfocusin(IHTMLElement4 *iface, VARIANT v
 {
     HTMLElement *This = impl_from_IHTMLElement4(iface);
 
-    FIXME("(%p)->(%s) semi-stub\n", This, debugstr_variant(&v));
+    TRACE("(%p)->(%s)\n", This, debugstr_variant(&v));
 
     return set_node_event(&This->node, EVENTID_FOCUSIN, &v);
 }
@@ -3827,15 +3875,19 @@ static HRESULT WINAPI HTMLElement4_get_onfocusin(IHTMLElement4 *iface, VARIANT *
 static HRESULT WINAPI HTMLElement4_put_onfocusout(IHTMLElement4 *iface, VARIANT v)
 {
     HTMLElement *This = impl_from_IHTMLElement4(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_variant(&v));
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%s)\n", This, debugstr_variant(&v));
+
+    return set_node_event(&This->node, EVENTID_FOCUSOUT, &v);
 }
 
 static HRESULT WINAPI HTMLElement4_get_onfocusout(IHTMLElement4 *iface, VARIANT *p)
 {
     HTMLElement *This = impl_from_IHTMLElement4(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    return get_node_event(&This->node, EVENTID_FOCUSOUT, p);
 }
 
 static const IHTMLElement4Vtbl HTMLElement4Vtbl = {
@@ -4064,7 +4116,7 @@ HRESULT HTMLElement_handle_event(HTMLDOMNode *iface, DWORD eid, nsIDOMEvent *eve
             switch(code) {
             case VK_F1: /* DOM_VK_F1 */
                 TRACE("F1 pressed\n");
-                fire_event(This->node.doc, EVENTID_HELP, TRUE, This->node.nsnode, NULL, NULL);
+                fire_event(This->node.doc, EVENTID_HELP, TRUE, &This->node, NULL, NULL);
                 *prevent_default = TRUE;
             }
 

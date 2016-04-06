@@ -747,11 +747,23 @@ enum wined3d_decl_usage
 
 enum wined3d_sysval_semantic
 {
-    WINED3D_SV_POSITION = 1,
-    WINED3D_SV_PRIMITIVEID = 7,
-    WINED3D_SV_INSTANCEID = 8,
-    WINED3D_SV_ISFRONTFACE = 9,
-    WINED3D_SV_SAMPLEINDEX = 10,
+    WINED3D_SV_POSITION                     = 1,
+    WINED3D_SV_PRIMITIVE_ID                 = 7,
+    WINED3D_SV_INSTANCE_ID                  = 8,
+    WINED3D_SV_IS_FRONT_FACE                = 9,
+    WINED3D_SV_SAMPLE_INDEX                 = 10,
+    WINED3D_SV_QUAD_U0_TESS_FACTOR          = 11,
+    WINED3D_SV_QUAD_V0_TESS_FACTOR          = 12,
+    WINED3D_SV_QUAD_U1_TESS_FACTOR          = 13,
+    WINED3D_SV_QUAD_V1_TESS_FACTOR          = 14,
+    WINED3D_SV_QUAD_U_INNER_TESS_FACTOR     = 15,
+    WINED3D_SV_QUAD_V_INNER_TESS_FACTOR     = 16,
+    WINED3D_SV_TRIANGLE_U_TESS_FACTOR       = 17,
+    WINED3D_SV_TRIANGLE_V_TESS_FACTOR       = 18,
+    WINED3D_SV_TRIANGLE_W_TESS_FACTOR       = 19,
+    WINED3D_SV_TRIANGLE_INNER_TESS_FACTOR   = 20,
+    WINED3D_SV_LINE_DETAIL_TESS_FACTOR      = 21,
+    WINED3D_SV_LINE_DENSITY_TESS_FACTOR     = 22,
 };
 
 enum wined3d_scanline_ordering
@@ -2373,6 +2385,8 @@ ULONG __cdecl wined3d_sampler_decref(struct wined3d_sampler *sampler);
 void * __cdecl wined3d_sampler_get_parent(const struct wined3d_sampler *sampler);
 ULONG __cdecl wined3d_sampler_incref(struct wined3d_sampler *sampler);
 
+HRESULT __cdecl wined3d_shader_create_ds(struct wined3d_device *device, const struct wined3d_shader_desc *desc,
+        void *parent, const struct wined3d_parent_ops *parent_ops, struct wined3d_shader **shader);
 HRESULT __cdecl wined3d_shader_create_gs(struct wined3d_device *device, const struct wined3d_shader_desc *desc,
         void *parent, const struct wined3d_parent_ops *parent_ops, struct wined3d_shader **shader);
 HRESULT __cdecl wined3d_shader_create_hs(struct wined3d_device *device, const struct wined3d_shader_desc *desc,
