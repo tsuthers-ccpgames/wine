@@ -1274,6 +1274,7 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX660TI,   "NVIDIA GeForce GTX 660 Ti",        DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX670,     "NVIDIA GeForce GTX 670",           DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX670MX,   "NVIDIA GeForce GTX 670MX",         DRIVER_NVIDIA_GEFORCE8,  3072},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX675MX,   "NVIDIA GeForce GTX 675MX",         DRIVER_NVIDIA_GEFORCE8,  1024},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX680,     "NVIDIA GeForce GTX 680",           DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GT750M,     "NVIDIA GeForce GT 750M",           DRIVER_NVIDIA_GEFORCE8,  1024},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX750,     "NVIDIA GeForce GTX 750",           DRIVER_NVIDIA_GEFORCE8,  1024},
@@ -1336,6 +1337,7 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R3,             "AMD Radeon HD 8400 / R3 Series",   DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R7,             "AMD Radeon(TM) R7 Graphics",       DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9,             "AMD Radeon R9 290",                DRIVER_AMD_R600,         4096},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M290X,       "AMD Radeon R9 M290X",              DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M380,        "AMD Radeon R9 M380 OpenGL Engine", DRIVER_AMD_R600,         2048},
 
     /* VMware */
@@ -1761,6 +1763,7 @@ cards_nvidia_binary[] =
     {"GTX 750",                     CARD_NVIDIA_GEFORCE_GTX750},    /* Geforce 700 - midend */
     {"GT 750M",                     CARD_NVIDIA_GEFORCE_GT750M},    /* Geforce 700 - midend mobile */
     {"GTX 680",                     CARD_NVIDIA_GEFORCE_GTX680},    /* Geforce 600 - highend */
+    {"GTX 675MX",                   CARD_NVIDIA_GEFORCE_GTX675MX},  /* Geforce 600 - highend */
     {"GTX 670MX",                   CARD_NVIDIA_GEFORCE_GTX670MX},  /* Geforce 600 - highend */
     {"GTX 670",                     CARD_NVIDIA_GEFORCE_GTX670},    /* Geforce 600 - midend high */
     {"GTX 660 Ti",                  CARD_NVIDIA_GEFORCE_GTX660TI},  /* Geforce 600 - midend high */
@@ -1884,6 +1887,7 @@ cards_nvidia_binary[] =
 cards_amd_binary[] =
 {
     {"R9 290",                      CARD_AMD_RADEON_R9},
+    {"R9 M290X",                    CARD_AMD_RADEON_R9_M290X},
     {"R9 M380",                     CARD_AMD_RADEON_R9_M380},
 
     /* Southern Islands */

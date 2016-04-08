@@ -1699,6 +1699,7 @@ enum wined3d_pci_device
     CARD_AMD_RADEON_R3              = 0x9830,
     CARD_AMD_RADEON_R7              = 0x130f,
     CARD_AMD_RADEON_R9              = 0x67b1,
+    CARD_AMD_RADEON_R9_M290X        = 0x67b0, /* Also known as Radeon HD 7970 */
     CARD_AMD_RADEON_R9_M380         = 0x6647,
 
     CARD_NVIDIA_RIVA_128            = 0x0018,
@@ -1778,6 +1779,7 @@ enum wined3d_pci_device
     CARD_NVIDIA_GEFORCE_GTX660TI    = 0x1183,
     CARD_NVIDIA_GEFORCE_GTX670      = 0x1189,
     CARD_NVIDIA_GEFORCE_GTX670MX    = 0x11a1,
+    CARD_NVIDIA_GEFORCE_GTX675MX    = 0x11a2,
     CARD_NVIDIA_GEFORCE_GTX680      = 0x1180,
     CARD_NVIDIA_GEFORCE_GT750M      = 0x0fe9,
     CARD_NVIDIA_GEFORCE_GTX750      = 0x1381,
