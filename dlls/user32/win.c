@@ -1320,6 +1320,19 @@ HWND WIN_CreateWindowEx( CREATESTRUCTW *cs, LPCWSTR className, HINSTANCE module,
           cs->hwndParent, cs->hMenu, cs->hInstance, cs->lpCreateParams );
     if(TRACE_ON(win)) dump_window_styles( cs->style, cs->dwExStyle );
 
+    RECT emptyRect;
+    SetRect(&emptyRect, 0, 0, 0, 0);
+    AdjustWindowRect(&emptyRect, cs->style, FALSE);
+    if((cs->x == emptyRect.left) && (cs->y == emptyRect.top) && (cs->cx == emptyRect.right - emptyRect.left) && (cs->cy == emptyRect.bottom - emptyRect.top))
+    {
+        // This is a temporary workaround for EVE creating its window with zero size initially.
+        TRACE("Changing values for empty rect");
+        cs->x = 40;
+        cs->y = 40;
+        cs->cx += 1;
+        cs->cy += 1;
+    }
+
     /* Fix the styles for MDI children */
     if (cs->dwExStyle & WS_EX_MDICHILD)
     {
