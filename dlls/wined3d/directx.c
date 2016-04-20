@@ -2376,7 +2376,7 @@ static enum wined3d_pci_device wined3d_guess_card(const struct shader_caps *shad
         if (device != PCI_DEVICE_NONE)
             return device;
 
-        TRACE("Unrecognized renderer %s, falling back to default.\n", debugstr_a(gl_renderer));
+        WARN("Unrecognized renderer %s, falling back to default.\n", debugstr_a(gl_renderer));
         return card_vendor_table[i].card_fallback[d3d_level];
     }
 
