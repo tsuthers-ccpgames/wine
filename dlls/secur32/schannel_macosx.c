@@ -648,6 +648,161 @@ DWORD schan_imp_enabled_protocols(void)
     return supported_protocols;
 }
 
+static SSLCipherSuite enabled_cipher_suites[] = {
+   SSL_NULL_WITH_NULL_NULL,
+   SSL_RSA_WITH_NULL_MD5,
+   SSL_RSA_WITH_NULL_SHA,
+   SSL_RSA_EXPORT_WITH_RC4_40_MD5,
+   SSL_RSA_WITH_RC4_128_MD5,
+   SSL_RSA_WITH_RC4_128_SHA,
+   SSL_RSA_EXPORT_WITH_RC2_CBC_40_MD5,
+   SSL_RSA_WITH_IDEA_CBC_SHA,
+   SSL_RSA_EXPORT_WITH_DES40_CBC_SHA,
+   SSL_RSA_WITH_DES_CBC_SHA,
+   SSL_RSA_WITH_3DES_EDE_CBC_SHA,
+   SSL_DH_DSS_EXPORT_WITH_DES40_CBC_SHA,
+   SSL_DH_DSS_WITH_DES_CBC_SHA,
+   SSL_DH_DSS_WITH_3DES_EDE_CBC_SHA,
+   SSL_DH_RSA_EXPORT_WITH_DES40_CBC_SHA,
+   SSL_DH_RSA_WITH_DES_CBC_SHA,
+   SSL_DH_RSA_WITH_3DES_EDE_CBC_SHA,
+   SSL_DHE_DSS_EXPORT_WITH_DES40_CBC_SHA,
+   SSL_DHE_DSS_WITH_DES_CBC_SHA,
+   SSL_DHE_DSS_WITH_3DES_EDE_CBC_SHA,
+   SSL_DHE_RSA_EXPORT_WITH_DES40_CBC_SHA,
+   SSL_DHE_RSA_WITH_DES_CBC_SHA,
+   SSL_DHE_RSA_WITH_3DES_EDE_CBC_SHA,
+   SSL_DH_anon_EXPORT_WITH_RC4_40_MD5,
+   SSL_DH_anon_WITH_RC4_128_MD5,
+   SSL_DH_anon_EXPORT_WITH_DES40_CBC_SHA,
+   SSL_DH_anon_WITH_DES_CBC_SHA,
+   SSL_DH_anon_WITH_3DES_EDE_CBC_SHA,
+   SSL_FORTEZZA_DMS_WITH_NULL_SHA,
+   SSL_FORTEZZA_DMS_WITH_FORTEZZA_CBC_SHA,
+   
+   /* TLS addenda using AES,
+   per RFC 3268 */
+   TLS_RSA_WITH_AES_128_CBC_SHA,
+   TLS_DH_DSS_WITH_AES_128_CBC_SHA,
+   TLS_DH_RSA_WITH_AES_128_CBC_SHA,
+   TLS_DHE_DSS_WITH_AES_128_CBC_SHA,
+   TLS_DHE_RSA_WITH_AES_128_CBC_SHA,
+   TLS_DH_anon_WITH_AES_128_CBC_SHA,
+   TLS_RSA_WITH_AES_256_CBC_SHA,
+   TLS_DH_DSS_WITH_AES_256_CBC_SHA,
+   TLS_DH_RSA_WITH_AES_256_CBC_SHA,
+   TLS_DHE_DSS_WITH_AES_256_CBC_SHA,
+   TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
+   TLS_DH_anon_WITH_AES_256_CBC_SHA,
+      
+   
+   /* TLS 1.2 addenda,
+   RFC 5246 */
+   
+   /* Server provided RSA certificate for key exchange. */
+   TLS_RSA_WITH_NULL_MD5,
+   TLS_RSA_WITH_NULL_SHA,
+   TLS_RSA_WITH_RC4_128_MD5,
+   TLS_RSA_WITH_RC4_128_SHA,
+   TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+   TLS_RSA_WITH_NULL_SHA256,
+   TLS_RSA_WITH_AES_128_CBC_SHA256,
+   TLS_RSA_WITH_AES_256_CBC_SHA256,
+   
+   /* Server-authenticated (and optionally client-authenticated ) Diffie-Hellman. */
+   TLS_DH_DSS_WITH_3DES_EDE_CBC_SHA,
+   TLS_DH_RSA_WITH_3DES_EDE_CBC_SHA,
+   TLS_DHE_DSS_WITH_3DES_EDE_CBC_SHA,
+   TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA,
+   TLS_DH_DSS_WITH_AES_128_CBC_SHA256,
+   TLS_DH_RSA_WITH_AES_128_CBC_SHA256,
+   TLS_DHE_DSS_WITH_AES_128_CBC_SHA256,
+   TLS_DHE_RSA_WITH_AES_128_CBC_SHA256,
+   TLS_DH_DSS_WITH_AES_256_CBC_SHA256,
+   TLS_DH_RSA_WITH_AES_256_CBC_SHA256,
+   TLS_DHE_DSS_WITH_AES_256_CBC_SHA256,
+   TLS_DHE_RSA_WITH_AES_256_CBC_SHA256,
+   
+   /* Completely anonymous Diffie-Hellman */
+   TLS_DH_anon_WITH_RC4_128_MD5,
+   TLS_DH_anon_WITH_3DES_EDE_CBC_SHA,
+   TLS_DH_anon_WITH_AES_128_CBC_SHA256,
+   TLS_DH_anon_WITH_AES_256_CBC_SHA256,
+   
+   /* Addendum from RFC 4279,
+   TLS PSK */
+   
+   TLS_PSK_WITH_RC4_128_SHA,
+   TLS_PSK_WITH_3DES_EDE_CBC_SHA,
+   TLS_PSK_WITH_AES_128_CBC_SHA,
+   TLS_PSK_WITH_AES_256_CBC_SHA,
+   TLS_DHE_PSK_WITH_RC4_128_SHA,
+   TLS_DHE_PSK_WITH_3DES_EDE_CBC_SHA,
+   TLS_DHE_PSK_WITH_AES_128_CBC_SHA,
+   TLS_DHE_PSK_WITH_AES_256_CBC_SHA,
+   TLS_RSA_PSK_WITH_RC4_128_SHA,
+   TLS_RSA_PSK_WITH_3DES_EDE_CBC_SHA,
+   TLS_RSA_PSK_WITH_AES_128_CBC_SHA,
+   TLS_RSA_PSK_WITH_AES_256_CBC_SHA,
+   
+   /* RFC 4785 - Pre-Shared Key (PSK ) Ciphersuites with NULL Encryption */
+   
+   TLS_PSK_WITH_NULL_SHA,
+   TLS_DHE_PSK_WITH_NULL_SHA,
+   TLS_RSA_PSK_WITH_NULL_SHA,
+   
+   /* Addenda from rfc 5288 AES Galois Counter Mode (GCM ) Cipher Suites 
+   for TLS. */
+   TLS_RSA_WITH_AES_128_GCM_SHA256,
+   TLS_RSA_WITH_AES_256_GCM_SHA384,
+   TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,
+   TLS_DHE_RSA_WITH_AES_256_GCM_SHA384,
+   TLS_DH_RSA_WITH_AES_128_GCM_SHA256,
+   TLS_DH_RSA_WITH_AES_256_GCM_SHA384,
+   TLS_DHE_DSS_WITH_AES_128_GCM_SHA256,
+   TLS_DHE_DSS_WITH_AES_256_GCM_SHA384,
+   TLS_DH_DSS_WITH_AES_128_GCM_SHA256,
+   TLS_DH_DSS_WITH_AES_256_GCM_SHA384,
+   TLS_DH_anon_WITH_AES_128_GCM_SHA256,
+   TLS_DH_anon_WITH_AES_256_GCM_SHA384,
+   
+   /* RFC 5487 - PSK with SHA-256/384 and AES GCM */
+   TLS_PSK_WITH_AES_128_GCM_SHA256,
+   TLS_PSK_WITH_AES_256_GCM_SHA384,
+   TLS_DHE_PSK_WITH_AES_128_GCM_SHA256,
+   TLS_DHE_PSK_WITH_AES_256_GCM_SHA384,
+   TLS_RSA_PSK_WITH_AES_128_GCM_SHA256,
+   TLS_RSA_PSK_WITH_AES_256_GCM_SHA384,
+   
+   TLS_PSK_WITH_AES_128_CBC_SHA256,
+   TLS_PSK_WITH_AES_256_CBC_SHA384,
+   TLS_PSK_WITH_NULL_SHA256,
+   TLS_PSK_WITH_NULL_SHA384,
+   
+   TLS_DHE_PSK_WITH_AES_128_CBC_SHA256,
+   TLS_DHE_PSK_WITH_AES_256_CBC_SHA384,
+   TLS_DHE_PSK_WITH_NULL_SHA256,
+   TLS_DHE_PSK_WITH_NULL_SHA384,
+   
+   TLS_RSA_PSK_WITH_AES_128_CBC_SHA256,
+   TLS_RSA_PSK_WITH_AES_256_CBC_SHA384,
+   TLS_RSA_PSK_WITH_NULL_SHA256,
+   TLS_RSA_PSK_WITH_NULL_SHA384,
+   
+   
+   /* RFC 5746 - Secure Renegotiation */
+   TLS_EMPTY_RENEGOTIATION_INFO_SCSV,
+   
+   /*
+   * Tags for SSL 2 cipher kinds that are not specified 
+   * for SSL 3.
+   */
+   SSL_RSA_WITH_RC2_CBC_MD5,
+   SSL_RSA_WITH_IDEA_CBC_MD5,
+   SSL_RSA_WITH_DES_CBC_MD5,
+   SSL_RSA_WITH_3DES_EDE_CBC_MD5,
+};
+
 BOOL schan_imp_create_session(schan_imp_session *session, schan_credentials *cred)
 {
     struct mac_session *s;
@@ -664,6 +819,17 @@ BOOL schan_imp_create_session(schan_imp_session *session, schan_credentials *cre
     if (status != noErr)
     {
         ERR("Failed to create session context: %d\n", status);
+        goto fail;
+    }
+
+    /* We don't handle all the signature algorithms that OS X supports so it is important
+     * to limit the enabled ciphers before the handshake happens. That will ensure we
+     * only get certificates we can handle (assuming the server has alternate chains to offer).
+     */
+    status = SSLSetEnabledCiphers(s->context, enabled_cipher_suites, sizeof(enabled_cipher_suites) / sizeof(SSLCipherSuite));
+    if (status != noErr)
+    {
+        ERR("Failed to set enabled ciphers: %d\n", status);
         goto fail;
     }
 
