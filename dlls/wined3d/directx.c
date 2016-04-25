@@ -33,7 +33,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
 
-#define WINE_DEFAULT_VIDMEM (64 * 1024 * 1024)
+#define WINE_DEFAULT_VIDMEM (2048 * 1024 * 1024)
 #define DEFAULT_REFRESH_RATE 0
 
 /* The driver names reflect the lowest GPU supported
