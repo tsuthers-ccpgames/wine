@@ -245,7 +245,7 @@ static const struct {
     { VK_LMENU,                 0x38,           TRUE },     /* kVK_Option */        // CCP
     { VK_LCONTROL,              0x1D,           TRUE },     /* kVK_Control */
     { VK_RSHIFT,                0x36,           TRUE },     /* kVK_RightShift */
-    { VK_RMENU,                 0x38,           TRUE },     /* kVK_RightOption */   // CCP
+    { 0,                        0,              FALSE },    /* kVK_RightOption */
     { VK_RCONTROL,              0x1D | 0x100,   TRUE },     /* kVK_RightControl */
     { 0,                        0,              FALSE },    /* kVK_Function */
     { VK_F17,                   0x68,           TRUE },     /* kVK_F17 */
