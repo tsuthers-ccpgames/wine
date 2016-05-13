@@ -170,24 +170,32 @@ static const struct addr_hint_tests
 } hinttests[] = {
     {AF_UNSPEC, SOCK_STREAM, IPPROTO_TCP, 0 },
     {AF_UNSPEC, SOCK_STREAM, IPPROTO_UDP, 0 },
+    {AF_UNSPEC, SOCK_STREAM, IPPROTO_IPV6,0 },
     {AF_UNSPEC, SOCK_DGRAM,  IPPROTO_TCP, 0 },
     {AF_UNSPEC, SOCK_DGRAM,  IPPROTO_UDP, 0 },
+    {AF_UNSPEC, SOCK_DGRAM,  IPPROTO_IPV6,0 },
     {AF_INET,   SOCK_STREAM, IPPROTO_TCP, 0 },
     {AF_INET,   SOCK_STREAM, IPPROTO_UDP, 0 },
+    {AF_INET,   SOCK_STREAM, IPPROTO_IPV6,0 },
     {AF_INET,   SOCK_DGRAM,  IPPROTO_TCP, 0 },
     {AF_INET,   SOCK_DGRAM,  IPPROTO_UDP, 0 },
+    {AF_INET,   SOCK_DGRAM,  IPPROTO_IPV6,0 },
     {AF_UNSPEC, 0,           IPPROTO_TCP, 0 },
     {AF_UNSPEC, 0,           IPPROTO_UDP, 0 },
+    {AF_UNSPEC, 0,           IPPROTO_IPV6,0 },
     {AF_UNSPEC, SOCK_STREAM, 0,           0 },
     {AF_UNSPEC, SOCK_DGRAM,  0,           0 },
     {AF_INET,   0,           IPPROTO_TCP, 0 },
     {AF_INET,   0,           IPPROTO_UDP, 0 },
+    {AF_INET,   0,           IPPROTO_IPV6,0 },
     {AF_INET,   SOCK_STREAM, 0,           0 },
     {AF_INET,   SOCK_DGRAM,  0,           0 },
     {AF_UNSPEC, 999,         IPPROTO_TCP, WSAESOCKTNOSUPPORT },
     {AF_UNSPEC, 999,         IPPROTO_UDP, WSAESOCKTNOSUPPORT },
+    {AF_UNSPEC, 999,         IPPROTO_IPV6,WSAESOCKTNOSUPPORT },
     {AF_INET,   999,         IPPROTO_TCP, WSAESOCKTNOSUPPORT },
     {AF_INET,   999,         IPPROTO_UDP, WSAESOCKTNOSUPPORT },
+    {AF_INET,   999,         IPPROTO_IPV6,WSAESOCKTNOSUPPORT },
     {AF_UNSPEC, SOCK_STREAM, 999,         0 },
     {AF_UNSPEC, SOCK_STREAM, 999,         0 },
     {AF_INET,   SOCK_DGRAM,  999,         0 },
@@ -7810,6 +7818,102 @@ end:
         closesocket(connector2);
 }
 
+static void test_DisconnectEx(void)
+{
+    SOCKET listener, acceptor, connector;
+    LPFN_DISCONNECTEX pDisconnectEx;
+    GUID disconnectExGuid = WSAID_DISCONNECTEX;
+    struct sockaddr_in address;
+    DWORD num_bytes, flags;
+    OVERLAPPED overlapped;
+    int addrlen, iret;
+    BOOL bret;
+
+    connector = socket(AF_INET, SOCK_STREAM, 0);
+    ok(connector != INVALID_SOCKET, "failed to create connector socket, error %d\n", WSAGetLastError());
+
+    iret = WSAIoctl(connector, SIO_GET_EXTENSION_FUNCTION_POINTER, &disconnectExGuid, sizeof(disconnectExGuid),
+                    &pDisconnectEx, sizeof(pDisconnectEx), &num_bytes, NULL, NULL);
+    if (iret)
+    {
+        win_skip("WSAIoctl failed to get DisconnectEx, error %d\n", WSAGetLastError());
+        closesocket(connector);
+        return;
+    }
+
+    listener = socket(AF_INET, SOCK_STREAM, 0);
+    ok(listener != INVALID_SOCKET, "failed to create listener socket, error %d\n", WSAGetLastError());
+
+    memset(&address, 0, sizeof(address));
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = inet_addr("127.0.0.1");
+    iret = bind(listener, (struct sockaddr *)&address, sizeof(address));
+    ok(iret == 0, "failed to bind, error %d\n", WSAGetLastError());
+
+    addrlen = sizeof(address);
+    iret = getsockname(listener, (struct sockaddr *)&address, &addrlen);
+    ok(iret == 0, "failed to lookup bind address, error %d\n", WSAGetLastError());
+
+    iret = listen(listener, 1);
+    ok(iret == 0, "failed to listen, error %d\n", WSAGetLastError());
+
+    set_blocking(listener, TRUE);
+
+    memset(&overlapped, 0, sizeof(overlapped));
+    bret = pDisconnectEx(INVALID_SOCKET, &overlapped, 0, 0);
+    ok(bret == FALSE, "DisconnectEx unexpectedly succeeded\n");
+    ok(WSAGetLastError() == WSAENOTSOCK, "expected WSAENOTSOCK, got %d\n", WSAGetLastError());
+
+    memset(&overlapped, 0, sizeof(overlapped));
+    bret = pDisconnectEx(connector, &overlapped, 0, 0);
+    ok(bret == FALSE, "DisconnectEx unexpectedly succeeded\n");
+    todo_wine ok(WSAGetLastError() == WSAENOTCONN, "expected WSAENOTCONN, got %d\n", WSAGetLastError());
+
+    iret = connect(connector, (struct sockaddr *)&address, addrlen);
+    ok(iret == 0, "failed to connect, error %d\n", WSAGetLastError());
+
+    acceptor = accept(listener, NULL, NULL);
+    ok(acceptor != INVALID_SOCKET, "could not accept socket, error %d\n", WSAGetLastError());
+
+    memset(&overlapped, 0, sizeof(overlapped));
+    overlapped.hEvent = WSACreateEvent();
+    ok(overlapped.hEvent != WSA_INVALID_EVENT, "WSACreateEvent failed, error %d\n", WSAGetLastError());
+    bret = pDisconnectEx(connector, &overlapped, 0, 0);
+    if (bret)
+        ok(overlapped.Internal == STATUS_PENDING, "expected STATUS_PENDING, got %08lx\n", overlapped.Internal);
+    else if (WSAGetLastError() == ERROR_IO_PENDING)
+        bret = WSAGetOverlappedResult(connector, &overlapped, &num_bytes, TRUE, &flags);
+    ok(bret, "DisconnectEx failed, error %d\n", WSAGetLastError());
+    WSACloseEvent(overlapped.hEvent);
+
+    iret = connect(connector, (struct sockaddr *)&address, sizeof(address));
+    ok(iret != 0, "connect unexpectedly succeeded\n");
+    ok(WSAGetLastError() == WSAEISCONN, "expected WSAEISCONN, got %d\n", WSAGetLastError());
+
+    closesocket(acceptor);
+    closesocket(connector);
+
+    connector = socket(AF_INET, SOCK_STREAM, 0);
+    ok(connector != INVALID_SOCKET, "failed to create connector socket, error %d\n", WSAGetLastError());
+
+    iret = connect(connector, (struct sockaddr *)&address, addrlen);
+    ok(iret == 0, "failed to connect, error %d\n", WSAGetLastError());
+
+    acceptor = accept(listener, NULL, NULL);
+    ok(acceptor != INVALID_SOCKET, "could not accept socket, error %d\n", WSAGetLastError());
+
+    bret = pDisconnectEx(connector, NULL, 0, 0);
+    ok(bret, "DisconnectEx failed, error %d\n", WSAGetLastError());
+
+    iret = connect(connector, (struct sockaddr *)&address, sizeof(address));
+    ok(iret != 0, "connect unexpectedly succeeded\n");
+    ok(WSAGetLastError() == WSAEISCONN, "expected WSAEISCONN, got %d\n", WSAGetLastError());
+
+    closesocket(acceptor);
+    closesocket(connector);
+    closesocket(listener);
+}
+
 #define compare_file(h,s,o) compare_file2(h,s,o,__FILE__,__LINE__)
 
 static void compare_file2(HANDLE handle, SOCKET sock, int offset, const char *file, int line)
@@ -9588,6 +9692,7 @@ START_TEST( sock )
     test_getaddrinfo();
     test_AcceptEx();
     test_ConnectEx();
+    test_DisconnectEx();
 
     test_sioRoutingInterfaceQuery();
     test_sioAddressListChange();

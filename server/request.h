@@ -147,6 +147,7 @@ DECL_HANDLER(open_keyed_event);
 DECL_HANDLER(create_mutex);
 DECL_HANDLER(release_mutex);
 DECL_HANDLER(open_mutex);
+DECL_HANDLER(query_mutex);
 DECL_HANDLER(create_semaphore);
 DECL_HANDLER(release_semaphore);
 DECL_HANDLER(query_semaphore);
@@ -156,6 +157,7 @@ DECL_HANDLER(open_file_object);
 DECL_HANDLER(alloc_file_handle);
 DECL_HANDLER(get_handle_unix_name);
 DECL_HANDLER(get_handle_fd);
+DECL_HANDLER(get_directory_cache_entry);
 DECL_HANDLER(flush);
 DECL_HANDLER(lock_file);
 DECL_HANDLER(unlock_file);
@@ -424,6 +426,7 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
     (req_handler)req_create_mutex,
     (req_handler)req_release_mutex,
     (req_handler)req_open_mutex,
+    (req_handler)req_query_mutex,
     (req_handler)req_create_semaphore,
     (req_handler)req_release_semaphore,
     (req_handler)req_query_semaphore,
@@ -433,6 +436,7 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
     (req_handler)req_alloc_file_handle,
     (req_handler)req_get_handle_unix_name,
     (req_handler)req_get_handle_fd,
+    (req_handler)req_get_directory_cache_entry,
     (req_handler)req_flush,
     (req_handler)req_lock_file,
     (req_handler)req_unlock_file,
@@ -920,6 +924,12 @@ C_ASSERT( FIELD_OFFSET(struct open_mutex_request, rootdir) == 20 );
 C_ASSERT( sizeof(struct open_mutex_request) == 24 );
 C_ASSERT( FIELD_OFFSET(struct open_mutex_reply, handle) == 8 );
 C_ASSERT( sizeof(struct open_mutex_reply) == 16 );
+C_ASSERT( FIELD_OFFSET(struct query_mutex_request, handle) == 12 );
+C_ASSERT( sizeof(struct query_mutex_request) == 16 );
+C_ASSERT( FIELD_OFFSET(struct query_mutex_reply, count) == 8 );
+C_ASSERT( FIELD_OFFSET(struct query_mutex_reply, owned) == 12 );
+C_ASSERT( FIELD_OFFSET(struct query_mutex_reply, abandoned) == 16 );
+C_ASSERT( sizeof(struct query_mutex_reply) == 24 );
 C_ASSERT( FIELD_OFFSET(struct create_semaphore_request, access) == 12 );
 C_ASSERT( FIELD_OFFSET(struct create_semaphore_request, initial) == 16 );
 C_ASSERT( FIELD_OFFSET(struct create_semaphore_request, max) == 20 );
@@ -975,6 +985,10 @@ C_ASSERT( FIELD_OFFSET(struct get_handle_fd_reply, cacheable) == 12 );
 C_ASSERT( FIELD_OFFSET(struct get_handle_fd_reply, access) == 16 );
 C_ASSERT( FIELD_OFFSET(struct get_handle_fd_reply, options) == 20 );
 C_ASSERT( sizeof(struct get_handle_fd_reply) == 24 );
+C_ASSERT( FIELD_OFFSET(struct get_directory_cache_entry_request, handle) == 12 );
+C_ASSERT( sizeof(struct get_directory_cache_entry_request) == 16 );
+C_ASSERT( FIELD_OFFSET(struct get_directory_cache_entry_reply, entry) == 8 );
+C_ASSERT( sizeof(struct get_directory_cache_entry_reply) == 16 );
 C_ASSERT( FIELD_OFFSET(struct flush_request, blocking) == 12 );
 C_ASSERT( FIELD_OFFSET(struct flush_request, async) == 16 );
 C_ASSERT( sizeof(struct flush_request) == 56 );

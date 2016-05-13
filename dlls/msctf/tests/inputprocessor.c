@@ -62,6 +62,7 @@ static BOOL test_ShouldDeactivate = FALSE;
 
 static DWORD tmSinkCookie;
 static DWORD tmSinkRefCount;
+static DWORD dmSinkCookie;
 static DWORD documentStatus;
 static ITfDocumentMgr *test_CurrentFocus = NULL;
 static ITfDocumentMgr *test_PrevFocus = NULL;
@@ -622,6 +623,42 @@ static HRESULT ThreadMgrEventSink_Constructor(IUnknown **ppOut)
     return S_OK;
 }
 
+static HRESULT WINAPI TfTransitoryExtensionSink_QueryInterface(ITfTransitoryExtensionSink *iface, REFIID riid, void **ppv)
+{
+    if(IsEqualGUID(&IID_IUnknown, riid) || IsEqualGUID(&IID_ITfTransitoryExtensionSink, riid)) {
+        *ppv = iface;
+        return S_OK;
+    }
+
+    *ppv = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI TfTransitoryExtensionSink_AddRef(ITfTransitoryExtensionSink *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI TfTransitoryExtensionSink_Release(ITfTransitoryExtensionSink *iface)
+{
+    return 1;
+}
+
+static HRESULT WINAPI TfTransitoryExtensionSink_OnTransitoryExtensionUpdated(ITfTransitoryExtensionSink *iface, ITfContext *pic,
+        TfEditCookie ecReadOnly, ITfRange *pResultRange, ITfRange *pCompositionRange, BOOL *pfDeleteResultRange)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static const ITfTransitoryExtensionSinkVtbl TfTransitoryExtensionSinkVtbl = {
+    TfTransitoryExtensionSink_QueryInterface,
+    TfTransitoryExtensionSink_AddRef,
+    TfTransitoryExtensionSink_Release,
+    TfTransitoryExtensionSink_OnTransitoryExtensionUpdated
+};
+
+static ITfTransitoryExtensionSink TfTransitoryExtensionSink = { &TfTransitoryExtensionSinkVtbl };
 
 /********************************************************************************************
  * Stub text service for testing
@@ -1053,6 +1090,34 @@ static void test_ThreadMgrUnadviseSinks(void)
     ITfSource_Release(source);
 }
 
+static void test_DocumentMgrAdviseSinks(void)
+{
+    ITfSource *source;
+    HRESULT hr;
+
+    hr = ITfDocumentMgr_QueryInterface(g_dm, &IID_ITfSource, (void**)&source);
+    ok(hr == S_OK,"Failed to get IID_ITfSource for DocumentMgr\n");
+
+    dmSinkCookie = 0;
+    hr = ITfSource_AdviseSink(source, &IID_ITfTransitoryExtensionSink, (IUnknown*)&TfTransitoryExtensionSink, &dmSinkCookie);
+    ok(hr == S_OK,"Failed to Advise Sink\n");
+
+    ITfSource_Release(source);
+}
+
+static void test_DocumentMgrUnadviseSinks(void)
+{
+    ITfSource *source = NULL;
+    HRESULT hr;
+
+    hr = ITfDocumentMgr_QueryInterface(g_dm, &IID_ITfSource, (void**)&source);
+    ok(hr == S_OK,"Failed to get IID_ITfSource for DocumentMgr\n");
+
+    hr = ITfSource_UnadviseSink(source, dmSinkCookie);
+    ok(hr == S_OK,"Failed to unadvise Sink\n");
+    ITfSource_Release(source);
+}
+
 /**********************************************************************
  * ITfKeyEventSink
  **********************************************************************/
@@ -1206,13 +1271,13 @@ static void test_KeystrokeMgr(void)
     ok(hr == E_INVALIDARG,"Wrong return, expected E_INVALIDARG\n");
 
     hr =ITfKeystrokeMgr_PreserveKey(keymgr, 0, &CLSID_PreservedKey, &tfpk, NULL, 0);
-    ok(hr==E_INVALIDARG,"ITfKeystrokeMgr_PreserveKey inproperly succeeded\n");
+    ok(hr==E_INVALIDARG,"ITfKeystrokeMgr_PreserveKey improperly succeeded\n");
 
     hr =ITfKeystrokeMgr_PreserveKey(keymgr, tid, &CLSID_PreservedKey, &tfpk, NULL, 0);
     ok(SUCCEEDED(hr),"ITfKeystrokeMgr_PreserveKey failed\n");
 
     hr =ITfKeystrokeMgr_PreserveKey(keymgr, tid, &CLSID_PreservedKey, &tfpk, NULL, 0);
-    ok(hr == TF_E_ALREADY_EXISTS,"ITfKeystrokeMgr_PreserveKey inproperly succeeded\n");
+    ok(hr == TF_E_ALREADY_EXISTS,"ITfKeystrokeMgr_PreserveKey improperly succeeded\n");
 
     preserved = FALSE;
     hr = ITfKeystrokeMgr_IsPreservedKey(keymgr, &CLSID_PreservedKey, &tfpk, &preserved);
@@ -1227,7 +1292,7 @@ static void test_KeystrokeMgr(void)
     if (hr == S_FALSE) ok(preserved == FALSE,"misreporting preserved key\n");
 
     hr = ITfKeystrokeMgr_UnpreserveKey(keymgr, &CLSID_PreservedKey,&tfpk);
-    ok(hr==CONNECT_E_NOCONNECTION,"ITfKeystrokeMgr_UnpreserveKey inproperly succeeded\n");
+    ok(hr==CONNECT_E_NOCONNECTION,"ITfKeystrokeMgr_UnpreserveKey improperly succeeded\n");
 
     hr = ITfKeystrokeMgr_UnadviseKeyEventSink(keymgr,tid);
     ok(SUCCEEDED(hr),"ITfKeystrokeMgr_UnadviseKeyEventSink failed\n");
@@ -2240,6 +2305,7 @@ START_TEST(inputprocessor)
         test_ThreadMgrAdviseSinks();
         test_Activate();
         test_startSession();
+        test_DocumentMgrAdviseSinks();
         test_TfGuidAtom();
         test_ClientId();
         test_KeystrokeMgr();
@@ -2250,6 +2316,7 @@ START_TEST(inputprocessor)
         test_FindClosestCategory();
         test_Disable();
         test_ThreadMgrUnadviseSinks();
+        test_DocumentMgrUnadviseSinks();
         test_UnregisterCategory();
         test_Unregister();
         test_profile_mgr();

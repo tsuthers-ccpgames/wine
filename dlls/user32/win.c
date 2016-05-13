@@ -3485,7 +3485,7 @@ BOOL WINAPI FlashWindowEx( PFLASHWINFO pfinfo )
 {
     WND *wndPtr;
 
-    TRACE( "%p\n", pfinfo->hwnd );
+    TRACE( "%p\n", pfinfo );
 
     if (!pfinfo)
     {

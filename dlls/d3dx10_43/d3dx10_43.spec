@@ -18,7 +18,7 @@
 @ stub D3DX10CreateAsyncShaderResourceViewProcessor(ptr ptr ptr)
 @ stub D3DX10CreateAsyncTextureInfoProcessor(ptr ptr)
 @ stub D3DX10CreateAsyncTextureProcessor(ptr ptr ptr)
-@ stub D3DX10CreateDevice(ptr long long long ptr)
+@ stdcall D3DX10CreateDevice(ptr long long long ptr)
 @ stub D3DX10CreateDeviceAndSwapChain(ptr long long long ptr ptr ptr)
 @ stdcall D3DX10CreateEffectFromFileA(str ptr ptr str long long ptr ptr ptr ptr ptr ptr)
 @ stdcall D3DX10CreateEffectFromFileW(wstr ptr ptr str long long ptr ptr ptr ptr ptr ptr)
@@ -48,7 +48,7 @@
 @ stub D3DX10CreateTextureFromResourceA(ptr long str ptr ptr ptr ptr)
 @ stub D3DX10CreateTextureFromResourceW(ptr long wstr ptr ptr ptr ptr)
 @ stub D3DX10FilterTexture(ptr long long)
-@ stub D3DX10GetFeatureLevel1(ptr ptr)
+@ stdcall D3DX10GetFeatureLevel1(ptr ptr)
 @ stub D3DX10GetImageInfoFromFileA(str ptr ptr ptr)
 @ stub D3DX10GetImageInfoFromFileW(wstr ptr ptr ptr)
 @ stub D3DX10GetImageInfoFromMemory(ptr long ptr ptr ptr)
@@ -64,7 +64,7 @@
 @ stub D3DX10SaveTextureToFileA(ptr ptr str)
 @ stub D3DX10SaveTextureToFileW(ptr ptr wstr)
 @ stub D3DX10SaveTextureToMemory(ptr ptr ptr long)
-@ stub D3DX10UnsetAllDeviceObjects(ptr)
+@ stdcall D3DX10UnsetAllDeviceObjects(ptr)
 @ stdcall D3DXBoxBoundProbe(ptr ptr ptr ptr) d3dx9_36.D3DXBoxBoundProbe
 @ stdcall D3DXColorAdjustContrast(ptr ptr float) d3dx9_36.D3DXColorAdjustContrast
 @ stdcall D3DXColorAdjustSaturation(ptr ptr float) d3dx9_36.D3DXColorAdjustSaturation

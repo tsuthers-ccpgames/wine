@@ -361,12 +361,12 @@ static void swapchain_blit(const struct wined3d_swapchain *swapchain,
         context2 = context_acquire(device, back_buffer);
         context_apply_blit_state(context2, device);
 
-        if (back_buffer->container->flags & WINED3D_TEXTURE_NORMALIZED_COORDS)
+        if (texture->flags & WINED3D_TEXTURE_NORMALIZED_COORDS)
         {
-            tex_left /= back_buffer->pow2Width;
-            tex_right /= back_buffer->pow2Width;
-            tex_top /= back_buffer->pow2Height;
-            tex_bottom /= back_buffer->pow2Height;
+            tex_left /= texture->pow2_width;
+            tex_right /= texture->pow2_width;
+            tex_top /= texture->pow2_height;
+            tex_bottom /= texture->pow2_height;
         }
 
         if (is_complex_fixup(texture->resource.format->color_fixup))
@@ -434,7 +434,6 @@ static void wined3d_swapchain_rotate(struct wined3d_swapchain *swapchain, struct
     struct gl_texture tex0;
     GLuint rb0;
     DWORD locations0;
-    struct wined3d_surface *surface, *surface_prev;
     unsigned int i;
     static const DWORD supported_locations = WINED3D_LOCATION_TEXTURE_RGB | WINED3D_LOCATION_RB_MULTISAMPLE;
 
@@ -442,34 +441,31 @@ static void wined3d_swapchain_rotate(struct wined3d_swapchain *swapchain, struct
         return;
 
     texture_prev = swapchain->back_buffers[0];
-    surface_prev = texture_prev->sub_resources[0].u.surface;
 
     /* Back buffer 0 is already in the draw binding. */
     tex0 = texture_prev->texture_rgb;
-    rb0 = surface_prev->rb_multisample;
+    rb0 = texture_prev->rb_multisample;
     locations0 = texture_prev->sub_resources[0].locations;
 
     for (i = 1; i < swapchain->desc.backbuffer_count; ++i)
     {
         texture = swapchain->back_buffers[i];
         sub_resource = &texture->sub_resources[0];
-        surface = sub_resource->u.surface;
 
         if (!(sub_resource->locations & supported_locations))
-            surface_load_location(surface, context, texture->resource.draw_binding);
+            surface_load_location(sub_resource->u.surface, context, texture->resource.draw_binding);
 
         texture_prev->texture_rgb = texture->texture_rgb;
-        surface_prev->rb_multisample = surface->rb_multisample;
+        texture_prev->rb_multisample = texture->rb_multisample;
 
         wined3d_texture_validate_location(texture_prev, 0, sub_resource->locations & supported_locations);
         wined3d_texture_invalidate_location(texture_prev, 0, ~(sub_resource->locations & supported_locations));
 
         texture_prev = texture;
-        surface_prev = surface;
     }
 
     texture_prev->texture_rgb = tex0;
-    surface_prev->rb_multisample = rb0;
+    texture_prev->rb_multisample = rb0;
 
     wined3d_texture_validate_location(texture_prev, 0, locations0 & supported_locations);
     wined3d_texture_invalidate_location(texture_prev, 0, ~(locations0 & supported_locations));
@@ -616,7 +612,7 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
         struct wined3d_surface *ds = wined3d_rendertarget_view_get_surface(fb->depth_stencil);
 
         if (ds && (swapchain->desc.flags & WINED3DPRESENTFLAG_DISCARD_DEPTHSTENCIL
-                || ds->flags & SFLAG_DISCARD))
+                || ds->container->flags & WINED3D_TEXTURE_DISCARD))
         {
             surface_modify_ds_location(ds, WINED3D_LOCATION_DISCARDED,
                     fb->depth_stencil->width, fb->depth_stencil->height);
@@ -661,16 +657,14 @@ static void swapchain_gdi_frontbuffer_updated(struct wined3d_swapchain *swapchai
 
     front = swapchain->front_buffer->sub_resources[0].u.surface;
     if (swapchain->palette)
-        wined3d_palette_apply_to_dc(swapchain->palette, front->hDC);
+        wined3d_palette_apply_to_dc(swapchain->palette, front->dc);
 
-    if (front->resource.map_count)
+    if (front->container->resource.map_count)
         ERR("Trying to blit a mapped surface.\n");
 
     TRACE("Copying surface %p to screen.\n", front);
 
-    surface_load_location(front, NULL, WINED3D_LOCATION_DIB);
-
-    src_dc = front->hDC;
+    src_dc = front->dc;
     window = swapchain->win_handle;
     dst_dc = GetDCEx(window, 0, DCX_CLIPSIBLINGS | DCX_CACHE);
 
@@ -682,9 +676,9 @@ static void swapchain_gdi_frontbuffer_updated(struct wined3d_swapchain *swapchai
     TRACE("offset %s.\n", wine_dbgstr_point(&offset));
 
     draw_rect.left = 0;
-    draw_rect.right = front->resource.width;
+    draw_rect.right = swapchain->front_buffer->resource.width;
     draw_rect.top = 0;
-    draw_rect.bottom = front->resource.height;
+    draw_rect.bottom = swapchain->front_buffer->resource.height;
     IntersectRect(&draw_rect, &draw_rect, &swapchain->front_buffer_update);
 
     BitBlt(dst_dc, draw_rect.left - offset.x, draw_rect.top - offset.y,
@@ -699,40 +693,25 @@ static void swapchain_gdi_present(struct wined3d_swapchain *swapchain,
         const RECT *src_rect, const RECT *dst_rect, DWORD flags)
 {
     struct wined3d_surface *front, *back;
+    HBITMAP bitmap;
+    void *data;
+    HDC dc;
 
     front = swapchain->front_buffer->sub_resources[0].u.surface;
     back = swapchain->back_buffers[0]->sub_resources[0].u.surface;
 
-    /* Flip the DC. */
-    {
-        HDC tmp;
-        tmp = front->hDC;
-        front->hDC = back->hDC;
-        back->hDC = tmp;
-    }
-
-    /* Flip the DIBsection. */
-    {
-        HBITMAP tmp;
-        tmp = front->dib.DIBsection;
-        front->dib.DIBsection = back->dib.DIBsection;
-        back->dib.DIBsection = tmp;
-    }
-
     /* Flip the surface data. */
-    {
-        void *tmp;
+    dc = front->dc;
+    bitmap = front->bitmap;
+    data = front->container->resource.heap_memory;
 
-        tmp = front->dib.bitmap_data;
-        front->dib.bitmap_data = back->dib.bitmap_data;
-        back->dib.bitmap_data = tmp;
+    front->dc = back->dc;
+    front->bitmap = back->bitmap;
+    front->container->resource.heap_memory = back->container->resource.heap_memory;
 
-        if (front->resource.heap_memory)
-            ERR("GDI Surface %p has heap memory allocated.\n", front);
-
-        if (back->resource.heap_memory)
-            ERR("GDI Surface %p has heap memory allocated.\n", back);
-    }
+    back->dc = dc;
+    back->bitmap = bitmap;
+    back->container->resource.heap_memory = data;
 
     /* FPS support */
     if (TRACE_ON(fps))

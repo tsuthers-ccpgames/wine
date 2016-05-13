@@ -51,7 +51,7 @@ DEFINE_OLEGUID(CGID_DocHostCmdPriv, 0x000214D4L, 0, 0);
     static BOOL expect_ ## func = FALSE, called_ ## func = FALSE
 
 #define SET_EXPECT(func) \
-    expect_ ## func = TRUE
+    do { called_ ## func = FALSE; expect_ ## func = TRUE; } while(0)
 
 #define CHECK_EXPECT2(func) \
     do { \
@@ -68,6 +68,12 @@ DEFINE_OLEGUID(CGID_DocHostCmdPriv, 0x000214D4L, 0, 0);
 #define CHECK_CALLED(func) \
     do { \
         ok(called_ ## func, "expected " #func "\n"); \
+        expect_ ## func = called_ ## func = FALSE; \
+    }while(0)
+
+#define CHECK_NOT_CALLED(func) \
+    do { \
+        ok(!called_ ## func, "unexpected " #func "\n"); \
         expect_ ## func = called_ ## func = FALSE; \
     }while(0)
 
@@ -1117,6 +1123,7 @@ static const IOleClientSiteVtbl ClientSiteVtbl = {
 };
 
 static IOleClientSite ClientSite = { &ClientSiteVtbl };
+static IOleClientSite ClientSite2 = { &ClientSiteVtbl };
 
 static HRESULT WINAPI IOleControlSite_fnQueryInterface(IOleControlSite *iface, REFIID riid, void **ppv)
 {
@@ -2022,6 +2029,61 @@ static void test_ClientSite(IWebBrowser2 *unk, IOleClientSite *client, BOOL stop
 
     IOleInPlaceObject_Release(inplace);
     IOleObject_Release(oleobj);
+}
+
+static void test_change_ClientSite(IWebBrowser2 *unk)
+{
+    BOOL old_use_container_olecmd = use_container_olecmd;
+    IOleClientSite *doc_clientsite;
+    IOleInPlaceObject *inplace;
+    IOleCommandTarget *olecmd;
+    IOleObject *oleobj;
+    HRESULT hres;
+    HWND hwnd;
+
+    hres = IWebBrowser2_QueryInterface(unk, &IID_IOleObject, (void**)&oleobj);
+    ok(hres == S_OK, "QueryInterface(IID_OleObject) failed: %08x\n", hres);
+    if(FAILED(hres))
+        return;
+
+    use_container_olecmd = FALSE;
+
+    SET_EXPECT(Site_GetWindow);
+    SET_EXPECT(Invoke_AMBIENT_OFFLINEIFNOTCONNECTED);
+    SET_EXPECT(Invoke_AMBIENT_SILENT);
+
+    hres = IOleObject_SetClientSite(oleobj, &ClientSite2);
+    ok(hres == S_OK, "SetClientSite failed: %08x\n", hres);
+    IOleObject_Release(oleobj);
+
+    CHECK_CALLED(Site_GetWindow);
+    CHECK_CALLED(Invoke_AMBIENT_OFFLINEIFNOTCONNECTED);
+    CHECK_CALLED(Invoke_AMBIENT_SILENT);
+
+    doc_clientsite = get_dochost(unk);
+    hres = IOleClientSite_QueryInterface(doc_clientsite, &IID_IOleCommandTarget, (void**)&olecmd);
+    ok(hres == S_OK, "QueryInterface(IOleCommandTarget) failed: %08x\n", hres);
+    IOleClientSite_Release(doc_clientsite);
+
+    hres = IWebBrowser2_QueryInterface(unk, &IID_IOleInPlaceObject, (void**)&inplace);
+    ok(hres == S_OK, "QueryInterface(OleInPlaceObject) failed: %08x\n", hres);
+    hres = IOleInPlaceObject_GetWindow(inplace, &hwnd);
+    ok(hres == S_OK, "GetWindow failed: %08x\n", hres);
+    ok(hwnd == shell_embedding_hwnd, "unexpected hwnd %p\n", hwnd);
+    IOleInPlaceObject_Release(inplace);
+
+    if(old_use_container_olecmd) {
+        SET_EXPECT(Exec_UPDATECOMMANDS);
+
+        hres = IOleCommandTarget_Exec(olecmd, NULL, OLECMDID_UPDATECOMMANDS,
+                OLECMDEXECOPT_DONTPROMPTUSER, NULL, NULL);
+        ok(hres == S_OK, "Exec(OLECMDID_UPDATECOMMAND) failed: %08x\n", hres);
+
+        CHECK_CALLED(Exec_UPDATECOMMANDS);
+        use_container_olecmd = TRUE;
+    }
+
+    IOleCommandTarget_Release(olecmd);
 }
 
 static void test_ClassInfo(IWebBrowser2 *unk)
@@ -3633,19 +3695,25 @@ static void test_Close(IWebBrowser2 *wb, BOOL do_download)
     hres = IOleObject_DoVerb(oo, OLEIVERB_HIDE, NULL, (IOleClientSite*)0xdeadbeef,
             0, (HWND)0xdeadbeef, NULL);
     ok(hres == S_OK, "DoVerb failed: %08x\n", hres);
-    todo_wine CHECK_CALLED(GetContainer);
-    todo_wine CHECK_CALLED(Site_GetWindow);
-    todo_wine CHECK_CALLED(Invoke_AMBIENT_OFFLINEIFNOTCONNECTED);
-    todo_wine CHECK_CALLED(Invoke_AMBIENT_SILENT);
+    CHECK_CALLED(GetContainer);
+    CHECK_CALLED(Site_GetWindow);
+    CHECK_CALLED(Invoke_AMBIENT_OFFLINEIFNOTCONNECTED);
+    CHECK_CALLED(Invoke_AMBIENT_SILENT);
 
     hres = IOleObject_GetClientSite(oo, &ocs);
     ok(hres == S_OK, "hres = %x\n", hres);
-    todo_wine ok(ocs == &ClientSite, "ocs != &ClientSite\n");
+    ok(ocs == &ClientSite, "ocs != &ClientSite\n");
     if(ocs)
         IOleClientSite_Release(ocs);
 
+    SET_EXPECT(OnFocus_FALSE);
+    SET_EXPECT(Invoke_COMMANDSTATECHANGE_NAVIGATEBACK_FALSE);
+    SET_EXPECT(Invoke_COMMANDSTATECHANGE_NAVIGATEFORWARD_FALSE);
     hres = IOleObject_Close(oo, OLECLOSE_NOSAVE);
     ok(hres == S_OK, "OleObject_Close failed: %x\n", hres);
+    todo_wine CHECK_NOT_CALLED(OnFocus_FALSE);
+    todo_wine CHECK_NOT_CALLED(Invoke_COMMANDSTATECHANGE_NAVIGATEBACK_FALSE);
+    todo_wine CHECK_NOT_CALLED(Invoke_COMMANDSTATECHANGE_NAVIGATEFORWARD_FALSE);
 
     test_close = FALSE;
     IOleObject_Release(oo);
@@ -3765,10 +3833,12 @@ static void test_WebBrowser(DWORD flags, BOOL do_close)
     test_external(webbrowser);
     test_htmlwindow_close(webbrowser);
 
-    if(do_close)
+    if(do_close) {
         test_Close(webbrowser, do_download);
-    else
+    }else {
+        test_change_ClientSite(webbrowser);
         test_ClientSite(webbrowser, NULL, !do_download);
+    }
     test_ie_funcs(webbrowser);
     test_GetControlInfo(webbrowser);
     test_wb_funcs(webbrowser, FALSE);

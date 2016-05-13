@@ -34,6 +34,13 @@ static int MSVCRT_atexit_table_size = 0;
 static int MSVCRT_atexit_registered = 0; /* Points to free slot */
 static MSVCRT_purecall_handler purecall_handler = NULL;
 
+typedef struct MSVCRT__onexit_table_t
+{
+    MSVCRT__onexit_t *_first;
+    MSVCRT__onexit_t *_last;
+    MSVCRT__onexit_t *_end;
+} MSVCRT__onexit_table_t;
+
 static const char szMsgBoxTitle[] = "Wine C++ Runtime Library";
 
 extern int MSVCRT_app_type;
@@ -273,7 +280,7 @@ MSVCRT__onexit_t CDECL MSVCRT__onexit(MSVCRT__onexit_t func)
   {
     MSVCRT__onexit_t *newtable;
     TRACE("expanding table\n");
-    newtable = MSVCRT_calloc(sizeof(void *),MSVCRT_atexit_table_size + 32);
+    newtable = MSVCRT_calloc(MSVCRT_atexit_table_size + 32, sizeof(void *));
     if (!newtable)
     {
       TRACE("failed!\n");
@@ -332,6 +339,91 @@ int CDECL MSVCRT__crt_atexit(void (*func)(void))
 {
   TRACE("(%p)\n", func);
   return MSVCRT__onexit((MSVCRT__onexit_t)func) == (MSVCRT__onexit_t)func ? 0 : -1;
+}
+
+
+/*********************************************************************
+ *		_initialize_onexit_table (UCRTBASE.@)
+ */
+int CDECL MSVCRT__initialize_onexit_table(MSVCRT__onexit_table_t *table)
+{
+    TRACE("(%p)\n", table);
+
+    if (!table)
+        return -1;
+
+    if (table->_first == table->_end)
+        table->_last = table->_end = table->_first = NULL;
+    return 0;
+}
+
+/*********************************************************************
+ *		_register_onexit_function (UCRTBASE.@)
+ */
+int CDECL MSVCRT__register_onexit_function(MSVCRT__onexit_table_t *table, MSVCRT__onexit_t func)
+{
+    TRACE("(%p %p)\n", table, func);
+
+    if (!table)
+        return -1;
+
+    if (!table->_first)
+    {
+        table->_first = MSVCRT_calloc(32, sizeof(void *));
+        if (!table->_first)
+        {
+            WARN("failed to allocate initial table.\n");
+            return -1;
+        }
+        table->_last = table->_first;
+        table->_end = table->_first + 32;
+    }
+
+    /* grow if full */
+    if (table->_last == table->_end)
+    {
+        int len = table->_end - table->_first;
+        MSVCRT__onexit_t *tmp = MSVCRT_realloc(table->_first, 2 * len * sizeof(void *));
+        if (!tmp)
+        {
+            WARN("failed to grow table.\n");
+            return -1;
+        }
+        table->_first = tmp;
+        table->_end = table->_first + 2 * len;
+        table->_last = table->_first + len;
+    }
+
+    *table->_last = func;
+    table->_last++;
+    return 0;
+}
+
+/*********************************************************************
+ *		_execute_onexit_table (UCRTBASE.@)
+ */
+int CDECL MSVCRT__execute_onexit_table(MSVCRT__onexit_table_t *table)
+{
+    MSVCRT__onexit_t *func;
+
+    TRACE("(%p)\n", table);
+
+    if (!table)
+        return -1;
+
+    if (!table->_first || table->_first >= table->_last)
+        return 0;
+
+    for (func = table->_last - 1; func >= table->_first; func--)
+    {
+        if (*func)
+           (*func)();
+    }
+
+    MSVCRT_free(table->_first);
+    memset(table, 0, sizeof(*table));
+    MSVCRT__initialize_onexit_table(table);
+    return 0;
 }
 
 /*********************************************************************

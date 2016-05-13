@@ -53,6 +53,7 @@ BOOL EMFDRV_MoveTo(PHYSDEV dev, INT x, INT y)
  */
 BOOL EMFDRV_LineTo( PHYSDEV dev, INT x, INT y )
 {
+    EMFDRV_PDEVICE *physDev = (EMFDRV_PDEVICE*) dev;
     POINT pt;
     EMRLINETO emr;
     RECTL bounds;
@@ -72,7 +73,8 @@ BOOL EMFDRV_LineTo( PHYSDEV dev, INT x, INT y )
     bounds.right  = max(x, pt.x);
     bounds.bottom = max(y, pt.y);
 
-    EMFDRV_UpdateBBox( dev, &bounds );
+    if(!physDev->path)
+        EMFDRV_UpdateBBox( dev, &bounds );
 
     return TRUE;
 }
@@ -85,6 +87,7 @@ static BOOL
 EMFDRV_ArcChordPie( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
 		    INT xstart, INT ystart, INT xend, INT yend, DWORD iType )
 {
+    EMFDRV_PDEVICE *physDev = (EMFDRV_PDEVICE*) dev;
     INT temp, xCentre, yCentre, i;
     double angleStart, angleEnd;
     double xinterStart, yinterStart, xinterEnd, yinterEnd;
@@ -176,7 +179,8 @@ EMFDRV_ArcChordPie( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
     }
     if(!EMFDRV_WriteRecord( dev, &emr.emr ))
         return FALSE;
-    EMFDRV_UpdateBBox( dev, &bounds );
+    if(!physDev->path)
+        EMFDRV_UpdateBBox( dev, &bounds );
     return TRUE;
 }
 
@@ -217,6 +221,7 @@ BOOL EMFDRV_Chord( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
  */
 BOOL EMFDRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom )
 {
+    EMFDRV_PDEVICE *physDev = (EMFDRV_PDEVICE*) dev;
     EMRELLIPSE emr;
     INT temp;
 
@@ -239,7 +244,8 @@ BOOL EMFDRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom )
     emr.rclBox.right  = right;
     emr.rclBox.bottom = bottom;
 
-    EMFDRV_UpdateBBox( dev, &emr.rclBox );
+    if(!physDev->path)
+        EMFDRV_UpdateBBox( dev, &emr.rclBox );
     return EMFDRV_WriteRecord( dev, &emr.emr );
 }
 
@@ -248,6 +254,7 @@ BOOL EMFDRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom )
  */
 BOOL EMFDRV_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
 {
+    EMFDRV_PDEVICE *physDev = (EMFDRV_PDEVICE*) dev;
     EMRRECTANGLE emr;
     INT temp;
 
@@ -270,7 +277,8 @@ BOOL EMFDRV_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
     emr.rclBox.right  = right;
     emr.rclBox.bottom = bottom;
 
-    EMFDRV_UpdateBBox( dev, &emr.rclBox );
+    if(!physDev->path)
+        EMFDRV_UpdateBBox( dev, &emr.rclBox );
     return EMFDRV_WriteRecord( dev, &emr.emr );
 }
 
@@ -280,6 +288,7 @@ BOOL EMFDRV_Rectangle(PHYSDEV dev, INT left, INT top, INT right, INT bottom)
 BOOL EMFDRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right,
 		  INT bottom, INT ell_width, INT ell_height )
 {
+    EMFDRV_PDEVICE *physDev = (EMFDRV_PDEVICE*) dev;
     EMRROUNDRECT emr;
     INT temp;
 
@@ -302,7 +311,8 @@ BOOL EMFDRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right,
     emr.szlCorner.cx  = ell_width;
     emr.szlCorner.cy  = ell_height;
 
-    EMFDRV_UpdateBBox( dev, &emr.rclBox );
+    if(!physDev->path)
+        EMFDRV_UpdateBBox( dev, &emr.rclBox );
     return EMFDRV_WriteRecord( dev, &emr.emr );
 }
 
@@ -337,6 +347,7 @@ COLORREF EMFDRV_SetPixel( PHYSDEV dev, INT x, INT y, COLORREF color )
 static BOOL
 EMFDRV_Polylinegon( PHYSDEV dev, const POINT* pt, INT count, DWORD iType )
 {
+    EMFDRV_PDEVICE *physDev = (EMFDRV_PDEVICE*) dev;
     EMRPOLYLINE *emr;
     DWORD size;
     INT i;
@@ -348,10 +359,33 @@ EMFDRV_Polylinegon( PHYSDEV dev, const POINT* pt, INT count, DWORD iType )
     emr->emr.iType = iType;
     emr->emr.nSize = size;
 
-    emr->rclBounds.left = emr->rclBounds.right = pt[0].x;
-    emr->rclBounds.top = emr->rclBounds.bottom = pt[0].y;
+    emr->cptl = count;
+    memcpy(emr->aptl, pt, count * sizeof(POINTL));
 
-    for(i = 1; i < count; i++) {
+    if(physDev->path) {
+        emr->rclBounds.left = emr->rclBounds.top = 0;
+        emr->rclBounds.right = emr->rclBounds.bottom = -1;
+        ret = EMFDRV_WriteRecord( dev, &emr->emr );
+        HeapFree( GetProcessHeap(), 0, emr );
+        return ret;
+    }
+
+    if(iType == EMR_POLYBEZIERTO) {
+        POINT cur_pt;
+
+        GetCurrentPositionEx( dev->hdc, &cur_pt );
+        emr->rclBounds.left = emr->rclBounds.right = cur_pt.x;
+        emr->rclBounds.top = emr->rclBounds.bottom = cur_pt.y;
+        i = 0;
+    }
+    else
+    {
+        emr->rclBounds.left = emr->rclBounds.right = pt[0].x;
+        emr->rclBounds.top = emr->rclBounds.bottom = pt[0].y;
+        i = 1;
+    }
+
+    for(; i < count; i++) {
         if(pt[i].x < emr->rclBounds.left)
 	    emr->rclBounds.left = pt[i].x;
 	else if(pt[i].x > emr->rclBounds.right)
@@ -361,9 +395,6 @@ EMFDRV_Polylinegon( PHYSDEV dev, const POINT* pt, INT count, DWORD iType )
 	else if(pt[i].y > emr->rclBounds.bottom)
 	    emr->rclBounds.bottom = pt[i].y;
     }
-
-    emr->cptl = count;
-    memcpy(emr->aptl, pt, count * sizeof(POINTL));
 
     ret = EMFDRV_WriteRecord( dev, &emr->emr );
     if(ret)
@@ -384,6 +415,7 @@ EMFDRV_Polylinegon( PHYSDEV dev, const POINT* pt, INT count, DWORD iType )
 static BOOL
 EMFDRV_Polylinegon16( PHYSDEV dev, const POINT* pt, INT count, DWORD iType )
 {
+    EMFDRV_PDEVICE *physDev = (EMFDRV_PDEVICE*) dev;
     EMRPOLYLINE16 *emr;
     DWORD size;
     INT i;
@@ -402,10 +434,36 @@ EMFDRV_Polylinegon16( PHYSDEV dev, const POINT* pt, INT count, DWORD iType )
     emr->emr.iType = iType;
     emr->emr.nSize = size;
 
-    emr->rclBounds.left = emr->rclBounds.right = pt[0].x;
-    emr->rclBounds.top = emr->rclBounds.bottom = pt[0].y;
+    emr->cpts = count;
+    for(i = 0; i < count; i++ ) {
+        emr->apts[i].x = pt[i].x;
+        emr->apts[i].y = pt[i].y;
+    }
 
-    for(i = 1; i < count; i++) {
+    if(physDev->path) {
+        emr->rclBounds.left = emr->rclBounds.top = 0;
+        emr->rclBounds.right = emr->rclBounds.bottom = -1;
+        ret = EMFDRV_WriteRecord( dev, &emr->emr );
+        HeapFree( GetProcessHeap(), 0, emr );
+        return ret;
+    }
+
+    if(iType == EMR_POLYBEZIERTO16) {
+        POINT cur_pt;
+
+        GetCurrentPositionEx( dev->hdc, &cur_pt );
+        emr->rclBounds.left = emr->rclBounds.right = cur_pt.x;
+        emr->rclBounds.top = emr->rclBounds.bottom = cur_pt.y;
+        i = 0;
+    }
+    else
+    {
+        emr->rclBounds.left = emr->rclBounds.right = pt[0].x;
+        emr->rclBounds.top = emr->rclBounds.bottom = pt[0].y;
+        i = 1;
+    }
+
+    for(; i < count; i++) {
         if(pt[i].x < emr->rclBounds.left)
 	    emr->rclBounds.left = pt[i].x;
 	else if(pt[i].x > emr->rclBounds.right)
@@ -414,12 +472,6 @@ EMFDRV_Polylinegon16( PHYSDEV dev, const POINT* pt, INT count, DWORD iType )
 	    emr->rclBounds.top = pt[i].y;
 	else if(pt[i].y > emr->rclBounds.bottom)
 	    emr->rclBounds.bottom = pt[i].y;
-    }
-
-    emr->cpts = count;
-    for(i = 0; i < count; i++ ) {
-        emr->apts[i].x = pt[i].x;
-        emr->apts[i].y = pt[i].y;
     }
 
     ret = EMFDRV_WriteRecord( dev, &emr->emr );
@@ -481,6 +533,7 @@ static BOOL
 EMFDRV_PolyPolylinegon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT polys,
 			DWORD iType)
 {
+    EMFDRV_PDEVICE *physDev = (EMFDRV_PDEVICE*) dev;
     EMRPOLYPOLYLINE *emr;
     DWORD cptl = 0, poly, size, i;
     INT point;
@@ -524,7 +577,7 @@ EMFDRV_PolyPolylinegon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT po
     if(use_small_emr) emr->emr.iType += EMR_POLYPOLYLINE16 - EMR_POLYPOLYLINE;
 
     emr->emr.nSize = size;
-    if(bounds_valid)
+    if(bounds_valid && !physDev->path)
         emr->rclBounds = bounds;
     else
         emr->rclBounds = empty;
@@ -556,7 +609,7 @@ EMFDRV_PolyPolylinegon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT po
         ret = FALSE;
         SetLastError( ERROR_INVALID_PARAMETER );
     }
-    if(ret)
+    if(ret && !physDev->path)
         EMFDRV_UpdateBBox( dev, &emr->rclBounds );
     HeapFree( GetProcessHeap(), 0, emr );
     return ret;
@@ -722,6 +775,7 @@ BOOL EMFDRV_InvertRgn( PHYSDEV dev, HRGN hrgn )
 BOOL EMFDRV_ExtTextOut( PHYSDEV dev, INT x, INT y, UINT flags, const RECT *lprect,
                         LPCWSTR str, UINT count, const INT *lpDx )
 {
+    EMFDRV_PDEVICE *physDev = (EMFDRV_PDEVICE*) dev;
     EMREXTTEXTOUTW *pemr;
     DWORD nSize;
     BOOL ret;
@@ -803,13 +857,14 @@ BOOL EMFDRV_ExtTextOut( PHYSDEV dev, INT x, INT y, UINT flags, const RECT *lprec
         }
     }
 
-    if (!lprect)
+    if (physDev->path)
     {
         pemr->rclBounds.left = pemr->rclBounds.top = 0;
         pemr->rclBounds.right = pemr->rclBounds.bottom = -1;
         goto no_bounds;
     }
 
+    /* FIXME: handle font escapement */
     switch (textAlign & (TA_LEFT | TA_RIGHT | TA_CENTER)) {
     case TA_CENTER: {
         pemr->rclBounds.left  = x - (textWidth / 2) - 1;
@@ -853,5 +908,59 @@ BOOL EMFDRV_ExtTextOut( PHYSDEV dev, INT x, INT y, UINT flags, const RECT *lprec
 no_bounds:
     ret = EMFDRV_WriteRecord( dev, &pemr->emr );
     HeapFree( GetProcessHeap(), 0, pemr );
+    return ret;
+}
+
+/**********************************************************************
+ *          EMFDRV_GradientFill
+ */
+BOOL EMFDRV_GradientFill( PHYSDEV dev, TRIVERTEX *vert_array, ULONG nvert,
+                          void *grad_array, ULONG ngrad, ULONG mode )
+{
+    EMRGRADIENTFILL *emr;
+    ULONG i, pt, size, num_pts = ngrad * (mode == GRADIENT_FILL_TRIANGLE ? 3 : 2);
+    const ULONG *pts = (const ULONG *)grad_array;
+    BOOL ret;
+
+    size = FIELD_OFFSET(EMRGRADIENTFILL, Ver[nvert]) + num_pts * sizeof(pts[0]);
+
+    emr = HeapAlloc( GetProcessHeap(), 0, size );
+    if (!emr) return FALSE;
+
+    for (i = 0; i < num_pts; i++)
+    {
+        pt = pts[i];
+
+        if (i == 0)
+        {
+            emr->rclBounds.left = emr->rclBounds.right = vert_array[pt].x;
+            emr->rclBounds.top = emr->rclBounds.bottom = vert_array[pt].y;
+        }
+        else
+        {
+            if (vert_array[pt].x < emr->rclBounds.left)
+                emr->rclBounds.left = vert_array[pt].x;
+            else if (vert_array[pt].x > emr->rclBounds.right)
+                emr->rclBounds.right = vert_array[pt].x;
+            if (vert_array[pt].y < emr->rclBounds.top)
+                emr->rclBounds.top = vert_array[pt].y;
+            else if (vert_array[pt].y > emr->rclBounds.bottom)
+                emr->rclBounds.bottom = vert_array[pt].y;
+        }
+    }
+    emr->rclBounds.right--;
+    emr->rclBounds.bottom--;
+
+    emr->emr.iType = EMR_GRADIENTFILL;
+    emr->emr.nSize = size;
+    emr->nVer = nvert;
+    emr->nTri = ngrad;
+    emr->ulMode = mode;
+    memcpy( emr->Ver, vert_array, nvert * sizeof(vert_array[0]) );
+    memcpy( emr->Ver + nvert, pts, num_pts * sizeof(pts[0]) );
+
+    EMFDRV_UpdateBBox( dev, &emr->rclBounds );
+    ret = EMFDRV_WriteRecord( dev, &emr->emr );
+    HeapFree( GetProcessHeap(), 0, emr );
     return ret;
 }

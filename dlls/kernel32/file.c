@@ -58,13 +58,13 @@ typedef struct
     CRITICAL_SECTION  cs;          /* crit section protecting this structure */
     FINDEX_SEARCH_OPS search_op;   /* Flags passed to FindFirst.  */
     FINDEX_INFO_LEVELS level;      /* Level passed to FindFirst */
-    UNICODE_STRING    mask;        /* file mask */
     UNICODE_STRING    path;        /* NT path used to open the directory */
     BOOL              is_root;     /* is directory the root of the drive? */
+    BOOL              wildcard;    /* did the mask contain wildcard characters? */
     UINT              data_pos;    /* current position in dir data */
     UINT              data_len;    /* length of dir data */
     UINT              data_size;   /* size of data buffer, or 0 when everything has been read */
-    BYTE             *data;        /* directory data */
+    BYTE              data[1];     /* directory data */
 } FIND_FIRST_INFO;
 
 #define FIND_FIRST_MAGIC  0xc0ffee11
@@ -1939,13 +1939,14 @@ HANDLE WINAPI FindFirstFileExW( LPCWSTR filename, FINDEX_INFO_LEVELS level,
                                 LPVOID data, FINDEX_SEARCH_OPS search_op,
                                 LPVOID filter, DWORD flags)
 {
-    WCHAR *mask, *p;
+    WCHAR *mask;
+    BOOL has_wildcard = FALSE;
     FIND_FIRST_INFO *info = NULL;
     UNICODE_STRING nt_name;
     OBJECT_ATTRIBUTES attr;
     IO_STATUS_BLOCK io;
     NTSTATUS status;
-    DWORD device = 0;
+    DWORD size, device = 0;
 
     TRACE("%s %d %p %d %p %x\n", debugstr_w(filename), level, data, search_op, filter, flags);
 
@@ -1970,12 +1971,6 @@ HANDLE WINAPI FindFirstFileExW( LPCWSTR filename, FINDEX_INFO_LEVELS level,
     {
         SetLastError( ERROR_PATH_NOT_FOUND );
         return INVALID_HANDLE_VALUE;
-    }
-
-    if (!(info = HeapAlloc( GetProcessHeap(), 0, sizeof(*info))))
-    {
-        SetLastError( ERROR_NOT_ENOUGH_MEMORY );
-        goto error;
     }
 
     if (!mask && (device = RtlIsDosDeviceName_U( filename )))
@@ -2003,7 +1998,7 @@ HANDLE WINAPI FindFirstFileExW( LPCWSTR filename, FINDEX_INFO_LEVELS level,
             goto error;
         }
         HeapFree( GetProcessHeap(), 0, dir );
-        RtlInitUnicodeString( &info->mask, NULL );
+        size = 0;
     }
     else if (!mask || !*mask)
     {
@@ -2012,25 +2007,24 @@ HANDLE WINAPI FindFirstFileExW( LPCWSTR filename, FINDEX_INFO_LEVELS level,
     }
     else
     {
-        if (!RtlCreateUnicodeString( &info->mask, mask ))
-        {
-            SetLastError( ERROR_NOT_ENOUGH_MEMORY );
-            goto error;
-        }
-
-        /* truncate dir name before mask */
-        *mask = 0;
         nt_name.Length = (mask - nt_name.Buffer) * sizeof(WCHAR);
+        has_wildcard = strpbrkW( mask, wildcardsW ) != NULL;
+        size = has_wildcard ? 8192 : max_entry_size;
     }
 
-    /* check if path is the root of the drive */
-    info->is_root = FALSE;
-    p = nt_name.Buffer + 4;  /* skip \??\ prefix */
-    if (p[0] && p[1] == ':')
+    if (!(info = HeapAlloc( GetProcessHeap(), 0, offsetof( FIND_FIRST_INFO, data[size] ))))
     {
-        p += 2;
-        while (*p == '\\') p++;
-        info->is_root = (*p == 0);
+        SetLastError( ERROR_NOT_ENOUGH_MEMORY );
+        goto error;
+    }
+
+    /* check if path is the root of the drive, skipping the \??\ prefix */
+    info->is_root = FALSE;
+    if (nt_name.Length >= 6 * sizeof(WCHAR) && nt_name.Buffer[5] == ':')
+    {
+        DWORD pos = 6;
+        while (pos * sizeof(WCHAR) < nt_name.Length && nt_name.Buffer[pos] == '\\') pos++;
+        info->is_root = (pos * sizeof(WCHAR) >= nt_name.Length);
     }
 
     attr.Length = sizeof(attr);
@@ -2046,7 +2040,6 @@ HANDLE WINAPI FindFirstFileExW( LPCWSTR filename, FINDEX_INFO_LEVELS level,
 
     if (status != STATUS_SUCCESS)
     {
-        RtlFreeUnicodeString( &info->mask );
         if (status == STATUS_OBJECT_NAME_NOT_FOUND)
             SetLastError( ERROR_PATH_NOT_FOUND );
         else
@@ -2058,10 +2051,10 @@ HANDLE WINAPI FindFirstFileExW( LPCWSTR filename, FINDEX_INFO_LEVELS level,
     info->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": FIND_FIRST_INFO.cs");
     info->path     = nt_name;
     info->magic    = FIND_FIRST_MAGIC;
+    info->wildcard = has_wildcard;
     info->data_pos = 0;
     info->data_len = 0;
-    info->data_size = 0;
-    info->data      = NULL;
+    info->data_size = size;
     info->search_op = search_op;
     info->level     = level;
 
@@ -2077,44 +2070,26 @@ HANDLE WINAPI FindFirstFileExW( LPCWSTR filename, FINDEX_INFO_LEVELS level,
     }
     else
     {
-        IO_STATUS_BLOCK io;
-        BOOL has_wildcard = strpbrkW( info->mask.Buffer, wildcardsW ) != NULL;
+        UNICODE_STRING mask_str;
 
-        info->data_size = has_wildcard ? 8192 : max_entry_size * 2;
-
-        while (info->data_size)
+        RtlInitUnicodeString( &mask_str, mask );
+        status = NtQueryDirectoryFile( info->handle, 0, NULL, NULL, &io, info->data, info->data_size,
+                                       FileBothDirectoryInformation, FALSE, &mask_str, TRUE );
+        if (status)
         {
-            if (!(info->data = HeapAlloc( GetProcessHeap(), 0, info->data_size )))
-            {
-                FindClose( info );
-                SetLastError( ERROR_NOT_ENOUGH_MEMORY );
-                return INVALID_HANDLE_VALUE;
-            }
-
-            NtQueryDirectoryFile( info->handle, 0, NULL, NULL, &io, info->data, info->data_size,
-                                  FileBothDirectoryInformation, FALSE, &info->mask, TRUE );
-            if (io.u.Status)
-            {
-                FindClose( info );
-                SetLastError( RtlNtStatusToDosError( io.u.Status ) );
-                return INVALID_HANDLE_VALUE;
-            }
-
-            if (io.Information < info->data_size - max_entry_size)
-            {
-                info->data_size = 0;  /* we read everything */
-            }
-            else if (info->data_size < 1024 * 1024)
-            {
-                HeapFree( GetProcessHeap(), 0, info->data );
-                info->data_size *= 2;
-            }
-            else break;
+            FindClose( info );
+            SetLastError( RtlNtStatusToDosError( status ) );
+            return INVALID_HANDLE_VALUE;
         }
 
         info->data_len = io.Information;
-        if (!info->data_size && has_wildcard)  /* release unused buffer space */
-            HeapReAlloc( GetProcessHeap(), HEAP_REALLOC_IN_PLACE_ONLY, info->data, info->data_len );
+        if (!has_wildcard || info->data_len < info->data_size - max_entry_size)
+        {
+            if (has_wildcard)  /* release unused buffer space */
+                HeapReAlloc( GetProcessHeap(), HEAP_REALLOC_IN_PLACE_ONLY,
+                             info, offsetof( FIND_FIRST_INFO, data[info->data_len] ));
+            info->data_size = 0;  /* we read everything */
+        }
 
         if (!FindNextFileW( info, data ))
         {
@@ -2126,9 +2101,7 @@ HANDLE WINAPI FindFirstFileExW( LPCWSTR filename, FINDEX_INFO_LEVELS level,
         if (!has_wildcard)  /* we can't find two files with the same name */
         {
             CloseHandle( info->handle );
-            HeapFree( GetProcessHeap(), 0, info->data );
             info->handle = 0;
-            info->data = NULL;
         }
     }
     return info;
@@ -2148,6 +2121,7 @@ BOOL WINAPI FindNextFileW( HANDLE handle, WIN32_FIND_DATAW *data )
     FIND_FIRST_INFO *info;
     FILE_BOTH_DIR_INFORMATION *dir_info;
     BOOL ret = FALSE;
+    NTSTATUS status;
 
     TRACE("%p %p\n", handle, data);
 
@@ -2173,20 +2147,18 @@ BOOL WINAPI FindNextFileW( HANDLE handle, WIN32_FIND_DATAW *data )
             IO_STATUS_BLOCK io;
 
             if (info->data_size)
-                NtQueryDirectoryFile( info->handle, 0, NULL, NULL, &io, info->data, info->data_size,
-                                      FileBothDirectoryInformation, FALSE, &info->mask, FALSE );
+                status = NtQueryDirectoryFile( info->handle, 0, NULL, NULL, &io, info->data, info->data_size,
+                                               FileBothDirectoryInformation, FALSE, NULL, FALSE );
             else
-                io.u.Status = STATUS_NO_MORE_FILES;
+                status = STATUS_NO_MORE_FILES;
 
-            if (io.u.Status)
+            if (status)
             {
-                SetLastError( RtlNtStatusToDosError( io.u.Status ) );
-                if (io.u.Status == STATUS_NO_MORE_FILES)
+                SetLastError( RtlNtStatusToDosError( status ) );
+                if (status == STATUS_NO_MORE_FILES)
                 {
                     CloseHandle( info->handle );
-                    HeapFree( GetProcessHeap(), 0, info->data );
                     info->handle = 0;
-                    info->data = NULL;
                 }
                 break;
             }
@@ -2210,7 +2182,7 @@ BOOL WINAPI FindNextFileW( HANDLE handle, WIN32_FIND_DATAW *data )
         /* check for dir symlink */
         if ((dir_info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
             (dir_info->FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
-            strpbrkW( info->mask.Buffer, wildcardsW ))
+            info->wildcard)
         {
             if (!check_dir_symlink( info, dir_info )) continue;
         }
@@ -2270,12 +2242,9 @@ BOOL WINAPI FindClose( HANDLE handle )
                 info->magic = 0;
                 if (info->handle) CloseHandle( info->handle );
                 info->handle = 0;
-                RtlFreeUnicodeString( &info->mask );
-                info->mask.Buffer = NULL;
                 RtlFreeUnicodeString( &info->path );
                 info->data_pos = 0;
                 info->data_len = 0;
-                HeapFree( GetProcessHeap(), 0, info->data );
                 RtlLeaveCriticalSection( &info->cs );
                 info->cs.DebugInfo->Spare[0] = 0;
                 RtlDeleteCriticalSection( &info->cs );
@@ -2911,4 +2880,215 @@ DWORD WINAPI K32GetDeviceDriverFileNameW(void *image_base, LPWSTR file_name, DWO
         file_name[0] = '\0';
 
     return 0;
+}
+
+/***********************************************************************
+ *           GetFinalPathNameByHandleW (KERNEL32.@)
+ */
+DWORD WINAPI GetFinalPathNameByHandleW(HANDLE file, LPWSTR path, DWORD charcount, DWORD flags)
+{
+    WCHAR buffer[sizeof(OBJECT_NAME_INFORMATION) + MAX_PATH + 1];
+    OBJECT_NAME_INFORMATION *info = (OBJECT_NAME_INFORMATION*)&buffer;
+    WCHAR drive_part[MAX_PATH];
+    DWORD drive_part_len = 0;
+    NTSTATUS status;
+    DWORD result = 0;
+    ULONG dummy;
+    WCHAR *ptr;
+
+    TRACE( "(%p,%p,%d,%x)\n", file, path, charcount, flags );
+
+    if (flags & ~(FILE_NAME_OPENED | VOLUME_NAME_GUID | VOLUME_NAME_NONE | VOLUME_NAME_NT))
+    {
+        WARN("Unknown flags: %x\n", flags);
+        SetLastError( ERROR_INVALID_PARAMETER );
+        return 0;
+    }
+
+    /* get object name */
+    status = NtQueryObject( file, ObjectNameInformation, &buffer, sizeof(buffer) - sizeof(WCHAR), &dummy );
+    if (status != STATUS_SUCCESS)
+    {
+        SetLastError( RtlNtStatusToDosError( status ) );
+        return 0;
+    }
+    if (!info->Name.Buffer)
+    {
+        SetLastError( ERROR_INVALID_HANDLE );
+        return 0;
+    }
+    if (info->Name.Length < 4 * sizeof(WCHAR) || info->Name.Buffer[0] != '\\' ||
+             info->Name.Buffer[1] != '?' || info->Name.Buffer[2] != '?' || info->Name.Buffer[3] != '\\' )
+    {
+        FIXME("Unexpected object name: %s\n", debugstr_wn(info->Name.Buffer, info->Name.Length / sizeof(WCHAR)));
+        SetLastError( ERROR_GEN_FAILURE );
+        return 0;
+    }
+
+    /* add terminating null character, remove "\\??\\" */
+    info->Name.Buffer[info->Name.Length / sizeof(WCHAR)] = 0;
+    info->Name.Length -= 4 * sizeof(WCHAR);
+    info->Name.Buffer += 4;
+
+    /* FILE_NAME_OPENED is not supported yet, and would require Wineserver changes */
+    if (flags & FILE_NAME_OPENED)
+    {
+        FIXME("FILE_NAME_OPENED not supported\n");
+        flags &= ~FILE_NAME_OPENED;
+    }
+
+    /* Get information required for VOLUME_NAME_NONE, VOLUME_NAME_GUID and VOLUME_NAME_NT */
+    if (flags == VOLUME_NAME_NONE || flags == VOLUME_NAME_GUID || flags == VOLUME_NAME_NT)
+    {
+        if (!GetVolumePathNameW( info->Name.Buffer, drive_part, MAX_PATH ))
+            return 0;
+
+        drive_part_len = strlenW(drive_part);
+        if (!drive_part_len || drive_part_len > strlenW(info->Name.Buffer) ||
+                drive_part[drive_part_len-1] != '\\' ||
+                strncmpiW( info->Name.Buffer, drive_part, drive_part_len ))
+        {
+            FIXME("Path %s returned by GetVolumePathNameW does not match file path %s\n",
+                debugstr_w(drive_part), debugstr_w(info->Name.Buffer));
+            SetLastError( ERROR_GEN_FAILURE );
+            return 0;
+        }
+    }
+
+    if (flags == VOLUME_NAME_NONE)
+    {
+        ptr    = info->Name.Buffer + drive_part_len - 1;
+        result = strlenW(ptr);
+        if (result < charcount)
+            memcpy(path, ptr, (result + 1) * sizeof(WCHAR));
+        else result++;
+    }
+    else if (flags == VOLUME_NAME_GUID)
+    {
+        WCHAR volume_prefix[51];
+
+        /* GetVolumeNameForVolumeMountPointW sets error code on failure */
+        if (!GetVolumeNameForVolumeMountPointW( drive_part, volume_prefix, 50 ))
+            return 0;
+
+        ptr    = info->Name.Buffer + drive_part_len;
+        result = strlenW(volume_prefix) + strlenW(ptr);
+        if (result < charcount)
+        {
+            path[0] = 0;
+            strcatW(path, volume_prefix);
+            strcatW(path, ptr);
+        }
+        else
+        {
+            SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+            result++;
+        }
+    }
+    else if (flags == VOLUME_NAME_NT)
+    {
+        WCHAR nt_prefix[MAX_PATH];
+
+        /* QueryDosDeviceW sets error code on failure */
+        drive_part[drive_part_len - 1] = 0;
+        if (!QueryDosDeviceW( drive_part, nt_prefix, MAX_PATH ))
+            return 0;
+
+        ptr    = info->Name.Buffer + drive_part_len - 1;
+        result = strlenW(nt_prefix) + strlenW(ptr);
+        if (result < charcount)
+        {
+            path[0] = 0;
+            strcatW(path, nt_prefix);
+            strcatW(path, ptr);
+        }
+        else
+        {
+            SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+            result++;
+        }
+    }
+    else if (flags == VOLUME_NAME_DOS)
+    {
+        static const WCHAR dos_prefix[] = {'\\','\\','?','\\', '\0'};
+
+        result = strlenW(dos_prefix) + strlenW(info->Name.Buffer);
+        if (result < charcount)
+        {
+            path[0] = 0;
+            strcatW(path, dos_prefix);
+            strcatW(path, info->Name.Buffer);
+        }
+        else
+        {
+            SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+            result++;
+        }
+    }
+    else
+    {
+        /* Windows crashes here, but we prefer returning ERROR_INVALID_PARAMETER */
+        WARN("Invalid combination of flags: %x\n", flags);
+        SetLastError( ERROR_INVALID_PARAMETER );
+    }
+
+    return result;
+}
+
+/***********************************************************************
+ *           GetFinalPathNameByHandleA (KERNEL32.@)
+ */
+DWORD WINAPI GetFinalPathNameByHandleA(HANDLE file, LPSTR path, DWORD charcount, DWORD flags)
+{
+    WCHAR *str;
+    DWORD result, len, cp;
+
+    TRACE( "(%p,%p,%d,%x)\n", file, path, charcount, flags);
+
+    len = GetFinalPathNameByHandleW(file, NULL, 0, flags);
+    if (len == 0)
+        return 0;
+
+    str = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
+    if (!str)
+    {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return 0;
+    }
+
+    result = GetFinalPathNameByHandleW(file, str, len, flags);
+    if (result != len - 1)
+    {
+        HeapFree(GetProcessHeap(), 0, str);
+        WARN("GetFinalPathNameByHandleW failed unexpectedly: %u\n", result);
+        return 0;
+    }
+
+    cp = oem_file_apis ? CP_OEMCP : CP_ACP;
+
+    len = WideCharToMultiByte(cp, 0, str, -1, NULL, 0, NULL, NULL);
+    if (!len)
+    {
+        HeapFree(GetProcessHeap(), 0, str);
+        WARN("Failed to get multibyte length\n");
+        return 0;
+    }
+
+    if (charcount < len)
+    {
+        HeapFree(GetProcessHeap(), 0, str);
+        return len - 1;
+    }
+
+    len = WideCharToMultiByte(cp, 0, str, -1, path, charcount, NULL, NULL);
+    if (!len)
+    {
+        HeapFree(GetProcessHeap(), 0, str);
+        WARN("WideCharToMultiByte failed\n");
+        return 0;
+    }
+
+    HeapFree(GetProcessHeap(), 0, str);
+
+    return len - 1;
 }

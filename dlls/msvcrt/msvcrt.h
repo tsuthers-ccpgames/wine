@@ -217,6 +217,7 @@ typedef struct
     void *unk;
 } cxx_frame_info;
 
+frame_info* __cdecl _CreateFrameInfo(frame_info *fi, void *obj);
 BOOL __cdecl __CxxRegisterExceptionObject(EXCEPTION_RECORD**, cxx_frame_info*);
 void __cdecl __CxxUnregisterExceptionObject(cxx_frame_info*, BOOL);
 void CDECL __DestructExceptionObject(EXCEPTION_RECORD*);
@@ -409,7 +410,7 @@ struct MSVCRT_lconv {
     char n_sep_by_space;
     char p_sign_posn;
     char n_sign_posn;
-#if _MSVCR_VER >= 120
+#if _MSVCR_VER >= 100
     MSVCRT_wchar_t* _W_decimal_point;
     MSVCRT_wchar_t* _W_thousands_sep;
     MSVCRT_wchar_t* _W_int_curr_symbol;

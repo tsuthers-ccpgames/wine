@@ -2269,45 +2269,16 @@ static BOOL can_create_primary_surface(void)
     return TRUE;
 }
 
-static void dctest_surf(IDirectDrawSurface *surf, int ddsdver) {
-    HRESULT hr;
-    HDC dc, dc2 = (HDC) 0x1234;
-    DDSURFACEDESC ddsd;
-    DDSURFACEDESC2 ddsd2;
-
-    memset(&ddsd, 0, sizeof(ddsd));
-    ddsd.dwSize = sizeof(ddsd);
-    memset(&ddsd2, 0, sizeof(ddsd2));
-    ddsd2.dwSize = sizeof(ddsd2);
-
-    hr = IDirectDrawSurface_GetDC(surf, &dc);
-    ok(hr == DD_OK, "IDirectDrawSurface_GetDC failed: 0x%08x\n", hr);
-
-    hr = IDirectDrawSurface_GetDC(surf, &dc2);
-    ok(hr == DDERR_DCALREADYCREATED, "IDirectDrawSurface_GetDC failed: 0x%08x\n", hr);
-    ok(dc2 == (HDC) 0x1234, "The failed GetDC call changed the dc: %p\n", dc2);
-
-    hr = IDirectDrawSurface_Lock(surf, NULL, ddsdver == 1 ? &ddsd : ((DDSURFACEDESC *) &ddsd2), 0, NULL);
-    ok(hr == DDERR_SURFACEBUSY, "IDirectDrawSurface_Lock returned 0x%08x, expected DDERR_ALREADYLOCKED\n", hr);
-
-    hr = IDirectDrawSurface_ReleaseDC(surf, dc);
-    ok(hr == DD_OK, "IDirectDrawSurface_ReleaseDC failed: 0x%08x\n", hr);
-    hr = IDirectDrawSurface_ReleaseDC(surf, dc);
-    ok(hr == DDERR_NODC, "IDirectDrawSurface_ReleaseDC returned 0x%08x, expected DDERR_NODC\n", hr);
-}
-
 static void GetDCTest(void)
 {
     DDSURFACEDESC ddsd;
     DDSURFACEDESC2 ddsd2;
     IDirectDrawSurface *surf;
-    IDirectDrawSurface2 *surf2;
     IDirectDrawSurface4 *surf4;
     IDirectDrawSurface7 *surf7;
     IDirectDrawSurface *tmp;
     IDirectDrawSurface7 *tmp7;
     HRESULT hr;
-    IDirectDraw2 *dd2;
     IDirectDraw4 *dd4;
     IDirectDraw7 *dd7;
     HDC dc;
@@ -2326,33 +2297,12 @@ static void GetDCTest(void)
     ddsd2.dwHeight = 64;
     ddsd2.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
 
-    hr = IDirectDraw_CreateSurface(lpDD, &ddsd, &surf, NULL);
-    ok(hr == DD_OK, "IDirectDraw_CreateSurface failed: 0x%08x\n", hr);
-    dctest_surf(surf, 1);
-    IDirectDrawSurface_Release(surf);
-
-    hr = IDirectDraw_QueryInterface(lpDD, &IID_IDirectDraw2, (void **) &dd2);
-    ok(hr == DD_OK, "IDirectDraw_QueryInterface failed: 0x%08x\n", hr);
-
-    hr = IDirectDraw2_CreateSurface(dd2, &ddsd, &surf, NULL);
-    ok(hr == DD_OK, "IDirectDraw2_CreateSurface failed: 0x%08x\n", hr);
-    dctest_surf(surf, 1);
-
-    hr = IDirectDrawSurface_QueryInterface(surf, &IID_IDirectDrawSurface2, (void **) &surf2);
-    ok(hr == DD_OK, "IDirectDrawSurface_QueryInterface failed: 0x%08x\n", hr);
-    dctest_surf((IDirectDrawSurface *) surf2, 1);
-
-    IDirectDrawSurface2_Release(surf2);
-    IDirectDrawSurface_Release(surf);
-    IDirectDraw2_Release(dd2);
-
     hr = IDirectDraw_QueryInterface(lpDD, &IID_IDirectDraw4, (void **) &dd4);
     ok(hr == DD_OK, "IDirectDraw_QueryInterface failed: 0x%08x\n", hr);
 
     surf = NULL;
     hr = IDirectDraw4_CreateSurface(dd4, &ddsd2, &surf4, NULL);
     ok(hr == DD_OK, "IDirectDraw4_CreateSurface failed: 0x%08x\n", hr);
-    dctest_surf((IDirectDrawSurface *) surf4, 2);
 
     hr = IDirectDrawSurface4_QueryInterface(surf4, &IID_IDirectDrawSurface, (void **)&surf);
     ok(SUCCEEDED(hr), "QueryInterface failed, hr %#x.\n", hr);
@@ -2408,7 +2358,6 @@ static void GetDCTest(void)
 
     hr = IDirectDraw7_CreateSurface(dd7, &ddsd2, &surf7, NULL);
     ok(hr == DD_OK, "IDirectDraw7_CreateSurface failed: 0x%08x\n", hr);
-    dctest_surf((IDirectDrawSurface *) surf7, 2);
 
     hr = IDirectDrawSurface7_GetDC(surf7, &dc);
     ok(SUCCEEDED(hr), "GetDC failed, hr %#x.\n", hr);
@@ -2440,245 +2389,6 @@ static void GetDCTest(void)
     ok(!tmp7, "Expected surface NULL, got %p.\n", tmp7);
 
     IDirectDrawSurface7_Release(surf7);
-    IDirectDraw7_Release(dd7);
-}
-
-static void GetDCFormatTest(void)
-{
-    DDSURFACEDESC2 ddsd;
-    unsigned int i;
-    IDirectDrawSurface7 *surface;
-    IDirectDraw7 *dd7;
-    HRESULT hr;
-    HDC dc;
-
-    struct
-    {
-        const char *name;
-        DDPIXELFORMAT fmt;
-        BOOL getdc_capable;
-        HRESULT alt_result;
-    } testdata[] = {
-        {
-            "D3DFMT_A8R8G8B8",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB | DDPF_ALPHAPIXELS, 0,
-                {32}, {0x00ff0000}, {0x0000ff00}, {0x000000ff}, {0xff000000}
-            },
-            TRUE
-        },
-        {
-            "D3DFMT_X8R8G8B8",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB, 0,
-                {32}, {0x00ff0000}, {0x0000ff00}, {0x000000ff}, {0x00000000}
-            },
-            TRUE
-        },
-        {
-            "D3DFMT_X8B8G8R8",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB, 0,
-                {32}, {0x000000ff}, {0x0000ff00}, {0x00ff0000}, {0x00000000}
-            },
-            TRUE,
-            DDERR_CANTCREATEDC /* Vista+ */
-        },
-        {
-            "D3DFMT_X8B8G8R8",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB | DDPF_ALPHAPIXELS, 0,
-                       {32}, {0x000000ff}, {0x0000ff00}, {0x00ff0000}, {0xff000000}
-            },
-            TRUE,
-            DDERR_CANTCREATEDC /* Vista+ */
-        },
-        {
-            "D3DFMT_A4R4G4B4",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB | DDPF_ALPHAPIXELS, 0,
-                       {16}, {0x00000f00}, {0x000000f0}, {0x0000000f}, {0x0000f000}
-            },
-            TRUE,
-            DDERR_CANTCREATEDC /* Vista+ */
-        },
-        {
-            "D3DFMT_X4R4G4B4",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB, 0,
-                       {16}, {0x00000f00}, {0x000000f0}, {0x0000000f}, {0x00000000}
-            },
-            TRUE,
-            DDERR_CANTCREATEDC /* Vista+ */
-        },
-        {
-            "D3DFMT_R5G6B5",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB, 0,
-                       {16}, {0x0000F800}, {0x000007E0}, {0x0000001F}, {0x00000000}
-            },
-            TRUE
-        },
-        {
-            "D3DFMT_A1R5G5B5",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB | DDPF_ALPHAPIXELS, 0,
-                       {16}, {0x00007C00}, {0x000003E0}, {0x0000001F}, {0x00008000}
-            },
-            TRUE
-        },
-        {
-            "D3DFMT_X1R5G5B5",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB, 0,
-                       {16}, {0x00007C00}, {0x000003E0}, {0x0000001F}, {0x00000000}
-            },
-            TRUE
-        },
-        {
-            "D3DFMT_R3G3B2",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB, 0,
-                       { 8}, {0x000000E0}, {0x0000001C}, {0x00000003}, {0x00000000}
-            },
-            FALSE
-        },
-        {
-            /* Untested, windows test machine didn't support this format */
-            "D3DFMT_A2R10G10B10",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_RGB | DDPF_ALPHAPIXELS, 0,
-                       {32}, {0xC0000000}, {0x3FF00000}, {0x000FFC00}, {0x000003FF}
-            },
-            TRUE
-        },
-        /*
-         * GetDC on a P8 surface fails unless the display mode is 8 bpp. This is not
-         * implemented in wine yet, so disable the test for now. Succeeding P8 getDC
-         * calls are tested in the ddraw.visual test.
-         *
-        {
-            "D3DFMT_P8",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_PALETTEINDEXED8 | DDPF_RGB, 0,
-                {8 }, {0x00000000}, {0x00000000}, {0x00000000}, {0x00000000}
-            },
-            FALSE
-        },
-         */
-        {
-            "D3DFMT_L8",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_LUMINANCE, 0,
-                {8 }, {0x000000ff}, {0x00000000}, {0x00000000}, {0x00000000}
-            },
-            FALSE
-        },
-        {
-            "D3DFMT_A8L8",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_ALPHAPIXELS | DDPF_LUMINANCE, 0,
-                {16}, {0x000000ff}, {0x00000000}, {0x00000000}, {0x0000ff00}
-            },
-            FALSE
-        },
-        {
-            "D3DFMT_DXT1",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_FOURCC, MAKEFOURCC('D','X','T','1'),
-                {0 }, {0x00000000}, {0x00000000}, {0x00000000}, {0x00000000}
-            },
-            FALSE
-        },
-        {
-            "D3DFMT_DXT2",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_FOURCC, MAKEFOURCC('D','X','T','2'),
-                {0 }, {0x00000000}, {0x00000000}, {0x00000000}, {0x00000000}
-            },
-            FALSE
-        },
-        {
-            "D3DFMT_DXT3",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_FOURCC, MAKEFOURCC('D','X','T','3'),
-                {0 }, {0x00000000}, {0x00000000}, {0x00000000}, {0x00000000}
-            },
-            FALSE
-        },
-        {
-            "D3DFMT_DXT4",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_FOURCC, MAKEFOURCC('D','X','T','4'),
-                {0 }, {0x00000000}, {0x00000000}, {0x00000000}, {0x00000000}
-            },
-            FALSE
-        },
-        {
-            "D3DFMT_DXT5",
-            {
-                sizeof(DDPIXELFORMAT), DDPF_FOURCC, MAKEFOURCC('D','X','T','5'),
-                {0 }, {0x00000000}, {0x00000000}, {0x00000000}, {0x00000000}
-            },
-            FALSE
-        },
-    };
-
-    hr = IDirectDraw_QueryInterface(lpDD, &IID_IDirectDraw7, (void **) &dd7);
-    ok(hr == DD_OK, "IDirectDraw_QueryInterface failed, hr = 0x%08x\n", hr);
-
-    for(i = 0; i < (sizeof(testdata) / sizeof(testdata[0])); i++)
-    {
-        memset(&ddsd, 0, sizeof(ddsd));
-        ddsd.dwSize = sizeof(ddsd);
-        ddsd.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
-        ddsd.dwWidth = 64;
-        ddsd.dwHeight = 64;
-        U4(ddsd).ddpfPixelFormat = testdata[i].fmt;
-        ddsd.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN;
-
-        hr = IDirectDraw7_CreateSurface(dd7, &ddsd, &surface, NULL);
-        if(FAILED(hr))
-        {
-            ddsd.ddsCaps.dwCaps = DDSCAPS_TEXTURE;
-            ddsd.ddsCaps.dwCaps2 = DDSCAPS2_TEXTUREMANAGE;
-            hr = IDirectDraw7_CreateSurface(dd7, &ddsd, &surface, NULL);
-            if(FAILED(hr))
-            {
-                skip("IDirectDraw7_CreateSurface failed, hr = 0x%08x, format %s\n", hr, testdata[i].name);
-                continue;
-            }
-        }
-
-        dc = (void *) 0x1234;
-        hr = IDirectDrawSurface7_GetDC(surface, &dc);
-        if(testdata[i].getdc_capable)
-        {
-            ok(SUCCEEDED(hr) ||
-               (testdata[i].alt_result && hr == testdata[i].alt_result),
-               "GetDC on a %s surface failed(0x%08x), expected it to work\n",
-               testdata[i].name, hr);
-        }
-        else
-        {
-            ok(FAILED(hr), "GetDC on a %s surface succeeded(0x%08x), expected it to fail\n",
-               testdata[i].name, hr);
-        }
-
-        if(SUCCEEDED(hr))
-        {
-            hr = IDirectDrawSurface7_ReleaseDC(surface, dc);
-            ok(hr == DD_OK, "IDirectDrawSurface7_ReleaseDC failed, hr = 0x%08x\n", hr);
-            dc = 0;
-        }
-        else
-        {
-            ok(dc == NULL, "After failed GetDC dc is %p\n", dc);
-        }
-
-        IDirectDrawSurface7_Release(surface);
-    }
-
     IDirectDraw7_Release(dd7);
 }
 
@@ -3675,7 +3385,6 @@ START_TEST(dsurface)
     PaletteTest();
     SurfaceCapsTest();
     GetDCTest();
-    GetDCFormatTest();
     BackBufferCreateSurfaceTest();
     BackBufferAttachmentFlipTest();
     CreateSurfaceBadCapsSizeTest();

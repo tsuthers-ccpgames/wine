@@ -92,7 +92,7 @@ static const struct gdi_dc_funcs EMFDRV_Funcs =
     NULL,                            /* pGetTextExtentExPointI */
     NULL,                            /* pGetTextFace */
     NULL,                            /* pGetTextMetrics */
-    NULL,                            /* pGradientFill */
+    EMFDRV_GradientFill,             /* pGradientFill */
     EMFDRV_IntersectClipRect,        /* pIntersectClipRect */
     EMFDRV_InvertRgn,                /* pInvertRgn */
     EMFDRV_LineTo,                   /* pLineTo */
@@ -352,6 +352,7 @@ HDC WINAPI CreateEnhMetaFileW(
     physDev->dc_pen = 0;
     physDev->screen_dc = 0;
     physDev->restoring = 0;
+    physDev->path = FALSE;
     if (hdc)  /* if no ref, use current display */
         physDev->ref_dc = hdc;
     else

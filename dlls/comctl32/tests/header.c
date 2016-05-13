@@ -1078,23 +1078,15 @@ static void test_hdm_bitmapmarginMessages(HWND hParent)
 static void test_hdm_index_messages(HWND hParent)
 {
     HWND hChild;
-    int retVal;
-    int loopcnt;
-    int strcmpResult;
-    int iSize;
+    int retVal, i, iSize;
     static const int lpiarray[2] = {1, 0};
-    static int lpiarrayReceived[2];
-    static char firstHeaderItem[] = "Name";
-    static char secondHeaderItem[] = "Size";
-    static char thirdHeaderItem[] = "Type";
-    static char fourthHeaderItem[] = "Date Modified";
-    static char *items[] = {firstHeaderItem, secondHeaderItem, thirdHeaderItem, fourthHeaderItem};
+    static const char *item_texts[] = {
+        "Name", "Size", "Type", "Date Modified"
+    };
     RECT rect;
     HDITEMA hdItem;
-    hdItem.mask = HDI_TEXT | HDI_WIDTH | HDI_FORMAT;
-    hdItem.fmt = HDF_LEFT;
-    hdItem.cxy = 80;
-    hdItem.cchTextMax = 260;
+    char buffA[32];
+    int array[2];
 
     flush_sequences(sequences, NUM_MSG_SEQUENCES);
     hChild = create_custom_header_control(hParent, FALSE);
@@ -1105,11 +1097,15 @@ static void test_hdm_index_messages(HWND hParent)
          ok_sequence(sequences, PARENT_SEQ_INDEX, add_header_to_parent_seq,
                                      "adder header control to parent", FALSE);
     flush_sequences(sequences, NUM_MSG_SEQUENCES);
-    for ( loopcnt = 0 ; loopcnt < 4 ; loopcnt++ )
+    for (i = 0; i < sizeof(item_texts)/sizeof(item_texts[0]); i++)
     {
-      hdItem.pszText = items[loopcnt];
-      retVal = SendMessageA(hChild, HDM_INSERTITEMA, loopcnt, (LPARAM) &hdItem);
-      ok(retVal == loopcnt, "Adding item %d failed with return value %d\n", ( loopcnt + 1 ), retVal);
+        hdItem.mask = HDI_TEXT | HDI_WIDTH | HDI_FORMAT;
+        hdItem.pszText = (char*)item_texts[i];
+        hdItem.fmt = HDF_LEFT;
+        hdItem.cxy = 80;
+
+        retVal = SendMessageA(hChild, HDM_INSERTITEMA, i, (LPARAM) &hdItem);
+        ok(retVal == i, "Adding item %d failed with return value %d\n", i, retVal);
     }
     ok_sequence(sequences, HEADER_SEQ_INDEX, insertItem_seq, "insertItem sequence testing", FALSE);
 
@@ -1135,17 +1131,21 @@ static void test_hdm_index_messages(HWND hParent)
 
     flush_sequences(sequences, NUM_MSG_SEQUENCES);
 
+    hdItem.mask = HDI_WIDTH;
     retVal = SendMessageA(hChild, HDM_GETITEMA, 3, (LPARAM) &hdItem);
     ok(retVal == FALSE, "Getting already-deleted item should return FALSE, got %d\n", retVal);
 
+    hdItem.mask = HDI_TEXT | HDI_WIDTH;
+    hdItem.pszText = buffA;
+    hdItem.cchTextMax = sizeof(buffA)/sizeof(buffA[0]);
     retVal = SendMessageA(hChild, HDM_GETITEMA, 0, (LPARAM) &hdItem);
     ok(retVal == TRUE, "Getting the 1st header item should return TRUE, got %d\n", retVal);
 
     ok_sequence(sequences, HEADER_SEQ_INDEX, getItem_seq, "getItem sequence testing", FALSE);
 
     /* check if the item is the right one */
-    strcmpResult =  strcmp(hdItem.pszText, firstHeaderItem);
-    expect(0, strcmpResult);
+    ok(!strcmp(hdItem.pszText, item_texts[0]), "got wrong item %s, expected %s\n",
+        hdItem.pszText, item_texts[0]);
     expect(80, hdItem.cxy);
 
     iSize = SendMessageA(hChild, HDM_GETITEMCOUNT, 0, 0);
@@ -1164,15 +1164,15 @@ static void test_hdm_index_messages(HWND hParent)
     retVal = SendMessageA(hChild, HDM_SETORDERARRAY, iSize, (LPARAM) lpiarray);
     ok(retVal == TRUE, "Setting header items order should return TRUE, got %d\n", retVal);
 
-    retVal = SendMessageA(hChild, HDM_GETORDERARRAY, iSize, (LPARAM) lpiarrayReceived);
+    retVal = SendMessageA(hChild, HDM_GETORDERARRAY, 2, (LPARAM) array);
     ok(retVal == TRUE, "Getting header items order should return TRUE, got %d\n", retVal);
 
     ok_sequence(sequences, HEADER_SEQ_INDEX, orderArray_seq, "set_get_orderArray sequence testing", FALSE);
 
     /* check if the array order is set correctly and the size of the array is correct. */
     expect(2, iSize);
-    expect(lpiarray[0], lpiarrayReceived[0]);
-    expect(lpiarray[1], lpiarrayReceived[1]);
+    ok(lpiarray[0] == array[0], "got %d, expected %d\n", array[0], lpiarray[0]);
+    ok(lpiarray[1] == array[1], "got %d, expected %d\n", array[1], lpiarray[1]);
 
     hdItem.mask = HDI_FORMAT;
     hdItem.fmt = HDF_CENTER | HDF_STRING;

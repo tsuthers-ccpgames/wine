@@ -1590,28 +1590,31 @@ static NSString* WineLocalizedString(unsigned int stringID)
             {
                 if (clippingCursor)
                     [self clipCursorLocation:&point];
+                point = cgpoint_win_from_mac(point);
 
                 event = macdrv_create_event(MOUSE_MOVED_ABSOLUTE, targetWindow);
-                event->mouse_moved.x = point.x;
-                event->mouse_moved.y = point.y;
+                event->mouse_moved.x = floor(point.x);
+                event->mouse_moved.y = floor(point.y);
 
                 mouseMoveDeltaX = 0;
                 mouseMoveDeltaY = 0;
             }
             else
             {
+                double scale = retina_on ? 2 : 1;
+
                 /* Add event delta to accumulated delta error */
                 /* deltaY is already flipped */
                 mouseMoveDeltaX += [anEvent deltaX];
                 mouseMoveDeltaY += [anEvent deltaY];
 
                 event = macdrv_create_event(MOUSE_MOVED, targetWindow);
-                event->mouse_moved.x = mouseMoveDeltaX;
-                event->mouse_moved.y = mouseMoveDeltaY;
+                event->mouse_moved.x = mouseMoveDeltaX * scale;
+                event->mouse_moved.y = mouseMoveDeltaY * scale;
 
                 /* Keep the remainder after integer truncation. */
-                mouseMoveDeltaX -= event->mouse_moved.x;
-                mouseMoveDeltaY -= event->mouse_moved.y;
+                mouseMoveDeltaX -= event->mouse_moved.x / scale;
+                mouseMoveDeltaY -= event->mouse_moved.y / scale;
             }
 
             if (event->type == MOUSE_MOVED_ABSOLUTE || event->mouse_moved.x || event->mouse_moved.y)
@@ -1730,11 +1733,13 @@ static NSString* WineLocalizedString(unsigned int stringID)
             {
                 macdrv_event* event;
 
+                pt = cgpoint_win_from_mac(pt);
+
                 event = macdrv_create_event(MOUSE_BUTTON, window);
                 event->mouse_button.button = [theEvent buttonNumber];
                 event->mouse_button.pressed = pressed;
-                event->mouse_button.x = pt.x;
-                event->mouse_button.y = pt.y;
+                event->mouse_button.x = floor(pt.x);
+                event->mouse_button.y = floor(pt.y);
                 event->mouse_button.time_ms = [self ticksForEventTime:[theEvent timestamp]];
 
                 [window.queue postEvent:event];
@@ -1811,9 +1816,11 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 double x, y;
                 BOOL continuous = FALSE;
 
+                pt = cgpoint_win_from_mac(pt);
+
                 event = macdrv_create_event(MOUSE_SCROLL, window);
-                event->mouse_scroll.x = pt.x;
-                event->mouse_scroll.y = pt.y;
+                event->mouse_scroll.x = floor(pt.x);
+                event->mouse_scroll.y = floor(pt.y);
                 event->mouse_scroll.time_ms = [self ticksForEventTime:[theEvent timestamp]];
 
                 if (CGEventGetIntegerValueField(cgevent, kCGScrollWheelEventIsContinuous))
@@ -2143,6 +2150,26 @@ static NSString* WineLocalizedString(unsigned int stringID)
                     break;
                 }
             }
+        }
+    }
+
+    - (void) setRetinaMode:(int)mode
+    {
+        retina_on = mode;
+
+        if (clippingCursor)
+        {
+            double scale = mode ? 0.5 : 2.0;
+            cursorClipRect.origin.x *= scale;
+            cursorClipRect.origin.y *= scale;
+            cursorClipRect.size.width *= scale;
+            cursorClipRect.size.height *= scale;
+        }
+
+        for (WineWindow* window in [NSApp windows])
+        {
+            if ([window isKindOfClass:[WineWindow class]])
+                [window setRetinaMode:mode];
         }
     }
 
@@ -2496,7 +2523,7 @@ int macdrv_get_cursor_position(CGPoint *pos)
     OnMainThread(^{
         NSPoint location = [NSEvent mouseLocation];
         location = [[WineApplicationController sharedController] flippedMouseLocation:location];
-        *pos = NSPointToCGPoint(location);
+        *pos = cgpoint_win_from_mac(NSPointToCGPoint(location));
     });
 
     return TRUE;
@@ -2513,7 +2540,7 @@ int macdrv_set_cursor_position(CGPoint pos)
     __block int ret;
 
     OnMainThread(^{
-        ret = [[WineApplicationController sharedController] setCursorPosition:pos];
+        ret = [[WineApplicationController sharedController] setCursorPosition:cgpoint_mac_from_win(pos)];
     });
 
     return ret;
@@ -2526,13 +2553,17 @@ int macdrv_set_cursor_position(CGPoint pos)
  * to or larger than the whole desktop region, the cursor is unclipped.
  * Returns zero on failure, non-zero on success.
  */
-int macdrv_clip_cursor(CGRect rect)
+int macdrv_clip_cursor(CGRect r)
 {
     __block int ret;
 
     OnMainThread(^{
         WineApplicationController* controller = [WineApplicationController sharedController];
         BOOL clipping = FALSE;
+        CGRect rect = r;
+
+        if (!CGRectIsInfinite(rect))
+            rect = cgrect_mac_from_win(rect);
 
         if (!CGRectIsInfinite(rect))
         {
@@ -2675,4 +2706,11 @@ int macdrv_select_input_source(TISInputSourceRef input_source)
     });
 
     return ret;
+}
+
+void macdrv_set_cocoa_retina_mode(int new_mode)
+{
+    OnMainThread(^{
+        [[WineApplicationController sharedController] setRetinaMode:new_mode];
+    });
 }

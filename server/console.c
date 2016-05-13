@@ -1055,7 +1055,7 @@ static void console_input_append_hist( struct console_input* console, const WCHA
     ptr[len] = 0;
 
     if (console->history_mode && console->history_index &&
-	strncmpW( console->history[console->history_index - 1], ptr, len ) == 0)
+        !strcmpW( console->history[console->history_index - 1], ptr ))
     {
 	/* ok, mode ask us to not use twice the same string...
 	 * so just free mem and returns
@@ -1424,13 +1424,12 @@ DECL_HANDLER(alloc_console)
     case 0:
         /* renderer is current, console to be attached to parent process */
         renderer = current;
-        if (!(process = current->process->parent))
+        if (!(process = get_process_from_id( current->process->parent_id )))
         {
             if (fd != -1) close( fd );
             set_error( STATUS_ACCESS_DENIED );
             return;
         }
-        grab_object( process );
         attach = 1;
         break;
     case 0xffffffff:

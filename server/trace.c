@@ -1602,6 +1602,18 @@ static void dump_open_mutex_reply( const struct open_mutex_reply *req )
     fprintf( stderr, " handle=%04x", req->handle );
 }
 
+static void dump_query_mutex_request( const struct query_mutex_request *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+}
+
+static void dump_query_mutex_reply( const struct query_mutex_reply *req )
+{
+    fprintf( stderr, " count=%08x", req->count );
+    fprintf( stderr, ", owned=%d", req->owned );
+    fprintf( stderr, ", abandoned=%d", req->abandoned );
+}
+
 static void dump_create_semaphore_request( const struct create_semaphore_request *req )
 {
     fprintf( stderr, " access=%08x", req->access );
@@ -1715,6 +1727,17 @@ static void dump_get_handle_fd_reply( const struct get_handle_fd_reply *req )
     fprintf( stderr, ", cacheable=%d", req->cacheable );
     fprintf( stderr, ", access=%08x", req->access );
     fprintf( stderr, ", options=%08x", req->options );
+}
+
+static void dump_get_directory_cache_entry_request( const struct get_directory_cache_entry_request *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+}
+
+static void dump_get_directory_cache_entry_reply( const struct get_directory_cache_entry_reply *req )
+{
+    fprintf( stderr, " entry=%d", req->entry );
+    dump_varargs_ints( ", free=", cur_size );
 }
 
 static void dump_flush_request( const struct flush_request *req )
@@ -4335,6 +4358,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_create_mutex_request,
     (dump_func)dump_release_mutex_request,
     (dump_func)dump_open_mutex_request,
+    (dump_func)dump_query_mutex_request,
     (dump_func)dump_create_semaphore_request,
     (dump_func)dump_release_semaphore_request,
     (dump_func)dump_query_semaphore_request,
@@ -4344,6 +4368,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_alloc_file_handle_request,
     (dump_func)dump_get_handle_unix_name_request,
     (dump_func)dump_get_handle_fd_request,
+    (dump_func)dump_get_directory_cache_entry_request,
     (dump_func)dump_flush_request,
     (dump_func)dump_lock_file_request,
     (dump_func)dump_unlock_file_request,
@@ -4609,6 +4634,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_create_mutex_reply,
     (dump_func)dump_release_mutex_reply,
     (dump_func)dump_open_mutex_reply,
+    (dump_func)dump_query_mutex_reply,
     (dump_func)dump_create_semaphore_reply,
     (dump_func)dump_release_semaphore_reply,
     (dump_func)dump_query_semaphore_reply,
@@ -4618,6 +4644,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_alloc_file_handle_reply,
     (dump_func)dump_get_handle_unix_name_reply,
     (dump_func)dump_get_handle_fd_reply,
+    (dump_func)dump_get_directory_cache_entry_reply,
     (dump_func)dump_flush_reply,
     (dump_func)dump_lock_file_reply,
     NULL,
@@ -4883,6 +4910,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "create_mutex",
     "release_mutex",
     "open_mutex",
+    "query_mutex",
     "create_semaphore",
     "release_semaphore",
     "query_semaphore",
@@ -4892,6 +4920,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "alloc_file_handle",
     "get_handle_unix_name",
     "get_handle_fd",
+    "get_directory_cache_entry",
     "flush",
     "lock_file",
     "unlock_file",

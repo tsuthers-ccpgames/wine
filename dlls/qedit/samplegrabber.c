@@ -92,7 +92,6 @@ static ULONG WINAPI Single_IEnumMediaTypes_Release(IEnumMediaTypes *iface)
         if (This->mtype.pbFormat)
             CoTaskMemFree(This->mtype.pbFormat);
         CoTaskMemFree(This);
-        return 0;
     }
     return refCount;
 }
@@ -335,7 +334,6 @@ static ULONG WINAPI SampleGrabber_Release(IUnknown *iface)
     {
         SampleGrabber_cleanup(This);
         CoTaskMemFree(This);
-        return 0;
     }
     return ref;
 }
@@ -1262,7 +1260,7 @@ HRESULT SampleGrabber_create(IUnknown *pUnkOuter, LPVOID *ppv)
     ISeekingPassThru *passthru;
     HRESULT hr;
 
-    TRACE("(%p,%p)\n", ppv, pUnkOuter);
+    TRACE("(%p,%p)\n", pUnkOuter, ppv);
 
     obj = CoTaskMemAlloc(sizeof(SG_Impl));
     if (NULL == obj) {

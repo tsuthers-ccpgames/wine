@@ -250,6 +250,23 @@ static const struct wined3d_typed_format_info typed_formats[] =
     {WINED3DFMT_B8G8R8X8_UNORM,         WINED3DFMT_B8G8R8X8_TYPELESS,     "uuu"},
 };
 
+struct wined3d_format_ddi_info
+{
+    enum wined3d_format_id id;
+    D3DDDIFORMAT ddi_format;
+};
+
+static const struct wined3d_format_ddi_info ddi_formats[] =
+{
+    {WINED3DFMT_B8G8R8_UNORM,       D3DDDIFMT_R8G8B8},
+    {WINED3DFMT_B8G8R8A8_UNORM,     D3DDDIFMT_A8R8G8B8},
+    {WINED3DFMT_B8G8R8X8_UNORM,     D3DDDIFMT_X8R8G8B8},
+    {WINED3DFMT_B5G6R5_UNORM,       D3DDDIFMT_R5G6B5},
+    {WINED3DFMT_B5G5R5X1_UNORM,     D3DDDIFMT_X1R5G5B5},
+    {WINED3DFMT_B5G5R5A1_UNORM,     D3DDDIFMT_A1R5G5B5},
+    {WINED3DFMT_P8_UINT,            D3DDDIFMT_P8},
+};
+
 struct wined3d_format_base_flags
 {
     enum wined3d_format_id id;
@@ -261,17 +278,6 @@ struct wined3d_format_base_flags
  * resource size. */
 static const struct wined3d_format_base_flags format_base_flags[] =
 {
-    {WINED3DFMT_P8_UINT,            WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_B8G8R8_UNORM,       WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_B8G8R8A8_UNORM,     WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_B8G8R8X8_UNORM,     WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_B5G6R5_UNORM,       WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_B5G5R5X1_UNORM,     WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_B5G5R5A1_UNORM,     WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_B4G4R4A4_UNORM,     WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_B4G4R4X4_UNORM,     WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_R8G8B8A8_UNORM,     WINED3DFMT_FLAG_GETDC},
-    {WINED3DFMT_R8G8B8X8_UNORM,     WINED3DFMT_FLAG_GETDC},
     {WINED3DFMT_ATI1N,              WINED3DFMT_FLAG_BROKEN_PITCH},
     {WINED3DFMT_ATI2N,              WINED3DFMT_FLAG_BROKEN_PITCH},
     {WINED3DFMT_R11G11B10_FLOAT,    WINED3DFMT_FLAG_FLOAT},
@@ -1661,6 +1667,19 @@ static BOOL init_format_base_info(struct wined3d_gl_info *gl_info)
         }
 
         format_set_flag(format, flags);
+    }
+
+    for (i = 0; i < ARRAY_SIZE(ddi_formats); ++i)
+    {
+        int fmt_idx = get_format_idx(ddi_formats[i].id);
+
+        if (fmt_idx == -1)
+        {
+            ERR("Format %s (%#x) not found.\n", debug_d3dformat(ddi_formats[i].id), ddi_formats[i].id);
+            goto fail;
+        }
+
+        gl_info->formats[fmt_idx].ddi_format = ddi_formats[i].ddi_format;
     }
 
     for (i = 0; i < ARRAY_SIZE(format_base_flags); ++i)
@@ -3346,6 +3365,14 @@ const char *debug_color(const struct wined3d_color *color)
             color->r, color->g, color->b, color->a);
 }
 
+const char *debug_vec4(const struct wined3d_vec4 *v)
+{
+    if (!v)
+        return "(null)";
+    return wine_dbg_sprintf("{%.8e, %.8e, %.8e, %.8e}",
+            v->x, v->y, v->z, v->w);
+}
+
 const char *debug_d3dformat(enum wined3d_format_id format_id)
 {
     switch (format_id)
@@ -3637,8 +3664,6 @@ const char *debug_d3dresourcetype(enum wined3d_resource_type resource_type)
     switch (resource_type)
     {
 #define WINED3D_TO_STR(x) case x: return #x
-        WINED3D_TO_STR(WINED3D_RTYPE_SURFACE);
-        WINED3D_TO_STR(WINED3D_RTYPE_VOLUME);
         WINED3D_TO_STR(WINED3D_RTYPE_BUFFER);
         WINED3D_TO_STR(WINED3D_RTYPE_TEXTURE_2D);
         WINED3D_TO_STR(WINED3D_RTYPE_TEXTURE_3D);
@@ -4082,6 +4107,8 @@ const char *debug_fbostatus(GLenum status) {
         FBOSTATUS_TO_STR(GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER);
         FBOSTATUS_TO_STR(GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER);
         FBOSTATUS_TO_STR(GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE);
+        FBOSTATUS_TO_STR(GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS);
+        FBOSTATUS_TO_STR(GL_FRAMEBUFFER_INCOMPLETE_LAYER_COUNT_ARB);
         FBOSTATUS_TO_STR(GL_FRAMEBUFFER_UNSUPPORTED);
         FBOSTATUS_TO_STR(GL_FRAMEBUFFER_UNDEFINED);
 #undef FBOSTATUS_TO_STR
@@ -4364,18 +4391,20 @@ static void compute_texture_matrix(const struct wined3d_gl_info *gl_info, const 
                 /* case WINED3D_TTFF_COUNT1: Won't ever get here. */
                 case WINED3D_TTFF_COUNT2:
                     mat._13 = mat._23 = mat._33 = mat._43 = 0.0f;
-                /* OpenGL divides the first 3 vertex coord by the 4th by default,
-                * which is essentially the same as D3DTTFF_PROJECTED. Make sure that
-                * the 4th coord evaluates to 1.0 to eliminate that.
-                *
-                * If the fixed function pipeline is used, the 4th value remains unused,
-                * so there is no danger in doing this. With vertex shaders we have a
-                * problem. Should an app hit that problem, the code here would have to
-                * check for pixel shaders, and the shader has to undo the default gl divide.
-                *
-                * A more serious problem occurs if the app passes 4 coordinates in, and the
-                * 4th is != 1.0(opengl default). This would have to be fixed in drawStridedSlow
-                * or a replacement shader. */
+                /* OpenGL divides the first 3 vertex coordinates by the 4th by
+                 * default, which is essentially the same as D3DTTFF_PROJECTED.
+                 * Make sure that the 4th coordinate evaluates to 1.0 to
+                 * eliminate that.
+                 *
+                 * If the fixed function pipeline is used, the 4th value
+                 * remains unused, so there is no danger in doing this. With
+                 * vertex shaders we have a problem. Should an application hit
+                 * that problem, the code here would have to check for pixel
+                 * shaders, and the shader has to undo the default GL divide.
+                 *
+                 * A more serious problem occurs if the application passes 4
+                 * coordinates in, and the 4th is != 1.0 (OpenGL default).
+                 * This would have to be fixed with immediate mode draws. */
                 default:
                     mat._14 = mat._24 = mat._34 = 0.0f; mat._44 = 1.0f;
             }
@@ -5435,14 +5464,22 @@ void wined3d_get_draw_rect(const struct wined3d_state *state, RECT *rect)
 
 const char *wined3d_debug_location(DWORD location)
 {
+    const char *prefix = "";
+    const char *suffix = "";
     char buf[294];
+
+    if (wined3d_popcount(location) > 16)
+    {
+        prefix = "~(";
+        location = ~location;
+        suffix = ")";
+    }
 
     buf[0] = '\0';
 #define LOCATION_TO_STR(u) if (location & u) { strcat(buf, " | "#u); location &= ~u; }
     LOCATION_TO_STR(WINED3D_LOCATION_DISCARDED);
     LOCATION_TO_STR(WINED3D_LOCATION_SYSMEM);
     LOCATION_TO_STR(WINED3D_LOCATION_USER_MEMORY);
-    LOCATION_TO_STR(WINED3D_LOCATION_DIB);
     LOCATION_TO_STR(WINED3D_LOCATION_BUFFER);
     LOCATION_TO_STR(WINED3D_LOCATION_TEXTURE_RGB);
     LOCATION_TO_STR(WINED3D_LOCATION_TEXTURE_SRGB);
@@ -5452,7 +5489,7 @@ const char *wined3d_debug_location(DWORD location)
 #undef LOCATION_TO_STR
     if (location) FIXME("Unrecognized location flag(s) %#x.\n", location);
 
-    return buf[0] ? wine_dbg_sprintf("%s", &buf[3]) : "0";
+    return wine_dbg_sprintf("%s%s%s", prefix, buf[0] ? &buf[3] : "0", suffix);
 }
 
 /* Print a floating point value with the %.8e format specifier, always using

@@ -235,6 +235,8 @@ NTSTATUS WINAPI NtQuerySemaphore( HANDLE handle, SEMAPHORE_INFORMATION_CLASS cla
     NTSTATUS ret;
     SEMAPHORE_BASIC_INFORMATION *out = info;
 
+    TRACE("(%p, %u, %p, %u, %p)\n", handle, class, info, len, ret_len);
+
     if (class != SemaphoreBasicInformation)
     {
         FIXME("(%p,%d,%u) Unknown class\n", handle, class, len);
@@ -417,6 +419,8 @@ NTSTATUS WINAPI NtQueryEvent( HANDLE handle, EVENT_INFORMATION_CLASS class,
     NTSTATUS ret;
     EVENT_BASIC_INFORMATION *out = info;
 
+    TRACE("(%p, %u, %p, %u, %p)\n", handle, class, info, len, ret_len);
+
     if (class != EventBasicInformation)
     {
         FIXME("(%p, %d, %d) Unknown class\n",
@@ -510,7 +514,7 @@ NTSTATUS WINAPI NtReleaseMutant( IN HANDLE handle, OUT PLONG prev_count OPTIONAL
     {
         req->handle = wine_server_obj_handle( handle );
         status = wine_server_call( req );
-        if (prev_count) *prev_count = reply->prev_count;
+        if (prev_count) *prev_count = 1 - reply->prev_count;
     }
     SERVER_END_REQ;
     return status;
@@ -520,15 +524,37 @@ NTSTATUS WINAPI NtReleaseMutant( IN HANDLE handle, OUT PLONG prev_count OPTIONAL
  *		NtQueryMutant                   [NTDLL.@]
  *		ZwQueryMutant                   [NTDLL.@]
  */
-NTSTATUS WINAPI NtQueryMutant(IN HANDLE handle, 
-                              IN MUTANT_INFORMATION_CLASS MutantInformationClass, 
-                              OUT PVOID MutantInformation, 
-                              IN ULONG MutantInformationLength, 
-                              OUT PULONG ResultLength OPTIONAL )
+NTSTATUS WINAPI NtQueryMutant( HANDLE handle, MUTANT_INFORMATION_CLASS class,
+                               void *info, ULONG len, ULONG *ret_len )
 {
-    FIXME("(%p %u %p %u %p): stub!\n", 
-          handle, MutantInformationClass, MutantInformation, MutantInformationLength, ResultLength);
-    return STATUS_NOT_IMPLEMENTED;
+    NTSTATUS ret;
+    MUTANT_BASIC_INFORMATION *out = info;
+
+    TRACE("(%p, %u, %p, %u, %p)\n", handle, class, info, len, ret_len);
+
+    if (class != MutantBasicInformation)
+    {
+        FIXME("(%p, %d, %d) Unknown class\n",
+              handle, class, len);
+        return STATUS_INVALID_INFO_CLASS;
+    }
+
+    if (len != sizeof(MUTANT_BASIC_INFORMATION)) return STATUS_INFO_LENGTH_MISMATCH;
+
+    SERVER_START_REQ( query_mutex )
+    {
+        req->handle = wine_server_obj_handle( handle );
+        if (!(ret = wine_server_call( req )))
+        {
+            out->CurrentCount   = 1 - reply->count;
+            out->OwnedByCaller  = reply->owned;
+            out->AbandonedState = reply->abandoned;
+            if (ret_len) *ret_len = sizeof(MUTANT_BASIC_INFORMATION);
+        }
+    }
+    SERVER_END_REQ;
+
+    return ret;
 }
 
 /*
@@ -830,7 +856,7 @@ NTSTATUS WINAPI NtSetTimer(IN HANDLE handle,
 {
     NTSTATUS    status = STATUS_SUCCESS;
 
-    TRACE("(%p,%p,%p,%p,%08x,0x%08x,%p) stub\n",
+    TRACE("(%p,%p,%p,%p,%08x,0x%08x,%p)\n",
           handle, when, callback, callback_arg, resume, period, state);
 
     SERVER_START_REQ( set_timer )

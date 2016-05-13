@@ -22,6 +22,8 @@
 #include "wine/test.h"
 #include <limits.h>
 
+static BOOL d3d11_available;
+
 struct vec2
 {
     float x, y;
@@ -478,6 +480,8 @@ static void test_feature_level(void)
         return;
     }
 
+    d3d11_available = TRUE;
+
     /* Device was created by D3D10CreateDevice. */
     feature_level = ID3D11Device_GetFeatureLevel(device11);
     ok(feature_level == D3D_FEATURE_LEVEL_10_0, "Got unexpected feature level %#x.\n", feature_level);
@@ -562,37 +566,63 @@ static void test_create_texture2d(void)
     static const struct
     {
         DXGI_FORMAT format;
+        UINT array_size;
         D3D10_BIND_FLAG bind_flags;
+        UINT misc_flags;
         BOOL succeeds;
         BOOL todo;
     }
     tests[] =
     {
-        {DXGI_FORMAT_R32G32B32A32_TYPELESS, D3D10_BIND_VERTEX_BUFFER,   FALSE, TRUE},
-        {DXGI_FORMAT_R32G32B32A32_TYPELESS, D3D10_BIND_INDEX_BUFFER,    FALSE, TRUE},
-        {DXGI_FORMAT_R32G32B32A32_TYPELESS, D3D10_BIND_CONSTANT_BUFFER, FALSE, TRUE},
-        {DXGI_FORMAT_R32G32B32A32_TYPELESS, D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R32G32B32A32_TYPELESS, D3D10_BIND_RENDER_TARGET,   TRUE,  FALSE},
-        {DXGI_FORMAT_R32G32B32A32_TYPELESS, D3D10_BIND_DEPTH_STENCIL,   FALSE, FALSE},
-        {DXGI_FORMAT_R32G32B32_TYPELESS,    D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R16G16B16A16_TYPELESS, D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R16G16B16A16_TYPELESS, D3D10_BIND_RENDER_TARGET,   TRUE,  FALSE},
-        {DXGI_FORMAT_R32G32_TYPELESS,       D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R32G8X24_TYPELESS,     D3D10_BIND_DEPTH_STENCIL,   TRUE,  TRUE},
-        {DXGI_FORMAT_R10G10B10A2_TYPELESS,  D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R10G10B10A2_TYPELESS,  D3D10_BIND_RENDER_TARGET,   TRUE,  FALSE},
-        {DXGI_FORMAT_R32_TYPELESS,          D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R24G8_TYPELESS,        D3D10_BIND_VERTEX_BUFFER,   FALSE, TRUE},
-        {DXGI_FORMAT_R24G8_TYPELESS,        D3D10_BIND_INDEX_BUFFER,    FALSE, TRUE},
-        {DXGI_FORMAT_R24G8_TYPELESS,        D3D10_BIND_CONSTANT_BUFFER, FALSE, TRUE},
-        {DXGI_FORMAT_R24G8_TYPELESS,        D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R24G8_TYPELESS,        D3D10_BIND_DEPTH_STENCIL,   TRUE,  FALSE},
-        {DXGI_FORMAT_R8G8_TYPELESS,         D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R16_TYPELESS,          D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R8_TYPELESS,           D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
-        {DXGI_FORMAT_R8G8B8A8_UNORM,        D3D11_BIND_DEPTH_STENCIL,   FALSE, FALSE},
-        {DXGI_FORMAT_D24_UNORM_S8_UINT,     D3D11_BIND_RENDER_TARGET,   FALSE, FALSE},
-        {DXGI_FORMAT_D32_FLOAT,             D3D11_BIND_RENDER_TARGET,   FALSE, FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  1, D3D10_BIND_VERTEX_BUFFER,   0, FALSE, TRUE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  1, D3D10_BIND_INDEX_BUFFER,    0, FALSE, TRUE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  1, D3D10_BIND_CONSTANT_BUFFER, 0, FALSE, TRUE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  0, D3D10_BIND_SHADER_RESOURCE, 0, FALSE, FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  2, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  3, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  3, D3D10_BIND_SHADER_RESOURCE, D3D10_RESOURCE_MISC_TEXTURECUBE,
+                FALSE, TRUE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  1, D3D10_BIND_SHADER_RESOURCE, D3D10_RESOURCE_MISC_TEXTURECUBE,
+                FALSE, TRUE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  5, D3D10_BIND_SHADER_RESOURCE, D3D10_RESOURCE_MISC_TEXTURECUBE,
+                FALSE, TRUE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  6, D3D10_BIND_SHADER_RESOURCE, D3D10_RESOURCE_MISC_TEXTURECUBE,
+                TRUE,  FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  7, D3D10_BIND_SHADER_RESOURCE, D3D10_RESOURCE_MISC_TEXTURECUBE,
+                FALSE, TRUE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS, 10, D3D10_BIND_SHADER_RESOURCE, D3D10_RESOURCE_MISC_TEXTURECUBE,
+                FALSE, TRUE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS, 12, D3D10_BIND_SHADER_RESOURCE, D3D10_RESOURCE_MISC_TEXTURECUBE,
+                FALSE, TRUE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  0, D3D10_BIND_RENDER_TARGET,   0, FALSE, FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  1, D3D10_BIND_RENDER_TARGET,   0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  2, D3D10_BIND_RENDER_TARGET,   0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  9, D3D10_BIND_RENDER_TARGET,   0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32G32B32A32_TYPELESS,  1, D3D10_BIND_DEPTH_STENCIL,   0, FALSE, FALSE},
+        {DXGI_FORMAT_R32G32B32_TYPELESS,     1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R16G16B16A16_TYPELESS,  1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R16G16B16A16_TYPELESS,  1, D3D10_BIND_RENDER_TARGET,   0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32G32_TYPELESS,        1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32G8X24_TYPELESS,      1, D3D10_BIND_DEPTH_STENCIL,   0, TRUE,  TRUE},
+        {DXGI_FORMAT_R10G10B10A2_TYPELESS,   1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R10G10B10A2_TYPELESS,   1, D3D10_BIND_RENDER_TARGET,   0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32_TYPELESS,           0, D3D10_BIND_SHADER_RESOURCE, 0, FALSE, FALSE},
+        {DXGI_FORMAT_R32_TYPELESS,           1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32_TYPELESS,           9, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R32_TYPELESS,           9, D3D10_BIND_SHADER_RESOURCE, D3D10_RESOURCE_MISC_TEXTURECUBE,
+                FALSE, TRUE},
+        {DXGI_FORMAT_R24G8_TYPELESS,         1, D3D10_BIND_VERTEX_BUFFER,   0, FALSE, TRUE},
+        {DXGI_FORMAT_R24G8_TYPELESS,         1, D3D10_BIND_INDEX_BUFFER,    0, FALSE, TRUE},
+        {DXGI_FORMAT_R24G8_TYPELESS,         1, D3D10_BIND_CONSTANT_BUFFER, 0, FALSE, TRUE},
+        {DXGI_FORMAT_R24G8_TYPELESS,         1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R24G8_TYPELESS,         1, D3D10_BIND_DEPTH_STENCIL,   0, TRUE,  FALSE},
+        {DXGI_FORMAT_R8G8_TYPELESS,          1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R16_TYPELESS,           1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R8_TYPELESS,            1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R8G8B8A8_UNORM,         1, D3D10_BIND_DEPTH_STENCIL,   0, FALSE, FALSE},
+        {DXGI_FORMAT_D24_UNORM_S8_UINT,      1, D3D10_BIND_RENDER_TARGET,   0, FALSE, FALSE},
+        {DXGI_FORMAT_D32_FLOAT,              1, D3D10_BIND_RENDER_TARGET,   0, FALSE, FALSE},
     };
 
     if (!(device = create_device()))
@@ -698,8 +728,10 @@ static void test_create_texture2d(void)
     desc.SampleDesc.Count = 1;
     for (i = 0; i < sizeof(tests) / sizeof(*tests); ++i)
     {
+        desc.ArraySize = tests[i].array_size;
         desc.Format = tests[i].format;
         desc.BindFlags = tests[i].bind_flags;
+        desc.MiscFlags = tests[i].misc_flags;
         hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, (ID3D10Texture2D **)&texture);
 
         todo_wine_if(tests[i].todo)
@@ -1142,15 +1174,17 @@ static void test_create_depthstencil_view(void)
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D10Device_Release(tmp);
 
+    memset(&dsv_desc, 0, sizeof(dsv_desc));
     ID3D10DepthStencilView_GetDesc(dsview, &dsv_desc);
     ok(dsv_desc.Format == texture_desc.Format, "Got unexpected format %#x.\n", dsv_desc.Format);
     ok(dsv_desc.ViewDimension == D3D10_DSV_DIMENSION_TEXTURE2D,
             "Got unexpected view dimension %#x.\n", dsv_desc.ViewDimension);
-    ok(U(dsv_desc).Texture2D.MipSlice == 0, "Got Unexpected mip slice %u.\n", U(dsv_desc).Texture2D.MipSlice);
+    ok(!U(dsv_desc).Texture2D.MipSlice, "Got unexpected mip slice %u.\n", U(dsv_desc).Texture2D.MipSlice);
 
     ID3D10DepthStencilView_Release(dsview);
 
     dsv_desc.Format = DXGI_FORMAT_UNKNOWN;
+
     hr = ID3D10Device_CreateDepthStencilView(device, (ID3D10Resource *)texture, &dsv_desc, &dsview);
     ok(SUCCEEDED(hr), "Failed to create a depthstencil view, hr %#x.\n", hr);
 
@@ -1159,10 +1193,32 @@ static void test_create_depthstencil_view(void)
     todo_wine ok(dsv_desc.Format == texture_desc.Format, "Got unexpected format %#x.\n", dsv_desc.Format);
     ok(dsv_desc.ViewDimension == D3D10_DSV_DIMENSION_TEXTURE2D,
             "Got unexpected view dimension %#x.\n", dsv_desc.ViewDimension);
-    ok(!U(dsv_desc).Texture2D.MipSlice, "Got Unexpected mip slice %u.\n", U(dsv_desc).Texture2D.MipSlice);
+    ok(!U(dsv_desc).Texture2D.MipSlice, "Got unexpected mip slice %u.\n", U(dsv_desc).Texture2D.MipSlice);
 
     ID3D10DepthStencilView_Release(dsview);
+    ID3D10Texture2D_Release(texture);
 
+    texture_desc.ArraySize = 4;
+
+    hr = ID3D10Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create 2d texture, hr %#x.\n", hr);
+
+    hr = ID3D10Device_CreateDepthStencilView(device, (ID3D10Resource *)texture, NULL, &dsview);
+    ok(SUCCEEDED(hr), "Failed to create depthstencil view, hr %#x.\n", hr);
+
+    memset(&dsv_desc, 0, sizeof(dsv_desc));
+    ID3D10DepthStencilView_GetDesc(dsview, &dsv_desc);
+    ok(dsv_desc.Format == texture_desc.Format, "Got unexpected format %#x.\n", dsv_desc.Format);
+    ok(dsv_desc.ViewDimension == D3D10_DSV_DIMENSION_TEXTURE2DARRAY,
+            "Got unexpected view dimension %#x.\n", dsv_desc.ViewDimension);
+    ok(!U(dsv_desc).Texture2DArray.MipSlice, "Got unexpected mip slice %u.\n",
+            U(dsv_desc).Texture2DArray.MipSlice);
+    ok(!U(dsv_desc).Texture2DArray.FirstArraySlice, "Got unexpected first array slice %u.\n",
+            U(dsv_desc).Texture2DArray.FirstArraySlice);
+    todo_wine ok(U(dsv_desc).Texture2DArray.ArraySize == texture_desc.ArraySize,
+            "Got unexpected array size %u.\n", U(dsv_desc).Texture2DArray.ArraySize);
+
+    ID3D10DepthStencilView_Release(dsview);
     ID3D10Texture2D_Release(texture);
 
     refcount = ID3D10Device_Release(device);
@@ -1324,6 +1380,7 @@ static void test_create_rendertarget_view(void)
     hr = ID3D10Device_CreateRenderTargetView(device, (ID3D10Resource *)texture, NULL, &rtview);
     ok(SUCCEEDED(hr), "Failed to create a rendertarget view, hr %#x\n", hr);
 
+    memset(&rtv_desc, 0, sizeof(rtv_desc));
     ID3D10RenderTargetView_GetDesc(rtview, &rtv_desc);
     ok(rtv_desc.Format == texture_desc.Format, "Expected format %#x, got %#x\n", texture_desc.Format, rtv_desc.Format);
     ok(rtv_desc.ViewDimension == D3D10_RTV_DIMENSION_TEXTURE2D,
@@ -1338,6 +1395,7 @@ static void test_create_rendertarget_view(void)
     ID3D10RenderTargetView_Release(rtview);
 
     rtv_desc.Format = DXGI_FORMAT_UNKNOWN;
+
     hr = ID3D10Device_CreateRenderTargetView(device, (ID3D10Resource *)texture, &rtv_desc, &rtview);
     ok(SUCCEEDED(hr), "Failed to create a rendertarget view, hr %#x.\n", hr);
 
@@ -1346,10 +1404,32 @@ static void test_create_rendertarget_view(void)
     todo_wine ok(rtv_desc.Format == texture_desc.Format, "Got unexpected format %#x.\n", rtv_desc.Format);
     ok(rtv_desc.ViewDimension == D3D10_RTV_DIMENSION_TEXTURE2D, "Got unexpected view dimension %#x.\n",
             rtv_desc.ViewDimension);
-    ok(!U(rtv_desc).Texture2D.MipSlice, "Got unexpected mip slice %#x.\n", U(rtv_desc).Texture2D.MipSlice);
+    ok(!U(rtv_desc).Texture2D.MipSlice, "Got unexpected mip slice %u.\n", U(rtv_desc).Texture2D.MipSlice);
 
     ID3D10RenderTargetView_Release(rtview);
+    ID3D10Texture2D_Release(texture);
 
+    texture_desc.ArraySize = 4;
+
+    hr = ID3D10Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create 2d texture, hr %#x.\n", hr);
+
+    hr = ID3D10Device_CreateRenderTargetView(device, (ID3D10Resource *)texture, NULL, &rtview);
+    ok(SUCCEEDED(hr), "Failed to create rendertarget view, hr %#x.\n", hr);
+
+    memset(&rtv_desc, 0, sizeof(rtv_desc));
+    ID3D10RenderTargetView_GetDesc(rtview, &rtv_desc);
+    ok(rtv_desc.Format == texture_desc.Format, "Got unexpected format %#x.\n", rtv_desc.Format);
+    ok(rtv_desc.ViewDimension == D3D10_RTV_DIMENSION_TEXTURE2DARRAY, "Got unexpected view dimension %#x.\n",
+            rtv_desc.ViewDimension);
+    ok(!U(rtv_desc).Texture2DArray.MipSlice, "Got unexpected mip slice %u.\n",
+            U(rtv_desc).Texture2DArray.MipSlice);
+    ok(!U(rtv_desc).Texture2DArray.FirstArraySlice, "Got unexpected first array slice %u.\n",
+            U(rtv_desc).Texture2DArray.FirstArraySlice);
+    todo_wine ok(U(rtv_desc).Texture2DArray.ArraySize == texture_desc.ArraySize, "Got unexpected array size %u.\n",
+            U(rtv_desc).Texture2DArray.ArraySize);
+
+    ID3D10RenderTargetView_Release(rtview);
     ID3D10Texture2D_Release(texture);
 
     refcount = ID3D10Device_Release(device);
@@ -1435,6 +1515,7 @@ static void test_create_shader_resource_view(void)
     hr = ID3D10Device_CreateShaderResourceView(device, (ID3D10Resource *)texture, NULL, &srview);
     ok(SUCCEEDED(hr), "Failed to create a shader resource view, hr %#x\n", hr);
 
+    memset(&srv_desc, 0, sizeof(srv_desc));
     ID3D10ShaderResourceView_GetDesc(srview, &srv_desc);
     ok(srv_desc.Format == texture_desc.Format, "Got unexpected format %#x.\n", srv_desc.Format);
     ok(srv_desc.ViewDimension == D3D10_SRV_DIMENSION_TEXTURE2D,
@@ -1455,6 +1536,8 @@ static void test_create_shader_resource_view(void)
     ID3D10ShaderResourceView_Release(srview);
 
     srv_desc.Format = DXGI_FORMAT_UNKNOWN;
+    U(srv_desc).Texture2D.MipLevels = -1;
+
     hr = ID3D10Device_CreateShaderResourceView(device, (ID3D10Resource *)texture, &srv_desc, &srview);
     ok(SUCCEEDED(hr), "Failed to create a shader resource view, hr %#x.\n", hr);
 
@@ -1465,10 +1548,35 @@ static void test_create_shader_resource_view(void)
             "Got unexpected view dimension %#x.\n", srv_desc.ViewDimension);
     ok(U(srv_desc).Texture2D.MostDetailedMip == 0, "Got unexpected MostDetailedMip %u.\n",
             U(srv_desc).Texture2D.MostDetailedMip);
-    ok(U(srv_desc).Texture2D.MipLevels == 10, "Got unexpected MipLevels %u.\n", U(srv_desc).Texture2D.MipLevels);
+    todo_wine ok(U(srv_desc).Texture2D.MipLevels == 10, "Got unexpected MipLevels %u.\n",
+            U(srv_desc).Texture2D.MipLevels);
 
     ID3D10ShaderResourceView_Release(srview);
+    ID3D10Texture2D_Release(texture);
 
+    texture_desc.ArraySize = 4;
+
+    hr = ID3D10Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create 2d texture, hr %#x.\n", hr);
+
+    hr = ID3D10Device_CreateShaderResourceView(device, (ID3D10Resource *)texture, NULL, &srview);
+    ok(SUCCEEDED(hr), "Failed to create shader resource view, hr %#x.\n", hr);
+
+    memset(&srv_desc, 0, sizeof(srv_desc));
+    ID3D10ShaderResourceView_GetDesc(srview, &srv_desc);
+    ok(srv_desc.Format == texture_desc.Format, "Got unexpected format %#x.\n", srv_desc.Format);
+    ok(srv_desc.ViewDimension == D3D10_SRV_DIMENSION_TEXTURE2DARRAY,
+            "Got unexpected view dimension %#x.\n", srv_desc.ViewDimension);
+    ok(!U(srv_desc).Texture2DArray.MostDetailedMip, "Got unexpected MostDetailedMip %u.\n",
+            U(srv_desc).Texture2DArray.MostDetailedMip);
+    ok(U(srv_desc).Texture2DArray.MipLevels == 10, "Got unexpected MipLevels %u.\n",
+            U(srv_desc).Texture2DArray.MipLevels);
+    ok(!U(srv_desc).Texture2DArray.FirstArraySlice, "Got unexpected FirstArraySlice %u.\n",
+            U(srv_desc).Texture2DArray.FirstArraySlice);
+    ok(U(srv_desc).Texture2DArray.ArraySize == texture_desc.ArraySize, "Got unexpected ArraySize %u.\n",
+            U(srv_desc).Texture2DArray.ArraySize);
+
+    ID3D10ShaderResourceView_Release(srview);
     ID3D10Texture2D_Release(texture);
 
     refcount = ID3D10Device_Release(device);
@@ -5330,12 +5438,12 @@ static void test_copy_subresource_region(void)
     release_test_context(&test_context);
 }
 
-static void test_multisample_init(void)
+static void test_texture_data_init(void)
 {
     static const float white[] = {1.0f, 1.0f, 1.0f, 1.0f};
     struct d3d10core_test_context test_context;
     D3D10_TEXTURE2D_DESC desc;
-    ID3D10Texture2D *multi;
+    ID3D10Texture2D *texture;
     ID3D10Device *device;
     UINT count = 0;
     HRESULT hr;
@@ -5345,37 +5453,81 @@ static void test_multisample_init(void)
 
     device = test_context.device;
 
+    desc.Width = 640;
+    desc.Height = 480;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+    desc.Usage = D3D10_USAGE_DEFAULT;
+    desc.BindFlags = 0;
+    desc.CPUAccessFlags = 0;
+    desc.MiscFlags = 0;
+
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    check_texture_color(texture, 0x00000000, 0);
+    ID3D10Texture2D_Release(texture);
+
+    desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    check_texture_color(texture, 0x00000000, 0);
+    ID3D10Texture2D_Release(texture);
+
+    desc.Format = DXGI_FORMAT_D32_FLOAT;
+    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    check_texture_float(texture, 0.0f, 0);
+    ID3D10Texture2D_Release(texture);
+
+    desc.ArraySize = 4;
+
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    check_texture_float(texture, 0.0f, 0);
+    ID3D10Texture2D_Release(texture);
+
+    desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    check_texture_color(texture, 0x00000000, 0);
+    ID3D10Texture2D_Release(texture);
+
+    desc.Format = DXGI_FORMAT_D32_FLOAT;
+    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    check_texture_float(texture, 0.0f, 0);
+    ID3D10Texture2D_Release(texture);
+
     hr = ID3D10Device_CheckMultisampleQualityLevels(device, DXGI_FORMAT_R8G8B8A8_UNORM, 2, &count);
     ok(SUCCEEDED(hr), "Failed to get quality levels, hr %#x.\n", hr);
     if (!count)
     {
         skip("Multisampling not supported for DXGI_FORMAT_R8G8B8A8_UNORM, skipping tests.\n");
-        goto done;
+        release_test_context(&test_context);
+        return;
     }
 
     ID3D10Device_ClearRenderTargetView(device, test_context.backbuffer_rtv, white);
 
-    desc.Width = 640;
-    desc.Height = 480;
-    desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     desc.SampleDesc.Count = 2;
     desc.SampleDesc.Quality = 0;
-    desc.Usage = D3D10_USAGE_DEFAULT;
     desc.BindFlags = D3D10_BIND_RENDER_TARGET;
-    desc.CPUAccessFlags = 0;
-    desc.MiscFlags = 0;
-    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &multi);
+    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
     ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
 
     ID3D10Device_ResolveSubresource(device, (ID3D10Resource *)test_context.backbuffer, 0,
-            (ID3D10Resource *)multi, 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+            (ID3D10Resource *)texture, 0, DXGI_FORMAT_R8G8B8A8_UNORM);
 
     todo_wine check_texture_color(test_context.backbuffer, 0x00000000, 0);
 
-    ID3D10Texture2D_Release(multi);
-done:
+    ID3D10Texture2D_Release(texture);
+
     release_test_context(&test_context);
 }
 
@@ -5679,7 +5831,6 @@ static void test_swapchain_flip(void)
     DWORD color;
     HWND window;
     HRESULT hr;
-    UINT count;
 
     static const D3D10_INPUT_ELEMENT_DESC layout_desc[] =
     {
@@ -5919,8 +6070,6 @@ static void test_swapchain_flip(void)
     ID3D10Texture2D_Release(backbuffer_2);
     IDXGISwapChain_Release(swapchain);
 
-    hr = ID3D10Device_CheckMultisampleQualityLevels(device, DXGI_FORMAT_R8G8B8A8_UNORM, 2, &count);
-    ok(SUCCEEDED(hr), "Failed to get quality levels, hr %#x.\n", hr);
     refcount = ID3D10Device_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
     DestroyWindow(window);
@@ -5930,6 +6079,7 @@ static void test_clear_render_target_view(void)
 {
     static const DWORD expected_color = 0xbf4c7f19, expected_srgb_color = 0xbf95bc59;
     static const float color[] = {0.1f, 0.5f, 0.3f, 0.75f};
+    static const float green[] = {0.0f, 1.0f, 0.0f, 0.5f};
 
     struct d3d10core_test_context test_context;
     ID3D10Texture2D *texture, *srgb_texture;
@@ -5973,6 +6123,14 @@ static void test_clear_render_target_view(void)
 
     ID3D10Device_ClearRenderTargetView(device, rtv, color);
     check_texture_color(texture, expected_color, 1);
+
+    if (d3d11_available)
+    {
+        ID3D10Device_ClearRenderTargetView(device, NULL, green);
+        check_texture_color(texture, expected_color, 1);
+    }
+    else
+        win_skip("D3D11 is not available, skipping test.\n");
 
     ID3D10Device_ClearRenderTargetView(device, srgb_rtv, color);
     check_texture_color(srgb_texture, expected_srgb_color, 1);
@@ -6076,6 +6234,14 @@ static void test_clear_depth_stencil_view(void)
 
     ID3D10Device_ClearDepthStencilView(device, dsv, D3D10_CLEAR_DEPTH | D3D10_CLEAR_STENCIL, 0.0f, 0);
     check_texture_color(depth_texture, 0x00000000, 0);
+
+    if (d3d11_available)
+    {
+        ID3D10Device_ClearDepthStencilView(device, NULL, D3D10_CLEAR_DEPTH | D3D10_CLEAR_STENCIL, 1.0f, 0xff);
+        check_texture_color(depth_texture, 0x00000000, 0);
+    }
+    else
+        win_skip("D3D11 is not available, skipping test.\n");
 
     ID3D10Device_ClearDepthStencilView(device, dsv, D3D10_CLEAR_DEPTH, 1.0f, 0xff);
     todo_wine check_texture_color(depth_texture, 0x00ffffff, 0);
@@ -6290,7 +6456,7 @@ START_TEST(device)
     test_fragment_coords();
     test_update_subresource();
     test_copy_subresource_region();
-    test_multisample_init();
+    test_texture_data_init();
     test_check_multisample_quality_levels();
     test_cb_relative_addressing();
     test_swapchain_flip();

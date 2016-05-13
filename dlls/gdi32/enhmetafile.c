@@ -1138,9 +1138,9 @@ BOOL WINAPI PlayEnhMetaFileRecord(
 	rc.top = pExtTextOutA->emrtext.rcl.top;
 	rc.right = pExtTextOutA->emrtext.rcl.right;
 	rc.bottom = pExtTextOutA->emrtext.rcl.bottom;
-        TRACE("EMR_EXTTEXTOUTA: x,y = %d, %d. rect = %d, %d - %d, %d. flags %08x\n",
+        TRACE("EMR_EXTTEXTOUTA: x,y = %d, %d. rect = %s. flags %08x\n",
               pExtTextOutA->emrtext.ptlReference.x, pExtTextOutA->emrtext.ptlReference.y,
-              rc.left, rc.top, rc.right, rc.bottom, pExtTextOutA->emrtext.fOptions);
+              wine_dbgstr_rect(&rc), pExtTextOutA->emrtext.fOptions);
 
         old_mode = SetGraphicsMode(hdc, pExtTextOutA->iGraphicsMode);
         /* Reselect the font back into the dc so that the transformation
@@ -1174,9 +1174,9 @@ BOOL WINAPI PlayEnhMetaFileRecord(
 	rc.top = pExtTextOutW->emrtext.rcl.top;
 	rc.right = pExtTextOutW->emrtext.rcl.right;
 	rc.bottom = pExtTextOutW->emrtext.rcl.bottom;
-        TRACE("EMR_EXTTEXTOUTW: x,y = %d, %d.  rect = %d, %d - %d, %d. flags %08x\n",
+        TRACE("EMR_EXTTEXTOUTW: x,y = %d, %d.  rect = %s. flags %08x\n",
               pExtTextOutW->emrtext.ptlReference.x, pExtTextOutW->emrtext.ptlReference.y,
-              rc.left, rc.top, rc.right, rc.bottom, pExtTextOutW->emrtext.fOptions);
+              wine_dbgstr_rect(&rc), pExtTextOutW->emrtext.fOptions);
 
         old_mode = SetGraphicsMode(hdc, pExtTextOutW->iGraphicsMode);
         /* Reselect the font back into the dc so that the transformation
@@ -1820,6 +1820,7 @@ BOOL WINAPI PlayEnhMetaFileRecord(
             HBITMAP hBmp = 0, hBmpOld = 0;
             const BITMAPINFO *pbi = (const BITMAPINFO *)((const BYTE *)mr + pBitBlt->offBmiSrc);
 
+            SetGraphicsMode(hdcSrc, GM_ADVANCED);
             SetWorldTransform(hdcSrc, &pBitBlt->xformSrc);
 
             hBrush = CreateSolidBrush(pBitBlt->crBkColorSrc);
@@ -1862,6 +1863,7 @@ BOOL WINAPI PlayEnhMetaFileRecord(
             HBITMAP hBmp = 0, hBmpOld = 0;
             const BITMAPINFO *pbi = (const BITMAPINFO *)((const BYTE *)mr + pStretchBlt->offBmiSrc);
 
+            SetGraphicsMode(hdcSrc, GM_ADVANCED);
             SetWorldTransform(hdcSrc, &pStretchBlt->xformSrc);
 
             hBrush = CreateSolidBrush(pStretchBlt->crBkColorSrc);
@@ -1904,6 +1906,7 @@ BOOL WINAPI PlayEnhMetaFileRecord(
             const BITMAPINFO *pbi = (const BITMAPINFO *)((const BYTE *)mr + pAlphaBlend->offBmiSrc);
             void *bits;
 
+            SetGraphicsMode(hdcSrc, GM_ADVANCED);
             SetWorldTransform(hdcSrc, &pAlphaBlend->xformSrc);
 
             hBmp = CreateDIBSection(hdc, pbi, pAlphaBlend->iUsageSrc, &bits, NULL, 0);
@@ -1929,6 +1932,7 @@ BOOL WINAPI PlayEnhMetaFileRecord(
 	HBITMAP hBmp, hBmpOld, hBmpMask;
 	const BITMAPINFO *pbi;
 
+        SetGraphicsMode(hdcSrc, GM_ADVANCED);
 	SetWorldTransform(hdcSrc, &pMaskBlt->xformSrc);
 
 	hBrush = CreateSolidBrush(pMaskBlt->crBkColorSrc);
@@ -1977,6 +1981,7 @@ BOOL WINAPI PlayEnhMetaFileRecord(
 	const BITMAPINFO *pbi;
 	POINT pts[3];
 
+        SetGraphicsMode(hdcSrc, GM_ADVANCED);
 	SetWorldTransform(hdcSrc, &pPlgBlt->xformSrc);
 
 	pts[0].x = pPlgBlt->aptlDest[0].x; pts[0].y = pPlgBlt->aptlDest[0].y;
@@ -2175,23 +2180,30 @@ BOOL WINAPI PlayEnhMetaFileRecord(
 	break;
     }
 
+    case EMR_GRADIENTFILL:
+    {
+        EMRGRADIENTFILL *grad = (EMRGRADIENTFILL *)mr;
+        GdiGradientFill( hdc, grad->Ver, grad->nVer, grad->Ver + grad->nVer,
+                         grad->nTri, grad->ulMode );
+        break;
+    }
+
     case EMR_POLYDRAW16:
     case EMR_GLSRECORD:
     case EMR_GLSBOUNDEDRECORD:
-	case EMR_DRAWESCAPE :
-	case EMR_EXTESCAPE:
-	case EMR_STARTDOC:
-	case EMR_SMALLTEXTOUT:
-	case EMR_FORCEUFIMAPPING:
-	case EMR_NAMEDESCAPE:
-	case EMR_COLORCORRECTPALETTE:
-	case EMR_SETICMPROFILEA:
-	case EMR_SETICMPROFILEW:
-	case EMR_TRANSPARENTBLT:
-	case EMR_GRADIENTFILL:
-	case EMR_SETLINKEDUFI:
-	case EMR_COLORMATCHTOTARGETW:
-	case EMR_CREATECOLORSPACEW:
+    case EMR_DRAWESCAPE:
+    case EMR_EXTESCAPE:
+    case EMR_STARTDOC:
+    case EMR_SMALLTEXTOUT:
+    case EMR_FORCEUFIMAPPING:
+    case EMR_NAMEDESCAPE:
+    case EMR_COLORCORRECTPALETTE:
+    case EMR_SETICMPROFILEA:
+    case EMR_SETICMPROFILEW:
+    case EMR_TRANSPARENTBLT:
+    case EMR_SETLINKEDUFI:
+    case EMR_COLORMATCHTOTARGETW:
+    case EMR_CREATECOLORSPACEW:
 
     default:
       /* From docs: If PlayEnhMetaFileRecord doesn't recognize a
@@ -2202,8 +2214,7 @@ BOOL WINAPI PlayEnhMetaFileRecord(
   tmprc.left = tmprc.top = 0;
   tmprc.right = tmprc.bottom = 1000;
   LPtoDP(hdc, (POINT*)&tmprc, 2);
-  TRACE("L:0,0 - 1000,1000 -> D:%d,%d - %d,%d\n", tmprc.left,
-	tmprc.top, tmprc.right, tmprc.bottom);
+  TRACE("L:0,0 - 1000,1000 -> D:%s\n", wine_dbgstr_rect(&tmprc));
 
   return TRUE;
 }

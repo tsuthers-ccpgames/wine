@@ -57,6 +57,11 @@
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
+#ifdef MAJOR_IN_MKDEV
+# include <sys/mkdev.h>
+#elif defined(MAJOR_IN_SYSMACROS)
+# include <sys/sysmacros.h>
+#endif
 #ifdef HAVE_UTIME_H
 # include <utime.h>
 #endif
@@ -1757,6 +1762,11 @@ NTSTATUS WINAPI NtFsControlFile(HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc
         }
         break;
 
+    case FSCTL_PIPE_LISTEN:
+        status = server_ioctl_file( handle, event, apc, apc_context, io, code,
+                                    in_buffer, in_size, out_buffer, out_size );
+        return status;
+
     case FSCTL_PIPE_IMPERSONATE:
         FIXME("FSCTL_PIPE_IMPERSONATE: impersonating self\n");
         status = RtlImpersonateSelf( SecurityImpersonation );
@@ -1797,7 +1807,6 @@ NTSTATUS WINAPI NtFsControlFile(HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc
         io->Information = 0;
         status = STATUS_SUCCESS;
         break;
-    case FSCTL_PIPE_LISTEN:
     case FSCTL_PIPE_WAIT:
     default:
         status = server_ioctl_file( handle, event, apc, apc_context, io, code,
@@ -2185,6 +2194,13 @@ NTSTATUS fill_file_info( const struct stat *st, ULONG attr, void *ptr,
     case FileIdBothDirectoryInformation:
         {
             FILE_ID_BOTH_DIRECTORY_INFORMATION *info = ptr;
+            info->FileId.QuadPart = st->st_ino;
+            fill_file_info( st, attr, info, FileDirectoryInformation );
+        }
+        break;
+    case FileIdGlobalTxDirectoryInformation:
+        {
+            FILE_ID_GLOBAL_TX_DIR_INFORMATION *info = ptr;
             info->FileId.QuadPart = st->st_ino;
             fill_file_info( st, attr, info, FileDirectoryInformation );
         }

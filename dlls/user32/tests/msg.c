@@ -1743,6 +1743,7 @@ static HMONITOR (WINAPI *pMonitorFromPoint)(POINT,DWORD);
 static BOOL (WINAPI *pUpdateLayeredWindow)(HWND,HDC,POINT*,SIZE*,HDC,POINT*,COLORREF,BLENDFUNCTION*,DWORD);
 static UINT_PTR (WINAPI *pSetSystemTimer)(HWND, UINT_PTR, UINT, TIMERPROC);
 static UINT_PTR (WINAPI *pKillSystemTimer)(HWND, UINT_PTR);
+static UINT_PTR (WINAPI *pSetCoalescableTimer)(HWND, UINT_PTR, UINT, TIMERPROC, ULONG);
 /* kernel32 functions */
 static BOOL (WINAPI *pGetCPInfoExA)(UINT, DWORD, LPCPINFOEXA);
 
@@ -1769,6 +1770,7 @@ static void init_procs(void)
     GET_PROC(user32, UpdateLayeredWindow)
     GET_PROC(user32, SetSystemTimer)
     GET_PROC(user32, KillSystemTimer)
+    GET_PROC(user32, SetCoalescableTimer)
 
     GET_PROC(kernel32, GetCPInfoExA)
 
@@ -5540,6 +5542,35 @@ static const struct message WmSetFontStaticSeq[] =
     { WM_CTLCOLORSTATIC, sent|defwinproc },
     { 0 }
 };
+static const struct message WmSetTextButtonSeq[] =
+{
+    { WM_SETTEXT, sent },
+    { WM_CTLCOLORBTN, sent|parent },
+    { WM_CTLCOLORBTN, sent|parent },
+    { WM_COMMAND, sent|parent|optional },
+    { WM_DRAWITEM, sent|parent|optional },
+    { 0 }
+};
+static const struct message WmSetTextStaticSeq[] =
+{
+    { WM_SETTEXT, sent },
+    { WM_CTLCOLORSTATIC, sent|parent },
+    { WM_CTLCOLORSTATIC, sent|parent },
+    { 0 }
+};
+static const struct message WmSetTextGroupSeq[] =
+{
+    { WM_SETTEXT, sent },
+    { WM_CTLCOLORSTATIC, sent|parent },
+    { WM_CTLCOLORSTATIC, sent|parent|optional }, /* FIXME: Missing in Wine */
+    { WM_CTLCOLORSTATIC, sent|parent|optional }, /* FIXME: Missing in Wine */
+    { 0 }
+};
+static const struct message WmSetTextInvisibleSeq[] =
+{
+    { WM_SETTEXT, sent },
+    { 0 }
+};
 static const struct message WmSetStyleButtonSeq[] =
 {
     { BM_SETSTYLE, sent },
@@ -5709,51 +5740,63 @@ static void test_button_messages(void)
         const struct message *lbuttondown;
         const struct message *lbuttonup;
         const struct message *setfont;
+        const struct message *settext;
     } button[] = {
         { BS_PUSHBUTTON, DLGC_BUTTON | DLGC_UNDEFPUSHBUTTON,
           WmSetFocusButtonSeq, WmKillFocusButtonSeq, WmSetStyleButtonSeq,
           WmSetStateButtonSeq, WmSetStateButtonSeq, WmSetCheckIgnoredSeq,
-          WmLButtonDownSeq, WmLButtonUpSeq, WmSetFontButtonSeq },
+          WmLButtonDownSeq, WmLButtonUpSeq, WmSetFontButtonSeq,
+          WmSetTextButtonSeq },
         { BS_DEFPUSHBUTTON, DLGC_BUTTON | DLGC_DEFPUSHBUTTON,
           WmSetFocusButtonSeq, WmKillFocusButtonSeq, WmSetStyleButtonSeq,
           WmSetStateButtonSeq, WmSetStateButtonSeq, WmSetCheckIgnoredSeq,
-          WmLButtonDownSeq, WmLButtonUpSeq, WmSetFontButtonSeq },
+          WmLButtonDownSeq, WmLButtonUpSeq, WmSetFontButtonSeq,
+          WmSetTextButtonSeq },
         { BS_CHECKBOX, DLGC_BUTTON,
           WmSetFocusStaticSeq, WmKillFocusStaticSeq, WmSetStyleStaticSeq,
           WmSetStateStaticSeq, WmSetStateStaticSeq, WmSetCheckStaticSeq,
-          WmLButtonDownStaticSeq, WmLButtonUpStaticSeq, WmSetFontStaticSeq },
+          WmLButtonDownStaticSeq, WmLButtonUpStaticSeq, WmSetFontStaticSeq,
+          WmSetTextStaticSeq },
         { BS_AUTOCHECKBOX, DLGC_BUTTON,
           WmSetFocusStaticSeq, WmKillFocusStaticSeq, WmSetStyleStaticSeq,
           WmSetStateStaticSeq, WmSetStateStaticSeq, WmSetCheckStaticSeq,
-          WmLButtonDownStaticSeq, WmLButtonUpAutoSeq, WmSetFontStaticSeq },
+          WmLButtonDownStaticSeq, WmLButtonUpAutoSeq, WmSetFontStaticSeq,
+          WmSetTextStaticSeq },
         { BS_RADIOBUTTON, DLGC_BUTTON | DLGC_RADIOBUTTON,
           WmSetFocusStaticSeq, WmKillFocusStaticSeq, WmSetStyleStaticSeq,
           WmSetStateStaticSeq, WmSetStateStaticSeq, WmSetCheckStaticSeq,
-          WmLButtonDownStaticSeq, WmLButtonUpStaticSeq, WmSetFontStaticSeq },
+          WmLButtonDownStaticSeq, WmLButtonUpStaticSeq, WmSetFontStaticSeq,
+          WmSetTextStaticSeq },
         { BS_3STATE, DLGC_BUTTON,
           WmSetFocusStaticSeq, WmKillFocusStaticSeq, WmSetStyleStaticSeq,
           WmSetStateStaticSeq, WmSetStateStaticSeq, WmSetCheckStaticSeq,
-          WmLButtonDownStaticSeq, WmLButtonUpStaticSeq, WmSetFontStaticSeq },
+          WmLButtonDownStaticSeq, WmLButtonUpStaticSeq, WmSetFontStaticSeq,
+          WmSetTextStaticSeq },
         { BS_AUTO3STATE, DLGC_BUTTON,
           WmSetFocusStaticSeq, WmKillFocusStaticSeq, WmSetStyleStaticSeq,
           WmSetStateStaticSeq, WmSetStateStaticSeq, WmSetCheckStaticSeq,
-          WmLButtonDownStaticSeq, WmLButtonUpAutoSeq, WmSetFontStaticSeq },
+          WmLButtonDownStaticSeq, WmLButtonUpAutoSeq, WmSetFontStaticSeq,
+          WmSetTextStaticSeq },
         { BS_GROUPBOX, DLGC_STATIC,
           WmSetFocusStaticSeq, WmKillFocusStaticSeq, WmSetStyleStaticSeq,
           WmSetStateStaticSeq, WmSetStateStaticSeq, WmSetCheckIgnoredSeq,
-          WmLButtonDownStaticSeq, WmLButtonUpStaticSeq, WmSetFontStaticSeq },
+          WmLButtonDownStaticSeq, WmLButtonUpStaticSeq, WmSetFontStaticSeq,
+          WmSetTextGroupSeq },
         { BS_USERBUTTON, DLGC_BUTTON | DLGC_UNDEFPUSHBUTTON,
           WmSetFocusButtonSeq, WmKillFocusButtonSeq, WmSetStyleUserSeq,
           WmSetStateUserSeq, WmClearStateButtonSeq, WmSetCheckIgnoredSeq,
-          WmLButtonDownSeq, WmLButtonUpSeq, WmSetFontButtonSeq },
+          WmLButtonDownSeq, WmLButtonUpSeq, WmSetFontButtonSeq,
+          WmSetTextButtonSeq },
         { BS_AUTORADIOBUTTON, DLGC_BUTTON | DLGC_RADIOBUTTON,
           WmSetFocusStaticSeq, WmKillFocusStaticSeq, WmSetStyleStaticSeq,
           WmSetStateStaticSeq, WmSetStateStaticSeq, WmSetCheckStaticSeq,
-          NULL /* avoid infinite loop */, WmLButtonUpBrokenSeq, WmSetFontStaticSeq },
+          NULL /* avoid infinite loop */, WmLButtonUpBrokenSeq, WmSetFontStaticSeq,
+          WmSetTextStaticSeq },
         { BS_OWNERDRAW, DLGC_BUTTON,
           WmSetFocusOwnerdrawSeq, WmKillFocusOwnerdrawSeq, WmSetStyleOwnerdrawSeq,
           WmSetStateOwnerdrawSeq, WmClearStateOwnerdrawSeq, WmSetCheckIgnoredSeq,
-          WmLButtonDownSeq, WmLButtonUpSeq, WmSetFontButtonSeq },
+          WmLButtonDownSeq, WmLButtonUpSeq, WmSetFontButtonSeq,
+          WmSetTextButtonSeq },
     };
     unsigned int i;
     HWND hwnd, parent;
@@ -5886,6 +5929,30 @@ static void test_button_messages(void)
         SendMessageA(hwnd, WM_APP, 0, 0); /* place a separator mark here */
         while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE)) DispatchMessageA(&msg);
         ok_sequence(button[i].setcheck, "BM_SETCHECK on a button", FALSE);
+
+        SendMessageA(hwnd, WM_SETTEXT, 0, (LPARAM)"Text 1");
+        sprintf(desc, "button[%i]: WM_SETTEXT on a visible button", i);
+        ok_sequence(button[i].settext, desc, FALSE);
+
+        ShowWindow(hwnd, SW_HIDE);
+        flush_events();
+        flush_sequence();
+
+        SendMessageA(hwnd, WM_SETTEXT, 0, (LPARAM)"Text 2");
+        sprintf(desc, "button[%i]: WM_SETTEXT on an invisible button", i);
+        ok_sequence(WmSetTextInvisibleSeq, desc, FALSE);
+
+        ShowWindow(hwnd, SW_SHOW);
+        ShowWindow(parent, SW_HIDE);
+        flush_events();
+        flush_sequence();
+
+        SendMessageA(hwnd, WM_SETTEXT, 0, (LPARAM)"Text 3");
+        sprintf(desc, "button[%i]: WM_SETTEXT on an invisible button", i);
+        ok_sequence(WmSetTextInvisibleSeq, desc, FALSE);
+
+        ShowWindow(parent, SW_SHOW);
+        flush_events();
 
         state = SendMessageA(hwnd, BM_GETCHECK, 0, 0);
         if (button[i].style == BS_PUSHBUTTON ||
@@ -8930,6 +8997,20 @@ static void test_timers_no_wnd(void)
     KillTimer(NULL, id);
     /* Note: SetSystemTimer doesn't support a NULL window, see test_timers */
 
+    if (pSetCoalescableTimer)
+    {
+        count = 0;
+        id = pSetCoalescableTimer(NULL, 0, 0, callback_count, 0);
+        ok(id != 0, "SetCoalescableTimer failed with %u.\n", GetLastError());
+        start = GetTickCount();
+        while (GetTickCount()-start < 100 && GetMessageA(&msg, NULL, 0, 0))
+            DispatchMessageA(&msg);
+        ok(count > 1, "expected count > 1, got %d.\n", count);
+        KillTimer(NULL, id);
+    }
+    else
+        win_skip("SetCoalescableTimer not available.\n");
+
     /* Check what happens when we're running out of timers */
     for (i=0; i<sizeof(ids)/sizeof(ids[0]); i++)
     {
@@ -11186,6 +11267,70 @@ static void test_quit_message(void)
         DispatchMessageA(&msg);
     }
     ok_sequence(WmStopQuitSeq, "WmStopQuitSeq", FALSE);
+}
+
+static const struct message WmNotifySeq[] = {
+    { WM_NOTIFY, sent|wparam|lparam, 0x1234, 0xdeadbeef },
+    { 0 }
+};
+
+static void test_notify_message(void)
+{
+    HWND hwnd;
+    BOOL ret;
+    MSG msg;
+
+    hwnd = CreateWindowExA(0, "TestWindowClass", NULL, WS_OVERLAPPEDWINDOW,
+                           CW_USEDEFAULT, CW_USEDEFAULT, 300, 300, 0, NULL, NULL, 0);
+    ok(hwnd != 0, "Failed to create window\n");
+    flush_events();
+    flush_sequence();
+
+    ret = SendNotifyMessageA(hwnd, WM_NOTIFY, 0x1234, 0xdeadbeef);
+    ok(ret == TRUE, "SendNotifyMessageA failed with error %u\n", GetLastError());
+    ok_sequence(WmNotifySeq, "WmNotifySeq", FALSE);
+
+    ret = SendNotifyMessageW(hwnd, WM_NOTIFY, 0x1234, 0xdeadbeef);
+    ok(ret == TRUE, "SendNotifyMessageW failed with error %u\n", GetLastError());
+    ok_sequence(WmNotifySeq, "WmNotifySeq", FALSE);
+
+    ret = SendMessageCallbackA(hwnd, WM_NOTIFY, 0x1234, 0xdeadbeef, NULL, 0);
+    ok(ret == TRUE, "SendMessageCallbackA failed with error %u\n", GetLastError());
+    ok_sequence(WmNotifySeq, "WmNotifySeq", FALSE);
+
+    ret = SendMessageCallbackW(hwnd, WM_NOTIFY, 0x1234, 0xdeadbeef, NULL, 0);
+    ok(ret == TRUE, "SendMessageCallbackW failed with error %u\n", GetLastError());
+    ok_sequence(WmNotifySeq, "WmNotifySeq", FALSE);
+
+    ret = PostMessageA(hwnd, WM_NOTIFY, 0x1234, 0xdeadbeef);
+    ok(ret == TRUE, "PostMessageA failed with error %u\n", GetLastError());
+    flush_events();
+    ok_sequence(WmNotifySeq, "WmNotifySeq", FALSE);
+
+    ret = PostMessageW(hwnd, WM_NOTIFY, 0x1234, 0xdeadbeef);
+    ok(ret == TRUE, "PostMessageW failed with error %u\n", GetLastError());
+    flush_events();
+    ok_sequence(WmNotifySeq, "WmNotifySeq", FALSE);
+
+    ret = PostThreadMessageA(GetCurrentThreadId(), WM_NOTIFY, 0x1234, 0xdeadbeef);
+    ok(ret == TRUE, "PostThreadMessageA failed with error %u\n", GetLastError());
+    while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE))
+    {
+        msg.hwnd = hwnd;
+        DispatchMessageA(&msg);
+    }
+    ok_sequence(WmNotifySeq, "WmNotifySeq", FALSE);
+
+    ret = PostThreadMessageW(GetCurrentThreadId(), WM_NOTIFY, 0x1234, 0xdeadbeef);
+    ok(ret == TRUE, "PostThreadMessageW failed with error %u\n", GetLastError());
+    while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE))
+    {
+        msg.hwnd = hwnd;
+        DispatchMessageA(&msg);
+    }
+    ok_sequence(WmNotifySeq, "WmNotifySeq", FALSE);
+
+    DestroyWindow(hwnd);
 }
 
 static const struct message WmMouseHoverSeq[] = {
@@ -13991,6 +14136,123 @@ static void test_PostMessage(void)
     flush_events();
 }
 
+static LPARAM g_broadcast_lparam;
+static LRESULT WINAPI broadcast_test_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    WNDPROC oldproc = (WNDPROC)GetWindowLongPtrA(hwnd, GWLP_USERDATA);
+
+    if (wParam == 0xbaadbeef)
+        g_broadcast_lparam = wParam;
+    else
+        g_broadcast_lparam = 0;
+
+    return CallWindowProcA(oldproc, hwnd, message, wParam, lParam);
+}
+
+static void test_broadcast(void)
+{
+    static const UINT messages[] =
+    {
+        WM_USER-1,
+        WM_USER,
+        WM_USER+1,
+        0xc000-1,
+        0xc000, /* lowest possible atom returned by RegisterWindowMessage */
+        0xffff,
+    };
+    WNDPROC oldproc;
+    unsigned int i;
+    HWND hwnd;
+
+    hwnd = CreateWindowExA(0, "static", NULL, WS_POPUP, 0, 0, 0, 0, 0, 0, 0, NULL);
+    ok(hwnd != NULL, "got %p\n", hwnd);
+
+    oldproc = (WNDPROC)SetWindowLongPtrA(hwnd, GWLP_WNDPROC, (LONG_PTR)broadcast_test_proc);
+    SetWindowLongPtrA(hwnd, GWLP_USERDATA, (LONG_PTR)oldproc);
+
+    for (i = 0; i < sizeof(messages)/sizeof(messages[0]); i++)
+    {
+        BOOL ret;
+        MSG msg;
+
+        flush_events();
+        while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE))
+            ;
+
+        /* post, broadcast */
+        ret = PostMessageA(HWND_BROADCAST, messages[i], 0, 0);
+        ok(ret, "%d: got %d, error %d\n", i, ret, GetLastError());
+
+        memset(&msg, 0xab, sizeof(msg));
+        ret = PeekMessageA(&msg, 0, 0, 0, PM_REMOVE);
+        if (messages[i] < WM_USER || messages[i] >= 0xc000)
+        {
+            ok(ret, "%d: message %04x, got %d, error %d\n", i, messages[i], ret, GetLastError());
+            ok(msg.hwnd == hwnd, "%d: got %p\n", i, msg.hwnd);
+        }
+        else
+        {
+            ok(!ret, "%d: message %04x, got %d, error %d\n", i, messages[i], ret, GetLastError());
+        }
+
+        /* post, topmost */
+        ret = PostMessageA(HWND_TOPMOST, messages[i], 0, 0);
+        ok(ret, "%d: got %d, error %d\n", i, ret, GetLastError());
+
+        memset(&msg, 0xab, sizeof(msg));
+        ret = PeekMessageA(&msg, 0, 0, 0, PM_REMOVE);
+        if (messages[i] < WM_USER || messages[i] >= 0xc000)
+        {
+            ok(ret, "%d: message %04x, got %d, error %d\n", i, messages[i], ret, GetLastError());
+            ok(msg.hwnd == hwnd, "%d: got %p\n", i, msg.hwnd);
+        }
+        else
+        {
+            ok(!ret, "%d: got %d, error %d\n", i, ret, GetLastError());
+        }
+
+        /* send, broadcast */
+        g_broadcast_lparam = 0xdead;
+        ret = SendMessageTimeoutA(HWND_BROADCAST, messages[i], 0xbaadbeef, 0, SMTO_NORMAL, 2000, NULL);
+        if (!ret && GetLastError() == ERROR_TIMEOUT)
+            win_skip("broadcasting test %d, timeout\n", i);
+        else
+        {
+            if (messages[i] < WM_USER || messages[i] >= 0xc000)
+            {
+                ok(g_broadcast_lparam == 0xbaadbeef, "%d: message %04x, got %#lx, error %d\n", i, messages[i],
+                    g_broadcast_lparam, GetLastError());
+            }
+            else
+            {
+                ok(g_broadcast_lparam == 0xdead, "%d: message %04x, got %#lx, error %d\n", i, messages[i],
+                    g_broadcast_lparam, GetLastError());
+            }
+        }
+
+        /* send, topmost */
+        g_broadcast_lparam = 0xdead;
+        ret = SendMessageTimeoutA(HWND_TOPMOST, messages[i], 0xbaadbeef, 0, SMTO_NORMAL, 2000, NULL);
+        if (!ret && GetLastError() == ERROR_TIMEOUT)
+            win_skip("broadcasting test %d, timeout\n", i);
+        else
+        {
+            if (messages[i] < WM_USER || messages[i] >= 0xc000)
+            {
+                ok(g_broadcast_lparam == 0xbaadbeef, "%d: message %04x, got %#lx, error %d\n", i, messages[i],
+                    g_broadcast_lparam, GetLastError());
+            }
+            else
+            {
+                ok(g_broadcast_lparam == 0xdead, "%d: message %04x, got %#lx, error %d\n", i, messages[i],
+                    g_broadcast_lparam, GetLastError());
+            }
+        }
+    }
+
+    DestroyWindow(hwnd);
+}
+
 static const struct
 {
     DWORD exp, broken;
@@ -15642,6 +15904,7 @@ START_TEST(msg)
     test_SetFocus();
     test_SetParent();
     test_PostMessage();
+    test_broadcast();
     test_ShowWindow();
     test_PeekMessage();
     test_PeekMessage2();
@@ -15675,6 +15938,7 @@ START_TEST(msg)
     test_SendMessageTimeout();
     test_edit_messages();
     test_quit_message();
+    test_notify_message();
     test_SetActiveWindow();
 
     if (!pTrackMouseEvent)

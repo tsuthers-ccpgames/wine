@@ -35,12 +35,42 @@ const char *debugstr_xmlstr( const WS_XML_STRING *str )
     return debugstr_an( (const char *)str->bytes, str->length );
 }
 
-static const struct
+ULONG prop_size( const struct prop_desc *desc, ULONG count )
 {
-    ULONG size;
-    BOOL  readonly;
+    ULONG i, ret = count * sizeof(struct prop);
+    for (i = 0; i < count; i++) ret += desc[i].size;
+    return ret;
 }
-error_props[] =
+
+void prop_init( const struct prop_desc *desc, ULONG count, struct prop *prop, void *data )
+{
+    ULONG i;
+    char *ptr = data;
+    for (i = 0; i < count; i++)
+    {
+        prop[i].value     = ptr;
+        prop[i].size      = desc[i].size;
+        prop[i].readonly  = desc[i].readonly;
+        prop[i].writeonly = desc[i].writeonly;
+        ptr += prop[i].size;
+    }
+}
+
+HRESULT prop_set( const struct prop *prop, ULONG count, ULONG id, const void *value, ULONG size )
+{
+    if (id >= count || size != prop[id].size || prop[id].readonly) return E_INVALIDARG;
+    memcpy( prop[id].value, value, size );
+    return S_OK;
+}
+
+HRESULT prop_get( const struct prop *prop, ULONG count, ULONG id, void *buf, ULONG size )
+{
+    if (id >= count || size != prop[id].size || prop[id].writeonly) return E_INVALIDARG;
+    memcpy( buf, prop[id].value, prop[id].size );
+    return S_OK;
+}
+
+static const struct prop_desc error_props[] =
 {
     { sizeof(ULONG), TRUE },    /* WS_ERROR_PROPERTY_STRING_COUNT */
     { sizeof(ULONG), FALSE },   /* WS_ERROR_PROPERTY_ORIGINAL_ERROR_CODE */
@@ -49,47 +79,20 @@ error_props[] =
 
 struct error
 {
-    ULONG             prop_count;
-    WS_ERROR_PROPERTY prop[sizeof(error_props)/sizeof(error_props[0])];
+    ULONG       prop_count;
+    struct prop prop[sizeof(error_props)/sizeof(error_props[0])];
 };
 
 static struct error *alloc_error(void)
 {
     static const ULONG count = sizeof(error_props)/sizeof(error_props[0]);
     struct error *ret;
-    ULONG i, size = sizeof(*ret) + count * sizeof(WS_ERROR_PROPERTY);
-    char *ptr;
+    ULONG size = sizeof(*ret) + prop_size( error_props, count );
 
-    for (i = 0; i < count; i++) size += error_props[i].size;
     if (!(ret = heap_alloc_zero( size ))) return NULL;
-
-    ptr = (char *)&ret->prop[count];
-    for (i = 0; i < count; i++)
-    {
-        ret->prop[i].value = ptr;
-        ret->prop[i].valueSize = error_props[i].size;
-        ptr += ret->prop[i].valueSize;
-    }
+    prop_init( error_props, count, ret->prop, &ret[1] );
     ret->prop_count = count;
     return ret;
-}
-
-static HRESULT set_error_prop( struct error *error, WS_ERROR_PROPERTY_ID id, const void *value, ULONG size )
-{
-    if (id >= error->prop_count || size != error_props[id].size || error_props[id].readonly)
-        return E_INVALIDARG;
-
-    memcpy( error->prop[id].value, value, size );
-    return S_OK;
-}
-
-static HRESULT get_error_prop( struct error *error, WS_ERROR_PROPERTY_ID id, void *buf, ULONG size )
-{
-    if (id >= error->prop_count || size != error_props[id].size)
-        return E_INVALIDARG;
-
-    memcpy( buf, error->prop[id].value, error->prop[id].valueSize );
-    return S_OK;
 }
 
 /**************************************************************************
@@ -107,7 +110,7 @@ HRESULT WINAPI WsCreateError( const WS_ERROR_PROPERTY *properties, ULONG count, 
     if (!handle) return E_INVALIDARG;
     if (!(error = alloc_error())) return E_OUTOFMEMORY;
 
-    set_error_prop( error, WS_ERROR_PROPERTY_LANGID, &langid, sizeof(langid) );
+    prop_set( error->prop, error->prop_count, WS_ERROR_PROPERTY_LANGID, &langid, sizeof(langid) );
     for (i = 0; i < count; i++)
     {
         if (properties[i].id == WS_ERROR_PROPERTY_ORIGINAL_ERROR_CODE)
@@ -115,7 +118,8 @@ HRESULT WINAPI WsCreateError( const WS_ERROR_PROPERTY *properties, ULONG count, 
             heap_free( error );
             return E_INVALIDARG;
         }
-        hr = set_error_prop( error, properties[i].id, properties[i].value, properties[i].valueSize );
+        hr = prop_set( error->prop, error->prop_count, properties[i].id, properties[i].value,
+                       properties[i].valueSize );
         if (hr != S_OK)
         {
             heap_free( error );
@@ -138,12 +142,7 @@ void WINAPI WsFreeError( WS_ERROR *handle )
     heap_free( error );
 }
 
-static const struct
-{
-    ULONG size;
-    BOOL  readonly;
-}
-heap_props[] =
+static const struct prop_desc heap_props[] =
 {
     { sizeof(SIZE_T), FALSE }, /* WS_HEAP_PROPERTY_MAX_SIZE */
     { sizeof(SIZE_T), FALSE }, /* WS_HEAP_PROPERTY_TRIM_SIZE */
@@ -153,38 +152,53 @@ heap_props[] =
 
 struct heap
 {
-    HANDLE           handle;
-    ULONG            prop_count;
-    WS_HEAP_PROPERTY prop[sizeof(heap_props)/sizeof(heap_props[0])];
+    HANDLE      handle;
+    ULONG       prop_count;
+    struct prop prop[sizeof(heap_props)/sizeof(heap_props[0])];
 };
+
+static BOOL ensure_heap( struct heap *heap )
+{
+    SIZE_T size;
+    if (heap->handle) return TRUE;
+    if (prop_get( heap->prop, heap->prop_count, WS_HEAP_PROPERTY_MAX_SIZE, &size, sizeof(size) ) != S_OK)
+        return FALSE;
+    if (!(heap->handle = HeapCreate( 0, 0, size ))) return FALSE;
+    return TRUE;
+}
 
 void *ws_alloc( WS_HEAP *handle, SIZE_T size )
 {
     struct heap *heap = (struct heap *)handle;
+    if (!ensure_heap( heap )) return NULL;
     return HeapAlloc( heap->handle, 0, size );
 }
 
 static void *ws_alloc_zero( WS_HEAP *handle, SIZE_T size )
 {
     struct heap *heap = (struct heap *)handle;
+    if (!ensure_heap( heap )) return NULL;
     return HeapAlloc( heap->handle, HEAP_ZERO_MEMORY, size );
 }
 
 void *ws_realloc( WS_HEAP *handle, void *ptr, SIZE_T size )
 {
     struct heap *heap = (struct heap *)handle;
+    if (!ensure_heap( heap )) return NULL;
     return HeapReAlloc( heap->handle, 0, ptr, size );
 }
 
 static void *ws_realloc_zero( WS_HEAP *handle, void *ptr, SIZE_T size )
 {
     struct heap *heap = (struct heap *)handle;
+    if (!ensure_heap( heap )) return NULL;
     return HeapReAlloc( heap->handle, HEAP_ZERO_MEMORY, ptr, size );
 }
 
 void ws_free( WS_HEAP *handle, void *ptr )
 {
     struct heap *heap = (struct heap *)handle;
+    if (!heap->handle) return;
     HeapFree( heap->handle, 0, ptr );
 }
 
@@ -209,39 +223,12 @@ static struct heap *alloc_heap(void)
 {
     static const ULONG count = sizeof(heap_props)/sizeof(heap_props[0]);
     struct heap *ret;
-    ULONG i, size = sizeof(*ret) + count * sizeof(WS_HEAP_PROPERTY);
-    char *ptr;
+    ULONG size = sizeof(*ret) + prop_size( heap_props, count );
 
-    for (i = 0; i < count; i++) size += heap_props[i].size;
     if (!(ret = heap_alloc_zero( size ))) return NULL;
-
-    ptr = (char *)&ret->prop[count];
-    for (i = 0; i < count; i++)
-    {
-        ret->prop[i].value = ptr;
-        ret->prop[i].valueSize = heap_props[i].size;
-        ptr += ret->prop[i].valueSize;
-    }
+    prop_init( heap_props, count, ret->prop, &ret[1] );
     ret->prop_count = count;
     return ret;
-}
-
-static HRESULT set_heap_prop( struct heap *heap, WS_HEAP_PROPERTY_ID id, const void *value, ULONG size )
-{
-    if (id >= heap->prop_count || size != heap_props[id].size || heap_props[id].readonly)
-        return E_INVALIDARG;
-
-    memcpy( heap->prop[id].value, value, size );
-    return S_OK;
-}
-
-static HRESULT get_heap_prop( struct heap *heap, WS_HEAP_PROPERTY_ID id, void *buf, ULONG size )
-{
-    if (id >= heap->prop_count || size != heap_props[id].size)
-        return E_INVALIDARG;
-
-    memcpy( buf, heap->prop[id].value, heap->prop[id].valueSize );
-    return S_OK;
 }
 
 /**************************************************************************
@@ -258,14 +245,8 @@ HRESULT WINAPI WsCreateHeap( SIZE_T max_size, SIZE_T trim_size, const WS_HEAP_PR
     if (!handle || count) return E_INVALIDARG;
     if (!(heap = alloc_heap())) return E_OUTOFMEMORY;
 
-    set_heap_prop( heap, WS_HEAP_PROPERTY_MAX_SIZE, &max_size, sizeof(max_size) );
-    set_heap_prop( heap, WS_HEAP_PROPERTY_TRIM_SIZE, &trim_size, sizeof(trim_size) );
-
-    if (!(heap->handle = HeapCreate( 0, 0, max_size )))
-    {
-        heap_free( heap );
-        return E_OUTOFMEMORY;
-    }
+    prop_set( heap->prop, heap->prop_count, WS_HEAP_PROPERTY_MAX_SIZE, &max_size, sizeof(max_size) );
+    prop_set( heap->prop, heap->prop_count, WS_HEAP_PROPERTY_TRIM_SIZE, &trim_size, sizeof(trim_size) );
 
     *handle = (WS_HEAP *)heap;
     return S_OK;
@@ -283,6 +264,23 @@ void WINAPI WsFreeHeap( WS_HEAP *handle )
     if (!heap) return;
     HeapDestroy( heap->handle );
     heap_free( heap );
+}
+
+/**************************************************************************
+ *          WsResetHeap		[webservices.@]
+ */
+HRESULT WINAPI WsResetHeap( WS_HEAP *handle, WS_ERROR *error )
+{
+    struct heap *heap = (struct heap *)handle;
+
+    TRACE( "%p %p\n", handle, error );
+    if (error) FIXME( "ignoring error parameter\n" );
+
+    if (!heap) return E_INVALIDARG;
+
+    HeapDestroy( heap->handle );
+    heap->handle = NULL;
+    return S_OK;
 }
 
 struct node *alloc_node( WS_XML_NODE_TYPE type )
@@ -363,12 +361,7 @@ void destroy_nodes( struct node *node )
     free_node( node );
 }
 
-static const struct
-{
-    ULONG size;
-    BOOL  readonly;
-}
-reader_props[] =
+static const struct prop_desc reader_props[] =
 {
     { sizeof(ULONG), FALSE },      /* WS_XML_READER_PROPERTY_MAX_DEPTH */
     { sizeof(BOOL), FALSE },       /* WS_XML_READER_PROPERTY_ALLOW_FRAGMENT */
@@ -424,19 +417,16 @@ struct reader
     const unsigned char     *input_data;
     ULONG                    input_size;
     ULONG                    prop_count;
-    WS_XML_READER_PROPERTY   prop[sizeof(reader_props)/sizeof(reader_props[0])];
+    struct prop              prop[sizeof(reader_props)/sizeof(reader_props[0])];
 };
 
 static struct reader *alloc_reader(void)
 {
     static const ULONG count = sizeof(reader_props)/sizeof(reader_props[0]);
     struct reader *ret;
-    ULONG i, size = sizeof(*ret) + count * sizeof(WS_XML_READER_PROPERTY);
-    char *ptr;
+    ULONG size = sizeof(*ret) + prop_size( reader_props, count );
 
-    for (i = 0; i < count; i++) size += reader_props[i].size;
     if (!(ret = heap_alloc_zero( size ))) return NULL;
-
     if (!(ret->prefixes = heap_alloc_zero( sizeof(*ret->prefixes) )))
     {
         heap_free( ret );
@@ -444,13 +434,7 @@ static struct reader *alloc_reader(void)
     }
     ret->nb_prefixes = ret->nb_prefixes_allocated = 1;
 
-    ptr = (char *)&ret->prop[count];
-    for (i = 0; i < count; i++)
-    {
-        ret->prop[i].value = ptr;
-        ret->prop[i].valueSize = reader_props[i].size;
-        ptr += ret->prop[i].valueSize;
-    }
+    prop_init( reader_props, count, ret->prop, &ret[1] );
     ret->prop_count = count;
     return ret;
 }
@@ -532,24 +516,6 @@ static const WS_XML_STRING *get_namespace( struct reader *reader, const WS_XML_S
     return NULL;
 }
 
-static HRESULT set_reader_prop( struct reader *reader, WS_XML_READER_PROPERTY_ID id, const void *value, ULONG size )
-{
-    if (id >= reader->prop_count || size != reader_props[id].size || reader_props[id].readonly)
-        return E_INVALIDARG;
-
-    memcpy( reader->prop[id].value, value, size );
-    return S_OK;
-}
-
-static HRESULT get_reader_prop( struct reader *reader, WS_XML_READER_PROPERTY_ID id, void *buf, ULONG size )
-{
-    if (id >= reader->prop_count || size != reader_props[id].size)
-        return E_INVALIDARG;
-
-    memcpy( buf, reader->prop[id].value, reader->prop[id].valueSize );
-    return S_OK;
-}
-
 static void read_insert_eof( struct reader *reader, struct node *eof )
 {
     if (!reader->root) reader->root = eof;
@@ -612,15 +578,16 @@ HRESULT WINAPI WsCreateReader( const WS_XML_READER_PROPERTY *properties, ULONG c
     if (!handle) return E_INVALIDARG;
     if (!(reader = alloc_reader())) return E_OUTOFMEMORY;
 
-    set_reader_prop( reader, WS_XML_READER_PROPERTY_MAX_DEPTH, &max_depth, sizeof(max_depth) );
-    set_reader_prop( reader, WS_XML_READER_PROPERTY_MAX_ATTRIBUTES, &max_attrs, sizeof(max_attrs) );
-    set_reader_prop( reader, WS_XML_READER_PROPERTY_READ_DECLARATION, &read_decl, sizeof(read_decl) );
-    set_reader_prop( reader, WS_XML_READER_PROPERTY_CHARSET, &charset, sizeof(charset) );
-    set_reader_prop( reader, WS_XML_READER_PROPERTY_MAX_NAMESPACES, &max_ns, sizeof(max_ns) );
+    prop_set( reader->prop, reader->prop_count, WS_XML_READER_PROPERTY_MAX_DEPTH, &max_depth, sizeof(max_depth) );
+    prop_set( reader->prop, reader->prop_count, WS_XML_READER_PROPERTY_MAX_ATTRIBUTES, &max_attrs, sizeof(max_attrs) );
+    prop_set( reader->prop, reader->prop_count, WS_XML_READER_PROPERTY_READ_DECLARATION, &read_decl, sizeof(read_decl) );
+    prop_set( reader->prop, reader->prop_count, WS_XML_READER_PROPERTY_CHARSET, &charset, sizeof(charset) );
+    prop_set( reader->prop, reader->prop_count, WS_XML_READER_PROPERTY_MAX_NAMESPACES, &max_ns, sizeof(max_ns) );
 
     for (i = 0; i < count; i++)
     {
-        hr = set_reader_prop( reader, properties[i].id, properties[i].value, properties[i].valueSize );
+        hr = prop_set( reader->prop, reader->prop_count, properties[i].id, properties[i].value,
+                       properties[i].valueSize );
         if (hr != S_OK)
         {
             free_reader( reader );
@@ -678,7 +645,7 @@ HRESULT WINAPI WsGetErrorProperty( WS_ERROR *handle, WS_ERROR_PROPERTY_ID id, vo
     struct error *error = (struct error *)handle;
 
     TRACE( "%p %u %p %u\n", handle, id, buf, size );
-    return get_error_prop( error, id, buf, size );
+    return prop_get( error->prop, error->prop_count, id, buf, size );
 }
 
 /**************************************************************************
@@ -701,7 +668,7 @@ HRESULT WINAPI WsGetHeapProperty( WS_HEAP *handle, WS_HEAP_PROPERTY_ID id, void 
     TRACE( "%p %u %p %u %p\n", handle, id, buf, size, error );
     if (error) FIXME( "ignoring error parameter\n" );
 
-    return get_heap_prop( heap, id, buf, size );
+    return prop_get( heap->prop, heap->prop_count, id, buf, size );
 }
 
 /**************************************************************************
@@ -800,12 +767,12 @@ HRESULT WINAPI WsGetReaderProperty( WS_XML_READER *handle, WS_XML_READER_PROPERT
         WS_CHARSET charset;
         HRESULT hr;
 
-        if ((hr = get_reader_prop( reader, id, &charset, size )) != S_OK) return hr;
+        if ((hr = prop_get( reader->prop, reader->prop_count, id, &charset, size )) != S_OK) return hr;
         if (!charset) return WS_E_INVALID_FORMAT;
         *(WS_CHARSET *)buf = charset;
         return S_OK;
     }
-    return get_reader_prop( reader, id, buf, size );
+    return prop_get( reader->prop, reader->prop_count, id, buf, size );
 }
 
 /**************************************************************************
@@ -915,11 +882,13 @@ static inline unsigned int read_utf8_char( struct reader *reader, unsigned int *
 
 static inline void read_skip( struct reader *reader, unsigned int count )
 {
-    while (reader->read_pos < reader->read_size && count)
-    {
-        reader->read_pos++;
-        count--;
-    }
+    if (reader->read_pos + count > reader->read_size) return;
+    reader->read_pos += count;
+}
+
+static inline void read_rewind( struct reader *reader, unsigned int count )
+{
+    reader->read_pos -= count;
 }
 
 static inline BOOL read_isnamechar( unsigned int ch )
@@ -1182,6 +1151,11 @@ static HRESULT read_element( struct reader *reader )
 
     if (read_cmp( reader, "<", 1 )) goto error;
     read_skip( reader, 1 );
+    if (!read_isnamechar( read_utf8_char( reader, &skip )))
+    {
+        read_rewind( reader, 1 );
+        goto error;
+    }
 
     start = read_current_ptr( reader );
     for (;;)
@@ -1907,6 +1881,189 @@ static HRESULT str_to_uint64( const unsigned char *str, ULONG len, UINT64 max, U
     return S_OK;
 }
 
+#define TICKS_PER_SEC   10000000
+#define TICKS_PER_MIN   (60 * (ULONGLONG)TICKS_PER_SEC)
+#define TICKS_PER_HOUR  (3600 * (ULONGLONG)TICKS_PER_SEC)
+#define TICKS_PER_DAY   (86400 * (ULONGLONG)TICKS_PER_SEC)
+#define TICKS_MAX       3155378975999999999
+
+static const int month_offsets[2][12] =
+{
+    {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334},
+    {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335}
+};
+
+static const int month_days[2][12] =
+{
+    {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+    {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+};
+
+static inline int is_leap_year( int year )
+{
+    return !(year % 4) && (year % 100 || !(year % 400));
+}
+
+static inline int valid_day( int year, int month, int day )
+{
+    return day > 0 && day <= month_days[is_leap_year( year )][month - 1];
+}
+
+static inline int leap_days_before( int year )
+{
+    return (year - 1) / 4 - (year - 1) / 100 + (year - 1) / 400;
+}
+
+static HRESULT str_to_datetime( const unsigned char *bytes, ULONG len, WS_DATETIME *ret )
+{
+    const unsigned char *p = bytes, *q;
+    int year, month, day, hour, min, sec, sec_frac = 0, tz_hour, tz_min, tz_neg;
+
+    while (len && read_isspace( *p )) { p++; len--; }
+    while (len && read_isspace( p[len - 1] )) { len--; }
+
+    q = p;
+    while (len && isdigit( *q )) { q++; len--; };
+    if (q - p != 4 || !len || *q != '-') return WS_E_INVALID_FORMAT;
+    year = (p[0] - '0') * 1000 + (p[1] - '0') * 100 + (p[2] - '0') * 10 + p[3] - '0';
+    if (year < 1) return WS_E_INVALID_FORMAT;
+
+    p = ++q; len--;
+    while (len && isdigit( *q )) { q++; len--; };
+    if (q - p != 2 || !len || *q != '-') return WS_E_INVALID_FORMAT;
+    month = (p[0] - '0') * 10 + p[1] - '0';
+    if (month < 1 || month > 12) return WS_E_INVALID_FORMAT;
+
+    p = ++q; len--;
+    while (len && isdigit( *q )) { q++; len--; };
+    if (q - p != 2 || !len || *q != 'T') return WS_E_INVALID_FORMAT;
+    day = (p[0] - '0') * 10 + p[1] - '0';
+    if (!valid_day( year, month, day )) return WS_E_INVALID_FORMAT;
+
+    p = ++q; len--;
+    while (len && isdigit( *q )) { q++; len--; };
+    if (q - p != 2 || !len || *q != ':') return WS_E_INVALID_FORMAT;
+    hour = (p[0] - '0') * 10 + p[1] - '0';
+    if (hour > 24) return WS_E_INVALID_FORMAT;
+
+    p = ++q; len--;
+    while (len && isdigit( *q )) { q++; len--; };
+    if (q - p != 2 || !len || *q != ':') return WS_E_INVALID_FORMAT;
+    min = (p[0] - '0') * 10 + p[1] - '0';
+    if (min > 59 || (min > 0 && hour == 24)) return WS_E_INVALID_FORMAT;
+
+    p = ++q; len--;
+    while (len && isdigit( *q )) { q++; len--; };
+    if (q - p != 2 || !len) return WS_E_INVALID_FORMAT;
+    sec = (p[0] - '0') * 10 + p[1] - '0';
+    if (sec > 59 || (sec > 0 && hour == 24)) return WS_E_INVALID_FORMAT;
+
+    if (*q == '.')
+    {
+        unsigned int i, nb_digits, mul = TICKS_PER_SEC / 10;
+        p = ++q; len--;
+        while (len && isdigit( *q )) { q++; len--; };
+        nb_digits = q - p;
+        if (nb_digits < 1 || nb_digits > 7) return WS_E_INVALID_FORMAT;
+        for (i = 0; i < nb_digits; i++)
+        {
+            sec_frac += (p[i] - '0') * mul;
+            mul /= 10;
+        }
+    }
+    if (*q == 'Z')
+    {
+        if (--len) return WS_E_INVALID_FORMAT;
+        tz_hour = tz_min = tz_neg = 0;
+        ret->format = WS_DATETIME_FORMAT_UTC;
+    }
+    else if (*q == '+' || *q == '-')
+    {
+        tz_neg = (*q == '-') ? 1 : 0;
+
+        p = ++q; len--;
+        while (len && isdigit( *q )) { q++; len--; };
+        if (q - p != 2 || !len || *q != ':') return WS_E_INVALID_FORMAT;
+        tz_hour = (p[0] - '0') * 10 + p[1] - '0';
+        if (tz_hour > 14) return WS_E_INVALID_FORMAT;
+
+        p = ++q; len--;
+        while (len && isdigit( *q )) { q++; len--; };
+        if (q - p != 2 || len) return WS_E_INVALID_FORMAT;
+        tz_min = (p[0] - '0') * 10 + p[1] - '0';
+        if (tz_min > 59 || (tz_min > 0 && tz_hour == 14)) return WS_E_INVALID_FORMAT;
+
+        ret->format = WS_DATETIME_FORMAT_LOCAL;
+    }
+    else return WS_E_INVALID_FORMAT;
+
+    ret->ticks = ((year - 1) * 365 + leap_days_before( year )) * TICKS_PER_DAY;
+    ret->ticks += month_offsets[is_leap_year( year )][month - 1] * TICKS_PER_DAY;
+    ret->ticks += (day - 1) * TICKS_PER_DAY;
+    ret->ticks += hour * TICKS_PER_HOUR;
+    ret->ticks += min * TICKS_PER_MIN;
+    ret->ticks += sec * TICKS_PER_SEC;
+    ret->ticks += sec_frac;
+
+    if (tz_neg)
+    {
+        if (tz_hour * TICKS_PER_HOUR + tz_min * TICKS_PER_MIN + ret->ticks > TICKS_MAX)
+            return WS_E_INVALID_FORMAT;
+        ret->ticks += tz_hour * TICKS_PER_HOUR;
+        ret->ticks += tz_min * TICKS_PER_MIN;
+    }
+    else
+    {
+        if (tz_hour * TICKS_PER_HOUR + tz_min * TICKS_PER_MIN > ret->ticks)
+            return WS_E_INVALID_FORMAT;
+        ret->ticks -= tz_hour * TICKS_PER_HOUR;
+        ret->ticks -= tz_min * TICKS_PER_MIN;
+    }
+
+    return S_OK;
+}
+
+#define TICKS_1601_01_01    504911232000000000
+
+/**************************************************************************
+ *          WsDateTimeToFileTime               [webservices.@]
+ */
+HRESULT WINAPI WsDateTimeToFileTime( const WS_DATETIME *dt, FILETIME *ft, WS_ERROR *error )
+{
+    unsigned __int64 ticks;
+
+    TRACE( "%p %p %p\n", dt, ft, error );
+    if (error) FIXME( "ignoring error parameter\n" );
+
+    if (!dt || !ft) return E_INVALIDARG;
+
+    if (dt->ticks < TICKS_1601_01_01) return WS_E_INVALID_FORMAT;
+    ticks = dt->ticks - TICKS_1601_01_01;
+    ft->dwHighDateTime = ticks >> 32;
+    ft->dwLowDateTime  = (DWORD)ticks;
+    return S_OK;
+}
+
+/**************************************************************************
+ *          WsFileTimeToDateTime               [webservices.@]
+ */
+HRESULT WINAPI WsFileTimeToDateTime( const FILETIME *ft, WS_DATETIME *dt, WS_ERROR *error )
+{
+    unsigned __int64 ticks;
+
+    TRACE( "%p %p %p\n", ft, dt, error );
+    if (error) FIXME( "ignoring error parameter\n" );
+
+    if (!dt || !ft) return E_INVALIDARG;
+
+    ticks = ((unsigned __int64)ft->dwHighDateTime << 32) | ft->dwLowDateTime;
+    if (ticks > MAX_UINT64 - TICKS_1601_01_01) return WS_E_NUMERIC_OVERFLOW;
+    if (ticks + TICKS_1601_01_01 > TICKS_MAX) return WS_E_INVALID_FORMAT;
+    dt->ticks  = ticks + TICKS_1601_01_01;
+    dt->format = WS_DATETIME_FORMAT_UTC;
+    return S_OK;
+}
+
 static HRESULT read_get_node_text( struct reader *reader, WS_XML_UTF8_TEXT **ret )
 {
     WS_XML_TEXT_NODE *text;
@@ -2009,6 +2166,7 @@ static HRESULT read_get_text( struct reader *reader, WS_TYPE_MAPPING mapping,
     }
     case WS_ELEMENT_TYPE_MAPPING:
     case WS_ELEMENT_CONTENT_TYPE_MAPPING:
+    case WS_ANY_ELEMENT_TYPE_MAPPING:
     {
         HRESULT hr;
         *found = TRUE;
@@ -2534,6 +2692,165 @@ static HRESULT read_type_wsz( struct reader *reader, WS_TYPE_MAPPING mapping,
     return S_OK;
 }
 
+static HRESULT get_enum_value( const WS_XML_UTF8_TEXT *text, const WS_ENUM_DESCRIPTION *desc, int *ret )
+{
+    ULONG i;
+    for (i = 0; i < desc->valueCount; i++)
+    {
+        if (WsXmlStringEquals( &text->value, desc->values[i].name, NULL ) == S_OK)
+        {
+            *ret = desc->values[i].value;
+            return S_OK;
+        }
+    }
+    return WS_E_INVALID_FORMAT;
+}
+
+static HRESULT read_type_enum( struct reader *reader, WS_TYPE_MAPPING mapping,
+                               const WS_XML_STRING *localname, const WS_XML_STRING *ns,
+                               const WS_ENUM_DESCRIPTION *desc, WS_READ_OPTION option,
+                               WS_HEAP *heap, void *ret, ULONG size )
+{
+    WS_XML_UTF8_TEXT *utf8;
+    HRESULT hr;
+    int val = 0;
+    BOOL found;
+
+    if (!desc) return E_INVALIDARG;
+
+    if ((hr = read_get_text( reader, mapping, localname, ns, &utf8, &found )) != S_OK) return hr;
+    if (found && (hr = get_enum_value( utf8, desc, &val )) != S_OK) return hr;
+
+    switch (option)
+    {
+    case WS_READ_REQUIRED_VALUE:
+        if (!found) return WS_E_INVALID_FORMAT;
+        if (size != sizeof(int)) return E_INVALIDARG;
+        *(int *)ret = val;
+        break;
+
+    case WS_READ_REQUIRED_POINTER:
+        if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_OPTIONAL_POINTER:
+    {
+        int *heap_val = NULL;
+        if (size != sizeof(heap_val)) return E_INVALIDARG;
+        if (found)
+        {
+            if (!(heap_val = ws_alloc( heap, sizeof(*heap_val) ))) return WS_E_QUOTA_EXCEEDED;
+            *heap_val = val;
+        }
+        *(int **)ret = heap_val;
+        break;
+    }
+    default:
+        FIXME( "read option %u not supported\n", option );
+        return E_NOTIMPL;
+    }
+
+    return S_OK;
+}
+
+static HRESULT read_type_datetime( struct reader *reader, WS_TYPE_MAPPING mapping,
+                                   const WS_XML_STRING *localname, const WS_XML_STRING *ns,
+                                   const WS_DATETIME_DESCRIPTION *desc, WS_READ_OPTION option,
+                                   WS_HEAP *heap, void *ret, ULONG size )
+{
+    WS_XML_UTF8_TEXT *utf8;
+    HRESULT hr;
+    WS_DATETIME val = {0, WS_DATETIME_FORMAT_UTC};
+    BOOL found;
+
+    if (desc) FIXME( "ignoring description\n" );
+
+    if ((hr = read_get_text( reader, mapping, localname, ns, &utf8, &found )) != S_OK) return hr;
+    if (found && (hr = str_to_datetime( utf8->value.bytes, utf8->value.length, &val )) != S_OK) return hr;
+
+    switch (option)
+    {
+    case WS_READ_REQUIRED_VALUE:
+        if (!found) return WS_E_INVALID_FORMAT;
+        if (size != sizeof(WS_DATETIME)) return E_INVALIDARG;
+        *(WS_DATETIME *)ret = val;
+        break;
+
+    case WS_READ_REQUIRED_POINTER:
+        if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_OPTIONAL_POINTER:
+    {
+        WS_DATETIME *heap_val = NULL;
+        if (size != sizeof(heap_val)) return E_INVALIDARG;
+        if (found)
+        {
+            if (!(heap_val = ws_alloc( heap, sizeof(*heap_val) ))) return WS_E_QUOTA_EXCEEDED;
+            *heap_val = val;
+        }
+        *(WS_DATETIME **)ret = heap_val;
+        break;
+    }
+    default:
+        FIXME( "read option %u not supported\n", option );
+        return E_NOTIMPL;
+    }
+
+    return S_OK;
+}
+
+static BOOL is_empty_text_node( const struct node *node )
+{
+    const WS_XML_TEXT_NODE *text = (const WS_XML_TEXT_NODE *)node;
+    const WS_XML_UTF8_TEXT *utf8;
+    ULONG i;
+
+    if (node_type( node ) != WS_XML_NODE_TYPE_TEXT) return FALSE;
+    if (text->text->textType != WS_XML_TEXT_TYPE_UTF8)
+    {
+        ERR( "unhandled text type %u\n", text->text->textType );
+        return FALSE;
+    }
+    utf8 = (const WS_XML_UTF8_TEXT *)text->text;
+    for (i = 0; i < utf8->value.length; i++) if (!read_isspace( utf8->value.bytes[i] )) return FALSE;
+    return TRUE;
+}
+
+/* skips comment and empty text nodes */
+static HRESULT read_type_next_node( struct reader *reader )
+{
+    for (;;)
+    {
+        HRESULT hr;
+        WS_XML_NODE_TYPE type;
+
+        if ((hr = read_node( reader )) != S_OK) return hr;
+        type = node_type( reader->current );
+        if (type == WS_XML_NODE_TYPE_COMMENT ||
+            (type == WS_XML_NODE_TYPE_TEXT && is_empty_text_node( reader->current ))) continue;
+        return S_OK;
+    }
+}
+
+static HRESULT read_type_next_element_node( struct reader *reader, const WS_XML_STRING *localname,
+                                            const WS_XML_STRING *ns )
+{
+    const WS_XML_ELEMENT_NODE *elem;
+    HRESULT hr;
+    BOOL found;
+
+    if (!localname) return S_OK; /* assume reader is already correctly positioned */
+    if ((hr = read_to_startelement( reader, &found )) != S_OK) return hr;
+    if (!found) return WS_E_INVALID_FORMAT;
+
+    elem = &reader->current->hdr;
+    if (WsXmlStringEquals( localname, elem->localName, NULL ) == S_OK &&
+        WsXmlStringEquals( ns, elem->ns, NULL ) == S_OK) return S_OK;
+
+    return read_type_next_node( reader );
+}
+
 static ULONG get_type_size( WS_TYPE type, const WS_STRUCT_DESCRIPTION *desc )
 {
     switch (type)
@@ -2549,11 +2866,15 @@ static ULONG get_type_size( WS_TYPE type, const WS_STRUCT_DESCRIPTION *desc )
     case WS_BOOL_TYPE:
     case WS_INT32_TYPE:
     case WS_UINT32_TYPE:
+    case WS_ENUM_TYPE:
         return sizeof(INT32);
 
     case WS_INT64_TYPE:
     case WS_UINT64_TYPE:
         return sizeof(INT64);
+
+    case WS_DATETIME_TYPE:
+        return sizeof(WS_DATETIME);
 
     case WS_WSZ_TYPE:
         return sizeof(WCHAR *);
@@ -2579,11 +2900,11 @@ static HRESULT read_type_repeating_element( struct reader *reader, const WS_FIEL
     ULONG item_size, nb_items = 0, nb_allocated = 1, offset = 0;
     char *buf;
 
-    if (desc->itemRange)
-        FIXME( "ignoring range (%u-%u)\n", desc->itemRange->minItemCount, desc->itemRange->maxItemCount );
+    if (size != sizeof(void *)) return E_INVALIDARG;
 
     /* wrapper element */
-    if (desc->localName && ((hr = read_node( reader )) != S_OK)) return hr;
+    if (desc->localName && ((hr = read_type_next_element_node( reader, desc->localName, desc->ns )) != S_OK))
+        return hr;
 
     item_size = get_type_size( desc->type, desc->typeDescription );
     if (!(buf = ws_alloc_zero( heap, item_size ))) return WS_E_QUOTA_EXCEEDED;
@@ -2603,40 +2924,23 @@ static HRESULT read_type_repeating_element( struct reader *reader, const WS_FIEL
             ws_free( heap, buf );
             return hr;
         }
-        if ((hr = read_node( reader )) != S_OK)
-        {
-            ws_free( heap, buf );
-            return hr;
-        }
         offset += item_size;
         nb_items++;
     }
 
-    if (desc->localName && ((hr = read_node( reader )) != S_OK)) return hr;
+    if (desc->localName && ((hr = read_type_next_node( reader )) != S_OK)) return hr;
 
-    if (!nb_items)
+    if (desc->itemRange && (nb_items < desc->itemRange->minItemCount || nb_items > desc->itemRange->maxItemCount))
     {
+        TRACE( "number of items %u out of range (%u-%u)\n", nb_items, desc->itemRange->minItemCount,
+               desc->itemRange->maxItemCount );
         ws_free( heap, buf );
-        buf = NULL;
-    }
-
-    switch (option)
-    {
-    case WS_READ_REQUIRED_POINTER:
-        if (!nb_items) return WS_E_INVALID_FORMAT;
-        /* fall through */
-
-    case WS_READ_OPTIONAL_POINTER:
-        if (size < sizeof(void *)) return E_INVALIDARG;
-        *ret = buf;
-        break;
-
-    default:
-        FIXME( "read option %u not supported\n", option );
-        return E_NOTIMPL;
+        return WS_E_INVALID_FORMAT;
     }
 
     *count = nb_items;
+    *ret = buf;
+
     return S_OK;
 }
 
@@ -2649,14 +2953,15 @@ static HRESULT read_type_text( struct reader *reader, const WS_FIELD_DESCRIPTION
     if ((hr = read_to_startelement( reader, &found )) != S_OK) return S_OK;
     if (!found) return WS_E_INVALID_FORMAT;
     if ((hr = read_node( reader )) != S_OK) return hr;
+    if (node_type( reader->current ) != WS_XML_NODE_TYPE_TEXT) return WS_E_INVALID_FORMAT;
 
-    return read_type( reader, WS_ELEMENT_CONTENT_TYPE_MAPPING, desc->type, NULL, NULL,
+    return read_type( reader, WS_ANY_ELEMENT_TYPE_MAPPING, desc->type, NULL, NULL,
                       desc->typeDescription, option, heap, ret, size );
 }
 
 static WS_READ_OPTION map_field_options( WS_TYPE type, ULONG options )
 {
-    if (options & !(WS_FIELD_POINTER | WS_FIELD_OPTIONAL))
+    if (options & ~(WS_FIELD_POINTER | WS_FIELD_OPTIONAL))
     {
         FIXME( "options %08x not supported\n", options );
         return 0;
@@ -2673,6 +2978,8 @@ static WS_READ_OPTION map_field_options( WS_TYPE type, ULONG options )
     case WS_UINT16_TYPE:
     case WS_UINT32_TYPE:
     case WS_UINT64_TYPE:
+    case WS_ENUM_TYPE:
+    case WS_DATETIME_TYPE:
         return WS_READ_REQUIRED_VALUE;
 
     case WS_WSZ_TYPE:
@@ -2686,14 +2993,21 @@ static WS_READ_OPTION map_field_options( WS_TYPE type, ULONG options )
 }
 
 static HRESULT read_type_struct_field( struct reader *reader, const WS_FIELD_DESCRIPTION *desc,
-                                       WS_HEAP *heap, char *buf, ULONG size )
+                                       WS_HEAP *heap, char *buf )
 {
-    char *ptr = buf + desc->offset;
+    char *ptr;
     WS_READ_OPTION option;
+    ULONG size;
     HRESULT hr;
 
-    if (!(option = map_field_options( desc->type, desc->options ))) return E_INVALIDARG;
+    if (!desc || !(option = map_field_options( desc->type, desc->options ))) return E_INVALIDARG;
 
+    if (option == WS_READ_REQUIRED_VALUE)
+        size = get_type_size( desc->type, desc->typeDescription );
+    else
+        size = sizeof(void *);
+
+    ptr = buf + desc->offset;
     switch (desc->mapping)
     {
     case WS_ATTRIBUTE_FIELD_MAPPING:
@@ -2710,7 +3024,7 @@ static HRESULT read_type_struct_field( struct reader *reader, const WS_FIELD_DES
     {
         ULONG count;
         hr = read_type_repeating_element( reader, desc, option, heap, (void **)ptr, size, &count );
-        if (hr == S_OK) *(ULONG *)(ptr + desc->countOffset) = count;
+        if (hr == S_OK) *(ULONG *)(buf + desc->countOffset) = count;
         break;
     }
     case WS_TEXT_FIELD_MAPPING:
@@ -2721,7 +3035,6 @@ static HRESULT read_type_struct_field( struct reader *reader, const WS_FIELD_DES
         FIXME( "unhandled field mapping %u\n", desc->mapping );
         return E_NOTIMPL;
     }
-
 
     if (hr == WS_E_INVALID_FORMAT && desc->options & WS_FIELD_OPTIONAL)
     {
@@ -2750,7 +3063,7 @@ static HRESULT read_type_struct( struct reader *reader, WS_TYPE_MAPPING mapping,
                                  const WS_STRUCT_DESCRIPTION *desc, WS_READ_OPTION option,
                                  WS_HEAP *heap, void *ret, ULONG size )
 {
-    ULONG i, field_size;
+    ULONG i;
     HRESULT hr;
     char *buf;
 
@@ -2766,7 +3079,7 @@ static HRESULT read_type_struct( struct reader *reader, WS_TYPE_MAPPING mapping,
     {
     case WS_READ_REQUIRED_POINTER:
     case WS_READ_OPTIONAL_POINTER:
-        if (size < sizeof(void *)) return E_INVALIDARG;
+        if (size != sizeof(void *)) return E_INVALIDARG;
         if (!(buf = ws_alloc_zero( heap, desc->size ))) return WS_E_QUOTA_EXCEEDED;
         break;
 
@@ -2782,8 +3095,7 @@ static HRESULT read_type_struct( struct reader *reader, WS_TYPE_MAPPING mapping,
 
     for (i = 0; i < desc->fieldCount; i++)
     {
-        field_size = get_field_size( desc, i );
-        if ((hr = read_type_struct_field( reader, desc->fields[i], heap, buf, field_size )) != S_OK)
+        if ((hr = read_type_struct_field( reader, desc->fields[i], heap, buf )) != S_OK)
             break;
     }
 
@@ -2816,51 +3128,6 @@ static HRESULT read_type_struct( struct reader *reader, WS_TYPE_MAPPING mapping,
     }
 }
 
-static BOOL is_empty_text_node( const struct node *node )
-{
-    const WS_XML_TEXT_NODE *text = (const WS_XML_TEXT_NODE *)node;
-    const WS_XML_UTF8_TEXT *utf8;
-    ULONG i;
-
-    if (node_type( node ) != WS_XML_NODE_TYPE_TEXT) return FALSE;
-    if (text->text->textType != WS_XML_TEXT_TYPE_UTF8)
-    {
-        ERR( "unhandled text type %u\n", text->text->textType );
-        return FALSE;
-    }
-    utf8 = (const WS_XML_UTF8_TEXT *)text->text;
-    for (i = 0; i < utf8->value.length; i++) if (!read_isspace( utf8->value.bytes[i] )) return FALSE;
-    return TRUE;
-}
-
-static HRESULT read_type_next_node( struct reader *reader, const WS_XML_STRING *localname,
-                                    const WS_XML_STRING *ns )
-{
-    const WS_XML_ELEMENT_NODE *elem;
-    WS_XML_NODE_TYPE type;
-    HRESULT hr;
-    BOOL found;
-
-    if (!localname) return S_OK; /* assume reader is already correctly positioned */
-    if ((hr = read_to_startelement( reader, &found ) != S_OK)) return hr;
-    if (!found) return WS_E_INVALID_FORMAT;
-
-    elem = &reader->current->hdr;
-    if (WsXmlStringEquals( localname, elem->localName, NULL ) == S_OK &&
-        WsXmlStringEquals( ns, elem->ns, NULL ) == S_OK) return S_OK;
-
-    for (;;)
-    {
-        if ((hr = read_node( reader ) != S_OK)) return hr;
-        type = node_type( reader->current );
-        if (type == WS_XML_NODE_TYPE_COMMENT ||
-            (type == WS_XML_NODE_TYPE_TEXT && is_empty_text_node( reader->current ))) continue;
-        break;
-    }
-
-    return S_OK;
-}
-
 static HRESULT read_type( struct reader *reader, WS_TYPE_MAPPING mapping, WS_TYPE type,
                           const WS_XML_STRING *localname, const WS_XML_STRING *ns,
                           const void *desc, WS_READ_OPTION option, WS_HEAP *heap,
@@ -2872,9 +3139,10 @@ static HRESULT read_type( struct reader *reader, WS_TYPE_MAPPING mapping, WS_TYP
     {
     case WS_ELEMENT_TYPE_MAPPING:
     case WS_ELEMENT_CONTENT_TYPE_MAPPING:
-        if ((hr = read_type_next_node( reader, localname, ns )) != S_OK) return hr;
+        if ((hr = read_type_next_element_node( reader, localname, ns )) != S_OK) return hr;
         break;
 
+    case WS_ANY_ELEMENT_TYPE_MAPPING:
     case WS_ATTRIBUTE_TYPE_MAPPING:
         break;
 
@@ -2940,6 +3208,16 @@ static HRESULT read_type( struct reader *reader, WS_TYPE_MAPPING mapping, WS_TYP
             return hr;
         break;
 
+    case WS_ENUM_TYPE:
+        if ((hr = read_type_enum( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
+            return hr;
+        break;
+
+    case WS_DATETIME_TYPE:
+        if ((hr = read_type_datetime( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
+            return hr;
+        break;
+
     default:
         FIXME( "type %u not supported\n", type );
         return E_NOTIMPL;
@@ -2949,7 +3227,7 @@ static HRESULT read_type( struct reader *reader, WS_TYPE_MAPPING mapping, WS_TYP
     {
     case WS_ELEMENT_TYPE_MAPPING:
     case WS_ELEMENT_CONTENT_TYPE_MAPPING:
-        return read_node( reader );
+        return read_type_next_node( reader );
 
     case WS_ATTRIBUTE_TYPE_MAPPING:
     default:
@@ -2976,7 +3254,16 @@ HRESULT WINAPI WsReadType( WS_XML_READER *handle, WS_TYPE_MAPPING mapping, WS_TY
     if ((hr = read_type( reader, mapping, type, NULL, NULL, desc, option, heap, value, size )) != S_OK)
         return hr;
 
-    if ((hr = read_node( reader )) != S_OK) return hr;
+    switch (mapping)
+    {
+    case WS_ELEMENT_TYPE_MAPPING:
+        if ((hr = read_node( reader )) != S_OK) return hr;
+        break;
+
+    default:
+        break;
+    }
+
     if (!read_end_of_data( reader )) return WS_E_INVALID_FORMAT;
     return S_OK;
 }
@@ -2992,7 +3279,7 @@ HRESULT WINAPI WsSetErrorProperty( WS_ERROR *handle, WS_ERROR_PROPERTY_ID id, co
     TRACE( "%p %u %p %u\n", handle, id, value, size );
 
     if (id == WS_ERROR_PROPERTY_LANGID) return WS_E_INVALID_OPERATION;
-    return set_error_prop( error, id, value, size );
+    return prop_set( error->prop, error->prop_count, id, value, size );
 }
 
 static inline BOOL is_utf8( const unsigned char *data, ULONG size, ULONG *offset )
@@ -3061,7 +3348,8 @@ HRESULT WINAPI WsSetInput( WS_XML_READER *handle, const WS_XML_READER_ENCODING *
 
     for (i = 0; i < count; i++)
     {
-        hr = set_reader_prop( reader, properties[i].id, properties[i].value, properties[i].valueSize );
+        hr = prop_set( reader->prop, reader->prop_count, properties[i].id, properties[i].value,
+                       properties[i].valueSize );
         if (hr != S_OK) return hr;
     }
 
@@ -3084,7 +3372,8 @@ HRESULT WINAPI WsSetInput( WS_XML_READER *handle, const WS_XML_READER_ENCODING *
         if (charset == WS_CHARSET_AUTO)
             charset = detect_charset( buf->encodedData, buf->encodedDataSize, &offset );
 
-        hr = set_reader_prop( reader, WS_XML_READER_PROPERTY_CHARSET, &charset, sizeof(charset) );
+        hr = prop_set( reader->prop, reader->prop_count, WS_XML_READER_PROPERTY_CHARSET,
+                       &charset, sizeof(charset) );
         if (hr != S_OK) return hr;
         break;
     }
@@ -3131,14 +3420,16 @@ HRESULT WINAPI WsSetInputToBuffer( WS_XML_READER *handle, WS_XML_BUFFER *buffer,
 
     for (i = 0; i < count; i++)
     {
-        hr = set_reader_prop( reader, properties[i].id, properties[i].value, properties[i].valueSize );
+        hr = prop_set( reader->prop, reader->prop_count, properties[i].id, properties[i].value,
+                       properties[i].valueSize );
         if (hr != S_OK) return hr;
     }
 
     if ((hr = read_init_state( reader )) != S_OK) return hr;
 
     charset = detect_charset( xmlbuf->ptr, xmlbuf->size, &offset );
-    hr = set_reader_prop( reader, WS_XML_READER_PROPERTY_CHARSET, &charset, sizeof(charset) );
+    hr = prop_set( reader->prop, reader->prop_count, WS_XML_READER_PROPERTY_CHARSET,
+                   &charset, sizeof(charset) );
     if (hr != S_OK) return hr;
 
     set_input_buffer( reader, (const unsigned char *)xmlbuf->ptr + offset, xmlbuf->size - offset );

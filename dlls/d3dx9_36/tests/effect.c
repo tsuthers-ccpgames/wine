@@ -2917,7 +2917,7 @@ static void test_effect_states(IDirect3DDevice9 *device)
     ok(!memcmp(mat.m, test_mat.m, sizeof(mat)), "World matrix does not match.\n");
 
     hr = effect->lpVtbl->BeginPass(effect, 0);
-    todo_wine ok(hr == D3D_OK, "Got result %x, expected 0 (D3D_OK).\n", hr);
+    ok(hr == D3D_OK, "Got result %x, expected 0 (D3D_OK).\n", hr);
 
     hr = IDirect3DDevice9_GetTransform(device, D3DTS_WORLDMATRIX(1), &mat);
     ok(hr == D3D_OK, "Got result %x, expected 0 (D3D_OK).\n", hr);
@@ -2925,7 +2925,7 @@ static void test_effect_states(IDirect3DDevice9 *device)
 
     hr = IDirect3DDevice9_GetTransform(device, D3DTS_VIEW, &mat);
     ok(hr == D3D_OK, "Got result %x, expected 0 (D3D_OK).\n", hr);
-    todo_wine ok(!memcmp(mat.m, test_mat_camera.m, sizeof(mat)), "View matrix does not match.\n");
+    ok(!memcmp(mat.m, test_mat_camera.m, sizeof(mat)), "View matrix does not match.\n");
 
     hr = IDirect3DDevice9_GetRenderState(device, D3DRS_BLENDOP, &value);
     ok(hr == D3D_OK, "Got result %x, expected 0 (D3D_OK).\n", hr);
@@ -3692,37 +3692,34 @@ static void test_effect_preshader(IDirect3DDevice9 *device)
         const char *comment;
         BOOL todo[4];
         unsigned int result[4];
+        unsigned int ulps;
     }
     test_effect_preshader_op_results[] =
     {
-        {"1 / op", { TRUE,  TRUE,  TRUE,  TRUE}, {0x7f800000, 0xff800000, 0xbee8ba2e, 0x00200000}},
+        {"1 / op", {FALSE, FALSE, FALSE, FALSE}, {0x7f800000, 0xff800000, 0xbee8ba2e, 0x00200000}},
+        {"rsq",    {FALSE, FALSE, FALSE, FALSE}, {0x7f800000, 0x7f800000, 0x3f2c985c, 0x1f800001}, 1},
+        {"mul",    {FALSE, FALSE, FALSE, FALSE}, {0x00000000, 0x80000000, 0x40d33334, 0x7f800000}},
+        {"add",    {FALSE, FALSE, FALSE, FALSE}, {0x3f800000, 0x40000000, 0xc0a66666, 0x7f7fffff}},
+        {"lt",     {FALSE, FALSE, FALSE, FALSE}, {0x3f800000, 0x3f800000, 0x00000000, 0x00000000}},
+        {"ge",     {FALSE, FALSE, FALSE, FALSE}, {0x00000000, 0x00000000, 0x3f800000, 0x3f800000}},
+        {"neg",    {FALSE, FALSE, FALSE, FALSE}, {0x80000000, 0x00000000, 0x400ccccd, 0xff7fffff}},
+        {"rcp",    {FALSE, FALSE, FALSE, FALSE}, {0x7f800000, 0xff800000, 0xbee8ba2e, 0x00200000}},
+        {"frac",   {FALSE, FALSE, FALSE, FALSE}, {0x00000000, 0x00000000, 0x3f4ccccc, 0x00000000}},
+        {"min",    {FALSE, FALSE, FALSE, FALSE}, {0x00000000, 0x80000000, 0xc0400000, 0x40800000}},
+        {"max",    {FALSE, FALSE, FALSE, FALSE}, {0x3f800000, 0x40000000, 0xc00ccccd, 0x7f7fffff}},
 #if __x86_64__
-        {"rsq",    { TRUE,  TRUE,  TRUE,  TRUE}, {0x7f800000, 0x7f800000, 0x3f2c985d, 0x1f800000}},
+        {"sin",    {FALSE, FALSE, FALSE, FALSE}, {0x00000000, 0x80000000, 0xbf4ef99e, 0xbf0599b3}},
+        {"cos",    {FALSE, FALSE, FALSE, FALSE}, {0x3f800000, 0x3f800000, 0xbf16a803, 0x3f5a5f96}},
 #else
-        {"rsq",    { TRUE,  TRUE,  TRUE,  TRUE}, {0x7f800000, 0x7f800000, 0x3f2c985c, 0x1f800001}},
+        {"sin",    {FALSE, FALSE, FALSE,  TRUE}, {0x00000000, 0x80000000, 0xbf4ef99e, 0x3f792dc4}},
+        {"cos",    {FALSE, FALSE, FALSE,  TRUE}, {0x3f800000, 0x3f800000, 0xbf16a803, 0xbe6acefc}},
 #endif
-        {"mul",    { TRUE,  TRUE,  TRUE,  TRUE}, {0x00000000, 0x80000000, 0x40d33334, 0x7f800000}},
-        {"add",    {FALSE,  TRUE,  TRUE,  TRUE}, {0x3f800000, 0x40000000, 0xc0a66666, 0x7f7fffff}},
-        {"lt",     {FALSE, FALSE,  TRUE, FALSE}, {0x3f800000, 0x3f800000, 0x00000000, 0x00000000}},
-        {"ge",     { TRUE,  TRUE, FALSE,  TRUE}, {0x00000000, 0x00000000, 0x3f800000, 0x3f800000}},
-        {"neg",    { TRUE,  TRUE,  TRUE,  TRUE}, {0x80000000, 0x00000000, 0x400ccccd, 0xff7fffff}},
-        {"rcp",    { TRUE,  TRUE,  TRUE,  TRUE}, {0x7f800000, 0xff800000, 0xbee8ba2e, 0x00200000}},
-        {"frac",   {FALSE, FALSE,  TRUE, FALSE}, {0x00000000, 0x00000000, 0x3f4ccccc, 0x00000000}},
-        {"min",    {FALSE,  TRUE,  TRUE,  TRUE}, {0x00000000, 0x80000000, 0xc0400000, 0x40800000}},
-        {"max",    { TRUE,  TRUE,  TRUE,  TRUE}, {0x3f800000, 0x40000000, 0xc00ccccd, 0x7f7fffff}},
+        {"den mul",{FALSE, FALSE, FALSE, FALSE}, {0x7f800000, 0xff800000, 0xbb94f209, 0x000051ec}},
+        {"dot",    {FALSE, FALSE, FALSE, FALSE}, {0x00000000, 0x7f800000, 0x41f00000, 0x00000000}},
 #if __x86_64__
-        {"sin",    {FALSE,  TRUE,  TRUE,  TRUE}, {0x00000000, 0x80000000, 0xbf4ef99e, 0xbf0599b3}},
-        {"cos",    { TRUE,  TRUE,  TRUE,  TRUE}, {0x3f800000, 0x3f800000, 0xbf16a803, 0x3f5a5f96}},
+        {"prec",   {FALSE, FALSE,  TRUE, FALSE}, {0x2b8cbccc, 0x2c0cbccc, 0xac531800, 0x00000000}}
 #else
-        {"sin",    {FALSE,  TRUE,  TRUE,  TRUE}, {0x00000000, 0x80000000, 0xbf4ef99e, 0x3f792dc4}},
-        {"cos",    { TRUE,  TRUE,  TRUE,  TRUE}, {0x3f800000, 0x3f800000, 0xbf16a803, 0xbe6acefc}},
-#endif
-        {"den mul",{ TRUE,  TRUE,  TRUE,  TRUE}, {0x7f800000, 0xff800000, 0xbb94f209, 0x000051ec}},
-        {"dot",    {FALSE,  TRUE,  TRUE, FALSE}, {0x00000000, 0x7f800000, 0x41f00000, 0x00000000}},
-#if __x86_64__
-        {"prec",   { TRUE,  TRUE,  TRUE, FALSE}, {0x2b8cbccc, 0x2c0cbccc, 0xac531800, 0x00000000}}
-#else
-        {"prec",   { TRUE,  TRUE, FALSE, FALSE}, {0x2b8cbccc, 0x2c0cbccc, 0x00000000, 0x00000000}}
+        {"prec",   {FALSE, FALSE, FALSE, FALSE}, {0x2b8cbccc, 0x2c0cbccc, 0x00000000, 0x00000000}}
 #endif
     };
 #define TEST_EFFECT_PRES_NFLOATV ARRAY_SIZE(test_effect_preshader_fconstsv)
@@ -3789,11 +3786,11 @@ static void test_effect_preshader(IDirect3DDevice9 *device)
     ok(hr == D3D_OK, "SetVector failed, hr %#x.\n", hr);
 
     hr = effect->lpVtbl->BeginPass(effect, 0);
-    todo_wine ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
 
     hr = IDirect3DDevice9_GetVertexShaderConstantF(device, 0, &fdata[0].x, TEST_EFFECT_PRES_NFLOATV);
     ok(hr == D3D_OK, "Got result %#x.\n", hr);
-    todo_wine ok(!memcmp(fdata, test_effect_preshader_fconstsv, sizeof(test_effect_preshader_fconstsv)),
+    ok(!memcmp(fdata, test_effect_preshader_fconstsv, sizeof(test_effect_preshader_fconstsv)),
             "Vertex shader float constants do not match.\n");
     for (i = TEST_EFFECT_PRES_NFLOATV; i < 256; ++i)
     {
@@ -3804,7 +3801,7 @@ static void test_effect_preshader(IDirect3DDevice9 *device)
     }
     hr = IDirect3DDevice9_GetPixelShaderConstantF(device, 0, &fdata[0].x, TEST_EFFECT_PRES_NFLOATP);
     ok(hr == D3D_OK, "Got result %#x.\n", hr);
-    todo_wine ok(!memcmp(fdata, test_effect_preshader_fconstsp, sizeof(test_effect_preshader_fconstsp)),
+    ok(!memcmp(fdata, test_effect_preshader_fconstsp, sizeof(test_effect_preshader_fconstsp)),
             "Pixel shader float constants do not match.\n");
     for (i = TEST_EFFECT_PRES_NFLOATP; i < 224; ++i)
     {
@@ -3828,17 +3825,20 @@ static void test_effect_preshader(IDirect3DDevice9 *device)
 
     for (i = 0; i < TEST_EFFECT_PRES_NOPTESTS; ++i)
     {
-        unsigned int *v;
+        float *v;
 
         hr = IDirect3DDevice9_GetLight(device, i % 8, &light);
-        v = i < 8 ? (unsigned int *)&light.Diffuse : (unsigned int *)&light.Ambient;
+        v = i < 8 ? &light.Diffuse.r : &light.Ambient.r;
         ok(hr == D3D_OK, "Got result %#x.\n", hr);
         for (j = 0; j < 4; ++j)
+        {
             todo_wine_if(test_effect_preshader_op_results[i].todo[j])
-            ok(v[j] == test_effect_preshader_op_results[i].result[j],
+            ok(compare_float(v[j], ((float *)test_effect_preshader_op_results[i].result)[j],
+                    test_effect_preshader_op_results[i].ulps),
                     "Operation %s, component %u, expected %#x, got %#x (%g).\n",
                     test_effect_preshader_op_results[i].comment, j,
-                    test_effect_preshader_op_results[i].result[j], v[j], ((float *)v)[j]);
+                    test_effect_preshader_op_results[i].result[j], ((unsigned int *)v)[j], v[j]);
+        }
     }
 
     hr = effect->lpVtbl->EndPass(effect);
@@ -3848,7 +3848,7 @@ static void test_effect_preshader(IDirect3DDevice9 *device)
     hr = effect->lpVtbl->SetVector(effect, par, &fvect2);
     ok(hr == D3D_OK, "SetVector failed, hr %#x.\n", hr);
     hr = effect->lpVtbl->BeginPass(effect, 1);
-    todo_wine ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
 
     hr = IDirect3DDevice9_GetVertexShader(device, &vshader);
     ok(hr == D3D_OK, "Got result %#x.\n", hr);
@@ -3860,7 +3860,7 @@ static void test_effect_preshader(IDirect3DDevice9 *device)
     hr = IDirect3DVertexShader9_GetFunction(vshader, byte_code, &byte_code_size);
     ok(hr == D3D_OK, "Got result %#x.\n", hr);
     ok(byte_code_size > 1, "Got unexpected byte code size %u.\n", byte_code_size);
-    todo_wine ok(!memcmp(byte_code,
+    ok(!memcmp(byte_code,
             &test_effect_preshader_effect_blob[TEST_EFFECT_PRESHADER_VSHADER_POS +
             TEST_EFFECT_PRESHADER_VSHADER_LEN], byte_code_size),
             "Incorrect shader selected.\n");
@@ -3873,7 +3873,7 @@ static void test_effect_preshader(IDirect3DDevice9 *device)
     hr = effect->lpVtbl->SetVector(effect, par, &fvect1);
     ok(hr == D3D_OK, "SetVector failed, hr %#x.\n", hr);
     hr = effect->lpVtbl->CommitChanges(effect);
-    todo_wine ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
     hr = IDirect3DDevice9_GetVertexShader(device, &vshader);
     ok(hr == D3D_OK, "Got result %#x.\n", hr);
     ok(!vshader, "Incorrect shader selected.\n");
@@ -3884,6 +3884,103 @@ static void test_effect_preshader(IDirect3DDevice9 *device)
     hr = effect->lpVtbl->End(effect);
     ok(hr == D3D_OK, "Got result %#x.\n", hr);
     effect->lpVtbl->Release(effect);
+}
+
+struct test_preshader_op_def
+{
+    const char *mnem;
+    unsigned int opcode;
+    unsigned int args_count;
+    unsigned int expected_result[4];
+    D3DXVECTOR4 fvect1, fvect2;
+    unsigned int ulps;
+    BOOL todo[4];
+};
+
+static void test_preshader_op(IDirect3DDevice9 *device, const DWORD *sample_effect_blob,
+        unsigned int sample_effect_blob_size, const struct test_preshader_op_def *test)
+{
+    static const struct
+    {
+        unsigned int pos;
+        unsigned int result_index;
+    }
+    blob_position[] =
+    {
+        {0, 0},
+        {2468, 0},
+        {2319, 2}
+    };
+    DWORD *test_effect_blob;
+    HRESULT hr;
+    ID3DXEffect *effect;
+    D3DLIGHT9 light;
+    unsigned int i, passes_count;
+    float *v;
+    unsigned int op_pos, op_step;
+    D3DXHANDLE param;
+
+    op_step = 2 + (test->args_count + 1) * 3;
+    op_pos = blob_position[test->args_count].pos;
+
+    test_effect_blob = HeapAlloc(GetProcessHeap(), 0, sample_effect_blob_size);
+    memcpy(test_effect_blob, sample_effect_blob, sample_effect_blob_size);
+    for (i = 0; i < 4; ++i)
+        test_effect_blob[op_pos + i * op_step] = test->opcode;
+
+    hr = D3DXCreateEffect(device, test_effect_blob, sample_effect_blob_size,
+            NULL, NULL, 0, NULL, &effect, NULL);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    hr = effect->lpVtbl->Begin(effect, &passes_count, 0);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+
+    param = effect->lpVtbl->GetParameterByName(effect, NULL, "opvect1");
+    ok(!!param, "GetParameterByName failed.\n");
+    hr = effect->lpVtbl->SetVector(effect, param, &test->fvect1);
+    ok(hr == D3D_OK, "SetVector failed, hr %#x.\n", hr);
+
+    if (test->args_count > 1)
+    {
+        param = effect->lpVtbl->GetParameterByName(effect, NULL, "opvect2");
+        ok(!!param, "GetParameterByName failed.\n");
+        hr = effect->lpVtbl->SetVector(effect, param, &test->fvect2);
+        ok(hr == D3D_OK, "SetVector failed, hr %#x.\n", hr);
+    }
+
+    hr = effect->lpVtbl->BeginPass(effect, 0);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+
+    hr = IDirect3DDevice9_GetLight(device, blob_position[test->args_count].result_index, &light);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    v = &light.Diffuse.r;
+    for (i = 0; i < 4; ++i)
+        todo_wine_if(test->todo[i])
+        ok(compare_float(v[i], ((float *)test->expected_result)[i], test->ulps),
+                "Operation %s, component %u, expected %#x (%g), got %#x (%g).\n", test->mnem, i,
+                test->expected_result[i], ((float *)test->expected_result)[i], ((unsigned int *)v)[i], v[i]);
+
+    hr = effect->lpVtbl->EndPass(effect);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    hr = effect->lpVtbl->End(effect);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    effect->lpVtbl->Release(effect);
+    HeapFree(GetProcessHeap(), 0, test_effect_blob);
+}
+
+static void test_effect_preshader_ops(IDirect3DDevice9 *device)
+{
+    static const struct test_preshader_op_def op_tests[] =
+    {
+        {"exp", 0x10500001, 1, {0x3f800000, 0x3f800000, 0x3e5edc66, 0x7f800000},
+                {0.0f, -0.0f, -2.2f, 3.402823466e+38f}, {1.0f, 2.0f, -3.0f, 4.0f}},
+        {"0 * INF", 0x20500004, 2, {0xffc00000, 0xffc00000, 0xc0d33334, 0x7f800000},
+                {0.0f, -0.0f, -2.2f, 3.402823466e+38f}, {INFINITY, INFINITY, 3.0f, 4.0f}},
+    };
+    unsigned int i;
+
+    for (i = 0; i < ARRAY_SIZE(op_tests); ++i)
+        test_preshader_op(device, test_effect_preshader_effect_blob, sizeof(test_effect_preshader_effect_blob),
+                &op_tests[i]);
 }
 
 START_TEST(effect)
@@ -3927,6 +4024,7 @@ START_TEST(effect)
     test_effect_compilation_errors(device);
     test_effect_states(device);
     test_effect_preshader(device);
+    test_effect_preshader_ops(device);
 
     count = IDirect3DDevice9_Release(device);
     ok(count == 0, "The device was not properly freed: refcount %u\n", count);

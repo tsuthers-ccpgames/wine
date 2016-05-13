@@ -70,16 +70,21 @@ static ULONG STDMETHODCALLTYPE dxgi_swapchain_AddRef(IDXGISwapChain *iface)
 
 static ULONG STDMETHODCALLTYPE dxgi_swapchain_Release(IDXGISwapChain *iface)
 {
-    struct dxgi_swapchain *This = impl_from_IDXGISwapChain(iface);
-    ULONG refcount = InterlockedDecrement(&This->refcount);
+    struct dxgi_swapchain *swapchain = impl_from_IDXGISwapChain(iface);
+    ULONG refcount = InterlockedDecrement(&swapchain->refcount);
 
-    TRACE("%p decreasing refcount to %u\n", This, refcount);
+    TRACE("%p decreasing refcount to %u.\n", swapchain, refcount);
 
     if (!refcount)
     {
+        IWineDXGIDevice *device = swapchain->device;
+        if (swapchain->factory)
+            IDXGIFactory_Release(swapchain->factory);
         wined3d_mutex_lock();
-        wined3d_swapchain_decref(This->wined3d_swapchain);
+        wined3d_swapchain_decref(swapchain->wined3d_swapchain);
         wined3d_mutex_unlock();
+        if (device)
+            IWineDXGIDevice_Release(device);
     }
 
     return refcount;
@@ -119,18 +124,36 @@ static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetPrivateData(IDXGISwapChain *i
 
 static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetParent(IDXGISwapChain *iface, REFIID riid, void **parent)
 {
-    FIXME("iface %p, riid %s, parent %p stub!\n", iface, debugstr_guid(riid), parent);
+    struct dxgi_swapchain *swapchain = impl_from_IDXGISwapChain(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, riid %s, parent %p.\n", iface, debugstr_guid(riid), parent);
+
+    if (!swapchain->factory)
+    {
+        ERR("Implicit swapchain does not store reference to parent.\n");
+        *parent = NULL;
+        return E_NOINTERFACE;
+    }
+
+    return IDXGIFactory_QueryInterface(swapchain->factory, riid, parent);
 }
 
 /* IDXGIDeviceSubObject methods */
 
 static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetDevice(IDXGISwapChain *iface, REFIID riid, void **device)
 {
-    FIXME("iface %p, riid %s, device %p stub!\n", iface, debugstr_guid(riid), device);
+    struct dxgi_swapchain *swapchain = impl_from_IDXGISwapChain(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, riid %s, device %p.\n", iface, debugstr_guid(riid), device);
+
+    if (!swapchain->device)
+    {
+        ERR("Implicit swapchain does not store reference to device.\n");
+        *device = NULL;
+        return E_NOINTERFACE;
+    }
+
+    return IWineDXGIDevice_QueryInterface(swapchain->device, riid, device);
 }
 
 /* IDXGISwapChain methods */
@@ -275,9 +298,32 @@ static HRESULT STDMETHODCALLTYPE dxgi_swapchain_ResizeTarget(IDXGISwapChain *ifa
 
 static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetContainingOutput(IDXGISwapChain *iface, IDXGIOutput **output)
 {
-    FIXME("iface %p, output %p stub!\n", iface, output);
+    IDXGIAdapter *adapter;
+    IDXGIDevice *device;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, output %p.\n", iface, output);
+
+    if (FAILED(hr = dxgi_swapchain_GetDevice(iface, &IID_IDXGIDevice, (void **)&device)))
+        return hr;
+
+    hr = IDXGIDevice_GetAdapter(device, &adapter);
+    IDXGIDevice_Release(device);
+    if (FAILED(hr))
+    {
+        WARN("GetAdapter failed, hr %#x.\n", hr);
+        return hr;
+    }
+
+    if (SUCCEEDED(IDXGIAdapter_EnumOutputs(adapter, 1, output)))
+    {
+        FIXME("Adapter has got multiple outputs, returning the first one.\n");
+        IDXGIOutput_Release(*output);
+    }
+
+    hr = IDXGIAdapter_EnumOutputs(adapter, 0, output);
+    IDXGIAdapter_Release(adapter);
+    return hr;
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetFrameStatistics(IDXGISwapChain *iface, DXGI_FRAME_STATISTICS *stats)
@@ -334,9 +380,31 @@ static const struct wined3d_parent_ops dxgi_swapchain_wined3d_parent_ops =
 };
 
 HRESULT dxgi_swapchain_init(struct dxgi_swapchain *swapchain, struct dxgi_device *device,
-        struct wined3d_swapchain_desc *desc)
+        struct wined3d_swapchain_desc *desc, BOOL implicit)
 {
     HRESULT hr;
+
+    /**
+     * A reference to the implicit swapchain is held by the wined3d device.
+     * In order to avoid circular references we do not keep a reference
+     * to the device in the implicit swapchain.
+     */
+    if (!implicit)
+    {
+        if (FAILED(hr = IDXGIAdapter1_GetParent(device->adapter, &IID_IDXGIFactory,
+                (void **)&swapchain->factory)))
+        {
+            WARN("Failed to get adapter parent, hr %#x.\n", hr);
+            return hr;
+        }
+        swapchain->device = &device->IWineDXGIDevice_iface;
+        IWineDXGIDevice_AddRef(swapchain->device);
+    }
+    else
+    {
+        swapchain->device = NULL;
+        swapchain->factory = NULL;
+    }
 
     swapchain->IDXGISwapChain_iface.lpVtbl = &dxgi_swapchain_vtbl;
     swapchain->refcount = 1;
@@ -349,6 +417,10 @@ HRESULT dxgi_swapchain_init(struct dxgi_swapchain *swapchain, struct dxgi_device
         WARN("Failed to create wined3d swapchain, hr %#x.\n", hr);
         wined3d_private_store_cleanup(&swapchain->private_store);
         wined3d_mutex_unlock();
+        if (swapchain->factory)
+            IDXGIFactory_Release(swapchain->factory);
+        if (swapchain->device)
+            IWineDXGIDevice_Release(swapchain->device);
         return hr;
     }
     wined3d_mutex_unlock();

@@ -1604,7 +1604,7 @@ static HRESULT WINAPI ddraw1_Compact(IDirectDraw *iface)
  *
  * Returns information about the current display mode
  *
- * Exists in Version 1, 2, 4 and 7
+ * Exists in versions 1, 2, 4 and 7
  *
  * Params:
  *  DDSD: Address of a surface description structure to write the info to
@@ -1695,7 +1695,7 @@ static HRESULT WINAPI ddraw1_GetDisplayMode(IDirectDraw *iface, DDSURFACEDESC *s
  *
  * Returns an array of supported FourCC codes.
  *
- * Exists in Version 1, 2, 4 and 7
+ * Exists in versions 1, 2, 4 and 7
  *
  * Params:
  *  NumCodes: Contains the number of Codes that Codes can carry. Returns the number
@@ -1733,7 +1733,7 @@ static HRESULT WINAPI ddraw7_GetFourCCCodes(IDirectDraw7 *iface, DWORD *NumCodes
     for (i = 0; i < (sizeof(formats) / sizeof(formats[0])); ++i)
     {
         if (SUCCEEDED(wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT, WINED3D_DEVICE_TYPE_HAL,
-                mode.format_id, 0, WINED3D_RTYPE_SURFACE, formats[i])))
+                mode.format_id, 0, WINED3D_RTYPE_TEXTURE_2D, formats[i])))
         {
             if (count < outsize)
                 Codes[count] = formats[i];
@@ -2963,9 +2963,6 @@ static HRESULT WINAPI ddraw1_CreateSurface(IDirectDraw *iface,
     return hr;
 }
 
-#define DDENUMSURFACES_SEARCHTYPE (DDENUMSURFACES_CANBECREATED|DDENUMSURFACES_DOESEXIST)
-#define DDENUMSURFACES_MATCHTYPE (DDENUMSURFACES_ALL|DDENUMSURFACES_MATCH|DDENUMSURFACES_NOMATCH)
-
 static BOOL
 Main_DirectDraw_DDPIXELFORMAT_Match(const DDPIXELFORMAT *requested,
                                     const DDPIXELFORMAT *provided)
@@ -3071,9 +3068,6 @@ static BOOL ddraw_match_surface_desc(const DDSURFACEDESC2 *requested, const DDSU
 
     return TRUE;
 }
-
-#undef DDENUMSURFACES_SEARCHTYPE
-#undef DDENUMSURFACES_MATCHTYPE
 
 struct surfacescallback2_context
 {
@@ -3617,7 +3611,7 @@ static HRESULT WINAPI d3d7_EnumDevices(IDirect3D7 *iface, LPD3DENUMDEVICESCALLBA
  * Enumerates all supported Direct3DDevice interfaces. This is the
  * implementation for Direct3D 1 to Direc3D 3, Version 7 has its own.
  *
- * Version 1, 2 and 3
+ * Versions 1, 2 and 3
  *
  * Params:
  *  callback: Application-provided routine to call for each enumerated device
@@ -3759,7 +3753,7 @@ static HRESULT WINAPI d3d1_EnumDevices(IDirect3D *iface, LPD3DENUMDEVICESCALLBAC
  * by the DIRECT3DLIGHT7 structure. Wine's Direct3DLight implementation
  * uses the IDirect3DDevice7 interface with D3D7 lights.
  *
- * Version 1, 2 and 3
+ * Versions 1, 2 and 3
  *
  * Params:
  *  light: Address to store the new interface pointer
@@ -3822,7 +3816,7 @@ static HRESULT WINAPI d3d1_CreateLight(IDirect3D *iface, IDirect3DLight **light,
  * and older versions. The IDirect3DMaterial implementation wraps its
  * functionality to IDirect3DDevice7::SetMaterial and friends.
  *
- * Version 1, 2 and 3
+ * Versions 1, 2 and 3
  *
  * Params:
  *  material: Address to store the new interface's pointer to
@@ -3971,7 +3965,7 @@ static HRESULT WINAPI d3d1_CreateViewport(IDirect3D *iface, IDirect3DViewport **
  * This method finds a device with the requested properties and returns a
  * device description
  *
- * Verion 1, 2 and 3
+ * Versions 1, 2 and 3
  * Params:
  *  fds: Describes the requested device characteristics
  *  fdr: Returns the device description
@@ -4053,7 +4047,7 @@ static HRESULT WINAPI d3d1_FindDevice(IDirect3D *iface, D3DFINDDEVICESEARCH *fds
  *
  * Creates an IDirect3DDevice7 interface.
  *
- * Version 2, 3 and 7. IDirect3DDevice 1 interfaces are interfaces to
+ * Versions 2, 3 and 7. IDirect3DDevice 1 interfaces are interfaces to
  * DirectDraw surfaces and are created with
  * IDirectDrawSurface::QueryInterface. This method uses CreateDevice to
  * create the device object and QueryInterfaces for IDirect3DDevice
@@ -4155,7 +4149,7 @@ static HRESULT WINAPI d3d2_CreateDevice(IDirect3D2 *iface, REFCLSID riid,
  * Creates a new vertex buffer object and returns a IDirect3DVertexBuffer7
  * interface.
  *
- * Version 3 and 7
+ * Versions 3 and 7
  *
  * Params:
  *  desc: Requested Vertex buffer properties
@@ -4225,7 +4219,7 @@ static HRESULT WINAPI d3d3_CreateVertexBuffer(IDirect3D3 *iface, D3DVERTEXBUFFER
  *
  * Enumerates all supported Z buffer pixel formats
  *
- * Version 3 and 7
+ * Versions 3 and 7
  *
  * Params:
  *  device_iid:
@@ -4310,7 +4304,7 @@ static HRESULT WINAPI d3d7_EnumZBufferFormats(IDirect3D7 *iface, REFCLSID device
     for (i = 0; i < (sizeof(formats) / sizeof(*formats)); ++i)
     {
         if (SUCCEEDED(wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT, type, mode.format_id,
-                WINED3DUSAGE_DEPTHSTENCIL, WINED3D_RTYPE_SURFACE, formats[i])))
+                WINED3DUSAGE_DEPTHSTENCIL, WINED3D_RTYPE_TEXTURE_2D, formats[i])))
         {
             DDPIXELFORMAT pformat;
 
@@ -4334,7 +4328,7 @@ static HRESULT WINAPI d3d7_EnumZBufferFormats(IDirect3D7 *iface, REFCLSID device
      * pixel format, so we use dwZBufferBitDepth=32. Some games expect 24. Windows Vista and
      * newer enumerate both versions, so we do the same(bug 22434) */
     if (SUCCEEDED(wined3d_check_device_format(ddraw->wined3d, WINED3DADAPTER_DEFAULT, type, mode.format_id,
-            WINED3DUSAGE_DEPTHSTENCIL, WINED3D_RTYPE_SURFACE, WINED3DFMT_X8D24_UNORM)))
+            WINED3DUSAGE_DEPTHSTENCIL, WINED3D_RTYPE_TEXTURE_2D, WINED3DFMT_X8D24_UNORM)))
     {
         DDPIXELFORMAT x8d24 =
         {
@@ -4369,7 +4363,7 @@ static HRESULT WINAPI d3d3_EnumZBufferFormats(IDirect3D3 *iface, REFCLSID device
  * Removes all managed textures (=surfaces with DDSCAPS2_TEXTUREMANAGE or
  * DDSCAPS2_D3DTEXTUREMANAGE caps) to be removed from video memory.
  *
- * Version 3 and 7
+ * Versions 3 and 7
  *
  * Returns:
  *  D3D_OK, because it's a stub
@@ -4824,7 +4818,7 @@ static HRESULT CDECL device_parent_create_swapchain_texture(struct wined3d_devic
         return E_FAIL;
     }
 
-    if (FAILED(hr = wined3d_texture_create(ddraw->wined3d_device, desc, 1,
+    if (FAILED(hr = wined3d_texture_create(ddraw->wined3d_device, desc, 1, 1,
             WINED3D_TEXTURE_CREATE_MAPPABLE, NULL, ddraw, &ddraw_frontbuffer_parent_ops, texture)))
     {
         WARN("Failed to create texture, hr %#x.\n", hr);

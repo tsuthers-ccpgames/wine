@@ -445,7 +445,7 @@ static LPCSTR DIALOG_ParseTemplate32( LPCSTR template, DLG_TEMPLATE * result )
  */
 static HWND DIALOG_CreateIndirect( HINSTANCE hInst, LPCVOID dlgTemplate,
                                    HWND owner, DLGPROC dlgProc, LPARAM param,
-                                   BOOL unicode, BOOL modal )
+                                   BOOL unicode, HWND *modal_owner )
 {
     HWND hwnd;
     RECT rect;
@@ -584,27 +584,27 @@ static HWND DIALOG_CreateIndirect( HINSTANCE hInst, LPCVOID dlgTemplate,
         }
     }
 
-    if (modal && owner)
+    if (modal_owner && owner)
     {
         HWND parent;
-        disabled_owner = owner;
         /*
          * Owner needs to be top level window. We need to duplicate the logic from server,
-         * because we need to disable it before creating dialog window.
+         * because we need to disable it before creating dialog window. Note that we do that
+         * even if dialog has WS_CHILD, but only for modal dialogs, which matched what
+         * Windows does.
          */
-        while ((GetWindowLongW( disabled_owner, GWL_STYLE ) & (WS_POPUP|WS_CHILD)) == WS_CHILD)
+        while ((GetWindowLongW( owner, GWL_STYLE ) & (WS_POPUP|WS_CHILD)) == WS_CHILD)
         {
-            parent = GetParent( disabled_owner );
+            parent = GetParent( owner );
             if (!parent || parent == GetDesktopWindow()) break;
-            disabled_owner = parent;
+            owner = parent;
         }
-        if (IsWindowEnabled( disabled_owner ))
+        *modal_owner = owner;
+        if (IsWindowEnabled( owner ))
         {
-            flags |= DF_OWNERENABLED;
+            disabled_owner = owner;
             EnableWindow( disabled_owner, FALSE );
         }
-        else
-            disabled_owner = NULL;
     }
 
     if (unicode)
@@ -769,9 +769,8 @@ HWND WINAPI CreateDialogIndirectParamW( HINSTANCE hInst, LPCDLGTEMPLATEW dlgTemp
 /***********************************************************************
  *           DIALOG_DoDialogBox
  */
-INT DIALOG_DoDialogBox( HWND hwnd )
+INT DIALOG_DoDialogBox( HWND hwnd, HWND owner )
 {
-    HWND owner = GetWindow( hwnd, GW_OWNER );
     DIALOGINFO * dlgInfo;
     MSG msg;
     INT retval;
@@ -793,7 +792,7 @@ INT DIALOG_DoDialogBox( HWND hwnd )
                     bFirstEmpty = FALSE;
                 }
                 if (!(GetWindowLongW( hwnd, GWL_STYLE ) & DS_NOIDLEMSG))
-               {
+                {
                     /* No message present -> send ENTERIDLE and wait */
                     SendMessageW( owner, WM_ENTERIDLE, MSGF_DIALOGBOX, (LPARAM)hwnd );
                 }
@@ -822,7 +821,6 @@ INT DIALOG_DoDialogBox( HWND hwnd )
             }
         }
     }
-    if (dlgInfo->flags & DF_OWNERENABLED) EnableWindow( owner, TRUE );
     retval = dlgInfo->idResult;
     DestroyWindow( hwnd );
     return retval;
@@ -841,8 +839,8 @@ INT_PTR WINAPI DialogBoxParamA( HINSTANCE hInst, LPCSTR name,
 
     if (!(hrsrc = FindResourceA( hInst, name, (LPSTR)RT_DIALOG ))) return -1;
     if (!(ptr = LoadResource(hInst, hrsrc))) return -1;
-    hwnd = DIALOG_CreateIndirect( hInst, ptr, owner, dlgProc, param, FALSE, TRUE );
-    if (hwnd) return DIALOG_DoDialogBox( hwnd );
+    hwnd = DIALOG_CreateIndirect( hInst, ptr, owner, dlgProc, param, FALSE, &owner );
+    if (hwnd) return DIALOG_DoDialogBox( hwnd, owner );
     return 0;
 }
 
@@ -859,8 +857,8 @@ INT_PTR WINAPI DialogBoxParamW( HINSTANCE hInst, LPCWSTR name,
 
     if (!(hrsrc = FindResourceW( hInst, name, (LPWSTR)RT_DIALOG ))) return -1;
     if (!(ptr = LoadResource(hInst, hrsrc))) return -1;
-    hwnd = DIALOG_CreateIndirect( hInst, ptr, owner, dlgProc, param, TRUE, TRUE );
-    if (hwnd) return DIALOG_DoDialogBox( hwnd );
+    hwnd = DIALOG_CreateIndirect( hInst, ptr, owner, dlgProc, param, TRUE, &owner );
+    if (hwnd) return DIALOG_DoDialogBox( hwnd, owner );
     return 0;
 }
 
@@ -872,8 +870,8 @@ INT_PTR WINAPI DialogBoxIndirectParamAorW( HINSTANCE hInstance, LPCVOID template
                                            HWND owner, DLGPROC dlgProc,
                                            LPARAM param, DWORD flags )
 {
-    HWND hwnd = DIALOG_CreateIndirect( hInstance, template, owner, dlgProc, param, !flags, TRUE );
-    if (hwnd) return DIALOG_DoDialogBox( hwnd );
+    HWND hwnd = DIALOG_CreateIndirect( hInstance, template, owner, dlgProc, param, !flags, &owner );
+    if (hwnd) return DIALOG_DoDialogBox( hwnd, owner );
     return -1;
 }
 
@@ -914,7 +912,7 @@ BOOL WINAPI EndDialog( HWND hwnd, INT_PTR retval )
     dlgInfo->idResult = retval;
     dlgInfo->flags |= DF_END;
 
-    owner = GetWindow( hwnd, GW_OWNER );
+    owner = (HWND)GetWindowLongPtrA( hwnd, GWLP_HWNDPARENT );
     if (owner)
         EnableWindow( owner, TRUE );
 

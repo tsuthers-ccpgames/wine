@@ -2925,15 +2925,19 @@ static HRESULT WINAPI HTMLElement2_mergeAttributes(IHTMLElement2 *iface, IHTMLEl
 static HRESULT WINAPI HTMLElement2_put_oncontextmenu(IHTMLElement2 *iface, VARIANT v)
 {
     HTMLElement *This = impl_from_IHTMLElement2(iface);
-    FIXME("(%p)->()\n", This);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->()\n", This);
+
+    return set_node_event(&This->node, EVENTID_CONTEXTMENU, &v);
 }
 
 static HRESULT WINAPI HTMLElement2_get_oncontextmenu(IHTMLElement2 *iface, VARIANT *p)
 {
     HTMLElement *This = impl_from_IHTMLElement2(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    return get_node_event(&This->node, EVENTID_CONTEXTMENU, p);
 }
 
 static HRESULT WINAPI HTMLElement2_insertAdjacentElement(IHTMLElement2 *iface, BSTR where,
@@ -4267,7 +4271,16 @@ static event_target_t **HTMLElement_get_event_target_ptr(DispatchEx *dispex)
 static void HTMLElement_bind_event(DispatchEx *dispex, int eid)
 {
     HTMLElement *This = impl_from_DispatchEx(dispex);
-    This->node.doc->node.event_target.dispex.data->vtbl->bind_event(&This->node.doc->node.event_target.dispex, eid);
+
+    static const WCHAR loadW[] = {'l','o','a','d',0};
+
+    switch(eid) {
+    case EVENTID_LOAD:
+        add_nsevent_listener(This->node.doc, This->node.nsnode, loadW);
+        return;
+    default:
+        This->node.doc->node.event_target.dispex.data->vtbl->bind_event(&This->node.doc->node.event_target.dispex, eid);
+    }
 }
 
 static const tid_t HTMLElement_iface_tids[] = {

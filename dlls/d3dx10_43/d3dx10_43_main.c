@@ -33,7 +33,7 @@
 #include "winuser.h"
 #include "objbase.h"
 
-#include "d3d10.h"
+#include "d3d10_1.h"
 #include "d3dx10core.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3dx);
@@ -115,4 +115,81 @@ HRESULT WINAPI D3DX10CreateEffectPoolFromMemory(const void *data, SIZE_T datasiz
             pump, effectpool, errors, hresult);
 
     return E_NOTIMPL;
+}
+
+HRESULT WINAPI D3DX10UnsetAllDeviceObjects(ID3D10Device *device)
+{
+    static ID3D10ShaderResourceView * const views[D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
+    static ID3D10RenderTargetView * const target_views[D3D10_SIMULTANEOUS_RENDER_TARGET_COUNT];
+    static ID3D10SamplerState * const sampler_states[D3D10_COMMONSHADER_SAMPLER_SLOT_COUNT];
+    static ID3D10Buffer * const buffers[D3D10_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
+    static const unsigned int so_offsets[D3D10_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT] =
+            {~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u, ~0u};
+    static const unsigned int strides[D3D10_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
+    static const unsigned int offsets[D3D10_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
+    static const float blend_factors[4];
+
+    TRACE("device %p.\n", device);
+
+    if (!device)
+        return E_INVALIDARG;
+
+    ID3D10Device_VSSetConstantBuffers(device, 0, D3D10_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, buffers);
+    ID3D10Device_PSSetConstantBuffers(device, 0, D3D10_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, buffers);
+    ID3D10Device_GSSetConstantBuffers(device, 0, D3D10_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, buffers);
+
+    ID3D10Device_VSSetSamplers(device, 0, D3D10_COMMONSHADER_SAMPLER_SLOT_COUNT, sampler_states);
+    ID3D10Device_PSSetSamplers(device, 0, D3D10_COMMONSHADER_SAMPLER_SLOT_COUNT, sampler_states);
+    ID3D10Device_GSSetSamplers(device, 0, D3D10_COMMONSHADER_SAMPLER_SLOT_COUNT, sampler_states);
+
+    ID3D10Device_VSSetShaderResources(device, 0, D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, views);
+    ID3D10Device_PSSetShaderResources(device, 0, D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, views);
+    ID3D10Device_GSSetShaderResources(device, 0, D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, views);
+
+    ID3D10Device_VSSetShader(device, NULL);
+    ID3D10Device_PSSetShader(device, NULL);
+    ID3D10Device_GSSetShader(device, NULL);
+
+    ID3D10Device_OMSetRenderTargets(device, D3D10_SIMULTANEOUS_RENDER_TARGET_COUNT, target_views, NULL);
+
+    ID3D10Device_IASetIndexBuffer(device, NULL, DXGI_FORMAT_R32_UINT, 0);
+    ID3D10Device_IASetInputLayout(device, NULL);
+    ID3D10Device_IASetVertexBuffers(device, 0, D3D10_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT, buffers, strides, offsets);
+
+    ID3D10Device_SOSetTargets(device, D3D10_SO_BUFFER_SLOT_COUNT, buffers, so_offsets);
+
+    ID3D10Device_OMSetBlendState(device, NULL, blend_factors, 0);
+    ID3D10Device_OMSetDepthStencilState(device, NULL, 0);
+
+    ID3D10Device_RSSetState(device, NULL);
+
+    ID3D10Device_SetPredication(device, NULL, FALSE);
+
+    return S_OK;
+}
+
+HRESULT WINAPI D3DX10CreateDevice(IDXGIAdapter *adapter, D3D10_DRIVER_TYPE driver_type,
+        HMODULE swrast, unsigned int flags, ID3D10Device **device)
+{
+    HRESULT hr;
+
+    TRACE("adapter %p, driver_type %d, swrast %p, flags %#x, device %p.\n", adapter, driver_type,
+            swrast, flags, device);
+
+    if (SUCCEEDED(hr = D3D10CreateDevice1(adapter, driver_type, swrast, flags, D3D10_FEATURE_LEVEL_10_1,
+            D3D10_SDK_VERSION, (ID3D10Device1 **)device)))
+        return hr;
+
+    if (SUCCEEDED(hr = D3D10CreateDevice1(adapter, driver_type, swrast, flags, D3D10_FEATURE_LEVEL_10_0,
+            D3D10_SDK_VERSION, (ID3D10Device1 **)device)))
+        return hr;
+
+    return hr;
+}
+
+HRESULT WINAPI D3DX10GetFeatureLevel1(ID3D10Device *device, ID3D10Device1 **device1)
+{
+    TRACE("device %p, device1 %p.\n", device, device1);
+
+    return ID3D10Device_QueryInterface(device, &IID_ID3D10Device1, (void **)device1);
 }

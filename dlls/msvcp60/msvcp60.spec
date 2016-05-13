@@ -1,5 +1,5 @@
-@ stub -arch=win32 ??$?5DU?$char_traits@D@std@@@std@@YAAAV?$basic_istream@DU?$char_traits@D@std@@@0@AAV10@AAC@Z
-@ stub -arch=win64 ??$?5DU?$char_traits@D@std@@@std@@YAAEAV?$basic_istream@DU?$char_traits@D@std@@@0@AEAV10@AEAC@Z
+@ cdecl -arch=win32 ??$?5DU?$char_traits@D@std@@@std@@YAAAV?$basic_istream@DU?$char_traits@D@std@@@0@AAV10@AAC@Z(ptr ptr) basic_istream_char_read_ch
+@ cdecl -arch=win64 ??$?5DU?$char_traits@D@std@@@std@@YAAEAV?$basic_istream@DU?$char_traits@D@std@@@0@AEAV10@AEAC@Z(ptr ptr) basic_istream_char_read_ch
 @ cdecl -arch=win32 ??$?5DU?$char_traits@D@std@@@std@@YAAAV?$basic_istream@DU?$char_traits@D@std@@@0@AAV10@AAD@Z(ptr ptr) basic_istream_char_read_ch
 @ cdecl -arch=win64 ??$?5DU?$char_traits@D@std@@@std@@YAAEAV?$basic_istream@DU?$char_traits@D@std@@@0@AEAV10@AEAD@Z(ptr ptr) basic_istream_char_read_ch
 @ cdecl -arch=win32 ??$?5DU?$char_traits@D@std@@@std@@YAAAV?$basic_istream@DU?$char_traits@D@std@@@0@AAV10@AAE@Z(ptr ptr) basic_istream_char_read_ch
@@ -2665,8 +2665,8 @@
 @ cdecl -arch=win64 ?do_decimal_point@?$numpunct@D@std@@MEBADXZ(ptr) numpunct_char_do_decimal_point
 @ thiscall -arch=win32 ?do_decimal_point@?$numpunct@G@std@@MBEGXZ(ptr) numpunct_wchar_do_decimal_point
 @ cdecl -arch=win64 ?do_decimal_point@?$numpunct@G@std@@MEBAGXZ(ptr) numpunct_wchar_do_decimal_point
-@ stub -arch=win32 ?do_encoding@?$codecvt@GDH@std@@MBEHXZ
-@ stub -arch=win64 ?do_encoding@?$codecvt@GDH@std@@MEBAHXZ
+@ thiscall -arch=win32 ?do_encoding@?$codecvt@GDH@std@@MBEHXZ(ptr) codecvt_wchar_do_encoding
+@ cdecl -arch=win64 ?do_encoding@?$codecvt@GDH@std@@MEBAHXZ(ptr) codecvt_wchar_do_encoding
 @ thiscall -arch=win32 ?do_encoding@codecvt_base@std@@MBEHXZ(ptr) codecvt_base_do_encoding
 @ cdecl -arch=win64 ?do_encoding@codecvt_base@std@@MEBAHXZ(ptr) codecvt_base_do_encoding
 @ thiscall -arch=win32 ?do_falsename@?$numpunct@D@std@@MBE?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@2@XZ(ptr ptr) numpunct_char_do_falsename

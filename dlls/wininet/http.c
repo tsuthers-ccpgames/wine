@@ -1376,21 +1376,17 @@ BOOL WINAPI HttpAddRequestHeadersW(HINTERNET hHttpRequest,
 BOOL WINAPI HttpAddRequestHeadersA(HINTERNET hHttpRequest,
 	LPCSTR lpszHeader, DWORD dwHeaderLength, DWORD dwModifier)
 {
-    DWORD len;
-    LPWSTR hdr;
+    WCHAR *headers = NULL;
     BOOL r;
 
     TRACE("%p, %s, %i, %i\n", hHttpRequest, debugstr_an(lpszHeader, dwHeaderLength), dwHeaderLength, dwModifier);
 
-    len = MultiByteToWideChar( CP_ACP, 0, lpszHeader, dwHeaderLength, NULL, 0 );
-    hdr = heap_alloc(len*sizeof(WCHAR));
-    MultiByteToWideChar( CP_ACP, 0, lpszHeader, dwHeaderLength, hdr, len );
-    if( dwHeaderLength != ~0U )
-        dwHeaderLength = len;
+    if(lpszHeader)
+        headers = heap_strndupAtoW(lpszHeader, dwHeaderLength, &dwHeaderLength);
 
-    r = HttpAddRequestHeadersW( hHttpRequest, hdr, dwHeaderLength, dwModifier );
+    r = HttpAddRequestHeadersW(hHttpRequest, headers, dwHeaderLength, dwModifier);
 
-    heap_free( hdr );
+    heap_free(headers);
     return r;
 }
 
@@ -3036,7 +3032,7 @@ static void HTTP_ReceiveRequestData(http_request_t *req, BOOL first_notif, DWORD
 }
 
 /* read data from the http connection (the read section must be held) */
-static DWORD HTTPREQ_Read(http_request_t *req, void *buffer, DWORD size, DWORD *read, BOOL sync)
+static DWORD HTTPREQ_Read(http_request_t *req, void *buffer, DWORD size, DWORD *read)
 {
     DWORD current_read = 0, ret_read = 0;
     blocking_mode_t blocking_mode;
@@ -3090,7 +3086,7 @@ static BOOL drain_content(http_request_t *req, BOOL blocking)
         DWORD bytes_read, res;
         BYTE buf[4096];
 
-        res = HTTPREQ_Read(req, buf, sizeof(buf), &bytes_read, TRUE);
+        res = HTTPREQ_Read(req, buf, sizeof(buf), &bytes_read);
         if(res != ERROR_SUCCESS) {
             ret = FALSE;
             break;
@@ -3105,23 +3101,6 @@ static BOOL drain_content(http_request_t *req, BOOL blocking)
     return ret;
 }
 
-static DWORD HTTPREQ_ReadFile(object_header_t *hdr, void *buffer, DWORD size, DWORD *read)
-{
-    http_request_t *req = (http_request_t*)hdr;
-    DWORD res;
-
-    EnterCriticalSection( &req->read_section );
-    if(hdr->dwError == INTERNET_HANDLE_IN_USE)
-        hdr->dwError = ERROR_INTERNET_INTERNAL_ERROR;
-
-    res = HTTPREQ_Read(req, buffer, size, read, TRUE);
-    if(res == ERROR_SUCCESS)
-        res = hdr->dwError;
-    LeaveCriticalSection( &req->read_section );
-
-    return res;
-}
-
 typedef struct {
     task_header_t hdr;
     void *buf;
@@ -3133,11 +3112,23 @@ static void AsyncReadFileExProc(task_header_t *hdr)
 {
     read_file_ex_task_t *task = (read_file_ex_task_t*)hdr;
     http_request_t *req = (http_request_t*)task->hdr.hdr;
-    DWORD res;
+    DWORD res = ERROR_SUCCESS, read = 0, buffered = 0;
 
-    TRACE("INTERNETREADFILEEXW %p\n", task->hdr.hdr);
+    TRACE("%p\n", req);
 
-    res = HTTPREQ_Read(req, task->buf, task->size, task->ret_read, TRUE);
+    if(task->ret_read)
+        res = HTTPREQ_Read(req, task->buf, task->size, &read);
+    if(res == ERROR_SUCCESS)
+        res = refill_read_buffer(req, task->ret_read ? BLOCKING_DISALLOW : BLOCKING_ALLOW, &buffered);
+    if (res == ERROR_SUCCESS)
+    {
+        if(task->ret_read)
+            *task->ret_read = read;
+        read += buffered;
+        INTERNET_SendCallback(&req->hdr, req->hdr.dwContext, INTERNET_STATUS_RESPONSE_RECEIVED,
+                &read, sizeof(read));
+    }
+
     send_request_complete(req, res == ERROR_SUCCESS, res);
 }
 
@@ -3148,20 +3139,22 @@ static DWORD HTTPREQ_ReadFileEx(object_header_t *hdr, void *buf, DWORD size, DWO
     http_request_t *req = (http_request_t*)hdr;
     DWORD res, read, cread, error = ERROR_SUCCESS;
 
+    TRACE("(%p %p %u %x)\n", req, buf, size, flags);
+
     if (flags & ~(IRF_ASYNC|IRF_NO_WAIT))
         FIXME("these dwFlags aren't implemented: 0x%x\n", flags & ~(IRF_ASYNC|IRF_NO_WAIT));
 
     INTERNET_SendCallback(&req->hdr, req->hdr.dwContext, INTERNET_STATUS_RECEIVING_RESPONSE, NULL, 0);
 
-    if (hdr->dwFlags & INTERNET_FLAG_ASYNC)
+    if (req->session->appInfo->hdr.dwFlags & INTERNET_FLAG_ASYNC)
     {
         read_file_ex_task_t *task;
 
         if (TryEnterCriticalSection( &req->read_section ))
         {
-            if (get_avail_data(req))
+            if (get_avail_data(req) || end_of_read_data(req))
             {
-                res = HTTPREQ_Read(req, buf, size, &read, FALSE);
+                res = HTTPREQ_Read(req, buf, size, &read);
                 LeaveCriticalSection( &req->read_section );
                 goto done;
             }
@@ -3171,7 +3164,7 @@ static DWORD HTTPREQ_ReadFileEx(object_header_t *hdr, void *buf, DWORD size, DWO
         task = alloc_async_task(&req->hdr, AsyncReadFileExProc, sizeof(*task));
         task->buf = buf;
         task->size = size;
-        task->ret_read = ret_read;
+        task->ret_read = (flags & IRF_NO_WAIT) ? NULL : ret_read;
 
         INTERNET_AsyncCall(&task->hdr);
 
@@ -3187,7 +3180,7 @@ static DWORD HTTPREQ_ReadFileEx(object_header_t *hdr, void *buf, DWORD size, DWO
         hdr->dwError = ERROR_INTERNET_INTERNAL_ERROR;
 
     while(1) {
-        res = HTTPREQ_Read(req, (char*)buf+read, size-read, &cread, !(flags & IRF_NO_WAIT));
+        res = HTTPREQ_Read(req, (char*)buf+read, size-read, &cread);
         if(res != ERROR_SUCCESS)
             break;
 
@@ -3235,6 +3228,49 @@ static DWORD HTTPREQ_WriteFile(object_header_t *hdr, const void *buffer, DWORD s
         request->bytesWritten += *written;
 
     INTERNET_SendCallback(&request->hdr, request->hdr.dwContext, INTERNET_STATUS_REQUEST_SENT, written, sizeof(DWORD));
+    return res;
+}
+
+static DWORD HTTPREQ_ReadFile(object_header_t *hdr, void *buffer, DWORD size, DWORD *read)
+{
+    http_request_t *req = (http_request_t*)hdr;
+    DWORD res;
+
+    if (req->session->appInfo->hdr.dwFlags & INTERNET_FLAG_ASYNC)
+    {
+        read_file_ex_task_t *task;
+
+        if (TryEnterCriticalSection( &req->read_section ))
+        {
+            if (get_avail_data(req))
+            {
+                res = HTTPREQ_Read(req, buffer, size, read);
+                LeaveCriticalSection( &req->read_section );
+                return res;
+            }
+            LeaveCriticalSection( &req->read_section );
+        }
+
+        task = alloc_async_task(&req->hdr, AsyncReadFileExProc, sizeof(*task));
+        task->buf = buffer;
+        task->size = size;
+        task->ret_read = read;
+
+        *read = 0;
+        INTERNET_AsyncCall(&task->hdr);
+
+        return ERROR_IO_PENDING;
+    }
+
+    EnterCriticalSection( &req->read_section );
+    if(hdr->dwError == INTERNET_HANDLE_IN_USE)
+        hdr->dwError = ERROR_INTERNET_INTERNAL_ERROR;
+
+    res = HTTPREQ_Read(req, buffer, size, read);
+    if(res == ERROR_SUCCESS)
+        res = hdr->dwError;
+    LeaveCriticalSection( &req->read_section );
+
     return res;
 }
 

@@ -60,16 +60,20 @@ struct wgl_context
 {
     struct list             entry;
     int                     format;
+    GLint                   renderer_id;
     macdrv_opengl_context   context;
     CGLContextObj           cglcontext;
     HWND                    draw_hwnd;
     macdrv_view             draw_view;
+    RECT                    draw_rect;
     struct wgl_pbuffer     *draw_pbuffer;
     macdrv_view             read_view;
+    RECT                    read_rect;
     struct wgl_pbuffer     *read_pbuffer;
     BOOL                    has_been_current;
     BOOL                    sharing;
     LONG                    update_swap_interval;
+    LONG                    view_moved;
     DWORD                   last_flush_time;
     UINT                    major;
 };
@@ -301,6 +305,7 @@ static const char* debugstr_attrib(int attrib, int value)
         ATTRIB(WGL_PIXEL_TYPE_ARB),
         ATTRIB(WGL_RED_BITS_ARB),
         ATTRIB(WGL_RED_SHIFT_ARB),
+        ATTRIB(WGL_RENDERER_ID_WINE),
         ATTRIB(WGL_SAMPLE_BUFFERS_ARB),
         ATTRIB(WGL_SAMPLES_ARB),
         ATTRIB(WGL_SHARE_ACCUM_ARB),
@@ -369,6 +374,31 @@ static const char* debugstr_attrib(int attrib, int value)
         value_name = wine_dbg_sprintf("%d / 0x%04x", value, value);
 
     return wine_dbg_sprintf("%40s: %s", attrib_name, value_name);
+}
+
+
+/**********************************************************************
+ *              active_displays_mask
+ */
+static CGOpenGLDisplayMask active_displays_mask(void)
+{
+    CGError err;
+    CGDirectDisplayID displays[32];
+    uint32_t count, i;
+    CGOpenGLDisplayMask mask;
+
+    err = CGGetActiveDisplayList(sizeof(displays) / sizeof(displays[0]), displays, &count);
+    if (err != kCGErrorSuccess)
+    {
+        displays[0] = CGMainDisplayID();
+        count = 1;
+    }
+
+    mask = 0;
+    for (i = 0; i < count; i++)
+        mask |= CGDisplayIDToOpenGLDisplayMask(displays[i]);
+
+    return mask;
 }
 
 
@@ -1386,6 +1416,14 @@ static BOOL create_context(struct wgl_context *context, CGLContextObj share, uns
     attribs[n++] = kCGLPFAMinimumPolicy;
     attribs[n++] = kCGLPFAClosestPolicy;
 
+    if (context->renderer_id)
+    {
+        attribs[n++] = kCGLPFARendererID;
+        attribs[n++] = context->renderer_id;
+        attribs[n++] = kCGLPFASingleRenderer;
+        attribs[n++] = kCGLPFANoRecovery;
+    }
+
     if (pf->accelerated)
     {
         attribs[n++] = kCGLPFAAccelerated;
@@ -1656,6 +1694,23 @@ done:
 
 
 /**********************************************************************
+ *              mark_contexts_for_moved_view
+ */
+static void mark_contexts_for_moved_view(macdrv_view view)
+{
+    struct wgl_context *context;
+
+    EnterCriticalSection(&context_section);
+    LIST_FOR_EACH_ENTRY(context, &context_list, struct wgl_context, entry)
+    {
+        if (context->draw_view == view)
+            InterlockedExchange(&context->view_moved, TRUE);
+    }
+    LeaveCriticalSection(&context_section);
+}
+
+
+/**********************************************************************
  *              set_gl_view_parent
  */
 void set_gl_view_parent(HWND hwnd, HWND parent)
@@ -1681,9 +1736,32 @@ void set_gl_view_parent(HWND hwnd, HWND parent)
         }
 
         macdrv_set_view_window_and_frame(data->gl_view, cocoa_window, cgrect_from_rect(data->gl_rect));
+        mark_contexts_for_moved_view(data->gl_view);
     }
 
     release_win_data(data);
+}
+
+
+/**********************************************************************
+ *              sync_context_rect
+ */
+static BOOL sync_context_rect(struct wgl_context *context)
+{
+    BOOL ret = FALSE;
+    if (InterlockedCompareExchange(&context->view_moved, FALSE, TRUE))
+    {
+        struct macdrv_win_data *data = get_win_data(context->draw_hwnd);
+
+        if (data && data->gl_view && data->gl_view == context->draw_view &&
+            memcmp(&context->draw_rect, &data->gl_rect, sizeof(context->draw_rect)))
+        {
+            context->draw_rect = data->gl_rect;
+            ret = TRUE;
+        }
+        release_win_data(data);
+    }
+    return ret;
 }
 
 
@@ -1693,27 +1771,46 @@ void set_gl_view_parent(HWND hwnd, HWND parent)
 static void make_context_current(struct wgl_context *context, BOOL read)
 {
     macdrv_view view;
+    RECT view_rect;
     struct wgl_pbuffer *pbuffer;
 
     if (read)
     {
         view = context->read_view;
+        view_rect = context->read_rect;
         pbuffer = context->read_pbuffer;
     }
     else
     {
+        sync_context_rect(context);
+
         view = context->draw_view;
+        view_rect = context->draw_rect;
         pbuffer = context->draw_pbuffer;
     }
 
     if (view || !pbuffer)
-        macdrv_make_context_current(context->context, view);
+        macdrv_make_context_current(context->context, view, cgrect_from_rect(view_rect));
     else
     {
+        GLint enabled;
+
+        if (CGLIsEnabled(context->cglcontext, kCGLCESurfaceBackingSize, &enabled) == kCGLNoError && enabled)
+            CGLDisable(context->cglcontext, kCGLCESurfaceBackingSize);
         CGLSetPBuffer(context->cglcontext, pbuffer->pbuffer, pbuffer->face,
                       pbuffer->level, 0);
         CGLSetCurrentContext(context->cglcontext);
     }
+}
+
+
+/**********************************************************************
+ *              sync_context
+ */
+static void sync_context(struct wgl_context *context)
+{
+    if (sync_context_rect(context))
+        make_context_current(context, FALSE);
 }
 
 
@@ -1763,6 +1860,425 @@ static void sync_swap_interval(struct wgl_context *context)
 
         set_swap_interval(context, interval);
     }
+}
+
+
+/**********************************************************************
+ *              get_iokit_display_property
+ */
+static BOOL get_iokit_display_property(CGLRendererInfoObj renderer_info, GLint renderer, CFStringRef property, GLuint* value)
+{
+    GLint accelerated;
+    GLint display_mask;
+    int i;
+
+    if (!get_renderer_property(renderer_info, renderer, kCGLRPAccelerated, &accelerated) || !accelerated)
+    {
+        TRACE("assuming unaccelerated renderers don't have IOKit properties\n");
+        return FALSE;
+    }
+
+    if (!get_renderer_property(renderer_info, renderer, kCGLRPDisplayMask, &display_mask))
+    {
+        WARN("failed to get kCGLRPDisplayMask\n");
+        return FALSE;
+    }
+
+    for (i = 0; i < sizeof(GLint) * 8; i++)
+    {
+        GLint this_display_mask = (GLint)(1U << i);
+        if (this_display_mask & display_mask)
+        {
+            CGDirectDisplayID display_id = CGOpenGLDisplayMaskToDisplayID(this_display_mask);
+            io_service_t service;
+            CFDataRef data;
+            uint32_t prop_value;
+
+            if (!display_id)
+                continue;
+            service = CGDisplayIOServicePort(display_id);
+            if (!service)
+            {
+                WARN("CGDisplayIOServicePort(%u) failed\n", display_id);
+                continue;
+            }
+
+            data = IORegistryEntrySearchCFProperty(service, kIOServicePlane, property, NULL,
+                                                   kIORegistryIterateRecursively | kIORegistryIterateParents);
+            if (!data)
+            {
+                WARN("IORegistryEntrySearchCFProperty(%s) failed for display %u\n", debugstr_cf(property), display_id);
+                continue;
+            }
+            if (CFGetTypeID(data) != CFDataGetTypeID())
+            {
+                WARN("property %s is not a data object: %s\n", debugstr_cf(property), debugstr_cf(data));
+                CFRelease(data);
+                continue;
+            }
+            if (CFDataGetLength(data) != sizeof(prop_value))
+            {
+                WARN("%s data for display %u has unexpected length %llu\n", debugstr_cf(property), display_id,
+                     (unsigned long long)CFDataGetLength(data));
+                CFRelease(data);
+                continue;
+            }
+
+            CFDataGetBytes(data, CFRangeMake(0, sizeof(prop_value)), (UInt8*)&prop_value);
+            CFRelease(data);
+            *value = prop_value;
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+
+/**********************************************************************
+ *              create_pixel_format_for_renderer
+ *
+ * Helper for macdrv_wglQueryRendererIntegerWINE().  Caller is
+ * responsible for releasing the pixel format object.
+ */
+static CGLPixelFormatObj create_pixel_format_for_renderer(CGLRendererInfoObj renderer_info, GLint renderer, BOOL core)
+{
+    GLint renderer_id;
+    CGLPixelFormatAttribute attrs[] = {
+        kCGLPFARendererID, 0,
+        kCGLPFASingleRenderer,
+        0, 0, /* reserve spots for kCGLPFAOpenGLProfile, kCGLOGLPVersion_3_2_Core */
+        0
+    };
+    CGError err;
+    CGLPixelFormatObj pixel_format;
+    GLint virtual_screens;
+
+    if (core)
+    {
+#if defined(MAC_OS_X_VERSION_10_7) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7
+        attrs[3] = kCGLPFAOpenGLProfile;
+        attrs[4] = (CGLPixelFormatAttribute)kCGLOGLPVersion_3_2_Core;
+#else
+        return NULL;
+#endif
+    }
+
+    if (!get_renderer_property(renderer_info, renderer, kCGLRPRendererID, &renderer_id))
+        return NULL;
+
+    attrs[1] = renderer_id;
+    err = CGLChoosePixelFormat(attrs, &pixel_format, &virtual_screens);
+    if (err != kCGLNoError)
+        pixel_format = NULL;
+    return pixel_format;
+}
+
+
+/**********************************************************************
+ *              map_renderer_index
+ *
+ * We can't create pixel formats for all renderers listed.  For example,
+ * in a dual-GPU system, the integrated GPU is typically unavailable
+ * when the discrete GPU is active.
+ *
+ * This function conceptually creates a list of "good" renderers from the
+ * list of all renderers.  It treats the input "renderer" parameter as an
+ * index into that list of good renderers and returns the corresponding
+ * index into the list of all renderers.
+ */
+static GLint map_renderer_index(CGLRendererInfoObj renderer_info, GLint renderer_count, GLint renderer)
+{
+    GLint good_count, i;
+
+    good_count = 0;
+    for (i = 0; i < renderer_count; i++)
+    {
+        CGLPixelFormatObj pix = create_pixel_format_for_renderer(renderer_info, i, FALSE);
+        if (pix)
+        {
+            CGLReleasePixelFormat(pix);
+            good_count++;
+            if (good_count > renderer)
+                break;
+        }
+        else
+            TRACE("skipping bad renderer %d\n", i);
+    }
+
+    TRACE("mapped requested renderer %d to index %d\n", renderer, i);
+    return i;
+}
+
+
+/**********************************************************************
+ *              get_gl_string
+ */
+static const char* get_gl_string(CGLPixelFormatObj pixel_format, GLenum name)
+{
+    const char* ret = NULL;
+    CGLContextObj context, old_context;
+    CGLError err;
+
+    err = CGLCreateContext(pixel_format, NULL, &context);
+    if (err == kCGLNoError && context)
+    {
+        old_context = CGLGetCurrentContext();
+        err = CGLSetCurrentContext(context);
+        if (err == kCGLNoError)
+        {
+            ret = (const char*)opengl_funcs.gl.p_glGetString(name);
+            CGLSetCurrentContext(old_context);
+        }
+        else
+            WARN("CGLSetCurrentContext failed: %d %s\n", err, CGLErrorString(err));
+        CGLReleaseContext(context);
+    }
+    else
+        WARN("CGLCreateContext failed: %d %s\n", err, CGLErrorString(err));
+
+    return ret;
+}
+
+
+/**********************************************************************
+ *              get_fallback_renderer_version
+ */
+static void get_fallback_renderer_version(GLuint *value)
+{
+    BOOL got_it = FALSE;
+    CFURLRef url = CFURLCreateWithFileSystemPath(NULL, CFSTR("/System/Library/Frameworks/OpenGL.framework"),
+                                                 kCFURLPOSIXPathStyle, TRUE);
+    if (url)
+    {
+        CFBundleRef bundle = CFBundleCreate(NULL, url);
+        CFRelease(url);
+        if (bundle)
+        {
+            CFStringRef version = CFBundleGetValueForInfoDictionaryKey(bundle, kCFBundleVersionKey);
+            if (version && CFGetTypeID(version) == CFStringGetTypeID())
+            {
+                size_t len = CFStringGetMaximumSizeForEncoding(CFStringGetLength(version), kCFStringEncodingUTF8);
+                char* buf = HeapAlloc(GetProcessHeap(), 0, len);
+                if (buf && CFStringGetCString(version, buf, len, kCFStringEncodingUTF8))
+                {
+                    unsigned int major, minor, bugfix;
+                    int count = sscanf(buf, "%u.%u.%u", &major, &minor, &bugfix);
+                    if (count >= 2)
+                    {
+                        value[0] = major;
+                        value[1] = minor;
+                        if (count == 3)
+                            value[2] = bugfix;
+                        else
+                            value[2] = 0;
+                        got_it = TRUE;
+                    }
+                }
+                HeapFree(GetProcessHeap(), 0, buf);
+            }
+            CFRelease(bundle);
+        }
+    }
+
+    if (!got_it)
+    {
+        /* Use the version of the OpenGL framework from OS X 10.6, which is the
+           earliest version that the Mac driver supports. */
+        value[0] = 1;
+        value[1] = 6;
+        value[2] = 14;
+    }
+}
+
+
+/**********************************************************************
+ *              parse_renderer_version
+ *
+ * Get the renderer version from the OpenGL version string.  Assumes
+ * the string is of the form
+ * <GL major>.<GL minor>[.<GL bugfix>] <vendor>-<major>.<minor>[.<bugfix>]
+ * where major, minor, and bugfix are what we're interested in.  This
+ * form for the vendor specific information is not generally applicable,
+ * but seems reliable on OS X.
+ */
+static BOOL parse_renderer_version(const char* version, GLuint *value)
+{
+    const char* p = strchr(version, ' ');
+    int count;
+    unsigned int major, minor, bugfix;
+
+    if (p) p = strchr(p + 1, '-');
+    if (!p) return FALSE;
+
+    count = sscanf(p + 1, "%u.%u.%u", &major, &minor, &bugfix);
+    if (count < 2)
+        return FALSE;
+
+    value[0] = major;
+    value[1] = minor;
+    if (count == 3)
+        value[2] = bugfix;
+    else
+        value[2] = 0;
+
+    return TRUE;
+}
+
+
+/**********************************************************************
+ *              query_renderer_integer
+ */
+static BOOL query_renderer_integer(CGLRendererInfoObj renderer_info, GLint renderer, GLenum attribute, GLuint *value)
+{
+    BOOL ret = FALSE;
+    CGLError err;
+
+    if (TRACE_ON(wgl))
+    {
+        GLint renderer_id;
+        if (!get_renderer_property(renderer_info, renderer, kCGLRPRendererID, &renderer_id))
+            renderer_id = 0;
+        TRACE("renderer %d (ID 0x%08x) attribute 0x%04x value %p\n", renderer, renderer_id, attribute, value);
+    }
+
+    switch (attribute)
+    {
+        case WGL_RENDERER_ACCELERATED_WINE:
+            if (!get_renderer_property(renderer_info, renderer, kCGLRPAccelerated, (GLint*)value))
+                break;
+            *value = !!*value;
+            ret = TRUE;
+            TRACE("WGL_RENDERER_ACCELERATED_WINE -> %u\n", *value);
+            break;
+
+        case WGL_RENDERER_DEVICE_ID_WINE:
+            ret = get_iokit_display_property(renderer_info, renderer, CFSTR("device-id"), value);
+            if (!ret)
+            {
+                *value = 0xffffffff;
+                ret = TRUE;
+            }
+            TRACE("WGL_RENDERER_DEVICE_ID_WINE -> 0x%04x\n", *value);
+            break;
+
+        case WGL_RENDERER_OPENGL_COMPATIBILITY_PROFILE_VERSION_WINE:
+        case WGL_RENDERER_OPENGL_CORE_PROFILE_VERSION_WINE:
+        {
+            BOOL core = (attribute == WGL_RENDERER_OPENGL_CORE_PROFILE_VERSION_WINE);
+            CGLPixelFormatObj pixel_format = create_pixel_format_for_renderer(renderer_info, renderer, core);
+
+            if (pixel_format)
+            {
+                const char* version = get_gl_string(pixel_format, GL_VERSION);
+
+                CGLReleasePixelFormat(pixel_format);
+                if (version)
+                {
+                    unsigned int major, minor;
+
+                    if (sscanf(version, "%u.%u", &major, &minor) == 2)
+                    {
+                        value[0] = major;
+                        value[1] = minor;
+                        ret = TRUE;
+                    }
+                }
+            }
+
+            if (!ret)
+            {
+                value[0] = value[1] = 0;
+                ret = TRUE;
+            }
+            TRACE("%s -> %u.%u\n", core ? "WGL_RENDERER_OPENGL_CORE_PROFILE_VERSION_WINE" :
+                  "WGL_RENDERER_OPENGL_COMPATIBILITY_PROFILE_VERSION_WINE", value[0], value[1]);
+            break;
+        }
+
+        case WGL_RENDERER_PREFERRED_PROFILE_WINE:
+        {
+            CGLPixelFormatObj pixel_format = create_pixel_format_for_renderer(renderer_info, renderer, TRUE);
+
+            if (pixel_format)
+            {
+                CGLReleasePixelFormat(pixel_format);
+                *value = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+                TRACE("WGL_RENDERER_PREFERRED_PROFILE_WINE -> WGL_CONTEXT_CORE_PROFILE_BIT_ARB (0x%04x)\n", *value);
+            }
+            else
+            {
+                *value = WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB;
+                TRACE("WGL_RENDERER_PREFERRED_PROFILE_WINE -> WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB (0x%04x)\n", *value);
+            }
+            ret = TRUE;
+            break;
+        }
+
+        case WGL_RENDERER_UNIFIED_MEMORY_ARCHITECTURE_WINE:
+            /* FIXME: no API to query this */
+            *value = 0;
+            ret = TRUE;
+            TRACE("WGL_RENDERER_UNIFIED_MEMORY_ARCHITECTURE_WINE -> %u\n", *value);
+            break;
+
+        case WGL_RENDERER_VENDOR_ID_WINE:
+            ret = get_iokit_display_property(renderer_info, renderer, CFSTR("vendor-id"), value);
+            if (!ret)
+            {
+                *value = 0xffffffff;
+                ret = TRUE;
+            }
+            TRACE("WGL_RENDERER_VENDOR_ID_WINE -> 0x%04x\n", *value);
+            break;
+
+        case WGL_RENDERER_VERSION_WINE:
+        {
+            CGLPixelFormatObj pixel_format = create_pixel_format_for_renderer(renderer_info, renderer, TRUE);
+
+            if (!pixel_format)
+                pixel_format = create_pixel_format_for_renderer(renderer_info, renderer, FALSE);
+            if (pixel_format)
+            {
+                const char* version = get_gl_string(pixel_format, GL_VERSION);
+
+                CGLReleasePixelFormat(pixel_format);
+                if (version)
+                    ret = parse_renderer_version(version, value);
+            }
+
+            if (!ret)
+            {
+                get_fallback_renderer_version(value);
+                ret = TRUE;
+            }
+            TRACE("WGL_RENDERER_VERSION_WINE -> %u.%u.%u\n", value[0], value[1], value[2]);
+            break;
+        }
+
+        case WGL_RENDERER_VIDEO_MEMORY_WINE:
+#if defined(MAC_OS_X_VERSION_10_7) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7
+            err = CGLDescribeRenderer(renderer_info, renderer, kCGLRPVideoMemoryMegabytes, (GLint*)value);
+            if (err != kCGLNoError && err != kCGLBadProperty)
+                WARN("CGLDescribeRenderer(kCGLRPVideoMemoryMegabytes) failed: %d %s\n", err, CGLErrorString(err));
+            if (err != kCGLNoError)
+#endif
+            {
+                if (get_renderer_property(renderer_info, renderer, kCGLRPVideoMemory, (GLint*)value))
+                    *value /= 1024 * 1024;
+                else
+                    *value = 0;
+            }
+            ret = TRUE;
+            TRACE("WGL_RENDERER_VIDEO_MEMORY_WINE -> %uMB\n", *value);
+            break;
+
+        default:
+            FIXME("unrecognized attribute 0x%04x\n", attribute);
+            break;
+    }
+
+    return ret;
 }
 
 
@@ -1821,6 +2337,7 @@ static void macdrv_glFinish(void)
     struct wgl_context *context = NtCurrentTeb()->glContext;
 
     sync_swap_interval(context);
+    sync_context(context);
     pglFinish();
 }
 
@@ -1833,6 +2350,7 @@ static void macdrv_glFlush(void)
     struct wgl_context *context = NtCurrentTeb()->glContext;
 
     sync_swap_interval(context);
+    sync_context(context);
 
     if (skip_single_buffer_flushes)
     {
@@ -1913,6 +2431,7 @@ static void macdrv_glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
 {
     struct wgl_context *context = NtCurrentTeb()->glContext;
 
+    sync_context(context);
     macdrv_update_opengl_context(context->context);
     pglViewport(x, y, width, height);
 }
@@ -2329,6 +2848,7 @@ static struct wgl_context *macdrv_wglCreateContextAttribsARB(HDC hdc,
     const int *iptr;
     int major = 1, minor = 0, profile = WGL_CONTEXT_CORE_PROFILE_BIT_ARB, flags = 0;
     BOOL core = FALSE;
+    GLint renderer_id = 0;
 
     TRACE("hdc %p, share_context %p, attrib_list %p\n", hdc, share_context, attrib_list);
 
@@ -2379,6 +2899,50 @@ static struct wgl_context *macdrv_wglCreateContextAttribsARB(HDC hdc,
                 }
                 profile = value;
                 break;
+
+            case WGL_RENDERER_ID_WINE:
+            {
+                CGLError err;
+                CGLRendererInfoObj renderer_info;
+                GLint renderer_count, temp;
+
+                err = CGLQueryRendererInfo(active_displays_mask(), &renderer_info, &renderer_count);
+                if (err != kCGLNoError)
+                {
+                    WARN("CGLQueryRendererInfo failed: %d %s\n", err, CGLErrorString(err));
+                    SetLastError(ERROR_GEN_FAILURE);
+                    return NULL;
+                }
+
+                value = map_renderer_index(renderer_info, renderer_count, value);
+
+                if (value >= renderer_count)
+                {
+                    WARN("WGL_RENDERER_ID_WINE renderer %d exceeds count (%d)\n", value, renderer_count);
+                    CGLDestroyRendererInfo(renderer_info);
+                    SetLastError(ERROR_INVALID_PARAMETER);
+                    return NULL;
+                }
+
+                if (!get_renderer_property(renderer_info, value, kCGLRPRendererID, &temp))
+                {
+                    WARN("WGL_RENDERER_ID_WINE failed to get ID of renderer %d\n", value);
+                    CGLDestroyRendererInfo(renderer_info);
+                    SetLastError(ERROR_GEN_FAILURE);
+                    return NULL;
+                }
+
+                CGLDestroyRendererInfo(renderer_info);
+
+                if (renderer_id && temp != renderer_id)
+                {
+                    WARN("WGL_RENDERER_ID_WINE requested two different renderers (0x%08x vs. 0x%08x)\n", renderer_id, temp);
+                    SetLastError(ERROR_INVALID_PARAMETER);
+                    return NULL;
+                }
+                renderer_id = temp;
+                break;
+            }
 
             default:
                 WARN("Unknown attribute %s.\n", debugstr_attrib(attr, value));
@@ -2435,6 +2999,7 @@ static struct wgl_context *macdrv_wglCreateContextAttribsARB(HDC hdc,
     if (!(context = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*context)))) return NULL;
 
     context->format = format;
+    context->renderer_id = renderer_id;
     if (!create_context(context, share_context ? share_context->cglcontext : NULL, major))
     {
         HeapFree(GetProcessHeap(), 0, context);
@@ -3052,7 +3617,7 @@ static BOOL macdrv_wglMakeContextCurrentARB(HDC draw_hdc, HDC read_hdc, struct w
 
     if (!context)
     {
-        macdrv_make_context_current(NULL, NULL);
+        macdrv_make_context_current(NULL, NULL, CGRectNull);
         NtCurrentTeb()->glContext = NULL;
         return TRUE;
     }
@@ -3085,6 +3650,7 @@ static BOOL macdrv_wglMakeContextCurrentARB(HDC draw_hdc, HDC read_hdc, struct w
 
         context->draw_hwnd = hwnd;
         context->draw_view = data->gl_view;
+        context->draw_rect = data->gl_rect;
         context->draw_pbuffer = NULL;
         release_win_data(data);
     }
@@ -3131,7 +3697,10 @@ static BOOL macdrv_wglMakeContextCurrentARB(HDC draw_hdc, HDC read_hdc, struct w
             if ((data = get_win_data(hwnd)))
             {
                 if (data->gl_view != context->draw_view)
+                {
                     context->read_view = data->gl_view;
+                    context->read_rect = data->gl_rect;
+                }
                 release_win_data(data);
             }
         }
@@ -3143,14 +3712,133 @@ static BOOL macdrv_wglMakeContextCurrentARB(HDC draw_hdc, HDC read_hdc, struct w
         }
     }
 
-    TRACE("making context current with draw_view %p draw_pbuffer %p read_view %p read_pbuffer %p format %u\n",
-          context->draw_view, context->draw_pbuffer, context->read_view, context->read_pbuffer, context->format);
+    TRACE("making context current with draw_view %p %s draw_pbuffer %p read_view %p %s read_pbuffer %p format %u\n",
+          context->draw_view, wine_dbgstr_rect(&context->draw_rect), context->draw_pbuffer,
+          context->read_view, wine_dbgstr_rect(&context->read_rect), context->read_pbuffer, context->format);
 
     make_context_current(context, FALSE);
     context->has_been_current = TRUE;
     NtCurrentTeb()->glContext = context;
 
     return TRUE;
+}
+
+
+/**********************************************************************
+ *              macdrv_wglQueryCurrentRendererIntegerWINE
+ *
+ * WGL_WINE_query_renderer: wglQueryCurrentRendererIntegerWINE
+ */
+static BOOL macdrv_wglQueryCurrentRendererIntegerWINE(GLenum attribute, GLuint *value)
+{
+    BOOL ret = FALSE;
+    struct wgl_context *context = NtCurrentTeb()->glContext;
+    CGLPixelFormatObj pixel_format;
+    CGLError err;
+    GLint virtual_screen;
+    GLint display_mask;
+    GLint pf_renderer_id;
+    CGLRendererInfoObj renderer_info;
+    GLint renderer_count;
+    GLint renderer;
+
+    TRACE("context %p/%p/%p attribute 0x%04x value %p\n", context, (context ? context->context : NULL),
+          (context ? context->cglcontext : NULL), attribute, value);
+
+    if (attribute == WGL_RENDERER_VERSION_WINE)
+    {
+        if (!parse_renderer_version((const char*)opengl_funcs.gl.p_glGetString(GL_VERSION), value))
+            get_fallback_renderer_version(value);
+        TRACE("WGL_RENDERER_VERSION_WINE -> %u.%u.%u\n", value[0], value[1], value[2]);
+        return TRUE;
+    }
+
+    pixel_format = CGLGetPixelFormat(context->cglcontext);
+    err = CGLGetVirtualScreen(context->cglcontext, &virtual_screen);
+    if (err != kCGLNoError)
+    {
+        WARN("CGLGetVirtualScreen failed: %d %s\n", err, CGLErrorString(err));
+        return FALSE;
+    }
+
+    err = CGLDescribePixelFormat(pixel_format, virtual_screen, kCGLPFADisplayMask, &display_mask);
+    if (err != kCGLNoError)
+    {
+        WARN("CGLDescribePixelFormat(kCGLPFADisplayMask) failed: %d %s\n", err, CGLErrorString(err));
+        return FALSE;
+    }
+
+    err = CGLDescribePixelFormat(pixel_format, virtual_screen, kCGLPFARendererID, &pf_renderer_id);
+    if (err != kCGLNoError)
+    {
+        WARN("CGLDescribePixelFormat(kCGLPFARendererID) failed: %d %s\n", err, CGLErrorString(err));
+        return FALSE;
+    }
+
+    err = CGLQueryRendererInfo(display_mask, &renderer_info, &renderer_count);
+    if (err != kCGLNoError)
+    {
+        WARN("CGLQueryRendererInfo failed: %d %s\n", err, CGLErrorString(err));
+        return FALSE;
+    }
+
+    for (renderer = 0; renderer < renderer_count; renderer++)
+    {
+        GLint renderer_id;
+
+        if (!get_renderer_property(renderer_info, renderer, kCGLRPRendererID, &renderer_id))
+            continue;
+
+        if (renderer_id == pf_renderer_id)
+        {
+            ret = query_renderer_integer(renderer_info, renderer, attribute, value);
+            break;
+        }
+    }
+
+    if (renderer >= renderer_count)
+        ERR("failed to find renderer ID 0x%08x for display mask 0x%08x\n", pf_renderer_id, display_mask);
+
+    CGLDestroyRendererInfo(renderer_info);
+    return ret;
+}
+
+
+/**********************************************************************
+ *              macdrv_wglQueryCurrentRendererStringWINE
+ *
+ * WGL_WINE_query_renderer: wglQueryCurrentRendererStringWINE
+ */
+static const char *macdrv_wglQueryCurrentRendererStringWINE(GLenum attribute)
+{
+    const char* ret = NULL;
+    struct wgl_context *context = NtCurrentTeb()->glContext;
+
+    TRACE("context %p/%p/%p attribute 0x%04x\n", context, (context ? context->context : NULL),
+          (context ? context->cglcontext : NULL), attribute);
+
+    switch (attribute)
+    {
+        case WGL_RENDERER_DEVICE_ID_WINE:
+        {
+            ret = (const char*)opengl_funcs.gl.p_glGetString(GL_RENDERER);
+            TRACE("WGL_RENDERER_DEVICE_ID_WINE -> %s\n", debugstr_a(ret));
+            break;
+        }
+
+        case WGL_RENDERER_VENDOR_ID_WINE:
+        {
+            ret = (const char*)opengl_funcs.gl.p_glGetString(GL_VENDOR);
+            TRACE("WGL_RENDERER_VENDOR_ID_WINE -> %s\n", debugstr_a(ret));
+            break;
+        }
+
+        default:
+            FIXME("unrecognized attribute 0x%04x\n", attribute);
+            break;
+    }
+
+    return ret;
 }
 
 
@@ -3258,6 +3946,99 @@ static BOOL macdrv_wglQueryPbufferARB(struct wgl_pbuffer *pbuffer, int iAttribut
     }
 
     return GL_TRUE;
+}
+
+
+/**********************************************************************
+ *              macdrv_wglQueryRendererIntegerWINE
+ *
+ * WGL_WINE_query_renderer: wglQueryRendererIntegerWINE
+ */
+static BOOL macdrv_wglQueryRendererIntegerWINE(HDC dc, GLint renderer, GLenum attribute, GLuint *value)
+{
+    BOOL ret = FALSE;
+    CGLRendererInfoObj renderer_info;
+    GLint renderer_count;
+    CGLError err;
+
+    TRACE("dc %p renderer %d attribute 0x%04x value %p\n", dc, renderer, attribute, value);
+
+    err = CGLQueryRendererInfo(active_displays_mask(), &renderer_info, &renderer_count);
+    if (err != kCGLNoError)
+    {
+        WARN("CGLQueryRendererInfo failed: %d %s\n", err, CGLErrorString(err));
+        return FALSE;
+    }
+
+    renderer = map_renderer_index(renderer_info, renderer_count, renderer);
+
+    if (renderer < renderer_count)
+        ret = query_renderer_integer(renderer_info, renderer, attribute, value);
+    else
+        TRACE("requested information for renderer %d exceeding count %d\n", renderer, renderer_count);
+
+    CGLDestroyRendererInfo(renderer_info);
+    return ret;
+}
+
+
+/**********************************************************************
+ *              macdrv_wglQueryRendererStringWINE
+ *
+ * WGL_WINE_query_renderer: wglQueryRendererStringWINE
+ */
+static const char *macdrv_wglQueryRendererStringWINE(HDC dc, GLint renderer, GLenum attribute)
+{
+    const char* ret = NULL;
+    CGLRendererInfoObj renderer_info;
+    GLint renderer_count;
+    CGLError err;
+
+    TRACE("dc %p renderer %d attribute 0x%04x\n", dc, renderer, attribute);
+
+    err = CGLQueryRendererInfo(active_displays_mask(), &renderer_info, &renderer_count);
+    if (err != kCGLNoError)
+    {
+        WARN("CGLQueryRendererInfo failed: %d %s\n", err, CGLErrorString(err));
+        return FALSE;
+    }
+
+    renderer = map_renderer_index(renderer_info, renderer_count, renderer);
+
+    if (renderer >= renderer_count)
+    {
+        TRACE("requested information for renderer %d exceeding count %d\n", renderer, renderer_count);
+        goto done;
+    }
+
+    switch (attribute)
+    {
+        case WGL_RENDERER_DEVICE_ID_WINE:
+        case WGL_RENDERER_VENDOR_ID_WINE:
+        {
+            BOOL device = (attribute == WGL_RENDERER_DEVICE_ID_WINE);
+            CGLPixelFormatObj pixel_format = create_pixel_format_for_renderer(renderer_info, renderer, TRUE);
+
+            if (!pixel_format)
+                pixel_format = create_pixel_format_for_renderer(renderer_info, renderer, FALSE);
+            if (pixel_format)
+            {
+                ret = get_gl_string(pixel_format, device ? GL_RENDERER : GL_VENDOR);
+                CGLReleasePixelFormat(pixel_format);
+            }
+
+            TRACE("%s -> %s\n", device ? "WGL_RENDERER_DEVICE_ID_WINE" : "WGL_RENDERER_VENDOR_ID_WINE", debugstr_a(ret));
+            break;
+        }
+
+        default:
+            FIXME("unrecognized attribute 0x%04x\n", attribute);
+            break;
+    }
+
+done:
+    CGLDestroyRendererInfo(renderer_info);
+    return ret;
 }
 
 
@@ -3549,6 +4330,12 @@ static void load_extensions(void)
      */
     register_extension("WGL_WINE_pixel_format_passthrough");
     opengl_funcs.ext.p_wglSetPixelFormatWINE = macdrv_wglSetPixelFormatWINE;
+
+    register_extension("WGL_WINE_query_renderer");
+    opengl_funcs.ext.p_wglQueryCurrentRendererIntegerWINE = macdrv_wglQueryCurrentRendererIntegerWINE;
+    opengl_funcs.ext.p_wglQueryCurrentRendererStringWINE = macdrv_wglQueryCurrentRendererStringWINE;
+    opengl_funcs.ext.p_wglQueryRendererIntegerWINE = macdrv_wglQueryRendererIntegerWINE;
+    opengl_funcs.ext.p_wglQueryRendererStringWINE = macdrv_wglQueryRendererStringWINE;
 }
 
 
@@ -3644,6 +4431,7 @@ void sync_gl_view(struct macdrv_win_data *data)
         TRACE("Setting GL view %p frame to %s\n", data->gl_view, wine_dbgstr_rect(&rect));
         macdrv_set_view_window_and_frame(data->gl_view, NULL, cgrect_from_rect(rect));
         data->gl_rect = rect;
+        mark_contexts_for_moved_view(data->gl_view);
     }
 }
 
@@ -3890,7 +4678,10 @@ static BOOL macdrv_wglSwapBuffers(HDC hdc)
           (context ? context->cglcontext : NULL));
 
     if (context)
+    {
         sync_swap_interval(context);
+        sync_context(context);
+    }
 
     if ((hwnd = WindowFromDC(hdc)))
     {

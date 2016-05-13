@@ -2493,25 +2493,61 @@ static HRESULT d3dx9_base_effect_set_array_range(struct d3dx9_base_effect *base,
 static HRESULT d3dx9_get_param_value_ptr(struct ID3DXEffectImpl *effect, struct d3dx_pass *pass,
         struct d3dx_state *state, void **param_value, struct d3dx_parameter **out_param)
 {
-    struct d3dx_parameter *param;
-    param = state->parameter.referenced_param ? state->parameter.referenced_param : &state->parameter;
+    struct d3dx_parameter *param = &state->parameter;
+
+    *param_value = NULL;
+    *out_param = NULL;
 
     switch (state->type)
     {
-        case ST_CONSTANT:
         case ST_PARAMETER:
+            param = param->referenced_param;
+            /* fallthrough */
+        case ST_CONSTANT:
+            *out_param = param;
+            *param_value = param->data;
+            return D3D_OK;
+        case ST_ARRAY_SELECTOR:
+        {
+            unsigned int array_idx;
+            static const struct d3dx_parameter array_idx_param =
+                {NULL, NULL, NULL, D3DXPC_SCALAR, D3DXPT_INT, 1, 1, 0, 0, 0, 0, sizeof(array_idx)};
+            HRESULT hr;
+
+            if (!param->param_eval)
+            {
+                FIXME("Preshader structure is null.\n");
+                return D3DERR_INVALIDCALL;
+            }
+            if (FAILED(hr = d3dx_evaluate_parameter(param->param_eval, &array_idx_param, &array_idx)))
+                return hr;
+
+            param = param->referenced_param;
+            TRACE("Array index %u.\n", array_idx);
+            if (array_idx >= param->element_count)
+            {
+                ERR("Computed array index %u is out of bound %u.\n", array_idx, param->element_count);
+                return D3DERR_INVALIDCALL;
+            }
+            param = &param->members[array_idx];
+
             *param_value = param->data;
             *out_param = param;
             return D3D_OK;
-        case ST_ARRAY_SELECTOR:
-            FIXME("Array selector.\n");
-            break;
+        }
         case ST_FXLC:
-            FIXME("FXLC not supported yet.\n");
-            break;
+            if (param->param_eval)
+            {
+                *out_param = param;
+                *param_value = param->data;
+                return d3dx_evaluate_parameter(param->param_eval, param, *param_value);
+            }
+            else
+            {
+                FIXME("No preshader for FXLC parameter.\n");
+                return D3DERR_INVALIDCALL;
+            }
     }
-    *param_value = NULL;
-    *out_param = NULL;
     return E_NOTIMPL;
 }
 
@@ -2524,19 +2560,19 @@ static void d3dx9_set_light_parameter(enum LIGHT_TYPE op, D3DLIGHT9 *light, void
     }
     light_tbl[] =
     {
-       {FIELD_OFFSET(D3DLIGHT9, Type),         "LC_TYPE"},
-       {FIELD_OFFSET(D3DLIGHT9, Diffuse),      "LT_DIFFUSE"},
-       {FIELD_OFFSET(D3DLIGHT9, Specular),     "LT_SPECULAR"},
-       {FIELD_OFFSET(D3DLIGHT9, Ambient),      "LT_AMBIENT"},
-       {FIELD_OFFSET(D3DLIGHT9, Position),     "LT_POSITION"},
-       {FIELD_OFFSET(D3DLIGHT9, Direction),    "LT_DIRECTION"},
-       {FIELD_OFFSET(D3DLIGHT9, Range),        "LT_RANGE"},
-       {FIELD_OFFSET(D3DLIGHT9, Falloff),      "LT_FALLOFF"},
-       {FIELD_OFFSET(D3DLIGHT9, Attenuation0), "LT_ATTENUATION0"},
-       {FIELD_OFFSET(D3DLIGHT9, Attenuation1), "LT_ATTENUATION1"},
-       {FIELD_OFFSET(D3DLIGHT9, Attenuation2), "LT_ATTENUATION2"},
-       {FIELD_OFFSET(D3DLIGHT9, Theta),        "LT_THETA"},
-       {FIELD_OFFSET(D3DLIGHT9, Phi),          "LT_PHI"}
+        {FIELD_OFFSET(D3DLIGHT9, Type),         "LC_TYPE"},
+        {FIELD_OFFSET(D3DLIGHT9, Diffuse),      "LT_DIFFUSE"},
+        {FIELD_OFFSET(D3DLIGHT9, Specular),     "LT_SPECULAR"},
+        {FIELD_OFFSET(D3DLIGHT9, Ambient),      "LT_AMBIENT"},
+        {FIELD_OFFSET(D3DLIGHT9, Position),     "LT_POSITION"},
+        {FIELD_OFFSET(D3DLIGHT9, Direction),    "LT_DIRECTION"},
+        {FIELD_OFFSET(D3DLIGHT9, Range),        "LT_RANGE"},
+        {FIELD_OFFSET(D3DLIGHT9, Falloff),      "LT_FALLOFF"},
+        {FIELD_OFFSET(D3DLIGHT9, Attenuation0), "LT_ATTENUATION0"},
+        {FIELD_OFFSET(D3DLIGHT9, Attenuation1), "LT_ATTENUATION1"},
+        {FIELD_OFFSET(D3DLIGHT9, Attenuation2), "LT_ATTENUATION2"},
+        {FIELD_OFFSET(D3DLIGHT9, Theta),        "LT_THETA"},
+        {FIELD_OFFSET(D3DLIGHT9, Phi),          "LT_PHI"}
     };
     switch (op)
     {
@@ -2550,8 +2586,8 @@ static void d3dx9_set_light_parameter(enum LIGHT_TYPE op, D3DLIGHT9 *light, void
         {
             D3DCOLORVALUE c = *(D3DCOLORVALUE *)value;
 
-            TRACE("%s (%f %f %f %f).\n", light_tbl[op].name, c.r, c.g, c.b, c.a);
-            *(D3DCOLORVALUE *)((char *)light + light_tbl[op].offset) = c;
+            TRACE("%s (%.8e %.8e %.8e %.8e).\n", light_tbl[op].name, c.r, c.g, c.b, c.a);
+            *(D3DCOLORVALUE *)((BYTE *)light + light_tbl[op].offset) = c;
             break;
         }
         case LT_POSITION:
@@ -2559,8 +2595,8 @@ static void d3dx9_set_light_parameter(enum LIGHT_TYPE op, D3DLIGHT9 *light, void
         {
             D3DVECTOR v = *(D3DVECTOR *)value;
 
-            TRACE("%s (%f %f %f).\n", light_tbl[op].name, v.x, v.y, v.z);
-            *(D3DVECTOR *)((char *)light + light_tbl[op].offset) = v;
+            TRACE("%s (%.8e %.8e %.8e).\n", light_tbl[op].name, v.x, v.y, v.z);
+            *(D3DVECTOR *)((BYTE *)light + light_tbl[op].offset) = v;
             break;
         }
         case LT_RANGE:
@@ -2572,8 +2608,8 @@ static void d3dx9_set_light_parameter(enum LIGHT_TYPE op, D3DLIGHT9 *light, void
         case LT_PHI:
         {
             float v = *(float *)value;
-            TRACE("%s %f.\n", light_tbl[op].name, v);
-            *(float *)((char *)light + light_tbl[op].offset) = v;
+            TRACE("%s %.8e.\n", light_tbl[op].name, v);
+            *(float *)((BYTE *)light + light_tbl[op].offset) = v;
             break;
         }
         default:
@@ -2591,11 +2627,11 @@ static void d3dx9_set_material_parameter(enum MATERIAL_TYPE op, D3DMATERIAL9 *ma
     }
     material_tbl[] =
     {
-       {FIELD_OFFSET(D3DMATERIAL9, Diffuse),  "MT_DIFFUSE"},
-       {FIELD_OFFSET(D3DMATERIAL9, Ambient),  "MT_AMBIENT"},
-       {FIELD_OFFSET(D3DMATERIAL9, Specular), "MT_SPECULAR"},
-       {FIELD_OFFSET(D3DMATERIAL9, Emissive), "MT_EMISSIVE"},
-       {FIELD_OFFSET(D3DMATERIAL9, Power),    "MT_POWER"}
+        {FIELD_OFFSET(D3DMATERIAL9, Diffuse),  "MT_DIFFUSE"},
+        {FIELD_OFFSET(D3DMATERIAL9, Ambient),  "MT_AMBIENT"},
+        {FIELD_OFFSET(D3DMATERIAL9, Specular), "MT_SPECULAR"},
+        {FIELD_OFFSET(D3DMATERIAL9, Emissive), "MT_EMISSIVE"},
+        {FIELD_OFFSET(D3DMATERIAL9, Power),    "MT_POWER"}
     };
 
     switch (op)
@@ -2604,7 +2640,7 @@ static void d3dx9_set_material_parameter(enum MATERIAL_TYPE op, D3DMATERIAL9 *ma
         {
             float v = *(float *)value;
 
-            TRACE("%s %f.\n", material_tbl[op].name, v);
+            TRACE("%s %.8e.\n", material_tbl[op].name, v);
             material->Power = v;
             break;
         }
@@ -2615,8 +2651,8 @@ static void d3dx9_set_material_parameter(enum MATERIAL_TYPE op, D3DMATERIAL9 *ma
         {
             D3DCOLORVALUE c = *(D3DCOLORVALUE *)value;
 
-            TRACE("%s, value (%f %f %f %f).\n", material_tbl[op].name, c.r, c.g, c.b, c.a);
-            *(D3DCOLORVALUE *)((char *)material + material_tbl[op].offset) = c;
+            TRACE("%s, value (%.8e %.8e %.8e %.8e).\n", material_tbl[op].name, c.r, c.g, c.b, c.a);
+            *(D3DCOLORVALUE *)((BYTE *)material + material_tbl[op].offset) = c;
             break;
         }
         default:
@@ -2643,15 +2679,15 @@ static HRESULT d3dx_set_shader_const_state(IDirect3DDevice9 *device, enum SHADER
         {D3DXPT_BOOL,  sizeof(BOOL),      "SCT_PSBOOL"},
         {D3DXPT_INT,   sizeof(int) * 4,   "SCT_PSINT"},
     };
-    UINT nelem;
+    unsigned int element_count;
 
     if (op < 0 || op > SCT_PSINT)
     {
         FIXME("Unknown op %u.\n", op);
         return D3DERR_INVALIDCALL;
     }
-    nelem = param->bytes / const_tbl[op].elem_size;
-    TRACE("%s, index %u, %u elements.\n", const_tbl[op].name, index, nelem);
+    element_count = param->bytes / const_tbl[op].elem_size;
+    TRACE("%s, index %u, element_count %u.\n", const_tbl[op].name, index, element_count);
     if (param->type != const_tbl[op].type)
     {
         FIXME("Unexpected param type %u.\n", param->type);
@@ -2666,23 +2702,69 @@ static HRESULT d3dx_set_shader_const_state(IDirect3DDevice9 *device, enum SHADER
     switch (op)
     {
         case SCT_VSFLOAT:
-            return IDirect3DDevice9_SetVertexShaderConstantF(device, index, (const float *)value_ptr, nelem);
+            return IDirect3DDevice9_SetVertexShaderConstantF(device, index, (const float *)value_ptr, element_count);
         case SCT_VSBOOL:
-            return IDirect3DDevice9_SetVertexShaderConstantB(device, index, (const BOOL *)value_ptr, nelem);
+            return IDirect3DDevice9_SetVertexShaderConstantB(device, index, (const BOOL *)value_ptr, element_count);
         case SCT_VSINT:
-            return IDirect3DDevice9_SetVertexShaderConstantI(device, index, (const int *)value_ptr, nelem);
+            return IDirect3DDevice9_SetVertexShaderConstantI(device, index, (const int *)value_ptr, element_count);
         case SCT_PSFLOAT:
-            return IDirect3DDevice9_SetPixelShaderConstantF(device, index, (const float *)value_ptr, nelem);
+            return IDirect3DDevice9_SetPixelShaderConstantF(device, index, (const float *)value_ptr, element_count);
         case SCT_PSBOOL:
-            return IDirect3DDevice9_SetPixelShaderConstantB(device, index, (const BOOL *)value_ptr, nelem);
+            return IDirect3DDevice9_SetPixelShaderConstantB(device, index, (const BOOL *)value_ptr, element_count);
         case SCT_PSINT:
-            return IDirect3DDevice9_SetPixelShaderConstantI(device, index, (const int *)value_ptr, nelem);
+            return IDirect3DDevice9_SetPixelShaderConstantI(device, index, (const int *)value_ptr, element_count);
     }
     return D3D_OK;
 }
 
 static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pass *pass,
-        struct d3dx_state *state, int parent_index)
+        struct d3dx_state *state, unsigned int parent_index);
+
+static HRESULT d3dx_set_shader_constants(struct ID3DXEffectImpl *effect, struct d3dx_pass *pass,
+        struct d3dx_parameter *param, BOOL vs)
+{
+    IDirect3DDevice9 *device = effect->device;
+    HRESULT hr, ret;
+    struct d3dx_parameter **params;
+    D3DXCONSTANT_DESC *cdesc;
+    unsigned int parameters_count;
+    unsigned int i, j;
+
+    if (!param->param_eval)
+    {
+        FIXME("param_eval structure is null.\n");
+        return D3DERR_INVALIDCALL;
+    }
+    if (FAILED(hr = d3dx_param_eval_set_shader_constants(device, param->param_eval)))
+        return hr;
+    params = param->param_eval->shader_inputs.inputs_param;
+    cdesc = param->param_eval->shader_inputs.inputs;
+    parameters_count = param->param_eval->shader_inputs.input_count;
+    ret = D3D_OK;
+    for (i = 0; i < parameters_count; ++i)
+    {
+        if (params[i] && params[i]->class == D3DXPC_OBJECT && (params[i]->type == D3DXPT_SAMPLER
+                || params[i]->type == D3DXPT_SAMPLER1D || params[i]->type == D3DXPT_SAMPLER2D
+                || params[i]->type == D3DXPT_SAMPLER3D || params[i]->type == D3DXPT_SAMPLERCUBE))
+        {
+            struct d3dx_sampler *sampler;
+
+            sampler = (struct d3dx_sampler *)params[i]->data;
+            TRACE("sampler %s, register index %u, state count %u.\n", debugstr_a(params[i]->name),
+                    cdesc[i].RegisterIndex, sampler->state_count);
+            for (j = 0; j < sampler->state_count; ++j)
+            {
+                if (FAILED(hr = d3dx9_apply_state(effect, pass, &sampler->states[j],
+                        cdesc[i].RegisterIndex + (vs ? D3DVERTEXTEXTURESAMPLER0 : 0))))
+                    ret = hr;
+            }
+        }
+    }
+    return ret;
+}
+
+static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pass *pass,
+        struct d3dx_state *state, unsigned int parent_index)
 {
     IDirect3DDevice9 *device = effect->device;
     struct d3dx_parameter *param;
@@ -2690,9 +2772,10 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
     HRESULT hr;
 
     TRACE("operation %u, index %u, type %u.\n", state->operation, state->index, state->type);
-    hr = d3dx9_get_param_value_ptr(effect, pass, state, &param_value, &param);
-    if (FAILED(hr))
-        return hr;
+    if (FAILED(hr = d3dx9_get_param_value_ptr(effect, pass, state, &param_value, &param)))
+        /* Native d3dx returns D3D_OK from BeginPass or Commit involving out of bounds array
+         * access and does not touch affected state. */
+        return D3D_OK;
 
     switch (state_table[state->operation].class)
     {
@@ -2707,7 +2790,7 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
         {
             UINT unit;
 
-            unit = parent_index == -1 ? state->index : parent_index;
+            unit = parent_index == ~0u ? state->index : parent_index;
             TRACE("%s, unit %u, value %p.\n", state_table[state->operation].name, unit,
                     *(IDirect3DBaseTexture9 **)param_value);
             return IDirect3DDevice9_SetTexture(device, unit, *(IDirect3DBaseTexture9 **)param_value);
@@ -2728,8 +2811,7 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
             ret = D3D_OK;
             for (i = 0; i < sampler->state_count; i++)
             {
-                hr = d3dx9_apply_state(effect, pass, &sampler->states[i], state->index);
-                if (FAILED(hr))
+                if (FAILED(hr = d3dx9_apply_state(effect, pass, &sampler->states[i], state->index)))
                     ret = hr;
             }
             return ret;
@@ -2738,24 +2820,24 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
         {
             UINT sampler;
 
-            sampler = parent_index == -1 ? state->index : parent_index;
+            sampler = parent_index == ~0u ? state->index : parent_index;
             TRACE("%s, sampler %u, value %u.\n", state_table[state->operation].name, sampler, *(DWORD *)param_value);
             return IDirect3DDevice9_SetSamplerState(device, sampler, state_table[state->operation].op,
                     *(DWORD *)param_value);
         }
         case SC_VERTEXSHADER:
             TRACE("%s, shader %p.\n", state_table[state->operation].name, *(IDirect3DVertexShader9 **)param_value);
-            hr = IDirect3DDevice9_SetVertexShader(device, *(IDirect3DVertexShader9 **)param_value);
-            if (FAILED(hr))
+            if (FAILED(hr = IDirect3DDevice9_SetVertexShader(device, *(IDirect3DVertexShader9 **)param_value)))
                 ERR("Could not set vertex shader, hr %#x.\n", hr);
-            FIXME("Not executing preshader and not setting constants.\n");
+            else if (*(IDirect3DVertexShader9 **)param_value)
+                hr = d3dx_set_shader_constants(effect, pass, param, TRUE);
             return hr;
         case SC_PIXELSHADER:
             TRACE("%s, shader %p.\n", state_table[state->operation].name, *(IDirect3DPixelShader9 **)param_value);
-            hr = IDirect3DDevice9_SetPixelShader(device, *(IDirect3DPixelShader9 **)param_value);
-            if (FAILED(hr))
+            if (FAILED(hr = IDirect3DDevice9_SetPixelShader(device, *(IDirect3DPixelShader9 **)param_value)))
                 ERR("Could not set pixel shader, hr %#x.\n", hr);
-            FIXME("Not executing preshader and not setting constants.\n");
+            else if (*(IDirect3DPixelShader9 **)param_value)
+                hr = d3dx_set_shader_constants(effect, pass, param, FALSE);
             return hr;
         case SC_TRANSFORM:
             TRACE("%s, state %u.\n", state_table[state->operation].name, state->index);
@@ -2770,8 +2852,7 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
 
             TRACE("%s, index %u, op %u.\n", state_table[state->operation].name, state->index,
                     state_table[state->operation].op);
-            hr = IDirect3DDevice9_GetLight(device, state->index, &light);
-            if (FAILED(hr))
+            if (FAILED(hr = IDirect3DDevice9_GetLight(device, state->index, &light)))
             {
                 WARN("Could not get light, hr %#x.\n", hr);
                 memset(&light, 0, sizeof(light));
@@ -2785,8 +2866,7 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
 
             TRACE("%s, index %u, op %u.\n", state_table[state->operation].name, state->index,
                     state_table[state->operation].op);
-            hr = IDirect3DDevice9_GetMaterial(device, &material);
-            if (FAILED(hr))
+            if (FAILED(hr = IDirect3DDevice9_GetMaterial(device, &material)))
             {
                 WARN("Could not get material, hr %#x.\n", hr);
                 memset(&material, 0, sizeof(material));
@@ -2821,8 +2901,7 @@ static HRESULT d3dx9_apply_pass_states(struct ID3DXEffectImpl *effect, struct d3
     {
         HRESULT hr;
 
-        hr = d3dx9_apply_state(effect, pass, &pass->states[i], -1);
-        if (FAILED(hr))
+        if (FAILED(hr = d3dx9_apply_state(effect, pass, &pass->states[i], ~0u)))
         {
             WARN("Error applying state, hr %#x.\n", hr);
             ret = hr;
@@ -3506,17 +3585,14 @@ static HRESULT WINAPI ID3DXEffectImpl_Begin(ID3DXEffect *iface, UINT *passes, DW
 
             if (!technique->saved_state)
             {
-                hr = IDirect3DDevice9_BeginStateBlock(effect->device);
-                if (FAILED(hr))
+                if (FAILED(hr = IDirect3DDevice9_BeginStateBlock(effect->device)))
                     ERR("BeginStateBlock failed, hr %#x.\n", hr);
                 for (i = 0; i < technique->pass_count; i++)
                     d3dx9_apply_pass_states(effect, &technique->passes[i]);
-                hr = IDirect3DDevice9_EndStateBlock(effect->device, &technique->saved_state);
-                if (FAILED(hr))
+                if (FAILED(hr = IDirect3DDevice9_EndStateBlock(effect->device, &technique->saved_state)))
                     ERR("EndStateBlock failed, hr %#x.\n", hr);
             }
-            hr = IDirect3DStateBlock9_Capture(technique->saved_state);
-            if (FAILED(hr))
+            if (FAILED(hr = IDirect3DStateBlock9_Capture(technique->saved_state)))
                 ERR("StateBlock Capture failed, hr %#x.\n", hr);
         }
 
@@ -3602,8 +3678,7 @@ static HRESULT WINAPI ID3DXEffectImpl_End(ID3DXEffect *iface)
 
         if (technique && technique->saved_state)
         {
-            hr = IDirect3DStateBlock9_Apply(technique->saved_state);
-            if (FAILED(hr))
+            if (FAILED(hr = IDirect3DStateBlock9_Apply(technique->saved_state)))
                 ERR("State block apply failed, hr %#x.\n", hr);
         }
         else
@@ -4737,13 +4812,23 @@ static HRESULT d3dx9_parse_name(char **name, const char *ptr)
     return D3D_OK;
 }
 
-static HRESULT d3dx9_copy_data(struct d3dx_object *object, const char **ptr)
+static HRESULT d3dx9_copy_data(struct d3dx9_base_effect *base, unsigned int object_id, const char **ptr)
 {
+    struct d3dx_object *object = &base->objects[object_id];
+
     if (object->size || object->data)
-        FIXME("Object already initialized!\n");
+    {
+        if (object_id)
+            FIXME("Overwriting object id %u!\n", object_id);
+        else
+            TRACE("Overwriting object id 0.\n");
+
+        HeapFree(GetProcessHeap(), 0, object->data);
+        object->data = NULL;
+    }
 
     read_dword(ptr, &object->size);
-    TRACE("Data size: %#x\n", object->size);
+    TRACE("Data size: %#x.\n", object->size);
 
     if (!object->size)
         return D3D_OK;
@@ -5543,7 +5628,7 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
                 case D3DXPT_VERTEXSHADER:
                 case D3DXPT_PIXELSHADER:
                     state->type = ST_CONSTANT;
-                    if (FAILED(hr = d3dx9_copy_data(&base->objects[param->object_id], ptr)))
+                    if (FAILED(hr = d3dx9_copy_data(base, param->object_id, ptr)))
                         return hr;
 
                     if (object->data)
@@ -5559,7 +5644,7 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
                 case D3DXPT_FLOAT:
                 case D3DXPT_STRING:
                     state->type = ST_FXLC;
-                    if (FAILED(hr = d3dx9_copy_data(&base->objects[param->object_id], ptr)))
+                    if (FAILED(hr = d3dx9_copy_data(base, param->object_id, ptr)))
                         return hr;
                     d3dx_create_param_eval(base, object->data, object->size, param->type, &param->param_eval);
                     break;
@@ -5572,7 +5657,7 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
 
         case 1:
             state->type = ST_PARAMETER;
-            if (FAILED(hr = d3dx9_copy_data(&base->objects[param->object_id], ptr)))
+            if (FAILED(hr = d3dx9_copy_data(base, param->object_id, ptr)))
                 return hr;
 
             TRACE("Looking for parameter %s.\n", debugstr_a(object->data));
@@ -5600,7 +5685,7 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
 
         case 2:
             state->type = ST_ARRAY_SELECTOR;
-            if (FAILED(hr = d3dx9_copy_data(object, ptr)))
+            if (FAILED(hr = d3dx9_copy_data(base, param->object_id, ptr)))
                 return hr;
             hr = d3dx9_parse_array_selector(base, param);
             break;
@@ -5700,7 +5785,7 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
         read_dword(&ptr, &id);
         TRACE("Id: %u\n", id);
 
-        if (FAILED(hr = d3dx9_copy_data(&base->objects[id], &ptr)))
+        if (FAILED(hr = d3dx9_copy_data(base, id, &ptr)))
             goto err_out;
 
         if (base->objects[id].data)

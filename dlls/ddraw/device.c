@@ -1091,7 +1091,7 @@ static HRESULT d3d_device7_EnumTextureFormats(IDirect3DDevice7 *iface,
     for (i = 0; i < sizeof(FormatList) / sizeof(*FormatList); ++i)
     {
         if (wined3d_check_device_format(device->ddraw->wined3d, WINED3DADAPTER_DEFAULT, WINED3D_DEVICE_TYPE_HAL,
-                mode.format_id, 0, WINED3D_RTYPE_TEXTURE_2D, FormatList[i]) == D3D_OK)
+                mode.format_id, WINED3DUSAGE_TEXTURE, WINED3D_RTYPE_TEXTURE_2D, FormatList[i]) == D3D_OK)
         {
             DDPIXELFORMAT pformat;
 
@@ -1113,7 +1113,7 @@ static HRESULT d3d_device7_EnumTextureFormats(IDirect3DDevice7 *iface,
     for (i = 0; i < sizeof(BumpFormatList) / sizeof(*BumpFormatList); ++i)
     {
         if (wined3d_check_device_format(device->ddraw->wined3d, WINED3DADAPTER_DEFAULT,
-                WINED3D_DEVICE_TYPE_HAL, mode.format_id, WINED3DUSAGE_QUERY_LEGACYBUMPMAP,
+                WINED3D_DEVICE_TYPE_HAL, mode.format_id, WINED3DUSAGE_TEXTURE | WINED3DUSAGE_QUERY_LEGACYBUMPMAP,
                 WINED3D_RTYPE_TEXTURE_2D, BumpFormatList[i]) == D3D_OK)
         {
             DDPIXELFORMAT pformat;
@@ -1219,7 +1219,7 @@ static HRESULT WINAPI d3d_device2_EnumTextureFormats(IDirect3DDevice2 *iface,
     for (i = 0; i < sizeof(FormatList) / sizeof(*FormatList); ++i)
     {
         if (wined3d_check_device_format(device->ddraw->wined3d, 0, WINED3D_DEVICE_TYPE_HAL,
-                mode.format_id, 0, WINED3D_RTYPE_TEXTURE_2D, FormatList[i]) == D3D_OK)
+                mode.format_id, WINED3DUSAGE_TEXTURE, WINED3D_RTYPE_TEXTURE_2D, FormatList[i]) == D3D_OK)
         {
             DDSURFACEDESC sdesc;
 
@@ -3508,8 +3508,11 @@ static HRESULT d3d_device7_DrawPrimitive(IDirect3DDevice7 *iface,
     TRACE("iface %p, primitive_type %#x, fvf %#x, vertices %p, vertex_count %u, flags %#x.\n",
             iface, primitive_type, fvf, vertices, vertex_count, flags);
 
-    if (!vertices)
-        return DDERR_INVALIDPARAMS;
+    if (!vertex_count)
+    {
+        WARN("0 vertex count.\n");
+        return D3D_OK;
+    }
 
     /* Get the stride */
     stride = get_flexible_vertex_size(fvf);
@@ -3688,6 +3691,12 @@ static HRESULT d3d_device7_DrawIndexedPrimitive(IDirect3DDevice7 *iface,
     TRACE("iface %p, primitive_type %#x, fvf %#x, vertices %p, vertex_count %u, "
             "indices %p, index_count %u, flags %#x.\n",
             iface, primitive_type, fvf, vertices, vertex_count, indices, index_count, flags);
+
+    if (!vertex_count || !index_count)
+    {
+        WARN("0 vertex or index count.\n");
+        return D3D_OK;
+    }
 
     /* Set the D3DDevice's FVF */
     wined3d_mutex_lock();
@@ -4004,18 +4013,24 @@ static void pack_strided_data(BYTE *dst, DWORD count, const D3DDRAWPRIMITIVESTRI
     }
 }
 
-static HRESULT d3d_device7_DrawPrimitiveStrided(IDirect3DDevice7 *iface, D3DPRIMITIVETYPE PrimitiveType,
-        DWORD VertexType, D3DDRAWPRIMITIVESTRIDEDDATA *D3DDrawPrimStrideData, DWORD VertexCount, DWORD Flags)
+static HRESULT d3d_device7_DrawPrimitiveStrided(IDirect3DDevice7 *iface, D3DPRIMITIVETYPE primitive_type,
+        DWORD fvf, D3DDRAWPRIMITIVESTRIDEDDATA *strided_data, DWORD vertex_count, DWORD flags)
 {
     struct d3d_device *device = impl_from_IDirect3DDevice7(iface);
     HRESULT hr;
-    UINT dst_stride = get_flexible_vertex_size(VertexType);
-    UINT dst_size = dst_stride * VertexCount;
+    UINT dst_stride = get_flexible_vertex_size(fvf);
+    UINT dst_size = dst_stride * vertex_count;
     UINT vb_pos, align;
     BYTE *dst_data;
 
-    TRACE("iface %p, primitive_type %#x, FVF %#x, strided_data %p, vertex_count %u, flags %#x.\n",
-            iface, PrimitiveType, VertexType, D3DDrawPrimStrideData, VertexCount, Flags);
+    TRACE("iface %p, primitive_type %#x, fvf %#x, strided_data %p, vertex_count %u, flags %#x.\n",
+            iface, primitive_type, fvf, strided_data, vertex_count, flags);
+
+    if (!vertex_count)
+    {
+        WARN("0 vertex count.\n");
+        return D3D_OK;
+    }
 
     wined3d_mutex_lock();
     hr = d3d_device_prepare_vertex_buffer(device, dst_size);
@@ -4034,17 +4049,17 @@ static HRESULT d3d_device7_DrawPrimitiveStrided(IDirect3DDevice7 *iface, D3DPRIM
             vb_pos ? WINED3D_MAP_NOOVERWRITE : WINED3D_MAP_DISCARD);
     if (FAILED(hr))
         goto done;
-    pack_strided_data(dst_data, VertexCount, D3DDrawPrimStrideData, VertexType);
+    pack_strided_data(dst_data, vertex_count, strided_data, fvf);
     wined3d_buffer_unmap(device->vertex_buffer);
     device->vertex_buffer_pos = vb_pos + dst_size;
 
     hr = wined3d_device_set_stream_source(device->wined3d_device, 0, device->vertex_buffer, 0, dst_stride);
     if (FAILED(hr))
         goto done;
-    wined3d_device_set_vertex_declaration(device->wined3d_device, ddraw_find_decl(device->ddraw, VertexType));
+    wined3d_device_set_vertex_declaration(device->wined3d_device, ddraw_find_decl(device->ddraw, fvf));
 
-    wined3d_device_set_primitive_type(device->wined3d_device, PrimitiveType);
-    hr = wined3d_device_draw_primitive(device->wined3d_device, vb_pos / dst_stride, VertexCount);
+    wined3d_device_set_primitive_type(device->wined3d_device, primitive_type);
+    hr = wined3d_device_draw_primitive(device->wined3d_device, vb_pos / dst_stride, vertex_count);
 
 done:
     wined3d_mutex_unlock();
@@ -4107,21 +4122,27 @@ static HRESULT WINAPI d3d_device3_DrawPrimitiveStrided(IDirect3DDevice3 *iface,
  *
  *****************************************************************************/
 static HRESULT d3d_device7_DrawIndexedPrimitiveStrided(IDirect3DDevice7 *iface,
-        D3DPRIMITIVETYPE PrimitiveType, DWORD VertexType,
-        D3DDRAWPRIMITIVESTRIDEDDATA *D3DDrawPrimStrideData, DWORD VertexCount,
-        WORD *Indices, DWORD IndexCount, DWORD Flags)
+        D3DPRIMITIVETYPE primitive_type, DWORD fvf, D3DDRAWPRIMITIVESTRIDEDDATA *strided_data,
+        DWORD vertex_count, WORD *indices, DWORD index_count, DWORD flags)
 {
     struct d3d_device *device = impl_from_IDirect3DDevice7(iface);
-    HRESULT hr;
-    UINT vtx_dst_stride = get_flexible_vertex_size(VertexType);
-    UINT vtx_dst_size = VertexCount * vtx_dst_stride;
+    UINT vtx_dst_stride = get_flexible_vertex_size(fvf);
+    UINT vtx_dst_size = vertex_count * vtx_dst_stride;
+    UINT idx_size = index_count * sizeof(WORD);
     UINT vb_pos, align;
-    UINT idx_size = IndexCount * sizeof(WORD);
-    UINT ib_pos;
     BYTE *dst_data;
+    UINT ib_pos;
+    HRESULT hr;
 
-    TRACE("iface %p, primitive_type %#x, FVF %#x, strided_data %p, vertex_count %u, indices %p, index_count %u, flags %#x.\n",
-            iface, PrimitiveType, VertexType, D3DDrawPrimStrideData, VertexCount, Indices, IndexCount, Flags);
+    TRACE("iface %p, primitive_type %#x, fvf %#x, strided_data %p, "
+            "vertex_count %u, indices %p, index_count %u, flags %#x.\n",
+            iface, primitive_type, fvf, strided_data, vertex_count, indices, index_count, flags);
+
+    if (!vertex_count || !index_count)
+    {
+        WARN("0 vertex or index count.\n");
+        return D3D_OK;
+    }
 
     wined3d_mutex_lock();
 
@@ -4141,7 +4162,7 @@ static HRESULT d3d_device7_DrawIndexedPrimitiveStrided(IDirect3DDevice7 *iface,
             vb_pos ? WINED3D_MAP_NOOVERWRITE : WINED3D_MAP_DISCARD);
     if (FAILED(hr))
         goto done;
-    pack_strided_data(dst_data, VertexCount, D3DDrawPrimStrideData, VertexType);
+    pack_strided_data(dst_data, vertex_count, strided_data, fvf);
     wined3d_buffer_unmap(device->vertex_buffer);
     device->vertex_buffer_pos = vb_pos + vtx_dst_size;
 
@@ -4156,7 +4177,7 @@ static HRESULT d3d_device7_DrawIndexedPrimitiveStrided(IDirect3DDevice7 *iface,
             ib_pos ? WINED3D_MAP_NOOVERWRITE : WINED3D_MAP_DISCARD);
     if (FAILED(hr))
         goto done;
-    memcpy(dst_data, Indices, idx_size);
+    memcpy(dst_data, indices, idx_size);
     wined3d_buffer_unmap(device->index_buffer);
     device->index_buffer_pos = ib_pos + idx_size;
 
@@ -4166,9 +4187,9 @@ static HRESULT d3d_device7_DrawIndexedPrimitiveStrided(IDirect3DDevice7 *iface,
     wined3d_device_set_index_buffer(device->wined3d_device, device->index_buffer, WINED3DFMT_R16_UINT);
     wined3d_device_set_base_vertex_index(device->wined3d_device, vb_pos / vtx_dst_stride);
 
-    wined3d_device_set_vertex_declaration(device->wined3d_device, ddraw_find_decl(device->ddraw, VertexType));
-    wined3d_device_set_primitive_type(device->wined3d_device, PrimitiveType);
-    hr = wined3d_device_draw_indexed_primitive(device->wined3d_device, ib_pos / sizeof(WORD), IndexCount);
+    wined3d_device_set_vertex_declaration(device->wined3d_device, ddraw_find_decl(device->ddraw, fvf));
+    wined3d_device_set_primitive_type(device->wined3d_device, primitive_type);
+    hr = wined3d_device_draw_indexed_primitive(device->wined3d_device, ib_pos / sizeof(WORD), index_count);
 
 done:
     wined3d_mutex_unlock();
@@ -4235,28 +4256,28 @@ static HRESULT WINAPI d3d_device3_DrawIndexedPrimitiveStrided(IDirect3DDevice3 *
  *  DDERR_INVALIDPARAMS if D3DVertexBuf is NULL
  *
  *****************************************************************************/
-static HRESULT d3d_device7_DrawPrimitiveVB(IDirect3DDevice7 *iface, D3DPRIMITIVETYPE PrimitiveType,
-        IDirect3DVertexBuffer7 *D3DVertexBuf, DWORD StartVertex, DWORD NumVertices, DWORD Flags)
+static HRESULT d3d_device7_DrawPrimitiveVB(IDirect3DDevice7 *iface, D3DPRIMITIVETYPE primitive_type,
+        IDirect3DVertexBuffer7 *vb, DWORD start_vertex, DWORD vertex_count, DWORD flags)
 {
     struct d3d_device *device = impl_from_IDirect3DDevice7(iface);
-    struct d3d_vertex_buffer *vb = unsafe_impl_from_IDirect3DVertexBuffer7(D3DVertexBuf);
+    struct d3d_vertex_buffer *vb_impl = unsafe_impl_from_IDirect3DVertexBuffer7(vb);
     HRESULT hr;
     DWORD stride;
 
     TRACE("iface %p, primitive_type %#x, vb %p, start_vertex %u, vertex_count %u, flags %#x.\n",
-            iface, PrimitiveType, D3DVertexBuf, StartVertex, NumVertices, Flags);
+            iface, primitive_type, vb, start_vertex, vertex_count, flags);
 
-    /* Sanity checks */
-    if (!vb)
+    if (!vertex_count)
     {
-        WARN("No Vertex buffer specified.\n");
-        return DDERR_INVALIDPARAMS;
+        WARN("0 vertex count.\n");
+        return D3D_OK;
     }
-    stride = get_flexible_vertex_size(vb->fvf);
+
+    stride = get_flexible_vertex_size(vb_impl->fvf);
 
     wined3d_mutex_lock();
-    wined3d_device_set_vertex_declaration(device->wined3d_device, vb->wineD3DVertexDeclaration);
-    hr = wined3d_device_set_stream_source(device->wined3d_device, 0, vb->wineD3DVertexBuffer, 0, stride);
+    wined3d_device_set_vertex_declaration(device->wined3d_device, vb_impl->wineD3DVertexDeclaration);
+    hr = wined3d_device_set_stream_source(device->wined3d_device, 0, vb_impl->wineD3DVertexBuffer, 0, stride);
     if (FAILED(hr))
     {
         WARN("Failed to set stream source, hr %#x.\n", hr);
@@ -4265,8 +4286,8 @@ static HRESULT d3d_device7_DrawPrimitiveVB(IDirect3DDevice7 *iface, D3DPRIMITIVE
     }
 
     /* Now draw the primitives */
-    wined3d_device_set_primitive_type(device->wined3d_device, PrimitiveType);
-    hr = wined3d_device_draw_primitive(device->wined3d_device, StartVertex, NumVertices);
+    wined3d_device_set_primitive_type(device->wined3d_device, primitive_type);
+    hr = wined3d_device_draw_primitive(device->wined3d_device, start_vertex, vertex_count);
 
     wined3d_mutex_unlock();
 
@@ -4325,21 +4346,28 @@ static HRESULT WINAPI d3d_device3_DrawPrimitiveVB(IDirect3DDevice3 *iface, D3DPR
  *
  *****************************************************************************/
 static HRESULT d3d_device7_DrawIndexedPrimitiveVB(IDirect3DDevice7 *iface,
-        D3DPRIMITIVETYPE PrimitiveType, IDirect3DVertexBuffer7 *D3DVertexBuf,
-        DWORD StartVertex, DWORD NumVertices, WORD *Indices, DWORD IndexCount, DWORD Flags)
+        D3DPRIMITIVETYPE primitive_type, IDirect3DVertexBuffer7 *vb,
+        DWORD start_vertex, DWORD vertex_count, WORD *indices, DWORD index_count, DWORD flags)
 {
-    struct d3d_device *This = impl_from_IDirect3DDevice7(iface);
-    struct d3d_vertex_buffer *vb = unsafe_impl_from_IDirect3DVertexBuffer7(D3DVertexBuf);
-    DWORD stride = get_flexible_vertex_size(vb->fvf);
-    WORD *LockedIndices;
+    struct d3d_device *device = impl_from_IDirect3DDevice7(iface);
+    struct d3d_vertex_buffer *vb_impl = unsafe_impl_from_IDirect3DVertexBuffer7(vb);
+    DWORD stride = get_flexible_vertex_size(vb_impl->fvf);
+    WORD *index_data;
     HRESULT hr;
     UINT ib_pos;
 
-    TRACE("iface %p, primitive_type %#x, vb %p, start_vertex %u, vertex_count %u, indices %p, index_count %u, flags %#x.\n",
-            iface, PrimitiveType, D3DVertexBuf, StartVertex, NumVertices, Indices, IndexCount, Flags);
+    TRACE("iface %p, primitive_type %#x, vb %p, start_vertex %u, "
+            "vertex_count %u, indices %p, index_count %u, flags %#x.\n",
+            iface, primitive_type, vb, start_vertex, vertex_count, indices, index_count, flags);
+
+    if (!vertex_count || !index_count)
+    {
+        WARN("0 vertex or index count.\n");
+        return D3D_OK;
+    }
 
     /* Steps:
-     * 1) Upload the Indices to the index buffer
+     * 1) Upload the indices to the index buffer
      * 2) Set the index source
      * 3) Set the Vertex Buffer as the Stream source
      * 4) Call IWineD3DDevice::DrawIndexedPrimitive
@@ -4347,51 +4375,50 @@ static HRESULT d3d_device7_DrawIndexedPrimitiveVB(IDirect3DDevice7 *iface,
 
     wined3d_mutex_lock();
 
-    wined3d_device_set_vertex_declaration(This->wined3d_device, vb->wineD3DVertexDeclaration);
+    wined3d_device_set_vertex_declaration(device->wined3d_device, vb_impl->wineD3DVertexDeclaration);
 
-    hr = d3d_device_prepare_index_buffer(This, IndexCount * sizeof(WORD));
+    hr = d3d_device_prepare_index_buffer(device, index_count * sizeof(WORD));
     if (FAILED(hr))
     {
         wined3d_mutex_unlock();
         return hr;
     }
-    ib_pos = This->index_buffer_pos;
+    ib_pos = device->index_buffer_pos;
 
-    if (This->index_buffer_size - IndexCount * sizeof(WORD) < ib_pos)
+    if (device->index_buffer_size - index_count * sizeof(WORD) < ib_pos)
         ib_pos = 0;
 
     /* Copy the index stream into the index buffer. A new IWineD3DDevice
      * method could be created which takes an user pointer containing the
      * indices or a SetData-Method for the index buffer, which overrides the
      * index buffer data with our pointer. */
-    hr = wined3d_buffer_map(This->index_buffer, ib_pos, IndexCount * sizeof(WORD),
-            (BYTE **)&LockedIndices, ib_pos ? WINED3D_MAP_NOOVERWRITE : WINED3D_MAP_DISCARD);
+    hr = wined3d_buffer_map(device->index_buffer, ib_pos, index_count * sizeof(WORD),
+            (BYTE **)&index_data, ib_pos ? WINED3D_MAP_NOOVERWRITE : WINED3D_MAP_DISCARD);
     if (FAILED(hr))
     {
         ERR("Failed to map buffer, hr %#x.\n", hr);
         wined3d_mutex_unlock();
         return hr;
     }
-    memcpy(LockedIndices, Indices, IndexCount * sizeof(WORD));
-    wined3d_buffer_unmap(This->index_buffer);
-    This->index_buffer_pos = ib_pos + IndexCount * sizeof(WORD);
+    memcpy(index_data, indices, index_count * sizeof(WORD));
+    wined3d_buffer_unmap(device->index_buffer);
+    device->index_buffer_pos = ib_pos + index_count * sizeof(WORD);
 
     /* Set the index stream */
-    wined3d_device_set_base_vertex_index(This->wined3d_device, StartVertex);
-    wined3d_device_set_index_buffer(This->wined3d_device, This->index_buffer, WINED3DFMT_R16_UINT);
+    wined3d_device_set_base_vertex_index(device->wined3d_device, start_vertex);
+    wined3d_device_set_index_buffer(device->wined3d_device, device->index_buffer, WINED3DFMT_R16_UINT);
 
     /* Set the vertex stream source */
-    hr = wined3d_device_set_stream_source(This->wined3d_device, 0, vb->wineD3DVertexBuffer, 0, stride);
+    hr = wined3d_device_set_stream_source(device->wined3d_device, 0, vb_impl->wineD3DVertexBuffer, 0, stride);
     if (FAILED(hr))
     {
-        ERR("(%p) IDirect3DDevice::SetStreamSource failed with hr = %08x\n", This, hr);
+        ERR("(%p) IDirect3DDevice::SetStreamSource failed with hr = %08x\n", device, hr);
         wined3d_mutex_unlock();
         return hr;
     }
 
-
-    wined3d_device_set_primitive_type(This->wined3d_device, PrimitiveType);
-    hr = wined3d_device_draw_indexed_primitive(This->wined3d_device, ib_pos / sizeof(WORD), IndexCount);
+    wined3d_device_set_primitive_type(device->wined3d_device, primitive_type);
+    hr = wined3d_device_draw_indexed_primitive(device->wined3d_device, ib_pos / sizeof(WORD), index_count);
 
     wined3d_mutex_unlock();
 

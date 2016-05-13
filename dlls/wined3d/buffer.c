@@ -32,10 +32,9 @@ WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 #define WINED3D_BUFFER_HASDESC      0x01    /* A vertex description has been found. */
 #define WINED3D_BUFFER_CREATEBO     0x02    /* Create a buffer object for this buffer. */
 #define WINED3D_BUFFER_DOUBLEBUFFER 0x04    /* Keep both a buffer object and a system memory copy for this buffer. */
-#define WINED3D_BUFFER_FLUSH        0x08    /* Manual unmap flushing. */
-#define WINED3D_BUFFER_DISCARD      0x10    /* A DISCARD lock has occurred since the last preload. */
-#define WINED3D_BUFFER_SYNC         0x20    /* There has been at least one synchronized map since the last preload. */
-#define WINED3D_BUFFER_APPLESYNC    0x40    /* Using sync as in GL_APPLE_flush_buffer_range. */
+#define WINED3D_BUFFER_DISCARD      0x08    /* A DISCARD lock has occurred since the last preload. */
+#define WINED3D_BUFFER_SYNC         0x10    /* There has been at least one synchronized map since the last preload. */
+#define WINED3D_BUFFER_APPLESYNC    0x20    /* Using sync as in GL_APPLE_flush_buffer_range. */
 
 #define VB_MAXDECLCHANGES     100     /* After that number of decl changes we stop converting */
 #define VB_RESETDECLCHANGE    1000    /* Reset the decl changecount after that number of draws */
@@ -176,8 +175,6 @@ static void buffer_create_buffer_object(struct wined3d_buffer *This, struct wine
         {
             GL_EXTCALL(glBufferParameteriAPPLE(This->buffer_type_hint, GL_BUFFER_FLUSHING_UNMAP_APPLE, GL_FALSE));
             checkGLcall("glBufferParameteriAPPLE(This->buffer_type_hint, GL_BUFFER_FLUSHING_UNMAP_APPLE, GL_FALSE)");
-            This->flags |= WINED3D_BUFFER_FLUSH;
-
             GL_EXTCALL(glBufferParameteriAPPLE(This->buffer_type_hint, GL_BUFFER_SERIALIZED_MODIFY_APPLE, GL_FALSE));
             checkGLcall("glBufferParameteriAPPLE(This->buffer_type_hint, GL_BUFFER_SERIALIZED_MODIFY_APPLE, GL_FALSE)");
             This->flags |= WINED3D_BUFFER_APPLESYNC;
@@ -432,8 +429,9 @@ static inline void fixup_d3dcolor(DWORD *dst_color)
 {
     DWORD src_color = *dst_color;
 
-    /* Color conversion like in drawStridedSlow. watch out for little endianity
-     * If we want that stuff to work on big endian machines too we have to consider more things
+    /* Color conversion like in draw_primitive_immediate_mode(). Watch out for
+     * endianness. If we want this to work on big-endian machines as well we
+     * have to consider more things.
      *
      * 0xff000000: Alpha mask
      * 0x00ff0000: Blue mask
@@ -708,7 +706,7 @@ static void buffer_direct_upload(struct wined3d_buffer *This, const struct wined
             GL_EXTCALL(glFlushMappedBufferRange(This->buffer_type_hint, start, len));
             checkGLcall("glFlushMappedBufferRange");
         }
-        else if (This->flags & WINED3D_BUFFER_FLUSH)
+        else if (This->flags & WINED3D_BUFFER_APPLESYNC)
         {
             GL_EXTCALL(glFlushMappedBufferRangeAPPLE(This->buffer_type_hint, start, len));
             checkGLcall("glFlushMappedBufferRangeAPPLE");
@@ -1092,7 +1090,7 @@ void CDECL wined3d_buffer_unmap(struct wined3d_buffer *buffer)
                 checkGLcall("glFlushMappedBufferRange");
             }
         }
-        else if (buffer->flags & WINED3D_BUFFER_FLUSH)
+        else if (buffer->flags & WINED3D_BUFFER_APPLESYNC)
         {
             for (i = 0; i < buffer->modified_areas; ++i)
             {
@@ -1318,15 +1316,11 @@ static HRESULT buffer_init(struct wined3d_buffer *buffer, struct wined3d_device 
         buffer->flags |= WINED3D_BUFFER_DOUBLEBUFFER;
     }
 
+    /* Observations show that draw_primitive_immediate_mode() is faster on
+     * dynamic vertex buffers than converting + draw_primitive_arrays().
+     * (Half-Life 2 and others.) */
     dynamic_buffer_ok = gl_info->supported[APPLE_FLUSH_BUFFER_RANGE] || gl_info->supported[ARB_MAP_BUFFER_RANGE];
 
-    /* Observations show that drawStridedSlow is faster on dynamic VBs than converting +
-     * drawStridedFast (half-life 2 and others).
-     *
-     * Basically converting the vertices in the buffer is quite expensive, and observations
-     * show that drawStridedSlow is faster than converting + uploading + drawStridedFast.
-     * Therefore do not create a VBO for WINED3DUSAGE_DYNAMIC buffers.
-     */
     if (!gl_info->supported[ARB_VERTEX_BUFFER_OBJECT])
     {
         TRACE("Not creating a vbo because GL_ARB_vertex_buffer is not supported\n");

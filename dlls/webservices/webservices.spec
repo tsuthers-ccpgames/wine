@@ -11,16 +11,16 @@
 @ stub WsAddressMessage
 @ stdcall WsAlloc(ptr long ptr ptr)
 @ stub WsAsyncExecute
-@ stub WsCall
+@ stdcall WsCall(ptr ptr ptr ptr ptr long ptr ptr)
 @ stub WsCheckMustUnderstandHeaders
-@ stub WsCloseChannel
+@ stdcall WsCloseChannel(ptr ptr ptr)
 @ stub WsCloseListener
 @ stub WsCloseServiceHost
-@ stub WsCloseServiceProxy
+@ stdcall WsCloseServiceProxy(ptr ptr ptr)
 @ stub WsCombineUrl
 @ stub WsCopyError
 @ stub WsCopyNode
-@ stub WsCreateChannel
+@ stdcall WsCreateChannel(long long ptr long ptr ptr ptr)
 @ stub WsCreateChannelForListener
 @ stdcall WsCreateError(ptr long ptr)
 @ stub WsCreateFaultFromError
@@ -32,23 +32,23 @@
 @ stdcall WsCreateReader(ptr long ptr ptr)
 @ stub WsCreateServiceEndpointFromTemplate
 @ stub WsCreateServiceHost
-@ stub WsCreateServiceProxy
-@ stub WsCreateServiceProxyFromTemplate
+@ stdcall WsCreateServiceProxy(long long ptr ptr long ptr long ptr ptr)
+@ stdcall WsCreateServiceProxyFromTemplate(long ptr long long ptr long ptr long ptr ptr)
 @ stdcall WsCreateWriter(ptr long ptr ptr)
 @ stdcall WsCreateXmlBuffer(ptr ptr long ptr ptr)
 @ stub WsCreateXmlSecurityToken
-@ stub WsDateTimeToFileTime
+@ stdcall WsDateTimeToFileTime(ptr ptr ptr)
 @ stub WsDecodeUrl
 @ stub WsEncodeUrl
 @ stub WsEndReaderCanonicalization
 @ stub WsEndWriterCanonicalization
-@ stub WsFileTimeToDateTime
+@ stdcall WsFileTimeToDateTime(ptr ptr ptr)
 @ stub WsFillBody
 @ stdcall WsFillReader(ptr long ptr ptr)
 @ stdcall WsFindAttribute(ptr ptr ptr long ptr ptr)
 @ stub WsFlushBody
 @ stub WsFlushWriter
-@ stub WsFreeChannel
+@ stdcall WsFreeChannel(ptr)
 @ stdcall WsFreeError(ptr)
 @ stdcall WsFreeHeap(ptr)
 @ stub WsFreeListener
@@ -57,9 +57,9 @@
 @ stdcall WsFreeReader(ptr)
 @ stub WsFreeSecurityToken
 @ stub WsFreeServiceHost
-@ stub WsFreeServiceProxy
+@ stdcall WsFreeServiceProxy(ptr)
 @ stdcall WsFreeWriter(ptr)
-@ stub WsGetChannelProperty
+@ stdcall WsGetChannelProperty(ptr long ptr long ptr)
 @ stub WsGetCustomHeader
 @ stub WsGetDictionary
 @ stdcall WsGetErrorProperty(ptr long ptr long)
@@ -86,7 +86,7 @@
 @ stub WsGetSecurityContextProperty
 @ stub WsGetSecurityTokenProperty
 @ stub WsGetServiceHostProperty
-@ stub WsGetServiceProxyProperty
+@ stdcall WsGetServiceProxyProperty(ptr long ptr long ptr)
 @ stub WsGetWriterPosition
 @ stdcall WsGetWriterProperty(ptr long ptr long ptr)
 @ stdcall WsGetXmlAttribute(ptr ptr ptr ptr ptr ptr)
@@ -95,10 +95,10 @@
 @ stub WsMatchPolicyAlternative
 @ stdcall WsMoveReader(ptr long ptr ptr)
 @ stub WsMoveWriter
-@ stub WsOpenChannel
+@ stdcall WsOpenChannel(ptr ptr ptr ptr)
 @ stub WsOpenListener
 @ stub WsOpenServiceHost
-@ stub WsOpenServiceProxy
+@ stdcall WsOpenServiceProxy(ptr ptr ptr ptr)
 @ stub WsPullBytes
 @ stub WsPushBytes
 @ stub WsReadArray
@@ -135,7 +135,7 @@
 @ stub WsRequestSecurityToken
 @ stub WsResetChannel
 @ stub WsResetError
-@ stub WsResetHeap
+@ stdcall WsResetHeap(ptr ptr)
 @ stub WsResetListener
 @ stub WsResetMessage
 @ stub WsResetMetadata
@@ -145,7 +145,7 @@
 @ stub WsSendFaultMessageForError
 @ stub WsSendMessage
 @ stub WsSendReplyMessage
-@ stub WsSetChannelProperty
+@ stdcall WsSetChannelProperty(ptr long ptr long ptr)
 @ stdcall WsSetErrorProperty(ptr long ptr long)
 @ stub WsSetFaultErrorDetail
 @ stub WsSetFaultErrorProperty

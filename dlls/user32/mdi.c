@@ -103,7 +103,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(mdi);
 
 #define MDI_MAXTITLELENGTH      0xa1
 
-#define WM_MDICALCCHILDSCROLL   0x10ac /* this is exactly what Windows uses */
+#define WM_MDICALCCHILDSCROLL   0x003f /* this is exactly what Windows uses */
 
 /* "More Windows..." definitions */
 #define MDI_MOREWINDOWSLIMIT    9       /* after this number of windows, a "More Windows..."
@@ -400,7 +400,7 @@ static LRESULT MDI_RefreshMenu(MDICLIENTINFO *ci)
 
     if (!IsMenu(ci->hWindowMenu))
     {
-        WARN("Window menu handle %p is no more valid\n", ci->hWindowMenu);
+        WARN("Window menu handle %p is no longer valid\n", ci->hWindowMenu);
         return 0;
     }
 
@@ -501,8 +501,7 @@ static void MDI_ChildGetMinMaxInfo( HWND client, HWND hwnd, MINMAXINFO* lpMinMax
     lpMinMax->ptMaxPosition.x = rect.left;
     lpMinMax->ptMaxPosition.y = rect.top;
 
-    TRACE("max rect (%d,%d - %d, %d)\n",
-                        rect.left,rect.top,rect.right,rect.bottom);
+    TRACE("max rect %s\n", wine_dbgstr_rect(&rect));
 }
 
 /**********************************************************************

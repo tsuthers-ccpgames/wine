@@ -34,14 +34,14 @@
 @ cdecl _endthread() ucrtbase._endthread
 @ cdecl _endthreadex(long) ucrtbase._endthreadex
 @ cdecl _errno() ucrtbase._errno
-@ stub _execute_onexit_table
+@ cdecl _execute_onexit_table(ptr) ucrtbase._execute_onexit_table
 @ cdecl _exit(long) ucrtbase._exit
 @ cdecl _fpieee_flt(long ptr ptr) ucrtbase._fpieee_flt
 @ cdecl _fpreset() ucrtbase._fpreset
 @ cdecl _get_doserrno(ptr) ucrtbase._get_doserrno
 @ cdecl _get_errno(ptr) ucrtbase._get_errno
 @ cdecl _get_initial_narrow_environment() ucrtbase._get_initial_narrow_environment
-@ stub _get_initial_wide_environment
+@ cdecl _get_initial_wide_environment() ucrtbase._get_initial_wide_environment
 @ cdecl _get_invalid_parameter_handler() ucrtbase._get_invalid_parameter_handler
 @ stub _get_narrow_winmain_command_line
 @ cdecl _get_pgmptr(ptr) ucrtbase._get_pgmptr
@@ -52,7 +52,7 @@
 @ cdecl _getdllprocaddr(long str long) ucrtbase._getdllprocaddr
 @ cdecl _getpid() ucrtbase._getpid
 @ cdecl _initialize_narrow_environment() ucrtbase._initialize_narrow_environment
-@ stub _initialize_onexit_table
+@ cdecl _initialize_onexit_table(ptr) ucrtbase._initialize_onexit_table
 @ cdecl _initialize_wide_environment() ucrtbase._initialize_wide_environment
 @ cdecl _initterm(ptr ptr) ucrtbase._initterm
 @ cdecl _initterm_e(ptr ptr) ucrtbase._initterm_e
@@ -60,7 +60,7 @@
 @ stub _invalid_parameter_noinfo_noreturn
 @ stub _invoke_watson
 @ stub _query_app_type
-@ stub _register_onexit_function
+@ cdecl _register_onexit_function(ptr ptr) ucrtbase._register_onexit_function
 @ stub _register_thread_local_exe_atexit_callback
 @ cdecl _resetstkoflw() ucrtbase._resetstkoflw
 @ cdecl -arch=i386,x86_64,arm _seh_filter_dll(long ptr) ucrtbase._seh_filter_dll

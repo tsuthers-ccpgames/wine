@@ -3552,6 +3552,24 @@ connection_success:
     return TRUE;
 }
 
+/***********************************************************************
+ *             DisconnectEx
+ */
+static BOOL WINAPI WS2_DisconnectEx( SOCKET s, LPOVERLAPPED ov, DWORD flags, DWORD reserved )
+{
+    TRACE( "socket %04lx, ov %p, flags 0x%x, reserved 0x%x\n", s, ov, flags, reserved );
+
+    if (flags & TF_REUSE_SOCKET)
+        FIXME( "Reusing socket not supported yet\n" );
+
+    if (ov)
+    {
+        ov->Internal = STATUS_PENDING;
+        ov->InternalHigh = 0;
+    }
+
+    return !WS_shutdown( s, SD_BOTH );
+}
 
 /***********************************************************************
  *		getpeername		(WS2_32.5)
@@ -4767,7 +4785,8 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
         }
         else if ( IsEqualGUID(&disconnectex_guid, in_buff) )
         {
-            FIXME("SIO_GET_EXTENSION_FUNCTION_POINTER: unimplemented DisconnectEx\n");
+            *(LPFN_DISCONNECTEX *)out_buff = WS2_DisconnectEx;
+            break;
         }
         else if ( IsEqualGUID(&acceptex_guid, in_buff) )
         {
@@ -6452,6 +6471,9 @@ int WINAPI WS_getaddrinfo(LPCSTR nodename, LPCSTR servname, const struct WS_addr
 
         else if (IS_IPX_PROTO(punixhints->ai_protocol) && punixhints->ai_socktype != SOCK_DGRAM)
             punixhints->ai_socktype = 0;
+
+        else if (punixhints->ai_protocol == IPPROTO_IPV6)
+            punixhints->ai_protocol = 0;
     }
 
     /* getaddrinfo(3) is thread safe, no need to wrap in CS */

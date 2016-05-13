@@ -551,7 +551,7 @@ static void shader_glsl_load_samplers(const struct wined3d_gl_info *gl_info,
 }
 
 /* Context activation is done by the caller. */
-static inline void walk_constant_heap(const struct wined3d_gl_info *gl_info, const float *constants,
+static inline void walk_constant_heap(const struct wined3d_gl_info *gl_info, const struct wined3d_vec4 *constants,
         const GLint *constant_locations, const struct constant_heap *heap, unsigned char *stack, DWORD version)
 {
     unsigned int start = ~0U, end = 0;
@@ -620,28 +620,30 @@ static inline void walk_constant_heap(const struct wined3d_gl_info *gl_info, con
         }
     }
     if (start <= end)
-        GL_EXTCALL(glUniform4fv(constant_locations[start], end - start + 1, &constants[start * 4]));
+        GL_EXTCALL(glUniform4fv(constant_locations[start], end - start + 1, &constants[start].x));
     checkGLcall("walk_constant_heap()");
 }
 
 /* Context activation is done by the caller. */
-static inline void apply_clamped_constant(const struct wined3d_gl_info *gl_info, GLint location, const GLfloat *data)
+static inline void apply_clamped_constant(const struct wined3d_gl_info *gl_info,
+        GLint location, const struct wined3d_vec4 *data)
 {
     GLfloat clamped_constant[4];
 
     if (location == -1) return;
 
-    clamped_constant[0] = data[0] < -1.0f ? -1.0f : data[0] > 1.0f ? 1.0f : data[0];
-    clamped_constant[1] = data[1] < -1.0f ? -1.0f : data[1] > 1.0f ? 1.0f : data[1];
-    clamped_constant[2] = data[2] < -1.0f ? -1.0f : data[2] > 1.0f ? 1.0f : data[2];
-    clamped_constant[3] = data[3] < -1.0f ? -1.0f : data[3] > 1.0f ? 1.0f : data[3];
+    clamped_constant[0] = data->x < -1.0f ? -1.0f : data->x > 1.0f ? 1.0f : data->x;
+    clamped_constant[1] = data->y < -1.0f ? -1.0f : data->y > 1.0f ? 1.0f : data->y;
+    clamped_constant[2] = data->z < -1.0f ? -1.0f : data->z > 1.0f ? 1.0f : data->z;
+    clamped_constant[3] = data->w < -1.0f ? -1.0f : data->w > 1.0f ? 1.0f : data->w;
 
     GL_EXTCALL(glUniform4fv(location, 1, clamped_constant));
 }
 
 /* Context activation is done by the caller. */
-static inline void walk_constant_heap_clamped(const struct wined3d_gl_info *gl_info, const float *constants,
-        const GLint *constant_locations, const struct constant_heap *heap, unsigned char *stack, DWORD version)
+static inline void walk_constant_heap_clamped(const struct wined3d_gl_info *gl_info,
+        const struct wined3d_vec4 *constants, const GLint *constant_locations,
+        const struct constant_heap *heap, unsigned char *stack, DWORD version)
 {
     int stack_idx = 0;
     unsigned int heap_idx = 1;
@@ -650,7 +652,7 @@ static inline void walk_constant_heap_clamped(const struct wined3d_gl_info *gl_i
     if (heap->entries[heap_idx].version <= version) return;
 
     idx = heap->entries[heap_idx].idx;
-    apply_clamped_constant(gl_info, constant_locations[idx], &constants[idx * 4]);
+    apply_clamped_constant(gl_info, constant_locations[idx], &constants[idx]);
     stack[stack_idx] = HEAP_NODE_TRAVERSE_LEFT;
 
     while (stack_idx >= 0)
@@ -665,7 +667,7 @@ static inline void walk_constant_heap_clamped(const struct wined3d_gl_info *gl_i
                 {
                     heap_idx = left_idx;
                     idx = heap->entries[heap_idx].idx;
-                    apply_clamped_constant(gl_info, constant_locations[idx], &constants[idx * 4]);
+                    apply_clamped_constant(gl_info, constant_locations[idx], &constants[idx]);
 
                     stack[stack_idx++] = HEAP_NODE_TRAVERSE_RIGHT;
                     stack[stack_idx] = HEAP_NODE_TRAVERSE_LEFT;
@@ -680,7 +682,7 @@ static inline void walk_constant_heap_clamped(const struct wined3d_gl_info *gl_i
                 {
                     heap_idx = right_idx;
                     idx = heap->entries[heap_idx].idx;
-                    apply_clamped_constant(gl_info, constant_locations[idx], &constants[idx * 4]);
+                    apply_clamped_constant(gl_info, constant_locations[idx], &constants[idx]);
 
                     stack[stack_idx++] = HEAP_NODE_POP;
                     stack[stack_idx] = HEAP_NODE_TRAVERSE_LEFT;
@@ -698,9 +700,9 @@ static inline void walk_constant_heap_clamped(const struct wined3d_gl_info *gl_i
 }
 
 /* Context activation is done by the caller. */
-static void shader_glsl_load_constantsF(const struct wined3d_shader *shader, const struct wined3d_gl_info *gl_info,
-        const float *constants, const GLint *constant_locations, const struct constant_heap *heap,
-        unsigned char *stack, UINT version)
+static void shader_glsl_load_constants_f(const struct wined3d_shader *shader, const struct wined3d_gl_info *gl_info,
+        const struct wined3d_vec4 *constants, const GLint *constant_locations, const struct constant_heap *heap,
+        unsigned char *stack, unsigned int version)
 {
     const struct wined3d_shader_lconst *lconst;
 
@@ -1329,7 +1331,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
     update_mask = context->constant_update_mask & prog->constant_update_mask;
 
     if (update_mask & WINED3D_SHADER_CONST_VS_F)
-        shader_glsl_load_constantsF(vshader, gl_info, state->vs_consts_f,
+        shader_glsl_load_constants_f(vshader, gl_info, state->vs_consts_f,
                 prog->vs.uniform_f_locations, &priv->vconst_heap, priv->stack, constant_version);
 
     if (update_mask & WINED3D_SHADER_CONST_VS_I)
@@ -1402,7 +1404,7 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
     }
 
     if (update_mask & WINED3D_SHADER_CONST_PS_F)
-        shader_glsl_load_constantsF(pshader, gl_info, state->ps_consts_f,
+        shader_glsl_load_constants_f(pshader, gl_info, state->ps_consts_f,
                 prog->ps.uniform_f_locations, &priv->pconst_heap, priv->stack, constant_version);
 
     if (update_mask & WINED3D_SHADER_CONST_PS_I)
@@ -1860,7 +1862,7 @@ static void shader_generate_glsl_declarations(const struct wined3d_context *cont
 
             default:
                 sampler_type = "unsupported_sampler";
-                FIXME("Unhandled resource type %#x.\n", reg_maps->resource_info[i].type);
+                FIXME("Unhandled resource type %#x.\n", reg_maps->resource_info[entry->resource_idx].type);
                 break;
         }
         shader_addline(buffer, "uniform %s%s %s_sampler%u;\n",

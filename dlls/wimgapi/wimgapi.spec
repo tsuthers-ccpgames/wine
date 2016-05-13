@@ -5,7 +5,7 @@
 @ stub WIMCloseHandle
 @ stub WIMCommitImageHandle
 @ stub WIMCopyFile
-@ stub WIMCreateFile
+@ stdcall WIMCreateFile(wstr long long long long ptr)
 @ stub WIMCreateImageFile
 @ stub WIMDeleteImage
 @ stub WIMDeleteImageMounts
@@ -21,7 +21,7 @@
 @ stub WIMGetMountedImageHandle
 @ stub WIMGetMountedImageInfo
 @ stub WIMGetMountedImageInfoFromFile
-@ stub WIMGetMountedImages
+@ stdcall WIMGetMountedImages(ptr ptr)
 @ stub WIMInitFileIOCallbacks
 @ stub WIMLoadImage
 @ stub WIMMountImage

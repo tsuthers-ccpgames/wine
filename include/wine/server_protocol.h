@@ -1292,6 +1292,22 @@ struct open_mutex_reply
 
 
 
+struct query_mutex_request
+{
+    struct request_header __header;
+    obj_handle_t  handle;
+};
+struct query_mutex_reply
+{
+    struct reply_header __header;
+    unsigned int count;
+    int          owned;
+    int          abandoned;
+    char __pad_20[4];
+};
+
+
+
 struct create_semaphore_request
 {
     struct request_header __header;
@@ -1448,6 +1464,21 @@ enum server_fd_type
     FD_TYPE_CHAR,
     FD_TYPE_DEVICE,
     FD_TYPE_NB_TYPES
+};
+
+
+
+struct get_directory_cache_entry_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+};
+struct get_directory_cache_entry_reply
+{
+    struct reply_header __header;
+    int          entry;
+    /* VARARG(free,ints); */
+    char __pad_12[4];
 };
 
 
@@ -5392,6 +5423,7 @@ enum request
     REQ_create_mutex,
     REQ_release_mutex,
     REQ_open_mutex,
+    REQ_query_mutex,
     REQ_create_semaphore,
     REQ_release_semaphore,
     REQ_query_semaphore,
@@ -5401,6 +5433,7 @@ enum request
     REQ_alloc_file_handle,
     REQ_get_handle_unix_name,
     REQ_get_handle_fd,
+    REQ_get_directory_cache_entry,
     REQ_flush,
     REQ_lock_file,
     REQ_unlock_file,
@@ -5670,6 +5703,7 @@ union generic_request
     struct create_mutex_request create_mutex_request;
     struct release_mutex_request release_mutex_request;
     struct open_mutex_request open_mutex_request;
+    struct query_mutex_request query_mutex_request;
     struct create_semaphore_request create_semaphore_request;
     struct release_semaphore_request release_semaphore_request;
     struct query_semaphore_request query_semaphore_request;
@@ -5679,6 +5713,7 @@ union generic_request
     struct alloc_file_handle_request alloc_file_handle_request;
     struct get_handle_unix_name_request get_handle_unix_name_request;
     struct get_handle_fd_request get_handle_fd_request;
+    struct get_directory_cache_entry_request get_directory_cache_entry_request;
     struct flush_request flush_request;
     struct lock_file_request lock_file_request;
     struct unlock_file_request unlock_file_request;
@@ -5946,6 +5981,7 @@ union generic_reply
     struct create_mutex_reply create_mutex_reply;
     struct release_mutex_reply release_mutex_reply;
     struct open_mutex_reply open_mutex_reply;
+    struct query_mutex_reply query_mutex_reply;
     struct create_semaphore_reply create_semaphore_reply;
     struct release_semaphore_reply release_semaphore_reply;
     struct query_semaphore_reply query_semaphore_reply;
@@ -5955,6 +5991,7 @@ union generic_reply
     struct alloc_file_handle_reply alloc_file_handle_reply;
     struct get_handle_unix_name_reply get_handle_unix_name_reply;
     struct get_handle_fd_reply get_handle_fd_reply;
+    struct get_directory_cache_entry_reply get_directory_cache_entry_reply;
     struct flush_reply flush_reply;
     struct lock_file_reply lock_file_reply;
     struct unlock_file_reply unlock_file_reply;
@@ -6184,6 +6221,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 502
+#define SERVER_PROTOCOL_VERSION 504
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

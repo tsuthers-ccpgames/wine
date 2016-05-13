@@ -646,7 +646,7 @@ void CDECL MSVCRT___set_app_type(int app_type)
  */
 char** CDECL _get_initial_narrow_environment(void)
 {
-  return MSVCRT___argv;
+  return MSVCRT___initenv;
 }
 
 /*********************************************************************
@@ -665,6 +665,14 @@ int CDECL _initialize_narrow_environment(void)
 {
   TRACE("\n");
   return 0;
+}
+
+/*********************************************************************
+ *		_get_initial_wide_environment (UCRTBASE.@)
+ */
+MSVCRT_wchar_t** CDECL _get_initial_wide_environment(void)
+{
+  return MSVCRT___winitenv;
 }
 
 /*********************************************************************

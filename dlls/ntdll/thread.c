@@ -251,6 +251,10 @@ HANDLE thread_init(void)
     peb->TlsExpansionBitmap = &tls_expansion_bitmap;
     peb->FlsBitmap          = &fls_bitmap;
     peb->LdrData            = &ldr;
+    peb->OSMajorVersion     = 5;
+    peb->OSMinorVersion     = 1;
+    peb->OSBuildNumber      = 0xA28;
+    peb->OSPlatformId       = VER_PLATFORM_WIN32_NT;
     params.CurrentDirectory.DosPath.Buffer = current_dir;
     params.CurrentDirectory.DosPath.MaximumLength = sizeof(current_dir);
     params.wShowWindow = 1; /* SW_SHOWNORMAL */
@@ -1041,6 +1045,7 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
                     tdi->Entry.HighWord.Bits.Granularity = 1;
                     tdi->Entry.HighWord.Bits.Default_Big = 1;
                     tdi->Entry.HighWord.Bits.Type        = 0x12;
+                    tdi->Entry.HighWord.Bits.Reserved_0  = 0;
                     /* it has to be one of the system GDT selectors */
                     if (sel != (wine_get_ds() & ~3) && sel != (wine_get_ss() & ~3))
                     {

@@ -3205,7 +3205,7 @@ static void test_scissor_size(void)
         ok(hr == D3D_OK, "IDirect3DDevice9_GetScissorRect failed with: %08x\n", hr);
         ok(scissorrect.right == scts[i].backx && scissorrect.bottom == scts[i].backy
                 && scissorrect.top == 0 && scissorrect.left == 0,
-                "Scissorrect missmatch (%d, %d) should be (%d, %d)\n", scissorrect.right, scissorrect.bottom,
+                "Scissorrect mismatch (%d, %d) should be (%d, %d)\n", scissorrect.right, scissorrect.bottom,
                 scts[i].backx, scts[i].backy);
 
         /* check the scissorrect values after a reset */
@@ -3221,7 +3221,7 @@ static void test_scissor_size(void)
         ok(hr == D3D_OK, "IDirect3DDevice9_GetScissorRect failed with: %08x\n", hr);
         ok(scissorrect.right == registry_mode.dmPelsWidth && scissorrect.bottom == registry_mode.dmPelsHeight
                 && scissorrect.top == 0 && scissorrect.left == 0,
-                "Scissorrect missmatch (%d, %d) should be (%u, %u)\n", scissorrect.right, scissorrect.bottom,
+                "Scissorrect mismatch (%d, %d) should be (%u, %u)\n", scissorrect.right, scissorrect.bottom,
                 registry_mode.dmPelsWidth, registry_mode.dmPelsHeight);
 
         if(device_ptr) {
@@ -7567,40 +7567,44 @@ static void test_getdc(void)
     {
         const char *name;
         D3DFORMAT format;
+        unsigned int bit_count;
+        DWORD mask_r, mask_g, mask_b;
         BOOL getdc_supported;
     }
     testdata[] =
     {
-        {"D3DFMT_A8R8G8B8",    D3DFMT_A8R8G8B8,    TRUE },
-        {"D3DFMT_X8R8G8B8",    D3DFMT_X8R8G8B8,    TRUE },
-        {"D3DFMT_R5G6B5",      D3DFMT_R5G6B5,      TRUE },
-        {"D3DFMT_X1R5G5B5",    D3DFMT_X1R5G5B5,    TRUE },
-        {"D3DFMT_A1R5G5B5",    D3DFMT_A1R5G5B5,    TRUE },
-        {"D3DFMT_R8G8B8",      D3DFMT_R8G8B8,      TRUE },
-        {"D3DFMT_A2R10G10B10", D3DFMT_A2R10G10B10, FALSE}, /* Untested, card on windows didn't support it. */
-        {"D3DFMT_V8U8",        D3DFMT_V8U8,        FALSE},
-        {"D3DFMT_Q8W8V8U8",    D3DFMT_Q8W8V8U8,    FALSE},
-        {"D3DFMT_A8B8G8R8",    D3DFMT_A8B8G8R8,    FALSE},
-        {"D3DFMT_X8B8G8R8",    D3DFMT_A8B8G8R8,    FALSE},
-        {"D3DFMT_R3G3B2",      D3DFMT_R3G3B2,      FALSE},
-        {"D3DFMT_P8",          D3DFMT_P8,          FALSE},
-        {"D3DFMT_L8",          D3DFMT_L8,          FALSE},
-        {"D3DFMT_A8L8",        D3DFMT_A8L8,        FALSE},
-        {"D3DFMT_DXT1",        D3DFMT_DXT1,        FALSE},
-        {"D3DFMT_DXT2",        D3DFMT_DXT2,        FALSE},
-        {"D3DFMT_DXT3",        D3DFMT_DXT3,        FALSE},
-        {"D3DFMT_DXT4",        D3DFMT_DXT4,        FALSE},
-        {"D3DFMT_DXT5",        D3DFMT_DXT5,        FALSE},
+        {"A8R8G8B8",    D3DFMT_A8R8G8B8,    32, 0x00000000, 0x00000000, 0x00000000, TRUE },
+        {"X8R8G8B8",    D3DFMT_X8R8G8B8,    32, 0x00000000, 0x00000000, 0x00000000, TRUE },
+        {"R5G6B5",      D3DFMT_R5G6B5,      16, 0x0000f800, 0x000007e0, 0x0000001f, TRUE },
+        {"X1R5G5B5",    D3DFMT_X1R5G5B5,    16, 0x00007c00, 0x000003e0, 0x0000001f, TRUE },
+        {"A1R5G5B5",    D3DFMT_A1R5G5B5,    16, 0x00007c00, 0x000003e0, 0x0000001f, TRUE },
+        {"R8G8B8",      D3DFMT_R8G8B8,      24, 0x00000000, 0x00000000, 0x00000000, TRUE },
+        {"A2R10G10B10", D3DFMT_A2R10G10B10, 32, 0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"V8U8",        D3DFMT_V8U8,        16, 0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"Q8W8V8U8",    D3DFMT_Q8W8V8U8,    32, 0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"A8B8G8R8",    D3DFMT_A8B8G8R8,    32, 0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"X8B8G8R8",    D3DFMT_A8B8G8R8,    32, 0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"R3G3B2",      D3DFMT_R3G3B2,      8,  0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"P8",          D3DFMT_P8,          8,  0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"L8",          D3DFMT_L8,          8,  0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"A8L8",        D3DFMT_A8L8,        16, 0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"DXT1",        D3DFMT_DXT1,        4,  0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"DXT2",        D3DFMT_DXT2,        8,  0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"DXT3",        D3DFMT_DXT3,        8,  0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"DXT4",        D3DFMT_DXT4,        8,  0x00000000, 0x00000000, 0x00000000, FALSE},
+        {"DXT5",        D3DFMT_DXT5,        8,  0x00000000, 0x00000000, 0x00000000, FALSE},
     };
+    IDirect3DSurface9 *surface, *surface2;
+    IDirect3DCubeTexture9 *cube_texture;
     IDirect3DTexture9 *texture;
-    IDirect3DSurface9 *surface;
     IDirect3DDevice9 *device;
+    D3DLOCKED_RECT map_desc;
     IDirect3D9 *d3d;
     unsigned int i;
     ULONG refcount;
     HWND window;
+    HDC dc, dc2;
     HRESULT hr;
-    HDC dc;
 
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW,
             0, 0, 640, 480, 0, 0, 0, 0);
@@ -7641,6 +7645,77 @@ static void test_getdc(void)
 
         if (SUCCEEDED(hr))
         {
+            unsigned int width_bytes;
+            DIBSECTION dib;
+            HBITMAP bitmap;
+            DWORD type;
+            int size;
+
+            type = GetObjectType(dc);
+            ok(type == OBJ_MEMDC, "Got unexpected object type %#x for format %s.\n", type, testdata[i].name);
+            bitmap = GetCurrentObject(dc, OBJ_BITMAP);
+            type = GetObjectType(bitmap);
+            ok(type == OBJ_BITMAP, "Got unexpected object type %#x for format %s.\n", type, testdata[i].name);
+
+            size = GetObjectA(bitmap, sizeof(dib), &dib);
+            ok(size == sizeof(dib), "Got unexpected size %d for format %s.\n", size, testdata[i].name);
+            ok(!dib.dsBm.bmType, "Got unexpected type %#x for format %s.\n",
+                    dib.dsBm.bmType, testdata[i].name);
+            ok(dib.dsBm.bmWidth == 64, "Got unexpected width %d for format %s.\n",
+                    dib.dsBm.bmWidth, testdata[i].name);
+            ok(dib.dsBm.bmHeight == 64, "Got unexpected height %d for format %s.\n",
+                    dib.dsBm.bmHeight, testdata[i].name);
+            width_bytes = ((dib.dsBm.bmWidth * testdata[i].bit_count + 31) >> 3) & ~3;
+            ok(dib.dsBm.bmWidthBytes == width_bytes, "Got unexpected width bytes %d for format %s.\n",
+                    dib.dsBm.bmWidthBytes, testdata[i].name);
+            ok(dib.dsBm.bmPlanes == 1, "Got unexpected plane count %d for format %s.\n",
+                    dib.dsBm.bmPlanes, testdata[i].name);
+            ok(dib.dsBm.bmBitsPixel == testdata[i].bit_count,
+                    "Got unexpected bit count %d for format %s.\n",
+                    dib.dsBm.bmBitsPixel, testdata[i].name);
+            ok(!!dib.dsBm.bmBits, "Got unexpected bits %p for format %s.\n",
+                    dib.dsBm.bmBits, testdata[i].name);
+
+            ok(dib.dsBmih.biSize == sizeof(dib.dsBmih), "Got unexpected size %u for format %s.\n",
+                    dib.dsBmih.biSize, testdata[i].name);
+            ok(dib.dsBmih.biWidth == 64, "Got unexpected width %d for format %s.\n",
+                    dib.dsBmih.biHeight, testdata[i].name);
+            ok(dib.dsBmih.biHeight == 64, "Got unexpected height %d for format %s.\n",
+                    dib.dsBmih.biHeight, testdata[i].name);
+            ok(dib.dsBmih.biPlanes == 1, "Got unexpected plane count %u for format %s.\n",
+                    dib.dsBmih.biPlanes, testdata[i].name);
+            ok(dib.dsBmih.biBitCount == testdata[i].bit_count, "Got unexpected bit count %u for format %s.\n",
+                    dib.dsBmih.biBitCount, testdata[i].name);
+            ok(dib.dsBmih.biCompression == (testdata[i].bit_count == 16 ? BI_BITFIELDS : BI_RGB),
+                    "Got unexpected compression %#x for format %s.\n",
+                    dib.dsBmih.biCompression, testdata[i].name);
+            ok(!dib.dsBmih.biSizeImage, "Got unexpected image size %u for format %s.\n",
+                    dib.dsBmih.biSizeImage, testdata[i].name);
+            ok(!dib.dsBmih.biXPelsPerMeter, "Got unexpected horizontal resolution %d for format %s.\n",
+                    dib.dsBmih.biXPelsPerMeter, testdata[i].name);
+            ok(!dib.dsBmih.biYPelsPerMeter, "Got unexpected vertical resolution %d for format %s.\n",
+                    dib.dsBmih.biYPelsPerMeter, testdata[i].name);
+            ok(!dib.dsBmih.biClrUsed, "Got unexpected used colour count %u for format %s.\n",
+                    dib.dsBmih.biClrUsed, testdata[i].name);
+            ok(!dib.dsBmih.biClrImportant, "Got unexpected important colour count %u for format %s.\n",
+                    dib.dsBmih.biClrImportant, testdata[i].name);
+
+            if (dib.dsBmih.biCompression == BI_BITFIELDS)
+            {
+                ok(dib.dsBitfields[0] == testdata[i].mask_r && dib.dsBitfields[1] == testdata[i].mask_g
+                        && dib.dsBitfields[2] == testdata[i].mask_b,
+                        "Got unexpected colour masks 0x%08x 0x%08x 0x%08x for format %s.\n",
+                        dib.dsBitfields[0], dib.dsBitfields[1], dib.dsBitfields[2], testdata[i].name);
+            }
+            else
+            {
+                ok(!dib.dsBitfields[0] && !dib.dsBitfields[1] && !dib.dsBitfields[2],
+                        "Got unexpected colour masks 0x%08x 0x%08x 0x%08x for format %s.\n",
+                        dib.dsBitfields[0], dib.dsBitfields[1], dib.dsBitfields[2], testdata[i].name);
+            }
+            ok(!dib.dshSection, "Got unexpected section %p for format %s.\n", dib.dshSection, testdata[i].name);
+            ok(!dib.dsOffset, "Got unexpected offset %u for format %s.\n", dib.dsOffset, testdata[i].name);
+
             hr = IDirect3DSurface9_ReleaseDC(surface, dc);
             ok(hr == D3D_OK, "Failed to release DC, hr %#x.\n", hr);
         }
@@ -7652,6 +7727,153 @@ static void test_getdc(void)
         IDirect3DSurface9_Release(surface);
         if (texture)
             IDirect3DTexture9_Release(texture);
+
+        if (!testdata[i].getdc_supported)
+            continue;
+
+        if (FAILED(hr = IDirect3DDevice9_CreateCubeTexture(device, 64, 0, 0,
+                testdata[i].format, D3DPOOL_MANAGED, &cube_texture, NULL)))
+        {
+            skip("Failed to create cube texture for format %s (hr %#x), skipping tests.\n", testdata[i].name, hr);
+            continue;
+        }
+
+        hr = IDirect3DCubeTexture9_GetCubeMapSurface(cube_texture, D3DCUBEMAP_FACE_POSITIVE_X, 0, &surface);
+        ok(SUCCEEDED(hr), "Failed to get cube surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DCubeTexture9_GetCubeMapSurface(cube_texture, D3DCUBEMAP_FACE_NEGATIVE_Y, 2, &surface2);
+        ok(SUCCEEDED(hr), "Failed to get cube surface for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_GetDC(surface, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_GetDC(surface2, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_ReleaseDC(surface2, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_GetDC(surface, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        dc2 = (void *)0x1234;
+        hr = IDirect3DSurface9_GetDC(surface, &dc2);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        ok(dc2 == (void *)0x1234, "Got unexpected dc %p for format %s.\n", dc, testdata[i].name);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+
+        hr = IDirect3DSurface9_LockRect(surface, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(SUCCEEDED(hr), "Failed to map surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_LockRect(surface, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+
+        hr = IDirect3DSurface9_GetDC(surface, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_LockRect(surface, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_LockRect(surface, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(SUCCEEDED(hr), "Failed to map surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_GetDC(surface, &dc);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_GetDC(surface, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_GetDC(surface2, &dc2);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_ReleaseDC(surface2, dc2);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_GetDC(surface2, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_GetDC(surface, &dc2);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc2);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_ReleaseDC(surface2, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_LockRect(surface, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(SUCCEEDED(hr), "Failed to map surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_LockRect(surface2, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(SUCCEEDED(hr), "Failed to map surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_UnlockRect(surface2);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_LockRect(surface, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(SUCCEEDED(hr), "Failed to map surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_GetDC(surface, &dc);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_LockRect(surface2, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(SUCCEEDED(hr), "Failed to map surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_GetDC(surface, &dc);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_UnlockRect(surface2);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_GetDC(surface, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_LockRect(surface2, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_UnlockRect(surface2);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_GetDC(surface2, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_LockRect(surface, &map_desc, NULL, D3DLOCK_READONLY);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_ReleaseDC(surface2, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_GetDC(surface2, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_ReleaseDC(surface2, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+
+        hr = IDirect3DSurface9_UnlockRect(surface2);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+        hr = IDirect3DSurface9_GetDC(surface, &dc);
+        ok(SUCCEEDED(hr), "Failed to get DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_UnlockRect(surface2);
+        ok(SUCCEEDED(hr), "Failed to unmap surface for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_ReleaseDC(surface, dc);
+        ok(SUCCEEDED(hr), "Failed to release DC for format %s, hr %#x.\n", testdata[i].name, hr);
+        hr = IDirect3DSurface9_UnlockRect(surface2);
+        ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x for format %s.\n", hr, testdata[i].name);
+
+        IDirect3DSurface9_Release(surface2);
+        IDirect3DSurface9_Release(surface);
+        IDirect3DCubeTexture9_Release(cube_texture);
     }
 
     refcount = IDirect3DDevice9_Release(device);
@@ -10755,6 +10977,151 @@ static void test_check_device_format(void)
     IDirect3D9_Release(d3d);
 }
 
+static void test_miptree_layout(void)
+{
+    unsigned int pool_idx, format_idx, base_dimension, level_count, offset, i, j;
+    IDirect3DCubeTexture9 *texture_cube;
+    IDirect3DTexture9 *texture_2d;
+    IDirect3DDevice9 *device;
+    D3DLOCKED_RECT map_desc;
+    BYTE *base = NULL;
+    IDirect3D9 *d3d;
+    D3DCAPS9 caps;
+    UINT refcount;
+    HWND window;
+    HRESULT hr;
+
+    static const struct
+    {
+        D3DFORMAT format;
+        const char *name;
+    }
+    formats[] =
+    {
+        {D3DFMT_A8R8G8B8, "D3DFMT_A8R8G8B8"},
+        {D3DFMT_A8,       "D3DFMT_A8"},
+        {D3DFMT_L8,       "D3DFMT_L8"},
+    };
+    static const struct
+    {
+        D3DPOOL pool;
+        const char *name;
+    }
+    pools[] =
+    {
+        {D3DPOOL_MANAGED,   "D3DPOOL_MANAGED"},
+        {D3DPOOL_SYSTEMMEM, "D3DPOOL_SYSTEMMEM"},
+        {D3DPOOL_SCRATCH,   "D3DPOOL_SCRATCH"},
+    };
+
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, NULL)))
+    {
+        skip("Failed to create a D3D device, skipping tests.\n");
+        goto done;
+    }
+
+    hr = IDirect3DDevice9_GetDeviceCaps(device, &caps);
+    ok(SUCCEEDED(hr), "Failed to get caps, hr %#x.\n", hr);
+
+    base_dimension = 257;
+    if (caps.TextureCaps & (D3DPTEXTURECAPS_POW2 | D3DPTEXTURECAPS_CUBEMAP_POW2))
+    {
+        skip("Using power of two base dimension.\n");
+        base_dimension = 256;
+    }
+
+    for (format_idx = 0; format_idx < sizeof(formats) / sizeof(*formats); ++format_idx)
+    {
+        if (FAILED(hr = IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+                D3DFMT_X8R8G8B8, 0, D3DRTYPE_TEXTURE, formats[format_idx].format)))
+        {
+            skip("%s textures not supported, skipping tests.\n", formats[format_idx].name);
+            continue;
+        }
+
+        for (pool_idx = 0; pool_idx < sizeof(pools) / sizeof(*pools); ++pool_idx)
+        {
+            hr = IDirect3DDevice9_CreateTexture(device, base_dimension, base_dimension, 0, 0,
+                    formats[format_idx].format, pools[pool_idx].pool, &texture_2d, NULL);
+            ok(SUCCEEDED(hr), "Failed to create a %s %s texture, hr %#x.\n",
+                    pools[pool_idx].name, formats[format_idx].name, hr);
+
+            level_count = IDirect3DTexture9_GetLevelCount(texture_2d);
+            for (i = 0, offset = 0; i < level_count; ++i)
+            {
+                hr = IDirect3DTexture9_LockRect(texture_2d, i, &map_desc, NULL, 0);
+                ok(SUCCEEDED(hr), "%s, %s: Failed to lock level %u, hr %#x.\n",
+                        pools[pool_idx].name, formats[format_idx].name, i, hr);
+
+                if (!i)
+                    base = map_desc.pBits;
+                else
+                    ok(map_desc.pBits == base + offset,
+                            "%s, %s, level %u: Got unexpected pBits %p, expected %p.\n",
+                            pools[pool_idx].name, formats[format_idx].name, i, map_desc.pBits, base + offset);
+                offset += (base_dimension >> i) * map_desc.Pitch;
+
+                hr = IDirect3DTexture9_UnlockRect(texture_2d, i);
+                ok(SUCCEEDED(hr), "%s, %s Failed to unlock level %u, hr %#x.\n",
+                        pools[pool_idx].name, formats[format_idx].name, i, hr);
+            }
+
+            IDirect3DTexture9_Release(texture_2d);
+        }
+
+        if (FAILED(hr = IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL,
+                D3DFMT_X8R8G8B8, 0, D3DRTYPE_CUBETEXTURE, formats[format_idx].format)))
+        {
+            skip("%s cube textures not supported, skipping tests.\n", formats[format_idx].name);
+            continue;
+        }
+
+        for (pool_idx = 0; pool_idx < sizeof(pools) / sizeof(*pools); ++pool_idx)
+        {
+            hr = IDirect3DDevice9_CreateCubeTexture(device, base_dimension, 0, 0,
+                    formats[format_idx].format, pools[pool_idx].pool, &texture_cube, NULL);
+            ok(SUCCEEDED(hr), "Failed to create a %s %s cube texture, hr %#x.\n",
+                    pools[pool_idx].name, formats[format_idx].name, hr);
+
+            level_count = IDirect3DCubeTexture9_GetLevelCount(texture_cube);
+            for (i = 0, offset = 0; i < 6; ++i)
+            {
+                for (j = 0; j < level_count; ++j)
+                {
+                    hr = IDirect3DCubeTexture9_LockRect(texture_cube, i, j, &map_desc, NULL, 0);
+                    ok(SUCCEEDED(hr), "%s, %s: Failed to lock face %u, level %u, hr %#x.\n",
+                            pools[pool_idx].name, formats[format_idx].name, i, j, hr);
+
+                    if (!i && !j)
+                        base = map_desc.pBits;
+                    else
+                        ok(map_desc.pBits == base + offset,
+                                "%s, %s, face %u, level %u: Got unexpected pBits %p, expected %p.\n",
+                                pools[pool_idx].name, formats[format_idx].name, i, j, map_desc.pBits, base + offset);
+                    offset += (base_dimension >> j) * map_desc.Pitch;
+
+                    hr = IDirect3DCubeTexture9_UnlockRect(texture_cube, i, j);
+                    ok(SUCCEEDED(hr), "%s, %s: Failed to unlock face %u, level %u, hr %#x.\n",
+                            pools[pool_idx].name, formats[format_idx].name, i, j, hr);
+                }
+                offset = (offset + 15) & ~15;
+            }
+
+            IDirect3DCubeTexture9_Release(texture_cube);
+        }
+    }
+
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+done:
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
+}
+
 START_TEST(device)
 {
     WNDCLASSA wc = {0};
@@ -10869,6 +11236,7 @@ START_TEST(device)
     test_resource_priority();
     test_swapchain_parameters();
     test_check_device_format();
+    test_miptree_layout();
 
     UnregisterClassA("d3d9_test_wc", GetModuleHandleA(NULL));
 }

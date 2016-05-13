@@ -140,8 +140,8 @@
 @ cdecl __pxcptinfoptrs() MSVCRT___pxcptinfoptrs
 @ stub __report_gsfailure
 @ cdecl __setusermatherr(ptr) MSVCRT___setusermatherr
-@ stub __std_exception_copy
-@ stub __std_exception_destroy
+@ cdecl __std_exception_copy(ptr ptr) MSVCRT___std_exception_copy
+@ cdecl __std_exception_destroy(ptr) MSVCRT___std_exception_destroy
 @ cdecl __std_type_info_compare(ptr ptr) MSVCRT_type_info_compare
 @ stub __std_type_info_destroy_list
 @ stub __std_type_info_hash
@@ -150,7 +150,7 @@
 @ stub __stdio_common_vfprintf_p
 @ stub __stdio_common_vfprintf_s
 @ stub __stdio_common_vfscanf
-@ stub __stdio_common_vfwprintf
+@ cdecl __stdio_common_vfwprintf(int64 ptr ptr ptr ptr) MSVCRT__stdio_common_vfwprintf
 @ stub __stdio_common_vfwprintf_p
 @ stub __stdio_common_vfwprintf_s
 @ stub __stdio_common_vfwscanf
@@ -279,7 +279,7 @@
 @ varargs _execle(str str)
 @ varargs _execlp(str str)
 @ varargs _execlpe(str str)
-@ stub _execute_onexit_table
+@ cdecl _execute_onexit_table(ptr) MSVCRT__execute_onexit_table
 @ cdecl _execv(str ptr)
 @ cdecl _execve(str ptr ptr) MSVCRT__execve
 @ cdecl _execvp(str ptr)
@@ -366,7 +366,7 @@
 @ cdecl _get_fmode(ptr) MSVCRT__get_fmode
 @ cdecl _get_heap_handle()
 @ cdecl _get_initial_narrow_environment()
-@ stub _get_initial_wide_environment
+@ cdecl _get_initial_wide_environment()
 @ cdecl _get_invalid_parameter_handler()
 @ stub _get_narrow_winmain_command_line
 @ cdecl _get_osfhandle(long) MSVCRT__get_osfhandle
@@ -419,7 +419,7 @@
 @ cdecl _i64tow(int64 ptr long) ntdll._i64tow
 @ cdecl _i64tow_s(int64 ptr long long) MSVCRT__i64tow_s
 @ cdecl _initialize_narrow_environment()
-@ stub _initialize_onexit_table
+@ cdecl _initialize_onexit_table(ptr) MSVCRT__initialize_onexit_table
 @ cdecl _initialize_wide_environment()
 @ cdecl _initterm(ptr ptr)
 @ cdecl _initterm_e(ptr ptr)
@@ -1861,7 +1861,7 @@
 @ cdecl _read(long ptr long) MSVCRT__read
 @ stub _realloc_base
 @ cdecl _recalloc(ptr long long)
-@ stub _register_onexit_function
+@ cdecl _register_onexit_function(ptr ptr) MSVCRT__register_onexit_function
 @ stub _register_thread_local_exe_atexit_callback
 @ cdecl _resetstkoflw() MSVCRT__resetstkoflw
 @ cdecl _rmdir(str) MSVCRT__rmdir
@@ -2458,9 +2458,9 @@
 @ cdecl rand() MSVCRT_rand
 @ cdecl rand_s(ptr) MSVCRT_rand_s
 @ cdecl realloc(ptr long) MSVCRT_realloc
-@ stub remainder
-@ stub remainderf
-@ stub remainderl
+@ cdecl remainder(double double) MSVCR120_remainder
+@ cdecl remainderf(float float) MSVCR120_remainderf
+@ cdecl remainderl(double double) MSVCR120_remainderl
 @ cdecl remove(str) MSVCRT_remove
 @ stub remquo
 @ stub remquof

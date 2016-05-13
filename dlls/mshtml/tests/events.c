@@ -948,6 +948,24 @@ static HRESULT WINAPI img_onload(IDispatchEx *iface, DISPID id, LCID lcid, WORD 
 
 EVENT_HANDLER_FUNC_OBJ(img_onload);
 
+static HRESULT WINAPI unattached_img_onload(IDispatchEx *iface, DISPID id, LCID lcid, WORD wFlags, DISPPARAMS *pdp,
+        VARIANT *pvarRes, EXCEPINFO *pei, IServiceProvider *pspCaller)
+{
+    IHTMLElement *event_src;
+
+    CHECK_EXPECT(img_onload);
+
+    test_event_args(&DIID_DispHTMLImg, id, wFlags, pdp, pvarRes, pei, pspCaller);
+    event_src = get_event_src();
+    todo_wine
+        ok(!event_src, "event_src != NULL\n");
+    if(event_src)
+        IHTMLElement_Release(event_src);
+    return S_OK;
+}
+
+EVENT_HANDLER_FUNC_OBJ(unattached_img_onload);
+
 static HRESULT WINAPI img_onerror(IDispatchEx *iface, DISPID id, LCID lcid, WORD wFlags, DISPPARAMS *pdp,
         VARIANT *pvarRes, EXCEPINFO *pei, IServiceProvider *pspCaller)
 {
@@ -1423,6 +1441,34 @@ static const IDispatchExVtbl timeoutFuncVtbl = {
 };
 
 static IDispatchEx timeoutFunc = { &timeoutFuncVtbl };
+
+static HRESULT WINAPI timeoutFunc2_Invoke(IDispatchEx *iface, DISPID dispIdMember,
+        REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS *pDispParams,
+        VARIANT *pVarResult, EXCEPINFO *pExcepInfo, UINT *puArgErr)
+{
+    ok(0, "unexpected call\n");
+    return E_FAIL;
+}
+
+static const IDispatchExVtbl timeoutFunc2Vtbl = {
+    DispatchEx_QueryInterface,
+    DispatchEx_AddRef,
+    DispatchEx_Release,
+    DispatchEx_GetTypeInfoCount,
+    DispatchEx_GetTypeInfo,
+    DispatchEx_GetIDsOfNames,
+    timeoutFunc2_Invoke,
+    DispatchEx_GetDispID,
+    DispatchEx_InvokeEx,
+    DispatchEx_DeleteMemberByName,
+    DispatchEx_DeleteMemberByDispID,
+    DispatchEx_GetMemberProperties,
+    DispatchEx_GetMemberName,
+    DispatchEx_GetNextDispID,
+    DispatchEx_GetNameSpaceParent
+};
+
+static IDispatchEx timeoutFunc2 = { &timeoutFunc2Vtbl };
 
 static HRESULT WINAPI div_onclick_disp_Invoke(IDispatchEx *iface, DISPID id,
         REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS *pdp,
@@ -1912,6 +1958,43 @@ static void test_imgload(IHTMLDocument2 *doc)
     CHECK_CALLED(img_onerror);
 
     IHTMLImgElement_Release(img);
+
+    /* test onload on unattached image */
+    hres = IHTMLDocument2_createElement(doc, (str = a2bstr("img")), &elem);
+    SysFreeString(str);
+    ok(hres == S_OK, "createElement(img) failed: %08x\n", hres);
+
+    hres = IHTMLElement_QueryInterface(elem, &IID_IHTMLImgElement, (void**)&img);
+    IHTMLElement_Release(elem);
+    ok(hres == S_OK, "Could not get IHTMLImgElement iface: %08x\n", hres);
+
+    V_VT(&v) = VT_EMPTY;
+    hres = IHTMLImgElement_get_onload(img, &v);
+    ok(hres == S_OK, "get_onload failed: %08x\n", hres);
+    ok(V_VT(&v) == VT_NULL, "V_VT(onload) = %d\n", V_VT(&v));
+
+    V_VT(&v) = VT_DISPATCH;
+    V_DISPATCH(&v) = (IDispatch*)&unattached_img_onload_obj;
+    hres = IHTMLImgElement_put_onload(img, v);
+    ok(hres == S_OK, "put_onload failed: %08x\n", hres);
+
+    V_VT(&v) = VT_EMPTY;
+    hres = IHTMLImgElement_get_onload(img, &v);
+    ok(hres == S_OK, "get_onload failed: %08x\n", hres);
+    ok(V_VT(&v) == VT_DISPATCH, "V_VT(onload) = %d\n", V_VT(&v));
+    ok(V_DISPATCH(&v) == (IDispatch*)&unattached_img_onload_obj, "incorrect V_DISPATCH(onload)\n");
+    VariantClear(&v);
+
+    str = a2bstr("http://test.winehq.org/tests/winehq_snapshot/index_files/winehq_logo_text.png?v=1");
+    hres = IHTMLImgElement_put_src(img, str);
+    ok(hres == S_OK, "put_src failed: %08x\n", hres);
+    SysFreeString(str);
+
+    SET_EXPECT(img_onload);
+    pump_msgs(&called_img_onload);
+    CHECK_CALLED(img_onload);
+
+    IHTMLImgElement_Release(img);
 }
 
 static void test_focus(IHTMLDocument2 *doc)
@@ -2182,6 +2265,17 @@ static void test_timeout(IHTMLDocument2 *doc)
     ok(hres == S_OK, "Could not get IHTMLWindow3 iface: %08x\n", hres);
 
     V_VT(&expr) = VT_DISPATCH;
+    V_DISPATCH(&expr) = (IDispatch*)&timeoutFunc2;
+    V_VT(&var) = VT_EMPTY;
+    id = 0;
+    hres = IHTMLWindow3_setInterval(win3, &expr, 1, &var, &id);
+    ok(hres == S_OK, "setInterval failed: %08x\n", hres);
+    ok(id, "id = 0\n");
+
+    hres = IHTMLWindow2_clearTimeout(window, id);
+    ok(hres == S_OK, "clearTimeout failer: %08x\n", hres);
+
+    V_VT(&expr) = VT_DISPATCH;
     V_DISPATCH(&expr) = (IDispatch*)&timeoutFunc;
     V_VT(&var) = VT_EMPTY;
     id = 0;
@@ -2203,6 +2297,25 @@ static void test_timeout(IHTMLDocument2 *doc)
 
     hres = IHTMLWindow2_clearTimeout(window, id);
     ok(hres == S_OK, "clearTimeout failed: %08x\n", hres);
+
+    V_VT(&expr) = VT_DISPATCH;
+    V_DISPATCH(&expr) = (IDispatch*)&timeoutFunc;
+    V_VT(&var) = VT_EMPTY;
+    id = 0;
+    hres = IHTMLWindow3_setInterval(win3, &expr, 1, &var, &id);
+    ok(hres == S_OK, "setInterval failed: %08x\n", hres);
+    ok(id, "id = 0\n");
+
+    SET_EXPECT(timeout);
+    pump_msgs(&called_timeout);
+    CHECK_CALLED(timeout);
+
+    SET_EXPECT(timeout);
+    pump_msgs(&called_timeout);
+    CHECK_CALLED(timeout);
+
+    hres = IHTMLWindow2_clearInterval(window, id);
+    ok(hres == S_OK, "clearTimeout failer: %08x\n", hres);
 
     IHTMLWindow3_Release(win3);
 }

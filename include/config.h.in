@@ -198,9 +198,6 @@
 /* Define to 1 if you have the `getattrlist' function. */
 #undef HAVE_GETATTRLIST
 
-/* Define to 1 if you have the `getdirentries' function. */
-#undef HAVE_GETDIRENTRIES
-
 /* Define to 1 if you have the `getnameinfo' function. */
 #undef HAVE_GETNAMEINFO
 
@@ -725,6 +722,12 @@
 
 /* Define to 1 if you have the `readlink' function. */
 #undef HAVE_READLINK
+
+/* Define to 1 if you have the `remainder' function. */
+#undef HAVE_REMAINDER
+
+/* Define to 1 if you have the `remainderf' function. */
+#undef HAVE_REMAINDERF
 
 /* Define to 1 if the system has the type `request_sense'. */
 #undef HAVE_REQUEST_SENSE
@@ -1328,6 +1331,14 @@
 
 /* Define to 1 if you have the `__res_get_state' function. */
 #undef HAVE___RES_GET_STATE
+
+/* Define to 1 if `major', `minor', and `makedev' are declared in <mkdev.h>.
+   */
+#undef MAJOR_IN_MKDEV
+
+/* Define to 1 if `major', `minor', and `makedev' are declared in
+   <sysmacros.h>. */
+#undef MAJOR_IN_SYSMACROS
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT

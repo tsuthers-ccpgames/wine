@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2015-11-20 13:01+0200\n"
+"PO-Revision-Date: 2016-05-05 21:44+0200\n"
 "Last-Translator: Andrey Gusev <andrey.goosev@gmail.com>\n"
 "Language-Team: Ukrainian\n"
 "Language: uk\n"
@@ -2918,7 +2918,7 @@ msgstr "Ви можете захистити паролем приватний �
 
 #: cryptui.rc:174
 msgid "The passwords do not match."
-msgstr "Паролі не співпадають."
+msgstr "Паролі не збігаються."
 
 #: cryptui.rc:175
 msgid "Note: The private key for this certificate could not be opened."
@@ -11656,105 +11656,86 @@ msgid "The operation completed successfully\n"
 msgstr "Операція успішно завершена\n"
 
 #: reg.rc:35
-#, fuzzy
-#| msgid "Error: Invalid key name\n"
 msgid "reg: Invalid key name\n"
-msgstr "Помилка: неправильне ім'я ключа\n"
+msgstr "reg: невірне ім'я ключа\n"
 
 #: reg.rc:36
-#, fuzzy
-#| msgid "Error: Invalid command line parameters\n"
 msgid "reg: Invalid command line parameters\n"
-msgstr "Помилка: неправильні параметри командного рядка\n"
+msgstr "reg: невірні параметри командного рядка\n"
 
 #: reg.rc:37
-#, fuzzy
-#| msgid "Error: Unable to access remote machine\n"
 msgid "reg: Unable to access remote machine\n"
-msgstr "Помилка: неможливо отримати доступ до віддаленої машини\n"
+msgstr "reg: неможливо отримати доступ до віддаленої машини\n"
 
 #: reg.rc:38
-#, fuzzy
-#| msgid ""
-#| "Error: The system was unable to find the specified registry key or value\n"
 msgid ""
 "reg: The system was unable to find the specified registry key or value\n"
-msgstr "Помилка: не вдалось знайти вказаний ключ реєстру чи значення\n"
+msgstr "reg: не вдалось знайти вказаний ключ реєстру чи значення\n"
 
 #: reg.rc:39
-#, fuzzy
-#| msgid "Error: Unsupported type\n"
 msgid "reg: Unsupported registry data type [%1]\n"
-msgstr "Помилка: Непідтримуваний тип\n"
+msgstr "reg: непідтримуваний тип даних [%1]\n"
 
 #: reg.rc:40
-#, fuzzy
-#| msgid ""
-#| "uninstaller: The option '--remove' must be followed by an application "
-#| "GUID\n"
 msgid "reg: The option [/d] must be followed by a valid integer\n"
-msgstr ""
-"uninstaller: Для параметра '--remove' повинен бути вказаний GUID застосунка\n"
+msgstr "reg: після параметра [/d] повинно бути вказано ціле число\n"
 
 #: reg.rc:41
-#, fuzzy
-#| msgid ""
-#| "uninstaller: The option '--remove' must be followed by an application "
-#| "GUID\n"
 msgid "reg: The option [/d] must be followed by a valid hexadecimal value\n"
 msgstr ""
-"uninstaller: Для параметра '--remove' повинен бути вказаний GUID застосунка\n"
+"reg: після параметра [/d] повинно бути вказано число в шістнадцятковому "
+"форматі\n"
 
 #: reg.rc:42
 msgid "reg: Unhandled registry data type [/t 0x%1!x!, /d %2]\n"
-msgstr ""
+msgstr "reg: невідомий тип даних [/t 0x%1!x!, /d %2]\n"
 
 #: reg.rc:43
-#, fuzzy
-#| msgid "The specified file already exists. Do you want to replace it?"
 msgid "The registry value '%1' already exists. Do you want to overwrite it?"
-msgstr "Вказаний файл вже існує. Ви хочете його замінити?"
+msgstr "Значення реєстру '%1' вже існує. Ви хочете його замінити?"
 
 #: reg.rc:47
 msgid "The registry operation was cancelled\n"
-msgstr ""
+msgstr "Операцію з реєстром було скасовано\n"
 
 #: reg.rc:48 regedit.rc:204
 msgid "(Default)"
-msgstr "(Стандартно)"
+msgstr "(За замовчуванням)"
 
 #: reg.rc:49
-#, fuzzy
-#| msgid "Are you sure you want to delete these values?"
 msgid "Are you sure you want to delete the registry value '%1'?"
-msgstr "Ви впевнені, що хочете видалити ці значення?"
+msgstr "Ви впевнені, що хочете видалити значення реєстру '%1'?"
 
 #: reg.rc:50
-#, fuzzy
-#| msgid "Are you sure you want to delete value '%s'?"
 msgid "Are you sure you want to delete all registry values in '%1'?"
-msgstr "Ви впевнені, що хочете видалити значення '%s'?"
+msgstr "Ви впевнені, що хочете видалити всі значення реєстру в '%1'?"
 
 #: reg.rc:51
-#, fuzzy
-#| msgid "Are you sure you want to delete '%1'?"
 msgid "Are you sure you want to delete the registry key '%1'?"
-msgstr "Ви впевнені, що хочете вилучити '%1'?"
+msgstr "Ви впевнені, що хочете видалити ключ реєстру '%1'?"
 
 #: reg.rc:52
-#, fuzzy
-#| msgid ""
-#| "uninstaller: The option '--remove' must be followed by an application "
-#| "GUID\n"
 msgid "reg: The option [/d] must be followed by a valid string\n"
-msgstr ""
-"uninstaller: Для параметра '--remove' повинен бути вказаний GUID застосунка\n"
+msgstr "reg: після параметра [/d] повинно бути вказано рядок\n"
 
 #: reg.rc:53
 msgid ""
 "reg: Unable to delete all registry values in '%1'. An unexpected error "
 "occurred.\n"
 msgstr ""
+"reg: неможливо видалити всі значення реєстру в '%1'. Сталася неочікувана "
+"помилка.\n"
+
+#: reg.rc:54
+msgid ""
+"reg: Unable to complete the specified operation. An unexpected error "
+"occurred.\n"
+msgstr ""
+"reg: неможливо завершити зазначену операцію. Сталася неочікувана помилка.\n"
+
+#: reg.rc:55
+msgid "Search complete. Number of matches found: %1!d!\n"
+msgstr "Пошук завершено. Знайдено збігів: %1!d!\n"
 
 #: regedit.rc:34
 msgid "&Registry"
@@ -13198,8 +13179,6 @@ msgstr ""
 "цих вкладках як для окремої програми, так і глобально."
 
 #: winecfg.rc:159
-#, fuzzy
-#| msgid "&Add application..."
 msgid "Add appli&cation..."
 msgstr "&Додати програму..."
 
@@ -13262,7 +13241,7 @@ msgstr "&Нове заміщення для бібліотеки:"
 
 #: winecfg.rc:196
 msgid "A&dd"
-msgstr ""
+msgstr "&Додати"
 
 #: winecfg.rc:197
 msgid "Existing &overrides:"
@@ -13289,8 +13268,6 @@ msgid "&Native (Windows)"
 msgstr "&Стороння (Windows)"
 
 #: winecfg.rc:211
-#, fuzzy
-#| msgid "Bui&ltin then Native"
 msgid "Buil&tin then Native"
 msgstr "В&будована, потім стороння"
 
@@ -13315,14 +13292,10 @@ msgstr ""
 "редагуватися."
 
 #: winecfg.rc:236
-#, fuzzy
-#| msgid "&Add..."
 msgid "A&dd..."
 msgstr "&Додати..."
 
 #: winecfg.rc:238
-#, fuzzy
-#| msgid "Autodetect"
 msgid "Aut&odetect"
 msgstr "Автовизначення"
 
@@ -13331,10 +13304,8 @@ msgid "&Path:"
 msgstr "&Шлях:"
 
 #: winecfg.rc:248 winecfg.rc:38
-#, fuzzy
-#| msgid "Show &Advanced"
 msgid "Show Advan&ced"
-msgstr "Показати &Додаткове"
+msgstr "Показати &додат. налашт."
 
 #: winecfg.rc:249
 msgid "De&vice:"
@@ -13353,10 +13324,8 @@ msgid "S&erial:"
 msgstr "&Сер.ном:"
 
 #: winecfg.rc:258
-#, fuzzy
-#| msgid "Show &dot files"
 msgid "&Show dot files"
-msgstr "Показати &файли, що починаються з крапки"
+msgstr "Показувати &файли, що починаються з крапки"
 
 #: winecfg.rc:265
 msgid "Driver diagnostics"
@@ -13435,10 +13404,8 @@ msgid "Select the Unix target directory, please."
 msgstr "Будь ласка, виберіть цільову теку Unix."
 
 #: winecfg.rc:37
-#, fuzzy
-#| msgid "Hide &Advanced"
 msgid "Hide Advan&ced"
-msgstr "Сховати &Додаткове"
+msgstr "Сховати &додат. налашт."
 
 #: winecfg.rc:39
 msgid "(No Theme)"
@@ -13899,12 +13866,10 @@ msgid "Configuration error"
 msgstr "Помилка конфігурації"
 
 #: wineconsole.rc:42
-#, fuzzy
-#| msgid "Screen buffer size must be greater or equal to the window's one"
 msgid ""
 "The size of the screen buffer must be greater than or equal to the size of "
 "the window."
-msgstr "Розмір буфера екрану повинен бути не менший буфера вікна"
+msgstr "Розмір буфера екрану повинен бути не менший розміру вікна."
 
 #: wineconsole.rc:37
 msgid "Each character is %1!u! pixels wide and %2!u! pixels high"
