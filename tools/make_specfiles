@@ -83,7 +83,6 @@ my @dll_groups =
   "d3dx9_37",
   "d3dx9_35",
   "d3dx9_34",
-  "d3dx9_33",
   "d3dx9_32",
   "d3dx9_31",
   "d3dx9_30",
@@ -162,6 +161,7 @@ my @dll_groups =
  ],
  [
   "kernel32",
+  "api-ms-win-appmodel-runtime-l1-1-1",
   "api-ms-win-downlevel-normaliz-l1-1-0",
   "api-ms-win-core-processthreads-l1-1-0",
   "api-ms-win-core-debug-l1-1-0",
@@ -188,6 +188,7 @@ my @dll_groups =
   "api-ms-win-core-handle-l1-1-0",
   "api-ms-win-core-heap-l1-1-0",
   "api-ms-win-core-heap-l1-2-0",
+  "api-ms-win-core-heap-l2-1-0",
   "api-ms-win-core-heap-obsolete-l1-1-0",
   "api-ms-win-core-io-l1-1-1",
   "api-ms-win-core-kernel32-legacy-l1-1-0",
@@ -214,6 +215,7 @@ my @dll_groups =
   "api-ms-win-core-wow64-l1-1-0",
   "api-ms-win-core-xstate-l2-1-0",
   "api-ms-win-core-errorhandling-l1-1-2",
+  "ext-ms-win-kernel32-package-current-l1-1-0",
  ],
  [
   "kernel32",
@@ -232,8 +234,13 @@ my @dll_groups =
  [
   "kernel32",
   "advapi32",
+  "shlwapi",
   "user32",
   "kernelbase",
+ ],
+ [
+  "kernelbase",
+  "api-ms-win-core-quirks-l1-1-0",
  ],
  [
   "ole32",
@@ -251,13 +258,30 @@ my @dll_groups =
   "api-ms-win-downlevel-shlwapi-l1-1-0",
   "api-ms-win-downlevel-shlwapi-l2-1-0",
   "api-ms-win-core-shlwapi-legacy-l1-1-0",
+  "api-ms-win-core-shlwapi-obsolete-l1-2-0",
   "api-ms-win-core-url-l1-1-0",
+ ],
+ [
+  "shell32",
+  "shlwapi",
+  "shcore",
+ ],
+ [
+  "shcore",
+  "api-ms-win-shcore-obsolete-l1-1-0",
+  "api-ms-win-shcore-thread-l1-1-0",
+  "api-ms-win-shcore-stream-l1-1-0",
  ],
  [
   "user32",
   "api-ms-win-core-string-l2-1-0",
   "api-ms-win-downlevel-user32-l1-1-0",
   "api-ms-win-ntuser-dc-access-l1-1-0",
+  "api-ms-win-rtcore-ntuser-draw-l1-1-0",
+  "api-ms-win-rtcore-ntuser-window-l1-1-0",
+  "ext-ms-win-ntuser-mouse-l1-1-0",
+  "ext-ms-win-rtcore-ntuser-syscolors-l1-1-0",
+  "ext-ms-win-rtcore-ntuser-sysparams-l1-1-0",
  ],
  [
   "version",
@@ -268,6 +292,7 @@ my @dll_groups =
   "msvcrt",
   "ntdll",
   "ntoskrnl.exe",
+  "api-ms-win-core-apiquery-l1-1-0",
   "api-ms-win-core-rtlsupport-l1-1-0",
   "api-ms-win-core-rtlsupport-l1-2-0",
  ],
@@ -280,6 +305,10 @@ my @dll_groups =
   "api-ms-win-core-winrt-l1-1-0",
   "api-ms-win-core-winrt-registration-l1-1-0",
   "api-ms-win-core-winrt-string-l1-1-0",
+ ],
+ [
+  "uxtheme",
+  "ext-ms-win-uxtheme-themes-l1-1-0",
  ],
  [
   "bthprops.cpl",

@@ -1,4 +1,4 @@
-@ stub ExAcquireFastMutexUnsafe
+@ stdcall -norelay ExAcquireFastMutexUnsafe(ptr)
 @ stub ExAcquireRundownProtection
 @ stub ExAcquireRundownProtectionEx
 @ stub ExInitializeRundownProtection
@@ -8,7 +8,7 @@
 @ stub ExInterlockedPopEntrySList
 @ stub ExInterlockedPushEntrySList
 @ stub ExReInitializeRundownProtection
-@ stub ExReleaseFastMutexUnsafe
+@ stdcall -norelay ExReleaseFastMutexUnsafe(ptr)
 @ stub ExReleaseResourceLite
 @ stub ExReleaseRundownProtection
 @ stub ExReleaseRundownProtectionEx
@@ -374,12 +374,12 @@
 @ stdcall IoFreeMdl(ptr)
 @ stub IoFreeWorkItem
 @ stdcall IoGetAttachedDevice(ptr)
-@ stub IoGetAttachedDeviceReference
+@ stdcall IoGetAttachedDeviceReference(ptr)
 @ stub IoGetBaseFileSystemDeviceObject
 @ stub IoGetBootDiskInformation
 @ stdcall IoGetConfigurationInformation()
 @ stdcall IoGetCurrentProcess()
-@ stub IoGetDeviceAttachmentBaseRef
+@ stdcall IoGetDeviceAttachmentBaseRef(ptr)
 @ stub IoGetDeviceInterfaceAlias
 @ stdcall IoGetDeviceInterfaces(ptr ptr long ptr)
 @ stdcall IoGetDeviceObjectPointer(ptr long ptr ptr)
@@ -432,7 +432,7 @@
 @ stub IoRegisterLastChanceShutdownNotification
 @ stdcall IoRegisterPlugPlayNotification(long long ptr ptr ptr ptr ptr)
 @ stdcall IoRegisterShutdownNotification(ptr)
-@ stdcall IoReleaseCancelSpinLock(ptr)
+@ stdcall IoReleaseCancelSpinLock(long)
 @ stub IoReleaseRemoveLockAndWaitEx
 @ stub IoReleaseRemoveLockEx
 @ stub IoReleaseVpbSpinLock
@@ -627,7 +627,7 @@
 @ stub KeUpdateRunTime
 @ stub KeUpdateSystemTime
 @ stub KeUserModeCallback
-@ stub KeWaitForMultipleObjects
+@ stdcall KeWaitForMultipleObjects(long ptr long long long long ptr ptr)
 @ stdcall KeWaitForMutexObject(ptr long long long ptr)
 @ stdcall KeWaitForSingleObject(ptr long long long ptr)
 @ stub KiBugCheckData
@@ -689,7 +689,7 @@
 @ stub MmLockPagableImageSection
 @ stdcall MmLockPagableSectionByHandle(ptr)
 @ stdcall MmMapIoSpace(int64 long long)
-@ stub MmMapLockedPages
+@ stdcall MmMapLockedPages(ptr long)
 @ stdcall MmMapLockedPagesSpecifyCache(ptr long long ptr long long)
 @ stub MmMapLockedPagesWithReservedMapping
 @ stub MmMapMemoryDumpMdl
@@ -719,7 +719,7 @@
 @ stdcall MmUnlockPagableImageSection(ptr)
 @ stdcall MmUnlockPages(ptr)
 @ stdcall MmUnmapIoSpace(ptr long)
-@ stub MmUnmapLockedPages
+@ stdcall MmUnmapLockedPages(ptr ptr)
 @ stub MmUnmapReservedMapping
 @ stub MmUnmapVideoDisplay
 @ stub MmUnmapViewInSessionSpace
@@ -798,7 +798,7 @@
 @ stub ObCloseHandle
 @ stub ObCreateObject
 @ stub ObCreateObjectType
-@ stub ObDereferenceObject
+@ stdcall ObDereferenceObject(ptr)
 @ stub ObDereferenceSecurityDescriptor
 @ stub ObFindHandleForObject
 @ stub ObGetObjectSecurity
@@ -811,7 +811,7 @@
 @ stub ObQueryObjectAuditingByHandle
 @ stdcall ObReferenceObjectByHandle(long long ptr long ptr ptr)
 @ stdcall ObReferenceObjectByName(ptr long ptr long ptr long ptr ptr)
-@ stub ObReferenceObjectByPointer
+@ stdcall ObReferenceObjectByPointer(ptr long ptr long)
 @ stub ObReferenceSecurityDescriptor
 @ stub ObReleaseObjectSecurity
 @ stub ObSetHandleAttributes
@@ -1075,7 +1075,7 @@
 @ stdcall RtlIpv4AddressToStringW(ptr ptr) ntdll.RtlIpv4AddressToStringW
 @ stub RtlIpv4StringToAddressA
 @ stub RtlIpv4StringToAddressExA
-@ stdcall RtlIpv4StringToAddressExW(ptr ptr wstr ptr) ntdll.RtlIpv4StringToAddressExW
+@ stdcall RtlIpv4StringToAddressExW(wstr long ptr ptr) ntdll.RtlIpv4StringToAddressExW
 @ stub RtlIpv4StringToAddressW
 @ stub RtlIpv6AddressToStringA
 @ stub RtlIpv6AddressToStringExA
@@ -1083,7 +1083,7 @@
 @ stub RtlIpv6AddressToStringW
 @ stub RtlIpv6StringToAddressA
 @ stub RtlIpv6StringToAddressExA
-@ stub RtlIpv6StringToAddressExW
+@ stdcall RtlIpv6StringToAddressExW(wstr ptr ptr ptr) ntdll.RtlIpv6StringToAddressExW
 @ stub RtlIpv6StringToAddressW
 @ stub RtlIsGenericTableEmpty
 @ stub RtlIsGenericTableEmptyAvl
@@ -1351,7 +1351,7 @@
 @ stdcall ZwQueryInstallUILanguage(ptr) ntdll.ZwQueryInstallUILanguage
 @ stdcall ZwQueryKey(long long ptr long ptr) ntdll.ZwQueryKey
 @ stdcall ZwQueryObject(long long long long long) ntdll.ZwQueryObject
-@ stdcall ZwQuerySection(long long long long long) ntdll.ZwQuerySection
+@ stdcall ZwQuerySection(long long ptr long ptr) ntdll.ZwQuerySection
 @ stdcall ZwQuerySecurityObject(long long long long long) ntdll.ZwQuerySecurityObject
 @ stdcall ZwQuerySymbolicLinkObject(long ptr ptr) ntdll.ZwQuerySymbolicLinkObject
 @ stdcall ZwQuerySystemInformation(long long long long) ntdll.ZwQuerySystemInformation
@@ -1423,7 +1423,7 @@
 @ cdecl -private _strrev(str) msvcrt._strrev
 @ cdecl -private _strset(str long) msvcrt._strset
 @ cdecl -private _strupr(str) msvcrt._strupr
-@ cdecl -private _vsnprintf(ptr long str ptr) msvcrt._vsnprintf
+@ cdecl _vsnprintf(ptr long str ptr) msvcrt._vsnprintf
 @ cdecl -private _vsnwprintf(ptr long wstr ptr) msvcrt._vsnwprintf
 @ cdecl -private _wcsicmp(wstr wstr) msvcrt._wcsicmp
 @ cdecl -private _wcslwr(wstr) msvcrt._wcslwr

@@ -29,6 +29,7 @@
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
+#include "ntdef.h"
 #include "windef.h"
 #include "winternl.h"
 #include "excpt.h"
@@ -503,6 +504,34 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
 
 
 /***********************************************************************
+ *           ExAcquireFastMutexUnsafe  (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT(ExAcquireFastMutexUnsafe)
+void WINAPI __regs_ExAcquireFastMutexUnsafe(PFAST_MUTEX FastMutex)
+#else
+void WINAPI ExAcquireFastMutexUnsafe(PFAST_MUTEX FastMutex)
+#endif
+{
+    FIXME("(%p): stub\n", FastMutex);
+}
+
+
+/***********************************************************************
+ *           ExReleaseFastMutexUnsafe  (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT(ExReleaseFastMutexUnsafe)
+void WINAPI __regs_ExReleaseFastMutexUnsafe(PFAST_MUTEX FastMutex)
+#else
+void WINAPI ExReleaseFastMutexUnsafe(PFAST_MUTEX FastMutex)
+#endif
+{
+    FIXME("(%p): stub\n", FastMutex);
+}
+
+
+/***********************************************************************
  *           IoAcquireCancelSpinLock  (NTOSKRNL.EXE.@)
  */
 void WINAPI IoAcquireCancelSpinLock(PKIRQL irql)
@@ -514,9 +543,9 @@ void WINAPI IoAcquireCancelSpinLock(PKIRQL irql)
 /***********************************************************************
  *           IoReleaseCancelSpinLock  (NTOSKRNL.EXE.@)
  */
-void WINAPI IoReleaseCancelSpinLock(PKIRQL irql)
+void WINAPI IoReleaseCancelSpinLock(KIRQL irql)
 {
-    FIXME("(%p): stub\n", irql);
+    FIXME("(%u): stub\n", irql);
 }
 
 
@@ -998,6 +1027,16 @@ NTSTATUS WINAPI IoDeleteSymbolicLink( UNICODE_STRING *name )
 
 
 /***********************************************************************
+ *           IoGetDeviceAttachmentBaseRef   (NTOSKRNL.EXE.@)
+ */
+PDEVICE_OBJECT WINAPI IoGetDeviceAttachmentBaseRef( PDEVICE_OBJECT device )
+{
+    FIXME( "(%p): stub\n", device );
+    return NULL;
+}
+
+
+/***********************************************************************
  *           IoGetDeviceInterfaces   (NTOSKRNL.EXE.@)
  */
 NTSTATUS WINAPI IoGetDeviceInterfaces( const GUID *InterfaceClassGuid,
@@ -1127,6 +1166,15 @@ NTSTATUS WINAPI IofCallDriver( DEVICE_OBJECT *device, IRP *irp )
     return IoCallDriver( device, irp );
 }
 
+/***********************************************************************
+ *           IoGetAttachedDeviceReference    (NTOSKRNL.EXE.@)
+ */
+PDEVICE_OBJECT WINAPI IoGetAttachedDeviceReference(PDEVICE_OBJECT obj)
+{
+    FIXME("(%p): stub\n", obj);
+
+    return obj;
+}
 
 /***********************************************************************
  *           IoGetRelatedDeviceObject    (NTOSKRNL.EXE.@)
@@ -1628,7 +1676,13 @@ void WINAPI KeInitializeEvent( PRKEVENT Event, EVENT_TYPE Type, BOOLEAN State )
  */
 void WINAPI KeInitializeMutex(PRKMUTEX Mutex, ULONG Level)
 {
-    FIXME( "stub: %p, %u\n", Mutex, Level );
+    TRACE( "%p, %u\n", Mutex, Level );
+    RtlZeroMemory( Mutex, sizeof(KMUTEX) );
+    Mutex->Header.Type = 2;
+    Mutex->Header.Size = 8;
+    Mutex->Header.SignalState = 1;
+    InitializeListHead( &Mutex->Header.WaitListHead );
+    Mutex->ApcDisable = 1;
 }
 
 
@@ -1649,7 +1703,7 @@ NTSTATUS WINAPI KeWaitForMutexObject(PRKMUTEX Mutex, KWAIT_REASON WaitReason, KP
 LONG WINAPI KeReleaseMutex(PRKMUTEX Mutex, BOOLEAN Wait)
 {
     FIXME( "stub: %p, %d\n", Mutex, Wait );
-    return STATUS_NOT_IMPLEMENTED;
+    return STATUS_SUCCESS;
 }
 
 
@@ -1659,6 +1713,9 @@ LONG WINAPI KeReleaseMutex(PRKMUTEX Mutex, BOOLEAN Wait)
 void WINAPI KeInitializeSemaphore( PRKSEMAPHORE Semaphore, LONG Count, LONG Limit )
 {
     FIXME( "(%p %d %d) stub\n", Semaphore , Count, Limit );
+
+    RtlZeroMemory(Semaphore, sizeof(KSEMAPHORE));
+    Semaphore->Header.Type = 5;
 }
 
 
@@ -1677,6 +1734,9 @@ void WINAPI KeInitializeSpinLock( PKSPIN_LOCK SpinLock )
 void WINAPI KeInitializeTimerEx( PKTIMER Timer, TIMER_TYPE Type )
 {
     FIXME( "stub: %p %d\n", Timer, Type );
+
+    RtlZeroMemory(Timer, sizeof(KTIMER));
+    Timer->Header.Type = Type ? 9 : 8;
 }
 
 
@@ -1823,6 +1883,19 @@ NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
 }
 
 /***********************************************************************
+ *           KeWaitForMultipleObjects   (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI KeWaitForMultipleObjects(ULONG Count, PVOID Object[], WAIT_TYPE WaitType,
+                                         KWAIT_REASON WaitReason, KPROCESSOR_MODE WaitMode,
+                                         BOOLEAN Alertable, PLARGE_INTEGER Timeout,
+                                         PKWAIT_BLOCK WaitBlockArray)
+{
+    FIXME( "stub: %u, %p, %d, %d, %d, %d, %p, %p\n", Count, Object, WaitType, WaitReason, WaitMode,
+           Alertable, Timeout, WaitBlockArray );
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/***********************************************************************
  *           IoRegisterFileSystem   (NTOSKRNL.EXE.@)
  */
 VOID WINAPI IoRegisterFileSystem(PDEVICE_OBJECT DeviceObject)
@@ -1926,6 +1999,16 @@ VOID WINAPI MmLockPagableSectionByHandle(PVOID ImageSectionHandle)
     FIXME("stub %p\n", ImageSectionHandle);
 }
 
+ /***********************************************************************
+ *           MmMapLockedPages   (NTOSKRNL.EXE.@)
+ */
+PVOID WINAPI MmMapLockedPages(PMDL MemoryDescriptorList, KPROCESSOR_MODE AccessMode)
+{
+    TRACE("%p %d\n", MemoryDescriptorList, AccessMode);
+    return MemoryDescriptorList->MappedSystemVa;
+}
+
+
 /***********************************************************************
  *           MmMapLockedPagesSpecifyCache  (NTOSKRNL.EXE.@)
  */
@@ -1991,6 +2074,16 @@ VOID WINAPI MmUnmapIoSpace( PVOID BaseAddress, SIZE_T NumberOfBytes )
 }
 
 
+/***********************************************************************
+ *           MmUnmapLockedPages   (NTOSKRNL.EXE.@)
+ */
+void WINAPI MmUnmapLockedPages(PVOID BaseAddress, PMDLX MemoryDescriptorList)
+{
+    TRACE("%p %p\n", BaseAddress, MemoryDescriptorList);
+    /* Nothing to do */
+}
+
+
  /***********************************************************************
  *           ObReferenceObjectByHandle    (NTOSKRNL.EXE.@)
  */
@@ -2021,6 +2114,28 @@ NTSTATUS WINAPI ObReferenceObjectByName( UNICODE_STRING *ObjectName,
 
 
 /***********************************************************************
+ *           ObReferenceObjectByPointer   (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI ObReferenceObjectByPointer(VOID *obj, ACCESS_MASK access,
+                                           POBJECT_TYPE type,
+                                           KPROCESSOR_MODE mode)
+{
+    FIXME("(%p, %x, %p, %d): stub\n", obj, access, type, mode);
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+
+/***********************************************************************
+ *           ObDereferenceObject   (NTOSKRNL.EXE.@)
+ */
+void WINAPI ObDereferenceObject(VOID *obj)
+{
+    FIXME("(%p): stub\n", obj);
+}
+
+
+/***********************************************************************
  *           ObfReferenceObject   (NTOSKRNL.EXE.@)
  */
 #ifdef DEFINE_FASTCALL1_ENTRYPOINT
@@ -2044,7 +2159,7 @@ void WINAPI __regs_ObfDereferenceObject( void *obj )
 void WINAPI ObfDereferenceObject( void *obj )
 #endif
 {
-    FIXME( "(%p): stub\n", obj );
+    ObDereferenceObject( obj );
 }
 
 

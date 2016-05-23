@@ -43,6 +43,11 @@ typedef struct BitmapTestSrc {
     const bitmap_data *data;
 } BitmapTestSrc;
 
+static BOOL near_equal(float a, float b)
+{
+    return fabsf(a - b) < 0.001;
+}
+
 static inline BitmapTestSrc *impl_from_IWICBitmapSource(IWICBitmapSource *iface)
 {
     return CONTAINING_RECORD(iface, BitmapTestSrc, IWICBitmapSource_iface);
@@ -196,6 +201,14 @@ static void DeleteTestBitmap(BitmapTestSrc *This)
     HeapFree(GetProcessHeap(), 0, This);
 }
 
+/* XP and 2003 use linear color conversion, later versions use sRGB gamma */
+static const float bits_32bppGrayFloat_xp[] = {
+    0.114000f,0.587000f,0.299000f,0.000000f,
+    0.886000f,0.413000f,0.701000f,1.000000f};
+static const BYTE bits_8bppGray_xp[] = {
+    29,150,76,0,
+    226,105,179,255};
+
 static void compare_bitmap_data(const struct bitmap_data *expect, IWICBitmapSource *source, const char *name)
 {
     BYTE *converted_bits;
@@ -245,6 +258,33 @@ static void compare_bitmap_data(const struct bitmap_data *expect, IWICBitmapSour
             }
         ok(equal, "unexpected pixel data (%s)\n", name);
     }
+    else if (IsEqualGUID(expect->format, &GUID_WICPixelFormat32bppGrayFloat))
+    {
+        BOOL equal=TRUE;
+        UINT i;
+        const float *a=(const float*)expect->bits, *b=(const float*)converted_bits;
+        for (i=0; i<(buffersize/4); i++)
+            if (!near_equal(a[i], b[i]) && !near_equal(bits_32bppGrayFloat_xp[i], b[i]))
+            {
+                equal = FALSE;
+                break;
+            }
+
+        ok(equal, "unexpected pixel data (%s)\n", name);
+    }
+    else if (IsEqualGUID(expect->format, &GUID_WICPixelFormat8bppGray))
+    {
+        UINT i;
+        BOOL equal=TRUE;
+        const BYTE *a=(const BYTE*)expect->bits, *b=(const BYTE*)converted_bits;
+        for (i=0; i<buffersize; i++)
+            if (a[i] != b[i] && bits_8bppGray_xp[i] != b[i])
+            {
+                equal = FALSE;
+                break;
+            }
+        ok(equal, "unexpected pixel data (%s)\n", name);
+    }
     else
         ok(memcmp(expect->bits, converted_bits, buffersize) == 0, "unexpected pixel data (%s)\n", name);
 
@@ -264,6 +304,33 @@ static void compare_bitmap_data(const struct bitmap_data *expect, IWICBitmapSour
                 break;
             }
         ok(equal, "unexpected pixel data with rc=NULL (%s)\n", name);
+    }
+    else if (IsEqualGUID(expect->format, &GUID_WICPixelFormat32bppGrayFloat))
+    {
+        BOOL equal=TRUE;
+        UINT i;
+        const float *a=(const float*)expect->bits, *b=(const float*)converted_bits;
+        for (i=0; i<(buffersize/4); i++)
+            if (!near_equal(a[i], b[i]) && !near_equal(bits_32bppGrayFloat_xp[i], b[i]))
+            {
+                equal = FALSE;
+                break;
+            }
+
+        ok(equal, "unexpected pixel data (%s)\n", name);
+    }
+    else if (IsEqualGUID(expect->format, &GUID_WICPixelFormat8bppGray))
+    {
+        UINT i;
+        BOOL equal=TRUE;
+        const BYTE *a=(const BYTE*)expect->bits, *b=(const BYTE*)converted_bits;
+        for (i=0; i<buffersize; i++)
+            if (a[i] != b[i] && bits_8bppGray_xp[i] != b[i])
+            {
+                equal = FALSE;
+                break;
+            }
+        ok(equal, "unexpected pixel data (%s)\n", name);
     }
     else
         ok(memcmp(expect->bits, converted_bits, buffersize) == 0, "unexpected pixel data with rc=NULL (%s)\n", name);
@@ -294,6 +361,24 @@ static const BYTE bits_32bppBGRA[] = {
     0,255,255,255, 255,0,255,255, 255,255,0,255, 255,255,255,255};
 static const struct bitmap_data testdata_32bppBGRA = {
     &GUID_WICPixelFormat32bppBGRA, 32, bits_32bppBGRA, 4, 2, 96.0, 96.0};
+
+static const float bits_32bppGrayFloat[] = {
+    0.072200f,0.715200f,0.212600f,0.000000f,
+    0.927800f,0.284800f,0.787400f,1.000000f};
+static const struct bitmap_data testdata_32bppGrayFloat = {
+    &GUID_WICPixelFormat32bppGrayFloat, 32, (const BYTE *)bits_32bppGrayFloat, 4, 2, 96.0, 96.0};
+
+static const BYTE bits_8bppGray[] = {
+    76,220,127,0,
+    247,145,230,255};
+static const struct bitmap_data testdata_8bppGray = {
+    &GUID_WICPixelFormat8bppGray, 8, bits_8bppGray, 4, 2, 96.0, 96.0};
+
+static const BYTE bits_24bppBGR_gray[] = {
+    76,76,76, 220,220,220, 127,127,127, 0,0,0,
+    247,247,247, 145,145,145, 230,230,230, 255,255,255};
+static const struct bitmap_data testdata_24bppBGR_gray = {
+    &GUID_WICPixelFormat24bppBGR, 24, bits_24bppBGR_gray, 4, 2, 96.0, 96.0};
 
 static void test_conversion(const struct bitmap_data *src, const struct bitmap_data *dst, const char *name, BOOL todo)
 {
@@ -733,6 +818,14 @@ START_TEST(converter)
 
     test_conversion(&testdata_32bppBGR, &testdata_24bppRGB, "32bppBGR -> 24bppRGB", FALSE);
     test_conversion(&testdata_24bppRGB, &testdata_32bppBGR, "24bppRGB -> 32bppBGR", FALSE);
+
+    test_conversion(&testdata_24bppRGB, &testdata_32bppGrayFloat, "24bppRGB -> 32bppGrayFloat", FALSE);
+    test_conversion(&testdata_32bppBGR, &testdata_32bppGrayFloat, "32bppBGR -> 32bppGrayFloat", FALSE);
+
+    test_conversion(&testdata_24bppBGR, &testdata_8bppGray, "24bppBGR -> 8bppGray", FALSE);
+    test_conversion(&testdata_32bppBGR, &testdata_8bppGray, "32bppBGR -> 8bppGray", FALSE);
+    test_conversion(&testdata_32bppGrayFloat, &testdata_24bppBGR_gray, "32bppGrayFloat -> 24bppBGR gray", FALSE);
+    test_conversion(&testdata_32bppGrayFloat, &testdata_8bppGray, "32bppGrayFloat -> 8bppGray", FALSE);
 
     test_invalid_conversion();
     test_default_converter();

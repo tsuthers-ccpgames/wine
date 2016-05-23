@@ -594,6 +594,9 @@ static void set_focus( Display *display, HWND hwnd, Time time )
     Window win;
     GUITHREADINFO threadinfo;
 
+    /* prevent recursion */
+    x11drv_thread_data()->active_window = hwnd;
+
     TRACE( "setting foreground window to %p\n", hwnd );
     SetForegroundWindow( hwnd );
 
@@ -814,6 +817,8 @@ static void X11DRV_FocusIn( HWND hwnd, XEvent *xev )
 
     if (!focus_win)
     {
+        x11drv_thread_data()->active_window = 0;
+
         /* Abey : 6-Oct-99. Check again if the focus out window is the
            Foreground window, because in most cases the messages sent
            above must have already changed the foreground window, in which
@@ -923,6 +928,7 @@ static void X11DRV_Expose( HWND hwnd, XEvent *xev )
 static void X11DRV_MapNotify( HWND hwnd, XEvent *event )
 {
     struct x11drv_win_data *data;
+    BOOL is_embedded;
 
     if (event->xany.window == x11drv_thread_data()->clip_window)
     {
@@ -937,7 +943,12 @@ static void X11DRV_MapNotify( HWND hwnd, XEvent *event )
         if (hwndFocus && IsChild( hwnd, hwndFocus ))
             set_input_focus( data );
     }
+
+    is_embedded = data->embedded;
     release_win_data( data );
+
+    if (is_embedded)
+        EnableWindow( hwnd, TRUE );
 }
 
 
@@ -946,8 +957,19 @@ static void X11DRV_MapNotify( HWND hwnd, XEvent *event )
  */
 static void X11DRV_UnmapNotify( HWND hwnd, XEvent *event )
 {
+    struct x11drv_win_data *data;
+    BOOL is_embedded;
+
     if (event->xany.window == x11drv_thread_data()->clip_window)
         clipping_cursor = FALSE;
+
+    if (!(data = get_win_data( hwnd ))) return;
+
+    is_embedded = data->embedded;
+    release_win_data( data );
+
+    if (is_embedded)
+        EnableWindow( hwnd, FALSE );
 }
 
 

@@ -241,7 +241,6 @@ static inline int arch_prctl( int func, void *ptr ) { return syscall( __NR_arch_
 
 #define FPU_sig(context)   ((XMM_SAVE_AREA32 *)((context)->uc_mcontext.__fpregs))
 #elif defined (__APPLE__)
-static pthread_key_t teb_key;
 
 #define RAX_sig(context)     ((context)->uc_mcontext->__ss.__rax)
 #define RBX_sig(context)     ((context)->uc_mcontext->__ss.__rbx)
@@ -2091,7 +2090,6 @@ static EXCEPTION_RECORD *setup_exception( ucontext_t *sigcontext, raise_func fun
         ULONG64           red_zone[16];
     } *stack;
     ULONG64 *rsp_ptr;
-    DWORD exception_code = 0;
 
     stack = (struct stack_layout *)(RSP_sig(sigcontext) & ~15);
 
@@ -2126,8 +2124,7 @@ static EXCEPTION_RECORD *setup_exception( ucontext_t *sigcontext, raise_func fun
     else if ((char *)(stack - 1) < (char *)NtCurrentTeb()->Tib.StackLimit)
     {
         /* stack access below stack limit, may be recoverable */
-        if (virtual_handle_stack_fault( stack - 1 )) exception_code = EXCEPTION_STACK_OVERFLOW;
-        else
+        if (!virtual_handle_stack_fault( stack - 1 ))
         {
             UINT diff = (char *)NtCurrentTeb()->Tib.StackLimit - (char *)(stack - 1);
             ERR( "stack overflow %u bytes in thread %04x eip %016lx esp %016lx stack %p-%p-%p\n",
@@ -2145,7 +2142,7 @@ static EXCEPTION_RECORD *setup_exception( ucontext_t *sigcontext, raise_func fun
     VALGRIND_MAKE_WRITABLE(stack, sizeof(*stack));
 #endif
     stack->rec.ExceptionRecord  = NULL;
-    stack->rec.ExceptionCode    = exception_code;
+    stack->rec.ExceptionCode    = STATUS_SUCCESS;
     stack->rec.ExceptionFlags   = EXCEPTION_CONTINUABLE;
     stack->rec.ExceptionAddress = (void *)RIP_sig(sigcontext);
     stack->rec.NumberParameters = 0;
@@ -2420,16 +2417,20 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_contex
             if (status != STATUS_UNHANDLED_EXCEPTION) return status;
         }
         /* hack: call wine handlers registered in the tib list */
-        else while ((ULONG64)teb_frame < new_context.Rsp)
+        else if ((ULONG64)teb_frame >= context.Rsp)
         {
-            TRACE( "found wine frame %p rsp %lx handler %p\n",
-                   teb_frame, new_context.Rsp, teb_frame->Handler );
-            dispatch.EstablisherFrame = (ULONG64)teb_frame;
-            context = *orig_context;
-            status = call_teb_handler( rec, &dispatch, teb_frame, orig_context );
-            if (status != STATUS_UNHANDLED_EXCEPTION) return status;
-            teb_frame = teb_frame->Prev;
+            while ((ULONG64)teb_frame < new_context.Rsp)
+            {
+                TRACE( "found wine frame %p rsp %lx handler %p\n",
+                       teb_frame, new_context.Rsp, teb_frame->Handler );
+                dispatch.EstablisherFrame = (ULONG64)teb_frame;
+                context = *orig_context;
+                status = call_teb_handler( rec, &dispatch, teb_frame, orig_context );
+                if (status != STATUS_UNHANDLED_EXCEPTION) return status;
+                teb_frame = teb_frame->Prev;
+            }
         }
+        else WARN( "skipping wine frame %p (on other stack?)\n", teb_frame );
 
         if (new_context.Rsp == (ULONG64)NtCurrentTeb()->Tib.StackBase) break;
         context = new_context;
@@ -2597,8 +2598,9 @@ static void segv_handler( int signal, siginfo_t *siginfo, void *sigcontext )
         virtual_handle_stack_fault( siginfo->si_addr ))
     {
         /* check if this was the last guard page */
-        if ((char *)siginfo->si_addr < (char *)NtCurrentTeb()->DeallocationStack + 2*4096)
+        if ((char *)siginfo->si_addr < (char *)NtCurrentTeb()->DeallocationStack + 3*4096)
         {
+            virtual_handle_stack_fault( (char *)siginfo->si_addr - 4096 );
             rec = setup_exception( sigcontext, raise_segv_exception );
             rec->ExceptionCode = EXCEPTION_STACK_OVERFLOW;
         }
@@ -2606,7 +2608,6 @@ static void segv_handler( int signal, siginfo_t *siginfo, void *sigcontext )
     }
 
     rec = setup_exception( sigcontext, raise_segv_exception );
-    if (rec->ExceptionCode == EXCEPTION_STACK_OVERFLOW) return;
 
     switch(TRAP_sig(ucontext))
     {
@@ -2824,22 +2825,23 @@ NTSTATUS signal_alloc_thread( TEB **teb )
 void signal_free_thread( TEB *teb )
 {
     SIZE_T size;
+    struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)teb->SpareBytes1;
 
     if (teb->DeallocationStack)
     {
         size = 0;
         NtFreeVirtualMemory( GetCurrentProcess(), &teb->DeallocationStack, &size, MEM_RELEASE );
     }
+    if ((ULONG_PTR)thread_data->pthread_stack & 1)
+    {
+        void *addr = (void *)((ULONG_PTR)thread_data->pthread_stack & ~1);
+        size = 0;
+        NtFreeVirtualMemory( GetCurrentProcess(), &addr, &size, MEM_RELEASE );
+    }
     size = 0;
     NtFreeVirtualMemory( NtCurrentProcess(), (void **)&teb, &size, MEM_RELEASE );
 }
 
-#ifdef __APPLE__
-static void init_teb_key(void)
-{
-    pthread_key_create( &teb_key, NULL );
-}
-#endif
 
 /**********************************************************************
  *		signal_init_thread
@@ -2849,10 +2851,6 @@ void signal_init_thread( TEB *teb )
     const WORD fpu_cw = 0x27f;
     stack_t ss;
 
-#ifdef __APPLE__
-    static pthread_once_t init_once = PTHREAD_ONCE_INIT;
-#endif
-
 #if defined __linux__
     arch_prctl( ARCH_SET_GS, teb );
 #elif defined (__FreeBSD__) || defined (__FreeBSD_kernel__)
@@ -2861,8 +2859,7 @@ void signal_init_thread( TEB *teb )
     sysarch( X86_64_SET_GSBASE, &teb );
 #elif defined (__APPLE__)
     /* FIXME: Actually setting %gs needs support from the OS */
-    pthread_once( &init_once, init_teb_key );
-    pthread_setspecific( teb_key, teb );
+    __asm__ volatile (".byte 0x65\n\tmovq %0,(0x30)" : : "r" (teb));
 #else
 # error Please define setting %gs for your architecture
 #endif
@@ -2918,6 +2915,12 @@ void signal_init_process(void)
     exit(1);
 }
 
+/**********************************************************************
+ *    signal_init_early
+ */
+void signal_init_early(void)
+{
+}
 
 /**********************************************************************
  *              RtlAddFunctionTable   (NTDLL.@)
@@ -3579,7 +3582,8 @@ void WINAPI RtlUnwindEx( PVOID end_frame, PVOID target_ip, EXCEPTION_RECORD *rec
             if (dispatch.EstablisherFrame == (ULONG64)end_frame) rec->ExceptionFlags |= EH_TARGET_UNWIND;
             call_unwind_handler( rec, &dispatch );
         }
-        else  /* hack: call builtin handlers registered in the tib list */
+        /* hack: call builtin handlers registered in the tib list */
+        else if ((ULONG64)teb_frame >= context->Rsp)
         {
             DWORD64 backup_frame = dispatch.EstablisherFrame;
             while ((ULONG64)teb_frame < new_context.Rsp && (ULONG64)teb_frame < (ULONG64)end_frame)
@@ -3592,6 +3596,7 @@ void WINAPI RtlUnwindEx( PVOID end_frame, PVOID target_ip, EXCEPTION_RECORD *rec
             if ((ULONG64)teb_frame == (ULONG64)end_frame && (ULONG64)end_frame < new_context.Rsp) break;
             dispatch.EstablisherFrame = backup_frame;
         }
+        else WARN( "skipping wine frame %p (on other stack?)\n", teb_frame );
 
         if (dispatch.EstablisherFrame == (ULONG64)end_frame) break;
         *context = new_context;
@@ -3811,6 +3816,14 @@ __ASM_GLOBAL_FUNC( call_thread_exit_func,
 void WINAPI RtlExitUserThread( ULONG status )
 {
     if (!ntdll_get_thread_data()->exit_frame) exit_thread( status );
+    if (ntdll_get_thread_data()->exit_frame <= NtCurrentTeb()->DeallocationStack ||
+        ntdll_get_thread_data()->exit_frame > NtCurrentTeb()->Tib.StackBase)
+    {
+        WARN( "exit frame outside of stack limits in thread %04x frame %p stack %p-%p\n",
+              GetCurrentThreadId(), ntdll_get_thread_data()->exit_frame,
+              NtCurrentTeb()->Tib.StackLimit, NtCurrentTeb()->Tib.StackBase );
+        exit_thread( status );
+    }
     call_thread_exit_func( status, exit_thread, ntdll_get_thread_data()->exit_frame );
 }
 
@@ -3820,6 +3833,14 @@ void WINAPI RtlExitUserThread( ULONG status )
 void abort_thread( int status )
 {
     if (!ntdll_get_thread_data()->exit_frame) terminate_thread( status );
+    if (ntdll_get_thread_data()->exit_frame <= NtCurrentTeb()->DeallocationStack ||
+        ntdll_get_thread_data()->exit_frame > NtCurrentTeb()->Tib.StackBase)
+    {
+        WARN( "exit frame outside of stack limits in thread %04x frame %p stack %p-%p\n",
+              GetCurrentThreadId(), ntdll_get_thread_data()->exit_frame,
+              NtCurrentTeb()->Tib.StackLimit, NtCurrentTeb()->Tib.StackBase );
+        terminate_thread( status );
+    }
     call_thread_exit_func( status, terminate_thread, ntdll_get_thread_data()->exit_frame );
 }
 
@@ -3844,16 +3865,8 @@ __ASM_STDCALL_FUNC( DbgUserBreakPoint, 0, "int $3; ret")
 /**********************************************************************
  *              NtCurrentTeb  (NTDLL.@)
  *
- * FIXME: This isn't exported from NTDLL on real NT.  This should be
- *        removed if and when we can set the GSBASE MSR on Mac OS X.
+ * FIXME: This isn't exported from NTDLL on real NT.
  */
-#ifdef __APPLE__
-TEB * WINAPI NtCurrentTeb(void)
-{
-    return pthread_getspecific( teb_key );
-}
-#else
 __ASM_STDCALL_FUNC( NtCurrentTeb, 0, ".byte 0x65\n\tmovq 0x30,%rax\n\tret" )
-#endif
 
 #endif  /* __x86_64__ */

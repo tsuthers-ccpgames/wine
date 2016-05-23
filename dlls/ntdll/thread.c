@@ -23,6 +23,9 @@
 
 #include <assert.h>
 #include <stdarg.h>
+#include <string.h>
+#include <stdio.h>
+#include <limits.h>
 #include <sys/types.h>
 #ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>
@@ -202,6 +205,26 @@ static ULONG64 get_dyld_image_info_addr(void)
 }
 #endif  /* __APPLE__ */
 
+
+/**************************************************************************
+ *  __wine_user_shared_data   (NTDLL.@)
+ *
+ * Update user shared data and return the address of the structure.
+ */
+BYTE* CDECL __wine_user_shared_data(void)
+{
+    LARGE_INTEGER now;
+    NtQuerySystemTime( &now );
+    user_shared_data->SystemTime.LowPart = now.u.LowPart;
+    user_shared_data->SystemTime.High1Time = user_shared_data->SystemTime.High2Time = now.u.HighPart;
+    user_shared_data->u.TickCountQuad = (now.QuadPart - server_start_time) / 10000;
+    user_shared_data->u.TickCount.High2Time = user_shared_data->u.TickCount.High1Time;
+    user_shared_data->TickCountLowDeprecated = user_shared_data->u.TickCount.LowPart;
+    user_shared_data->TickCountMultiplier = 1 << 24;
+    return (BYTE *)user_shared_data;
+}
+
+
 /***********************************************************************
  *           thread_init
  *
@@ -215,7 +238,6 @@ HANDLE thread_init(void)
     void *addr;
     SIZE_T size, info_size;
     HANDLE exe_file = 0;
-    LARGE_INTEGER now;
     NTSTATUS status;
     struct ntdll_thread_data *thread_data;
     static struct debug_info debug_info;  /* debug info for initial thread */
@@ -224,6 +246,7 @@ HANDLE thread_init(void)
 #endif
 
     virtual_init();
+    signal_init_early();
 
     /* reserve space for shared user data */
 
@@ -341,15 +364,8 @@ HANDLE thread_init(void)
             wine_server_fd_to_handle( 2, GENERIC_WRITE|SYNCHRONIZE, OBJ_INHERIT, &params.hStdError );
     }
 
-    /* initialize time values in user_shared_data */
-    NtQuerySystemTime( &now );
-    user_shared_data->SystemTime.LowPart = now.u.LowPart;
-    user_shared_data->SystemTime.High1Time = user_shared_data->SystemTime.High2Time = now.u.HighPart;
-    user_shared_data->u.TickCountQuad = (now.QuadPart - server_start_time) / 10000;
-    user_shared_data->u.TickCount.High2Time = user_shared_data->u.TickCount.High1Time;
-    user_shared_data->TickCountLowDeprecated = user_shared_data->u.TickCount.LowPart;
-    user_shared_data->TickCountMultiplier = 1 << 24;
-
+    /* initialize user_shared_data */
+    __wine_user_shared_data();
     fill_cpu_info();
 
     NtCreateKeyedEvent( &keyed_event, GENERIC_READ | GENERIC_WRITE, NULL, 0 );
@@ -380,6 +396,8 @@ void terminate_thread( int status )
 void exit_thread( int status )
 {
     static void *prev_teb;
+    shmlocal_t *shmlocal;
+    sigset_t sigset;
     TEB *teb;
 
     if (status)  /* send the exit code to the server (0 is already the default) */
@@ -393,7 +411,7 @@ void exit_thread( int status )
         SERVER_END_REQ;
     }
 
-    if (interlocked_xchg_add( &nb_threads, -1 ) <= 1)
+    if (interlocked_xchg_add( &nb_threads, 0 ) <= 1)
     {
         LdrShutdownProcess();
         exit( status );
@@ -401,6 +419,9 @@ void exit_thread( int status )
 
     LdrShutdownThread();
     RtlFreeThreadActivationContextStack();
+
+    shmlocal = interlocked_xchg_ptr( &NtCurrentTeb()->Reserved5[1], NULL );
+    if (shmlocal) NtUnmapViewOfSection( NtCurrentProcess(), shmlocal );
 
     pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
 
@@ -414,6 +435,11 @@ void exit_thread( int status )
             signal_free_thread( teb );
         }
     }
+
+    sigemptyset( &sigset );
+    sigaddset( &sigset, SIGQUIT );
+    pthread_sigmask( SIG_BLOCK, &sigset, NULL );
+    if (interlocked_xchg_add( &nb_threads, -1 ) <= 1) _exit( status );
 
     close( ntdll_get_thread_data()->wait_fd[0] );
     close( ntdll_get_thread_data()->wait_fd[1] );
@@ -431,15 +457,8 @@ void exit_thread( int status )
 static void start_thread( struct startup_info *info )
 {
     TEB *teb = info->teb;
-    struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)teb->SpareBytes1;
     PRTL_THREAD_START_ROUTINE func = info->entry_point;
     void *arg = info->entry_arg;
-    struct debug_info debug_info;
-
-    debug_info.str_pos = debug_info.strings;
-    debug_info.out_pos = debug_info.output;
-    thread_data->debug_info = &debug_info;
-    thread_data->pthread_id = pthread_self();
 
     signal_init_thread( teb );
     server_init_thread( func );
@@ -451,6 +470,26 @@ static void start_thread( struct startup_info *info )
         DPRINTF( "%04x:Starting thread proc %p (arg=%p)\n", GetCurrentThreadId(), func, arg );
 
     call_thread_entry_point( (LPTHREAD_START_ROUTINE)func, arg );
+}
+
+
+/***********************************************************************
+ *           call_start_thread
+ *
+ * Setup debug_info struct and call start_thread on target stack.
+ */
+static void call_start_thread( struct startup_info *info )
+{
+    TEB *teb = info->teb;
+    struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)teb->SpareBytes1;
+    struct debug_info debug_info;
+
+    debug_info.str_pos = debug_info.strings;
+    debug_info.out_pos = debug_info.output;
+    thread_data->debug_info = &debug_info;
+    thread_data->pthread_id = pthread_self();
+
+    wine_switch_to_stack( (void (*)(void *))start_thread, info, teb->Tib.StackBase );
 }
 
 
@@ -560,11 +599,10 @@ NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, const SECURITY_DESCRIPTOR *
     if ((status = virtual_alloc_thread_stack( teb, stack_reserve, stack_commit ))) goto error;
 
     pthread_attr_init( &attr );
-    pthread_attr_setstack( &attr, teb->DeallocationStack,
-                           (char *)teb->Tib.StackBase - (char *)teb->DeallocationStack );
+    pthread_attr_setstacksize( &attr, PTHREAD_STACK_MIN );
     pthread_attr_setscope( &attr, PTHREAD_SCOPE_SYSTEM ); /* force creating a kernel thread */
     interlocked_xchg_add( &nb_threads, 1 );
-    if (pthread_create( &pthread_id, &attr, (void * (*)(void *))start_thread, info ))
+    if (pthread_create( &pthread_id, &attr, (void * (*)(void *))call_start_thread, info ))
     {
         interlocked_xchg_add( &nb_threads, -1 );
         pthread_attr_destroy( &attr );
@@ -976,7 +1014,10 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
     case ThreadTimes:
         {
             KERNEL_USER_TIMES   kusrt;
+            int unix_pid, unix_tid;
 
+            /* We need to do a server call to get the creation time, exit time, PID and TID */
+            /* This works on any thread */
             SERVER_START_REQ( get_thread_times )
             {
                 req->handle = wine_server_obj_handle( handle );
@@ -985,36 +1026,79 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
                 {
                     kusrt.CreateTime.QuadPart = reply->creation_time;
                     kusrt.ExitTime.QuadPart = reply->exit_time;
+                    unix_pid = reply->unix_pid;
+                    unix_tid = reply->unix_tid;
                 }
             }
             SERVER_END_REQ;
             if (status == STATUS_SUCCESS)
             {
-                /* We call times(2) for kernel time or user time */
-                /* We can only (portably) do this for the current thread */
-                if (handle == GetCurrentThread())
-                {
-                    struct tms time_buf;
-                    long clocks_per_sec = sysconf(_SC_CLK_TCK);
+                unsigned long clk_tck = sysconf(_SC_CLK_TCK);
+                BOOL filled_times = FALSE;
 
-                    times(&time_buf);
-                    kusrt.KernelTime.QuadPart = (ULONGLONG)time_buf.tms_stime * 10000000 / clocks_per_sec;
-                    kusrt.UserTime.QuadPart = (ULONGLONG)time_buf.tms_utime * 10000000 / clocks_per_sec;
-                }
-                else
+#ifdef __linux__
+                /* only /proc provides exact values for a specific thread */
+                if (unix_pid != -1 && unix_tid != -1)
                 {
-                    static BOOL reported = FALSE;
+                    unsigned long usr, sys;
+                    char buf[512], *pos;
+                    FILE *fp;
+                    int i;
 
-                    kusrt.KernelTime.QuadPart = 0;
-                    kusrt.UserTime.QuadPart = 0;
-                    if (reported)
-                        TRACE("Cannot get kerneltime or usertime of other threads\n");
-                    else
+                    /* based on https://github.com/torvalds/linux/blob/master/fs/proc/array.c */
+                    sprintf( buf, "/proc/%u/task/%u/stat", unix_pid, unix_tid );
+                    if ((fp = fopen( buf, "r" )))
                     {
-                        FIXME("Cannot get kerneltime or usertime of other threads\n");
-                        reported = TRUE;
+                        pos = fgets( buf, sizeof(buf), fp );
+                        fclose( fp );
+
+                        /* format of first chunk is "%d (%s) %c" - we have to skip to the last ')'
+                         * to avoid misinterpreting the string. */
+                        if (pos) pos = strrchr( pos, ')' );
+                        if (pos) pos = strchr( pos + 1, ' ' );
+                        if (pos) pos++;
+
+                        /* skip over the following fields: state, ppid, pgid, sid, tty_nr, tty_pgrp,
+                         * task->flags, min_flt, cmin_flt, maj_flt, cmaj_flt */
+                        for (i = 0; (i < 11) && pos; i++)
+                        {
+                            pos = strchr( pos + 1, ' ' );
+                            if (pos) pos++;
+                        }
+
+                        /* the next two values are user and system time */
+                        if (pos && (sscanf( pos, "%lu %lu", &usr, &sys ) == 2))
+                        {
+                            kusrt.KernelTime.QuadPart = (ULONGLONG)sys * 10000000 / clk_tck;
+                            kusrt.UserTime.QuadPart   = (ULONGLONG)usr * 10000000 / clk_tck;
+                            filled_times = TRUE;
+                        }
                     }
                 }
+#endif
+
+                /* get values for current process instead */
+                if (!filled_times && handle == GetCurrentThread())
+                {
+                    struct tms time_buf;
+                    times(&time_buf);
+
+                    kusrt.KernelTime.QuadPart = (ULONGLONG)time_buf.tms_stime * 10000000 / clk_tck;
+                    kusrt.UserTime.QuadPart   = (ULONGLONG)time_buf.tms_utime * 10000000 / clk_tck;
+                    filled_times = TRUE;
+                }
+
+                /* unable to determine exact values, fill with zero */
+                if (!filled_times)
+                {
+                    static int once;
+                    if (!once++)
+                        FIXME("Cannot get kerneltime or usertime of other threads\n");
+
+                    kusrt.KernelTime.QuadPart = 0;
+                    kusrt.UserTime.QuadPart   = 0;
+                }
+
                 if (data) memcpy( data, &kusrt, min( length, sizeof(kusrt) ));
                 if (ret_len) *ret_len = min( length, sizeof(kusrt) );
             }
@@ -1051,6 +1135,17 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
                     {
                         if (sel == (wine_get_cs() & ~3))
                             tdi->Entry.HighWord.Bits.Type |= 8;  /* code segment */
+                        else if (sel == (ntdll_get_thread_data()->fs & ~3))
+                        {
+                            ULONG_PTR fs_base = (ULONG_PTR)NtCurrentTeb();
+                            tdi->Entry.BaseLow = fs_base & 0xffff;
+                            tdi->Entry.HighWord.Bits.BaseMid = (fs_base >> 16) & 0xff;
+                            tdi->Entry.HighWord.Bits.BaseHi = (fs_base >> 24) & 0xff;
+                            tdi->Entry.LimitLow = 0x0fff;
+                            tdi->Entry.HighWord.Bits.LimitHi = 0;
+                            tdi->Entry.HighWord.Bits.Granularity = 0;
+                            tdi->Entry.HighWord.Bits.Type = 0x13;
+                        }
                         else status = STATUS_ACCESS_DENIED;
                     }
                 }

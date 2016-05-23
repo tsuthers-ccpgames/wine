@@ -1513,11 +1513,15 @@ static void test_typelibmarshal(void)
     dispparams.rgvarg = vararg;
     VariantInit(&varresult);
     hr = IDispatch_Invoke(pDispatch, DISPID_TM_COCLASS, &IID_NULL, LOCALE_NEUTRAL, DISPATCH_METHOD, &dispparams, &varresult, &excepinfo, NULL);
-    todo_wine ok_ole_success(hr, IDispatch_Invoke);
+    ok_ole_success(hr, IDispatch_Invoke);
     ok(excepinfo.wCode == 0x0 && excepinfo.scode == S_OK,
         "EXCEPINFO differs from expected: wCode = 0x%x, scode = 0x%08x\n",
         excepinfo.wCode, excepinfo.scode);
     VariantClear(&varresult);
+
+    /* call CoClass (direct) */
+    hr = IWidget_Coclass(pWidget, (void *)V_DISPATCH(&vararg[0]));
+    ok_ole_success(hr, IWidget_Coclass);
     VariantClear(&vararg[0]);
 
     /* call Value with a VT_VARIANT|VT_BYREF type */

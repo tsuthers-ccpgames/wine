@@ -1442,7 +1442,11 @@ static void shader_glsl_load_constants(void *shader_priv, struct wined3d_context
         const struct wined3d_vec4 correction_params =
         {
             /* Position is relative to the framebuffer, not the viewport. */
+#if defined(STAGING_CSMT)
+            context->render_offscreen ? 0.0f : (float)state->fb.render_targets[0]->height,
+#else  /* STAGING_CSMT */
             context->render_offscreen ? 0.0f : (float)state->fb->render_targets[0]->height,
+#endif /* STAGING_CSMT */
             context->render_offscreen ? 1.0f : -1.0f,
             0.0f,
             0.0f,
@@ -7196,7 +7200,7 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
     GLuint vs_id = 0;
     GLuint gs_id = 0;
     GLuint ps_id = 0;
-    struct list *ps_list, *vs_list;
+    struct list *ps_list = NULL, *vs_list = NULL;
     WORD attribs_map;
     struct wined3d_string_buffer *tmp_name;
 

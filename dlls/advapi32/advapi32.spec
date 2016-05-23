@@ -272,8 +272,8 @@
 @ stdcall EventActivityIdControl(long ptr)
 @ stdcall EventEnabled(int64 ptr)
 @ stdcall EventProviderEnabled(int64 long int64)
-@ stdcall EventRegister(ptr ptr ptr ptr)
-@ stdcall EventSetInformation(int64 long ptr long)
+@ stdcall EventRegister(ptr ptr ptr ptr) ntdll.EtwEventRegister
+@ stdcall EventSetInformation(int64 long ptr long) ntdll.EtwEventSetInformation
 @ stdcall EventUnregister(int64)
 @ stdcall EventWrite(int64 ptr long ptr)
 # @ stub EventWriteEndScenario

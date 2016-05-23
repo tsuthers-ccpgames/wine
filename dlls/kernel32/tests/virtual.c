@@ -47,11 +47,29 @@ static PVOID  (WINAPI *pRtlAddVectoredExceptionHandler)(ULONG, PVECTORED_EXCEPTI
 static ULONG  (WINAPI *pRtlRemoveVectoredExceptionHandler)(PVOID);
 static BOOL   (WINAPI *pGetProcessDEPPolicy)(HANDLE, LPDWORD, PBOOL);
 static BOOL   (WINAPI *pIsWow64Process)(HANDLE, PBOOL);
+static NTSTATUS (WINAPI *pNtQuerySection)(HANDLE, int, PVOID, ULONG, PULONG);
 static NTSTATUS (WINAPI *pNtProtectVirtualMemory)(HANDLE, PVOID *, SIZE_T *, ULONG, ULONG *);
 static NTSTATUS (WINAPI *pNtAllocateVirtualMemory)(HANDLE, PVOID *, ULONG, SIZE_T *, ULONG, ULONG);
 static NTSTATUS (WINAPI *pNtFreeVirtualMemory)(HANDLE, PVOID *, SIZE_T *, ULONG);
 
 /* ############################### */
+
+static UINT_PTR page_mask = 0xfff;
+#define ROUND_SIZE(addr,size) \
+   (((SIZE_T)(size) + ((UINT_PTR)(addr) & page_mask) + page_mask) & ~page_mask)
+
+static PIMAGE_NT_HEADERS image_nt_header(HMODULE module)
+{
+    IMAGE_NT_HEADERS *ret = NULL;
+    IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)module;
+
+    if (dos->e_magic == IMAGE_DOS_SIGNATURE)
+    {
+        ret = (IMAGE_NT_HEADERS *)((char *)dos + dos->e_lfanew);
+        if (ret->Signature != IMAGE_NT_SIGNATURE) ret = NULL;
+    }
+    return ret;
+}
 
 static HANDLE create_target_process(const char *arg)
 {
@@ -435,7 +453,7 @@ static void test_MapViewOfFile(void)
     SetLastError(0xdeadbeef);
     file = CreateFileA( testfile, GENERIC_READ|GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0 );
     ok( file != INVALID_HANDLE_VALUE, "CreateFile error %u\n", GetLastError() );
-    SetFilePointer( file, 4096, NULL, FILE_BEGIN );
+    SetFilePointer( file, 12288, NULL, FILE_BEGIN );
     SetEndOfFile( file );
 
     /* read/write mapping */
@@ -994,6 +1012,31 @@ static void test_MapViewOfFile(void)
     ok(info.State == MEM_FREE, "%#x != MEM_FREE\n", info.State);
     ok(info.Type == 0, "%#x != 0\n", info.Type);
 
+    mapping = CreateFileMappingA( file, NULL, PAGE_READONLY, 0, 12288, NULL );
+    ok( mapping != 0, "CreateFileMappingA failed with error %u\n", GetLastError() );
+
+    ptr = MapViewOfFile( mapping, FILE_MAP_READ, 0, 0, 12288 );
+    ok( ptr != NULL, "MapViewOfFile failed with error %u\n", GetLastError() );
+
+    ret = UnmapViewOfFile( (char *)ptr + 100 );
+    ok( ret, "UnmapViewOfFile failed with error %u\n", GetLastError() );
+    if (!ret) UnmapViewOfFile( ptr );
+
+    ptr = MapViewOfFile( mapping, FILE_MAP_READ, 0, 0, 12288 );
+    ok( ptr != NULL, "MapViewOfFile failed with error %u\n", GetLastError() );
+
+    ret = UnmapViewOfFile( (char *)ptr + 4096 );
+    ok( ret, "UnmapViewOfFile failed with error %u\n", GetLastError() );
+    if (!ret) UnmapViewOfFile( ptr );
+
+    ptr = MapViewOfFile( mapping, FILE_MAP_READ, 0, 0, 12288 );
+    ok( ptr != NULL, "MapViewOfFile failed with error %u\n", GetLastError() );
+
+    ret = UnmapViewOfFile( (char *)ptr + 4096 + 100 );
+    ok( ret, "UnmapViewOfFile failed with error %u\n", GetLastError() );
+    if (!ret) UnmapViewOfFile( ptr );
+
+    CloseHandle(mapping);
     CloseHandle(file);
     DeleteFileA(testfile);
 }
@@ -1645,16 +1688,16 @@ static void test_write_watch(void)
 
     num_bytes = 0;
     success = GetOverlappedResult( readpipe, &overlapped, &num_bytes, TRUE );
-    todo_wine ok( success, "GetOverlappedResult failed %u\n", GetLastError() );
-    todo_wine ok( num_bytes == sizeof(testdata), "wrong number of bytes read\n" );
-    todo_wine ok( !memcmp( base, testdata, sizeof(testdata)), "didn't receive expected data\n" );
+    ok( success, "GetOverlappedResult failed %u\n", GetLastError() );
+    ok( num_bytes == sizeof(testdata), "wrong number of bytes read\n" );
+    ok( !memcmp( base, testdata, sizeof(testdata)), "didn't receive expected data\n" );
 
     count = 64;
     memset( results, 0, sizeof(results) );
     ret = pGetWriteWatch( WRITE_WATCH_FLAG_RESET, base, size, results, &count, &pagesize );
     ok( !ret, "GetWriteWatch failed %u\n", GetLastError() );
     todo_wine ok( count == 1, "wrong count %lu\n", count );
-    todo_wine ok( results[0] == base, "wrong result %p\n", results[0] );
+    ok( results[0] == base, "wrong result %p\n", results[0] );
 
     CloseHandle( readpipe );
     CloseHandle( writepipe );
@@ -3768,6 +3811,239 @@ static void test_shared_memory_ro(BOOL is_child, DWORD child_access)
     CloseHandle(mapping);
 }
 
+static void test_NtQuerySection(void)
+{
+    char path[MAX_PATH];
+    HANDLE file, mapping;
+    void *p;
+    NTSTATUS status;
+    union
+    {
+        SECTION_BASIC_INFORMATION basic;
+        SECTION_IMAGE_INFORMATION image;
+        char buf[1024];
+    } info;
+    IMAGE_NT_HEADERS *nt;
+    ULONG ret;
+    SIZE_T fsize, image_size;
+    SYSTEM_INFO si;
+
+    if (!pNtQuerySection)
+    {
+        win_skip("NtQuerySection is not available\n");
+        return;
+    }
+
+    GetSystemInfo(&si);
+    page_mask = si.dwPageSize - 1;
+
+    GetSystemDirectoryA(path, sizeof(path));
+    strcat(path, "\\kernel32.dll");
+
+    SetLastError(0xdeadbef);
+    file = CreateFileA(path, GENERIC_READ|GENERIC_EXECUTE, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, 0);
+    ok(file != INVALID_HANDLE_VALUE, "CreateFile error %u\n", GetLastError());
+
+    fsize = GetFileSize(file, NULL);
+
+    SetLastError(0xdeadbef);
+    mapping = CreateFileMappingA(file, NULL, PAGE_EXECUTE_READ, 0, 0, NULL);
+    /* NT4 and win2k don't support EXEC on file mappings */
+    if (!mapping)
+        mapping = CreateFileMappingA(file, NULL, PAGE_READONLY, 0, 0, NULL);
+    ok(mapping != 0, "CreateFileMapping error %u\n", GetLastError());
+
+    status = pNtQuerySection(mapping, SectionBasicInformation, NULL, sizeof(info), &ret);
+    ok(status == STATUS_ACCESS_VIOLATION, "expected STATUS_ACCESS_VIOLATION, got %#x\n", status);
+
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, 0, NULL);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "expected STATUS_INFO_LENGTH_MISMATCH, got %#x\n", status);
+
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, 0, &ret);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "expected STATUS_INFO_LENGTH_MISMATCH, got %#x\n", status);
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.basic), "wrong returned size %u\n", ret);
+    ok(info.basic.BaseAddress == NULL, "expected NULL, got %p\n", info.basic.BaseAddress);
+todo_wine
+    ok(info.basic.Attributes == SEC_FILE, "expected SEC_FILE, got %#x\n", info.basic.Attributes);
+    ok(info.basic.Size.QuadPart == fsize, "expected %#lx, got %#x/%08x\n", fsize, info.basic.Size.HighPart, info.basic.Size.LowPart);
+
+    status = pNtQuerySection(mapping, SectionImageInformation, &info, sizeof(info.basic), &ret);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "expected STATUS_INFO_LENGTH_MISMATCH, got %#x\n", status);
+
+    status = pNtQuerySection(mapping, SectionImageInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SECTION_NOT_IMAGE, "expected STATUS_SECTION_NOT_IMAGE, got %#x\n", status);
+
+    SetLastError(0xdeadbef);
+    p = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+    ok(p != NULL, "MapViewOfFile error %u\n", GetLastError());
+
+    nt = image_nt_header(p);
+    image_size = ROUND_SIZE(p, nt->OptionalHeader.SizeOfImage);
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.basic), "wrong returned size %u\n", ret);
+    ok(info.basic.BaseAddress == NULL, "expected NULL, got %p\n", info.basic.BaseAddress);
+todo_wine
+    ok(info.basic.Attributes == SEC_FILE, "expected SEC_FILE, got %#x\n", info.basic.Attributes);
+    ok(info.basic.Size.QuadPart == fsize, "expected %#lx, got %#x/%08x\n", fsize, info.basic.Size.HighPart, info.basic.Size.LowPart);
+
+    UnmapViewOfFile(p);
+    CloseHandle(mapping);
+
+    SetLastError(0xdeadbef);
+    mapping = CreateFileMappingA(file, NULL, PAGE_EXECUTE_READ|SEC_IMAGE, 0, 0, NULL);
+    /* NT4 and win2k don't support EXEC on file mappings */
+    if (!mapping)
+        mapping = CreateFileMappingA(file, NULL, PAGE_READONLY|SEC_IMAGE, 0, 0, NULL);
+    ok(mapping != 0, "CreateFileMapping error %u\n", GetLastError());
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.basic), "wrong returned size %u\n", ret);
+    ok(info.basic.BaseAddress == NULL, "expected NULL, got %p\n", info.basic.BaseAddress);
+todo_wine
+    ok(info.basic.Attributes == (SEC_FILE|SEC_IMAGE), "expected SEC_FILE|SEC_IMAGE, got %#x\n", info.basic.Attributes);
+    ok(info.basic.Size.QuadPart == image_size, "expected %#lx, got %#x/%08x\n", image_size, info.basic.Size.HighPart, info.basic.Size.LowPart);
+
+    status = pNtQuerySection(mapping, SectionImageInformation, NULL, sizeof(info), &ret);
+    ok(status == STATUS_ACCESS_VIOLATION, "expected STATUS_ACCESS_VIOLATION, got %#x\n", status);
+
+    status = pNtQuerySection(mapping, SectionImageInformation, &info, 0, NULL);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "expected STATUS_INFO_LENGTH_MISMATCH, got %#x\n", status);
+
+    status = pNtQuerySection(mapping, SectionImageInformation, &info, 0, &ret);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "expected STATUS_INFO_LENGTH_MISMATCH, got %#x\n", status);
+
+    status = pNtQuerySection(mapping, SectionImageInformation, &info, sizeof(info.basic), &ret);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "expected STATUS_INFO_LENGTH_MISMATCH, got %#x\n", status);
+
+    SetLastError(0xdeadbef);
+    p = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+    ok(p != NULL, "MapViewOfFile error %u\n", GetLastError());
+
+    nt = image_nt_header(p);
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionImageInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.image), "wrong returned size %u\n", ret);
+    ok((ULONG_PTR)info.image.TransferAddress == nt->OptionalHeader.ImageBase + nt->OptionalHeader.AddressOfEntryPoint,
+       "expected %#lx, got %p\n", (SIZE_T)(nt->OptionalHeader.ImageBase + nt->OptionalHeader.AddressOfEntryPoint), info.image.TransferAddress);
+    ok(info.image.ZeroBits == 0, "expected 0, got %#x\n", info.image.ZeroBits);
+todo_wine
+    ok(info.image.MaximumStackSize == nt->OptionalHeader.SizeOfStackReserve, "expected %#lx, got %#lx\n", (SIZE_T)nt->OptionalHeader.SizeOfStackReserve, info.image.MaximumStackSize);
+todo_wine
+    ok(info.image.CommittedStackSize == nt->OptionalHeader.SizeOfStackCommit, "expected %#lx, got %#lx\n", (SIZE_T)nt->OptionalHeader.SizeOfStackCommit, info.image.CommittedStackSize);
+    ok(info.image.SubSystemType == nt->OptionalHeader.Subsystem, "expected %#x, got %#x\n", nt->OptionalHeader.Subsystem, info.image.SubSystemType);
+    ok(info.image.SubsystemVersionLow == nt->OptionalHeader.MinorSubsystemVersion, "expected %#x, got %#x\n", nt->OptionalHeader.MinorSubsystemVersion, info.image.SubsystemVersionLow);
+    ok(info.image.SubsystemVersionHigh == nt->OptionalHeader.MajorSubsystemVersion, "expected %#x, got %#x\n", nt->OptionalHeader.MajorSubsystemVersion, info.image.SubsystemVersionHigh);
+    ok(info.image.ImageCharacteristics == nt->FileHeader.Characteristics, "expected %#x, got %#x\n", nt->FileHeader.Characteristics, info.image.ImageCharacteristics);
+    ok(info.image.DllCharacteristics == nt->OptionalHeader.DllCharacteristics, "expected %#x, got %#x\n", nt->OptionalHeader.DllCharacteristics, info.image.DllCharacteristics);
+    ok(info.image.Machine == nt->FileHeader.Machine, "expected %#x, got %#x\n", nt->FileHeader.Machine, info.image.Machine);
+    ok(info.image.ImageContainsCode == TRUE, "expected 1, got %#x\n", info.image.ImageContainsCode);
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.basic), "wrong returned size %u\n", ret);
+    ok(info.basic.BaseAddress == NULL, "expected NULL, got %p\n", info.basic.BaseAddress);
+todo_wine
+    ok(info.basic.Attributes == (SEC_FILE|SEC_IMAGE), "expected SEC_FILE|SEC_IMAGE, got %#x\n", info.basic.Attributes);
+    ok(info.basic.Size.QuadPart == image_size, "expected %#lx, got %#x/%08x\n", image_size, info.basic.Size.HighPart, info.basic.Size.LowPart);
+
+    UnmapViewOfFile(p);
+    CloseHandle(mapping);
+
+    SetLastError(0xdeadbef);
+    mapping = CreateFileMappingA(file, NULL, PAGE_READONLY|SEC_COMMIT|SEC_NOCACHE, 0, 0, NULL);
+    ok(mapping != 0, "CreateFileMapping error %u\n", GetLastError());
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.basic), "wrong returned size %u\n", ret);
+    ok(info.basic.BaseAddress == NULL, "expected NULL, got %p\n", info.basic.BaseAddress);
+todo_wine
+    ok(info.basic.Attributes == SEC_FILE, "expected SEC_FILE, got %#x\n", info.basic.Attributes);
+    ok(info.basic.Size.QuadPart == fsize, "expected %#lx, got %#x/%08x\n", fsize, info.basic.Size.HighPart, info.basic.Size.LowPart);
+
+    CloseHandle(mapping);
+
+    SetLastError(0xdeadbef);
+    mapping = CreateFileMappingA(file, NULL, PAGE_READONLY|SEC_RESERVE, 0, 0, NULL);
+    ok(mapping != 0, "CreateFileMapping error %u\n", GetLastError());
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.basic), "wrong returned size %u\n", ret);
+    ok(info.basic.BaseAddress == NULL, "expected NULL, got %p\n", info.basic.BaseAddress);
+todo_wine
+    ok(info.basic.Attributes == SEC_FILE, "expected SEC_FILE, got %#x\n", info.basic.Attributes);
+    ok(info.basic.Size.QuadPart == fsize, "expected %#lx, got %#x/%08x\n", fsize, info.basic.Size.HighPart, info.basic.Size.LowPart);
+
+    CloseHandle(mapping);
+    CloseHandle(file);
+
+    SetLastError(0xdeadbef);
+    mapping = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE|SEC_COMMIT, 0, 4096, NULL);
+    ok(mapping != 0, "CreateFileMapping error %u\n", GetLastError());
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.basic), "wrong returned size %u\n", ret);
+    ok(info.basic.BaseAddress == NULL, "expected NULL, got %p\n", info.basic.BaseAddress);
+    ok(info.basic.Attributes == SEC_COMMIT, "expected SEC_COMMIT, got %#x\n", info.basic.Attributes);
+    ok(info.basic.Size.QuadPart == 4096, "expected 4096, got %#x/%08x\n", info.basic.Size.HighPart, info.basic.Size.LowPart);
+
+    SetLastError(0xdeadbef);
+    p = MapViewOfFile(mapping, FILE_MAP_READ|FILE_MAP_WRITE, 0, 0, 0);
+    ok(p != NULL, "MapViewOfFile error %u\n", GetLastError());
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.basic), "wrong returned size %u\n", ret);
+    ok(info.basic.BaseAddress == NULL, "expected NULL, got %p\n", info.basic.BaseAddress);
+    ok(info.basic.Attributes == SEC_COMMIT, "expected SEC_COMMIT, got %#x\n", info.basic.Attributes);
+    ok(info.basic.Size.QuadPart == 4096, "expected 4096, got %#x/%08x\n", info.basic.Size.HighPart, info.basic.Size.LowPart);
+
+    UnmapViewOfFile(p);
+    CloseHandle(mapping);
+
+    SetLastError(0xdeadbef);
+    mapping = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READONLY|SEC_RESERVE, 0, 4096, NULL);
+    ok(mapping != 0, "CreateFileMapping error %u\n", GetLastError());
+
+    memset(&info, 0x55, sizeof(info));
+    ret = 0xdeadbeef;
+    status = pNtQuerySection(mapping, SectionBasicInformation, &info, sizeof(info), &ret);
+    ok(status == STATUS_SUCCESS, "NtQuerySection error %#x\n", status);
+    ok(ret == sizeof(info.basic), "wrong returned size %u\n", ret);
+    ok(info.basic.BaseAddress == NULL, "expected NULL, got %p\n", info.basic.BaseAddress);
+    ok(info.basic.Attributes == SEC_RESERVE, "expected SEC_RESERVE, got %#x\n", info.basic.Attributes);
+    ok(info.basic.Size.QuadPart == 4096, "expected 4096, got %#x/%08x\n", info.basic.Size.HighPart, info.basic.Size.LowPart);
+
+    CloseHandle(mapping);
+}
+
 START_TEST(virtual)
 {
     int argc;
@@ -3820,6 +4096,7 @@ START_TEST(virtual)
     pNtUnmapViewOfSection = (void *)GetProcAddress( hntdll, "NtUnmapViewOfSection" );
     pRtlAddVectoredExceptionHandler = (void *)GetProcAddress( hntdll, "RtlAddVectoredExceptionHandler" );
     pRtlRemoveVectoredExceptionHandler = (void *)GetProcAddress( hntdll, "RtlRemoveVectoredExceptionHandler" );
+    pNtQuerySection = (void *)GetProcAddress( hntdll, "NtQuerySection" );
     pNtProtectVirtualMemory = (void *)GetProcAddress( hntdll, "NtProtectVirtualMemory" );
     pNtAllocateVirtualMemory = (void *)GetProcAddress( hntdll, "NtAllocateVirtualMemory" );
     pNtFreeVirtualMemory = (void *)GetProcAddress( hntdll, "NtFreeVirtualMemory" );
@@ -3829,6 +4106,7 @@ START_TEST(virtual)
     test_shared_memory_ro(FALSE, FILE_MAP_COPY);
     test_shared_memory_ro(FALSE, FILE_MAP_COPY|FILE_MAP_WRITE);
     test_mapping();
+    test_NtQuerySection();
     test_CreateFileMapping_protection();
     test_VirtualAlloc_protection();
     test_VirtualProtect();

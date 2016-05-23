@@ -838,7 +838,7 @@
 @ stub -arch=i386 _NLG_Return
 @ stub -arch=i386 _NLG_Return2
 @ stub -arch=arm,win64 __NLG_Return2
-@ stub _SetWinRTOutOfMemoryExceptionCallback
+@ cdecl -arch=i386,x86_64,arm _SetWinRTOutOfMemoryExceptionCallback(ptr) msvcr120._SetWinRTOutOfMemoryExceptionCallback
 @ stub -arch=win64 _SetImageBase
 @ stub -arch=win64 _SetThrowImageBase
 @ cdecl _Strftime(str long str ptr ptr) msvcr120._Strftime
@@ -1123,7 +1123,7 @@
 @ cdecl _fseeki64_nolock(ptr int64 long) msvcr120._fseeki64_nolock
 @ cdecl _fsopen(str str long) msvcr120._fsopen
 @ cdecl _fstat32(long ptr) msvcr120._fstat32
-@ stub _fstat32i64
+@ cdecl _fstat32i64(long ptr) msvcr120._fstat32i64
 @ cdecl _fstat64(long ptr) msvcr120._fstat64
 @ cdecl _fstat64i32(long ptr) msvcr120._fstat64i32
 @ cdecl _ftell_nolock(ptr) msvcr120._ftell_nolock

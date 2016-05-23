@@ -154,6 +154,9 @@ static BOOL set_active_window( HWND hwnd, HWND *prev, BOOL mouse, BOOL focus )
         SendMessageW( hwnd, WM_ACTIVATE,
                       MAKEWPARAM( mouse ? WA_CLICKACTIVE : WA_ACTIVE, IsIconic(hwnd) ),
                       (LPARAM)previous );
+
+        if (hwnd == GetForegroundWindow() && !IsIconic( hwnd ))
+            USER_Driver->pSetActiveWindow( hwnd );
     }
 
     /* now change focus if necessary */
@@ -329,8 +332,10 @@ BOOL WINAPI SetForegroundWindow( HWND hwnd )
  */
 HWND WINAPI GetActiveWindow(void)
 {
+    shmlocal_t *shm = wine_get_shmlocal();
     HWND ret = 0;
 
+    if (shm) return wine_server_ptr_handle( shm->input_active );
     SERVER_START_REQ( get_thread_input )
     {
         req->tid = GetCurrentThreadId();
@@ -346,8 +351,10 @@ HWND WINAPI GetActiveWindow(void)
  */
 HWND WINAPI GetFocus(void)
 {
+    shmlocal_t *shm = wine_get_shmlocal();
     HWND ret = 0;
 
+    if (shm) return wine_server_ptr_handle( shm->input_focus );
     SERVER_START_REQ( get_thread_input )
     {
         req->tid = GetCurrentThreadId();
@@ -363,12 +370,31 @@ HWND WINAPI GetFocus(void)
  */
 HWND WINAPI GetForegroundWindow(void)
 {
+    struct user_thread_info *thread_info = get_user_thread_info();
+    shmglobal_t *shm = wine_get_shmglobal();
     HWND ret = 0;
+    DWORD epoch;
+
+    if (shm)
+    {
+        epoch = shm->foreground_wnd_epoch;
+
+        if (epoch == thread_info->foreground_wnd_epoch)
+            return thread_info->foreground_wnd;
+    }
 
     SERVER_START_REQ( get_thread_input )
     {
         req->tid = 0;
-        if (!wine_server_call_err( req )) ret = wine_server_ptr_handle( reply->foreground );
+        if (!wine_server_call_err( req ))
+        {
+            ret = wine_server_ptr_handle( reply->foreground );
+            if (shm)
+            {
+                thread_info->foreground_wnd         = ret;
+                thread_info->foreground_wnd_epoch   = epoch;
+            }
+        }
     }
     SERVER_END_REQ;
     return ret;
