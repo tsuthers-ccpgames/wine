@@ -157,6 +157,7 @@ static const char * const shader_opcode_names[] =
     /* WINED3DSIH_REP                              */ "rep",
     /* WINED3DSIH_RESINFO                          */ "resinfo",
     /* WINED3DSIH_RET                              */ "ret",
+    /* WINED3DSIH_ROUND_NE                         */ "round_ne",
     /* WINED3DSIH_ROUND_NI                         */ "round_ni",
     /* WINED3DSIH_ROUND_PI                         */ "round_pi",
     /* WINED3DSIH_ROUND_Z                          */ "round_z",
@@ -231,6 +232,7 @@ static const struct
 sysval_semantic_names[] =
 {
     {WINED3D_SV_POSITION,                   "SV_Position"},
+    {WINED3D_SV_VERTEX_ID,                  "SV_VertexID"},
     {WINED3D_SV_INSTANCE_ID,                "SV_InstanceID"},
     {WINED3D_SV_PRIMITIVE_ID,               "SV_PrimitiveID"},
     {WINED3D_SV_IS_FRONT_FACE,              "SV_IsFrontFace"},
@@ -254,7 +256,7 @@ static void shader_dump_src_param(struct wined3d_string_buffer *buffer,
 
 const char *debug_d3dshaderinstructionhandler(enum WINED3D_SHADER_INSTRUCTION_HANDLER handler_idx)
 {
-    if (handler_idx >= sizeof(shader_opcode_names) / sizeof(*shader_opcode_names))
+    if (handler_idx >= ARRAY_SIZE(shader_opcode_names))
         return wine_dbg_sprintf("UNRECOGNIZED(%#x)", handler_idx);
 
     return shader_opcode_names[handler_idx];
@@ -262,7 +264,7 @@ const char *debug_d3dshaderinstructionhandler(enum WINED3D_SHADER_INSTRUCTION_HA
 
 static const char *shader_semantic_name_from_usage(enum wined3d_decl_usage usage)
 {
-    if (usage >= sizeof(semantic_names) / sizeof(*semantic_names))
+    if (usage >= ARRAY_SIZE(semantic_names))
     {
         FIXME("Unrecognized usage %#x.\n", usage);
         return "UNRECOGNIZED";
@@ -275,12 +277,24 @@ static enum wined3d_decl_usage shader_usage_from_semantic_name(const char *name)
 {
     unsigned int i;
 
-    for (i = 0; i < sizeof(semantic_names) / sizeof(*semantic_names); ++i)
+    for (i = 0; i < ARRAY_SIZE(semantic_names); ++i)
     {
-        if (!strcmp(name, semantic_names[i])) return i;
+        if (!strcmp(name, semantic_names[i]))
+            return i;
     }
 
     return ~0U;
+}
+
+static enum wined3d_sysval_semantic shader_sysval_semantic_from_usage(enum wined3d_decl_usage usage)
+{
+    switch (usage)
+    {
+        case WINED3D_DECL_USAGE_POSITION:
+            return WINED3D_SV_POSITION;
+        default:
+            return 0;
+    }
 }
 
 BOOL shader_match_semantic(const char *semantic_name, enum wined3d_decl_usage usage)
@@ -293,7 +307,7 @@ static void shader_signature_from_semantic(struct wined3d_shader_signature_eleme
 {
     e->semantic_name = shader_semantic_name_from_usage(s->usage);
     e->semantic_idx = s->usage_idx;
-    e->sysval_semantic = 0;
+    e->sysval_semantic = shader_sysval_semantic_from_usage(s->usage);
     e->component_type = 0;
     e->register_idx = s->reg.reg.idx[0].offset;
     e->mask = s->reg.write_mask;
@@ -304,7 +318,7 @@ static void shader_signature_from_usage(struct wined3d_shader_signature_element 
 {
     e->semantic_name = shader_semantic_name_from_usage(usage);
     e->semantic_idx = usage_idx;
-    e->sysval_semantic = 0;
+    e->sysval_semantic = shader_sysval_semantic_from_usage(usage);
     e->component_type = 0;
     e->register_idx = reg_idx;
     e->mask = write_mask;

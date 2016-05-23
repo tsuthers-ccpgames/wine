@@ -203,7 +203,6 @@ static INT HTTP_GetCustomHeaderIndex(http_request_t *req, LPCWSTR lpszField, INT
 static BOOL HTTP_DeleteCustomHeader(http_request_t *req, DWORD index);
 static LPWSTR HTTP_build_req( LPCWSTR *list, int len );
 static DWORD HTTP_HttpQueryInfoW(http_request_t*, DWORD, LPVOID, LPDWORD, LPDWORD);
-static LPWSTR HTTP_GetRedirectURL(http_request_t *req, LPCWSTR lpszUrl);
 static UINT HTTP_DecodeBase64(LPCWSTR base64, LPSTR bin);
 static BOOL drain_content(http_request_t*,BOOL);
 
@@ -265,7 +264,7 @@ static BOOL process_host_port(server_t *server)
     return TRUE;
 }
 
-server_t *get_server(const WCHAR *name, INTERNET_PORT port, BOOL is_https, BOOL do_create)
+server_t *get_server(substr_t name, INTERNET_PORT port, BOOL is_https, BOOL do_create)
 {
     server_t *iter, *server = NULL;
 
@@ -275,7 +274,8 @@ server_t *get_server(const WCHAR *name, INTERNET_PORT port, BOOL is_https, BOOL 
     EnterCriticalSection(&connection_pool_cs);
 
     LIST_FOR_EACH_ENTRY(iter, &connection_pool, server_t, entry) {
-        if(iter->port == port && !strcmpW(iter->name, name) && iter->is_https == is_https) {
+        if(iter->port == port && name.len == strlenW(iter->name) && !strncmpW(iter->name, name.str, name.len)
+                && iter->is_https == is_https) {
             server = iter;
             server_addref(server);
             break;
@@ -289,7 +289,7 @@ server_t *get_server(const WCHAR *name, INTERNET_PORT port, BOOL is_https, BOOL 
             server->port = port;
             server->is_https = is_https;
             list_init(&server->conn_pool);
-            server->name = heap_strdupW(name);
+            server->name = heap_strndupW(name.str, name.len);
             if(server->name && process_host_port(server)) {
                 list_add_head(&connection_pool, &server->entry);
             }else {
@@ -773,7 +773,7 @@ static void HTTP_ProcessCookies( http_request_t *request )
     while((HeaderIndex = HTTP_GetCustomHeaderIndex(request, szSet_Cookie, numCookies++, FALSE)) != -1)
     {
         const WCHAR *data;
-        WCHAR *name;
+        substr_t name;
 
         setCookieHeader = &request->custHeaders[HeaderIndex];
 
@@ -784,13 +784,9 @@ static void HTTP_ProcessCookies( http_request_t *request )
         if(!data)
             continue;
 
-        name = heap_strndupW(setCookieHeader->lpszValue, data-setCookieHeader->lpszValue);
-        if(!name)
-            continue;
-
+        name = substr(setCookieHeader->lpszValue, data - setCookieHeader->lpszValue);
         data++;
-        set_cookie(request->server->name, request->path, name, data, INTERNET_COOKIE_HTTPONLY);
-        heap_free(name);
+        set_cookie(substrz(request->server->name), substrz(request->path), name, substrz(data), INTERNET_COOKIE_HTTPONLY);
     }
 
     LeaveCriticalSection( &request->headers_section );
@@ -1718,55 +1714,47 @@ static WCHAR *build_proxy_path_url(http_request_t *req)
     return url;
 }
 
-static BOOL HTTP_DomainMatches(LPCWSTR server, LPCWSTR domain)
+static BOOL HTTP_DomainMatches(LPCWSTR server, substr_t domain)
 {
     static const WCHAR localW[] = { '<','l','o','c','a','l','>',0 };
-    BOOL ret = FALSE;
+    const WCHAR *dot, *ptr;
+    int len;
 
-    if (!strcmpiW( domain, localW ) && !strchrW( server, '.' ))
-        ret = TRUE;
-    else if (*domain == '*')
-    {
-        if (domain[1] == '.')
-        {
-            LPCWSTR dot;
+    if(domain.len == sizeof(localW)/sizeof(WCHAR)-1 && !strncmpiW(domain.str, localW, domain.len) && !strchrW(server, '.' ))
+        return TRUE;
 
-            /* For a hostname to match a wildcard, the last domain must match
-             * the wildcard exactly.  E.g. if the wildcard is *.a.b, and the
-             * hostname is www.foo.a.b, it matches, but a.b does not.
-             */
-            dot = strchrW( server, '.' );
-            if (dot)
-            {
-                int len = strlenW( dot + 1 );
+    if(domain.len && *domain.str != '*')
+        return domain.len == strlenW(server) && !strncmpiW(server, domain.str, domain.len);
 
-                if (len > strlenW( domain + 2 ))
-                {
-                    LPCWSTR ptr;
+    if(domain.len < 2 || domain.str[1] != '.')
+        return FALSE;
 
-                    /* The server's domain is longer than the wildcard, so it
-                     * could be a subdomain.  Compare the last portion of the
-                     * server's domain.
-                     */
-                    ptr = dot + len + 1 - strlenW( domain + 2 );
-                    if (!strcmpiW( ptr, domain + 2 ))
-                    {
-                        /* This is only a match if the preceding character is
-                         * a '.', i.e. that it is a matching domain.  E.g.
-                         * if domain is '*.b.c' and server is 'www.ab.c' they
-                         * do not match.
-                         */
-                        ret = *(ptr - 1) == '.';
-                    }
-                }
-                else
-                    ret = !strcmpiW( dot + 1, domain + 2 );
-            }
-        }
-    }
-    else
-        ret = !strcmpiW( server, domain );
-    return ret;
+    /* For a hostname to match a wildcard, the last domain must match
+     * the wildcard exactly.  E.g. if the wildcard is *.a.b, and the
+     * hostname is www.foo.a.b, it matches, but a.b does not.
+     */
+    dot = strchrW(server, '.');
+    if(!dot)
+        return FALSE;
+
+    len = strlenW(dot + 1);
+    if(len <= domain.len - 2)
+        return FALSE;
+
+    /* The server's domain is longer than the wildcard, so it
+     * could be a subdomain.  Compare the last portion of the
+     * server's domain.
+     */
+    ptr = dot + 1 + len - domain.len + 2;
+    if(!strncmpiW(ptr, domain.str+2, domain.len-2))
+        /* This is only a match if the preceding character is
+         * a '.', i.e. that it is a matching domain.  E.g.
+         * if domain is '*.b.c' and server is 'www.ab.c' they
+         * do not match.
+         */
+        return *(ptr - 1) == '.';
+
+    return len == domain.len-2 && !strncmpiW(dot + 1, domain.str + 2, len);
 }
 
 static BOOL HTTP_ShouldBypassProxy(appinfo_t *lpwai, LPCWSTR server)
@@ -1776,27 +1764,19 @@ static BOOL HTTP_ShouldBypassProxy(appinfo_t *lpwai, LPCWSTR server)
 
     if (!lpwai->proxyBypass) return FALSE;
     ptr = lpwai->proxyBypass;
-    do {
+    while(1) {
         LPCWSTR tmp = ptr;
 
         ptr = strchrW( ptr, ';' );
         if (!ptr)
             ptr = strchrW( tmp, ' ' );
-        if (ptr)
-        {
-            if (ptr - tmp < INTERNET_MAX_HOST_NAME_LENGTH)
-            {
-                WCHAR domain[INTERNET_MAX_HOST_NAME_LENGTH];
-
-                memcpy( domain, tmp, (ptr - tmp) * sizeof(WCHAR) );
-                domain[ptr - tmp] = 0;
-                ret = HTTP_DomainMatches( server, domain );
-            }
-            ptr += 1;
-        }
-        else if (*tmp)
-            ret = HTTP_DomainMatches( server, tmp );
-    } while (ptr && !ret);
+        if (!ptr)
+            ptr = tmp + strlenW(ptr);
+        ret = HTTP_DomainMatches( server, substr(tmp, ptr-tmp) );
+        if (ret || !*ptr)
+            break;
+        ptr++;
+    }
     return ret;
 }
 
@@ -1807,41 +1787,34 @@ static BOOL HTTP_DealWithProxy(appinfo_t *hIC, http_session_t *session, http_req
 {
     static const WCHAR protoHttp[] = { 'h','t','t','p',0 };
     static const WCHAR szHttp[] = { 'h','t','t','p',':','/','/',0 };
-    static const WCHAR szFormat[] = { 'h','t','t','p',':','/','/','%','s',0 };
-    WCHAR buf[INTERNET_MAX_HOST_NAME_LENGTH];
-    WCHAR protoProxy[INTERNET_MAX_URL_LENGTH];
-    DWORD protoProxyLen = INTERNET_MAX_URL_LENGTH;
-    WCHAR proxy[INTERNET_MAX_URL_LENGTH];
     static WCHAR szNul[] = { 0 };
-    URL_COMPONENTSW UrlComponents;
-    server_t *new_server;
-    BOOL is_https;
+    URL_COMPONENTSW UrlComponents = { sizeof(UrlComponents) };
+    server_t *new_server = NULL;
+    WCHAR *proxy;
 
-    memset( &UrlComponents, 0, sizeof UrlComponents );
-    UrlComponents.dwStructSize = sizeof UrlComponents;
-    UrlComponents.lpszHostName = buf;
-    UrlComponents.dwHostNameLength = INTERNET_MAX_HOST_NAME_LENGTH;
-
-    if (!INTERNET_FindProxyForProtocol(hIC->proxy, protoHttp, protoProxy, &protoProxyLen))
+    proxy = INTERNET_FindProxyForProtocol(hIC->proxy, protoHttp);
+    if(!proxy)
         return FALSE;
-    if( CSTR_EQUAL != CompareStringW(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE,
-                                 protoProxy,strlenW(szHttp),szHttp,strlenW(szHttp)) )
-        sprintfW(proxy, szFormat, protoProxy);
-    else
-	strcpyW(proxy, protoProxy);
-    if( !InternetCrackUrlW(proxy, 0, 0, &UrlComponents) )
-        return FALSE;
-    if( UrlComponents.dwHostNameLength == 0 )
-        return FALSE;
+    if(CSTR_EQUAL != CompareStringW(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE,
+                                    proxy, strlenW(szHttp), szHttp, strlenW(szHttp))) {
+        WCHAR *proxy_url = heap_alloc(strlenW(proxy)*sizeof(WCHAR) + sizeof(szHttp));
+        if(!proxy_url)
+            return FALSE;
+        strcpyW(proxy_url, szHttp);
+        strcatW(proxy_url, proxy);
+        heap_free(proxy);
+        proxy = proxy_url;
+    }
 
-    if( !request->path )
-        request->path = szNul;
+    UrlComponents.dwHostNameLength = 1;
+    if(InternetCrackUrlW(proxy, 0, 0, &UrlComponents) && UrlComponents.dwHostNameLength) {
+        if( !request->path )
+            request->path = szNul;
 
-    is_https = (UrlComponents.nScheme == INTERNET_SCHEME_HTTPS);
-    if (is_https && UrlComponents.nPort == INTERNET_INVALID_PORT_NUMBER)
-        UrlComponents.nPort = INTERNET_DEFAULT_HTTPS_PORT;
-
-    new_server = get_server(UrlComponents.lpszHostName, UrlComponents.nPort, is_https, TRUE);
+        new_server = get_server(substr(UrlComponents.lpszHostName, UrlComponents.dwHostNameLength),
+                                UrlComponents.nPort, UrlComponents.nScheme == INTERNET_SCHEME_HTTPS, TRUE);
+    }
+    heap_free(proxy);
     if(!new_server)
         return FALSE;
 
@@ -1877,33 +1850,39 @@ static DWORD HTTP_ResolveName(http_request_t *request)
     return ERROR_SUCCESS;
 }
 
-static BOOL HTTP_GetRequestURL(http_request_t *req, LPWSTR buf)
+static WCHAR *compose_request_url(http_request_t *req)
 {
     static const WCHAR http[] = { 'h','t','t','p',':','/','/',0 };
     static const WCHAR https[] = { 'h','t','t','p','s',':','/','/',0 };
-    static const WCHAR slash[] = { '/',0 };
-    LPHTTPHEADERW host_header;
-    const WCHAR *host;
-    LPCWSTR scheme;
+    const WCHAR *host, *scheme;
+    WCHAR *buf, *ptr;
+    size_t len;
 
-    EnterCriticalSection( &req->headers_section );
+    host = req->server->canon_host_port;
 
-    host_header = HTTP_GetHeader(req, hostW);
-    if (host_header) host = host_header->lpszValue;
-    else host = req->server->canon_host_port;
-
-    if (req->hdr.dwFlags & INTERNET_FLAG_SECURE)
+    if (req->server->is_https)
         scheme = https;
     else
         scheme = http;
-    strcpyW(buf, scheme);
-    strcatW(buf, host);
-    if (req->path[0] != '/')
-        strcatW(buf, slash);
-    strcatW(buf, req->path);
 
-    LeaveCriticalSection( &req->headers_section );
-    return TRUE;
+    len = strlenW(scheme) + strlenW(host) + (req->path[0] != '/' ? 1 : 0) + strlenW(req->path);
+    ptr = buf = heap_alloc((len+1) * sizeof(WCHAR));
+    if(buf) {
+        strcpyW(ptr, scheme);
+        ptr += strlenW(ptr);
+
+        strcpyW(ptr, host);
+        ptr += strlenW(ptr);
+
+        if(req->path[0] != '/')
+            *ptr++ = '/';
+
+        strcpyW(ptr, req->path);
+        ptr += strlenW(ptr);
+        *ptr = 0;
+    }
+
+    return buf;
 }
 
 
@@ -2136,17 +2115,18 @@ static DWORD HTTPREQ_QueryOption(object_header_t *hdr, DWORD option, void *buffe
         return ERROR_SUCCESS;
 
     case INTERNET_OPTION_URL: {
-        static const WCHAR httpW[] = {'h','t','t','p',':','/','/',0};
-        WCHAR url[INTERNET_MAX_URL_LENGTH];
+        WCHAR *url;
+        DWORD res;
 
         TRACE("INTERNET_OPTION_URL\n");
 
-        strcpyW(url, httpW);
-        strcatW(url, req->server->canon_host_port);
-        strcatW(url, req->path);
+        url = compose_request_url(req);
+        if(!url)
+            return ERROR_OUTOFMEMORY;
 
-        TRACE("INTERNET_OPTION_URL: %s\n",debugstr_w(url));
-        return str_to_buffer(url, buffer, size, unicode);
+        res = str_to_buffer(url, buffer, size, unicode);
+        heap_free(url);
+        return res;
     }
     case INTERNET_OPTION_USER_AGENT:
         return str_to_buffer(req->session->appInfo->agent, buffer, size, unicode);
@@ -2162,27 +2142,29 @@ static DWORD HTTPREQ_QueryOption(object_header_t *hdr, DWORD option, void *buffe
     case INTERNET_OPTION_CACHE_TIMESTAMPS: {
         INTERNET_CACHE_ENTRY_INFOW *info;
         INTERNET_CACHE_TIMESTAMPS *ts = buffer;
-        WCHAR url[INTERNET_MAX_URL_LENGTH];
         DWORD nbytes, error;
         BOOL ret;
 
         TRACE("INTERNET_OPTION_CACHE_TIMESTAMPS\n");
+
+        if(!req->req_file)
+            return ERROR_FILE_NOT_FOUND;
 
         if (*size < sizeof(*ts))
         {
             *size = sizeof(*ts);
             return ERROR_INSUFFICIENT_BUFFER;
         }
+
         nbytes = 0;
-        HTTP_GetRequestURL(req, url);
-        ret = GetUrlCacheEntryInfoW(url, NULL, &nbytes);
+        ret = GetUrlCacheEntryInfoW(req->req_file->url, NULL, &nbytes);
         error = GetLastError();
         if (!ret && error == ERROR_INSUFFICIENT_BUFFER)
         {
             if (!(info = heap_alloc(nbytes)))
                 return ERROR_OUTOFMEMORY;
 
-            GetUrlCacheEntryInfoW(url, info, &nbytes);
+            GetUrlCacheEntryInfoW(req->req_file->url, info, &nbytes);
 
             ts->ftExpires = info->ExpireTime;
             ts->ftLastModified = info->LastModifiedTime;
@@ -2371,29 +2353,25 @@ static DWORD HTTPREQ_SetOption(object_header_t *hdr, DWORD option, void *buffer,
 
 static void commit_cache_entry(http_request_t *req)
 {
-    WCHAR url[INTERNET_MAX_URL_LENGTH];
+    WCHAR *header;
+    DWORD header_len;
+    BOOL res;
 
     TRACE("%p\n", req);
 
     CloseHandle(req->hCacheFile);
     req->hCacheFile = NULL;
 
-    if(HTTP_GetRequestURL(req, url)) {
-        WCHAR *header;
-        DWORD header_len;
-        BOOL res;
-
-        header = build_response_header(req, TRUE);
-        header_len = (header ? strlenW(header) : 0);
-        res = CommitUrlCacheEntryW(url, req->req_file->file_name, req->expires,
-                req->last_modified, NORMAL_CACHE_ENTRY,
-                header, header_len, NULL, 0);
-        if(res)
-            req->req_file->is_committed = TRUE;
-        else
-            WARN("CommitUrlCacheEntry failed: %u\n", GetLastError());
-        heap_free(header);
-    }
+    header = build_response_header(req, TRUE);
+    header_len = (header ? strlenW(header) : 0);
+    res = CommitUrlCacheEntryW(req->req_file->url, req->req_file->file_name, req->expires,
+             req->last_modified, NORMAL_CACHE_ENTRY,
+            header, header_len, NULL, 0);
+    if(res)
+        req->req_file->is_committed = TRUE;
+    else
+        WARN("CommitUrlCacheEntry failed: %u\n", GetLastError());
+    heap_free(header);
 }
 
 static void create_cache_entry(http_request_t *req)
@@ -2401,8 +2379,8 @@ static void create_cache_entry(http_request_t *req)
     static const WCHAR no_cacheW[] = {'n','o','-','c','a','c','h','e',0};
     static const WCHAR no_storeW[] = {'n','o','-','s','t','o','r','e',0};
 
-    WCHAR url[INTERNET_MAX_URL_LENGTH];
     WCHAR file_name[MAX_PATH+1];
+    WCHAR *url;
     BOOL b = TRUE;
 
     /* FIXME: We should free previous cache file earlier */
@@ -2459,8 +2437,8 @@ static void create_cache_entry(http_request_t *req)
         FIXME("INTERNET_FLAG_NEED_FILE is not supported correctly\n");
     }
 
-    b = HTTP_GetRequestURL(req, url);
-    if(!b) {
+    url = compose_request_url(req);
+    if(!url) {
         WARN("Could not get URL\n");
         return;
     }
@@ -2472,6 +2450,7 @@ static void create_cache_entry(http_request_t *req)
     }
 
     create_req_file(file_name, &req->req_file);
+    req->req_file->url = url;
 
     req->hCacheFile = CreateFileW(file_name, GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE,
               NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -3242,7 +3221,7 @@ static DWORD HTTPREQ_ReadFile(object_header_t *hdr, void *buffer, DWORD size, DW
 
         if (TryEnterCriticalSection( &req->read_section ))
         {
-            if (get_avail_data(req))
+            if (get_avail_data(req) || end_of_read_data(req))
             {
                 res = HTTPREQ_Read(req, buffer, size, read);
                 LeaveCriticalSection( &req->read_section );
@@ -3400,7 +3379,7 @@ static DWORD HTTP_HttpOpenRequestW(http_session_t *session,
     request->session = session;
     list_add_head( &session->hdr.children, &request->hdr.entry );
 
-    request->server = get_server(session->hostName, session->hostPort, (dwFlags & INTERNET_FLAG_SECURE) != 0, TRUE);
+    request->server = get_server(substrz(session->hostName), session->hostPort, (dwFlags & INTERNET_FLAG_SECURE) != 0, TRUE);
     if(!request->server) {
         WININET_Release(&request->hdr);
         return ERROR_OUTOFMEMORY;
@@ -4068,64 +4047,57 @@ BOOL WINAPI HttpQueryInfoA(HINTERNET hHttpRequest, DWORD dwInfoLevel,
     return result;
 }
 
-/***********************************************************************
- *           HTTP_GetRedirectURL (internal)
- */
-static LPWSTR HTTP_GetRedirectURL(http_request_t *request, LPCWSTR lpszUrl)
+static WCHAR *get_redirect_url(http_request_t *request)
 {
     static WCHAR szHttp[] = {'h','t','t','p',0};
     static WCHAR szHttps[] = {'h','t','t','p','s',0};
     http_session_t *session = request->session;
-    URL_COMPONENTSW urlComponents;
-    DWORD url_length = 0;
-    LPWSTR orig_url;
-    LPWSTR combined_url;
-
-    urlComponents.dwStructSize = sizeof(URL_COMPONENTSW);
-    urlComponents.lpszScheme = (request->hdr.dwFlags & INTERNET_FLAG_SECURE) ? szHttps : szHttp;
-    urlComponents.dwSchemeLength = 0;
-    urlComponents.lpszHostName = request->server->name;
-    urlComponents.dwHostNameLength = 0;
-    urlComponents.nPort = request->server->port;
-    urlComponents.lpszUserName = session->userName;
-    urlComponents.dwUserNameLength = 0;
-    urlComponents.lpszPassword = NULL;
-    urlComponents.dwPasswordLength = 0;
-    urlComponents.lpszUrlPath = request->path;
-    urlComponents.dwUrlPathLength = 0;
-    urlComponents.lpszExtraInfo = NULL;
-    urlComponents.dwExtraInfoLength = 0;
-
-    if (!InternetCreateUrlW(&urlComponents, 0, NULL, &url_length) &&
-        (GetLastError() != ERROR_INSUFFICIENT_BUFFER))
-        return NULL;
-
-    orig_url = heap_alloc(url_length);
-
-    /* convert from bytes to characters */
-    url_length = url_length / sizeof(WCHAR) - 1;
-    if (!InternetCreateUrlW(&urlComponents, 0, orig_url, &url_length))
-    {
-        heap_free(orig_url);
-        return NULL;
-    }
+    URL_COMPONENTSW urlComponents = { sizeof(urlComponents) };
+    WCHAR *orig_url = NULL, *redirect_url = NULL, *combined_url = NULL;
+    DWORD url_length = 0, res;
+    BOOL b;
 
     url_length = 0;
-    if (!InternetCombineUrlW(orig_url, lpszUrl, NULL, &url_length, ICU_ENCODE_SPACES_ONLY) &&
-        (GetLastError() != ERROR_INSUFFICIENT_BUFFER))
-    {
-        heap_free(orig_url);
+    res = HTTP_HttpQueryInfoW(request, HTTP_QUERY_LOCATION, redirect_url, &url_length, NULL);
+    if(res == ERROR_INSUFFICIENT_BUFFER) {
+        redirect_url = heap_alloc(url_length);
+        res = HTTP_HttpQueryInfoW(request, HTTP_QUERY_LOCATION, redirect_url, &url_length, NULL);
+    }
+    if(res != ERROR_SUCCESS) {
+        heap_free(redirect_url);
         return NULL;
     }
-    combined_url = heap_alloc(url_length * sizeof(WCHAR));
 
-    if (!InternetCombineUrlW(orig_url, lpszUrl, combined_url, &url_length, ICU_ENCODE_SPACES_ONLY))
-    {
-        heap_free(orig_url);
-        heap_free(combined_url);
-        return NULL;
+    urlComponents.lpszScheme = (request->hdr.dwFlags & INTERNET_FLAG_SECURE) ? szHttps : szHttp;
+    urlComponents.lpszHostName = request->server->name;
+    urlComponents.nPort = request->server->port;
+    urlComponents.lpszUserName = session->userName;
+    urlComponents.lpszUrlPath = request->path;
+
+    b = InternetCreateUrlW(&urlComponents, 0, NULL, &url_length);
+    if(!b && GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+        orig_url = heap_alloc(url_length);
+
+        /* convert from bytes to characters */
+        url_length = url_length / sizeof(WCHAR) - 1;
+        b = InternetCreateUrlW(&urlComponents, 0, orig_url, &url_length);
     }
+
+    if(b) {
+        url_length = 0;
+        b = InternetCombineUrlW(orig_url, redirect_url, NULL, &url_length, ICU_ENCODE_SPACES_ONLY);
+        if(!b && GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+            combined_url = heap_alloc(url_length * sizeof(WCHAR));
+            b = InternetCombineUrlW(orig_url, redirect_url, combined_url, &url_length, ICU_ENCODE_SPACES_ONLY);
+            if(!b) {
+                heap_free(combined_url);
+                combined_url = NULL;
+            }
+        }
+    }
+
     heap_free(orig_url);
+    heap_free(redirect_url);
     return combined_url;
 }
 
@@ -4136,84 +4108,62 @@ static LPWSTR HTTP_GetRedirectURL(http_request_t *request, LPCWSTR lpszUrl)
 static DWORD HTTP_HandleRedirect(http_request_t *request, LPCWSTR lpszUrl)
 {
     http_session_t *session = request->session;
-    WCHAR path[INTERNET_MAX_PATH_LENGTH];
+    WCHAR *path;
 
     if(lpszUrl[0]=='/')
     {
         /* if it's an absolute path, keep the same session info */
-        lstrcpynW(path, lpszUrl, INTERNET_MAX_URL_LENGTH);
+        path = heap_strdupW(lpszUrl);
     }
     else
     {
-        URL_COMPONENTSW urlComponents;
-        WCHAR protocol[INTERNET_MAX_SCHEME_LENGTH];
-        WCHAR hostName[INTERNET_MAX_HOST_NAME_LENGTH];
-        WCHAR userName[INTERNET_MAX_USER_NAME_LENGTH];
+        URL_COMPONENTSW urlComponents = { sizeof(urlComponents) };
         BOOL custom_port = FALSE;
+        substr_t host;
 
-        static const WCHAR httpW[] = {'h','t','t','p',0};
-        static const WCHAR httpsW[] = {'h','t','t','p','s',0};
-
-        userName[0] = 0;
-        hostName[0] = 0;
-        protocol[0] = 0;
-
-        urlComponents.dwStructSize = sizeof(URL_COMPONENTSW);
-        urlComponents.lpszScheme = protocol;
-        urlComponents.dwSchemeLength = INTERNET_MAX_SCHEME_LENGTH;
-        urlComponents.lpszHostName = hostName;
-        urlComponents.dwHostNameLength = INTERNET_MAX_HOST_NAME_LENGTH;
-        urlComponents.lpszUserName = userName;
-        urlComponents.dwUserNameLength = INTERNET_MAX_USER_NAME_LENGTH;
-        urlComponents.lpszPassword = NULL;
-        urlComponents.dwPasswordLength = 0;
-        urlComponents.lpszUrlPath = path;
-        urlComponents.dwUrlPathLength = INTERNET_MAX_PATH_LENGTH;
-        urlComponents.lpszExtraInfo = NULL;
-        urlComponents.dwExtraInfoLength = 0;
+        urlComponents.dwHostNameLength = 1;
+        urlComponents.dwUserNameLength = 1;
+        urlComponents.dwUrlPathLength = 1;
         if(!InternetCrackUrlW(lpszUrl, strlenW(lpszUrl), 0, &urlComponents))
             return INTERNET_GetLastError();
 
-        if(!strcmpiW(protocol, httpW)) {
+        if(urlComponents.nScheme == INTERNET_SCHEME_HTTP) {
             if(request->hdr.dwFlags & INTERNET_FLAG_SECURE) {
                 TRACE("redirect from secure page to non-secure page\n");
                 /* FIXME: warn about from secure redirect to non-secure page */
                 request->hdr.dwFlags &= ~INTERNET_FLAG_SECURE;
             }
 
-            if(urlComponents.nPort == INTERNET_INVALID_PORT_NUMBER)
-                urlComponents.nPort = INTERNET_DEFAULT_HTTP_PORT;
-            else if(urlComponents.nPort != INTERNET_DEFAULT_HTTP_PORT)
-                custom_port = TRUE;
-        }else if(!strcmpiW(protocol, httpsW)) {
+            custom_port = urlComponents.nPort != INTERNET_DEFAULT_HTTP_PORT;
+        }else if(urlComponents.nScheme == INTERNET_SCHEME_HTTPS) {
             if(!(request->hdr.dwFlags & INTERNET_FLAG_SECURE)) {
                 TRACE("redirect from non-secure page to secure page\n");
                 /* FIXME: notify about redirect to secure page */
                 request->hdr.dwFlags |= INTERNET_FLAG_SECURE;
             }
 
-            if(urlComponents.nPort == INTERNET_INVALID_PORT_NUMBER)
-                urlComponents.nPort = INTERNET_DEFAULT_HTTPS_PORT;
-            else if(urlComponents.nPort != INTERNET_DEFAULT_HTTPS_PORT)
-                custom_port = TRUE;
+            custom_port = urlComponents.nPort != INTERNET_DEFAULT_HTTPS_PORT;
         }
 
         heap_free(session->hostName);
 
-        session->hostName = heap_strdupW(hostName);
+        session->hostName = heap_strndupW(urlComponents.lpszHostName, urlComponents.dwHostNameLength);
         session->hostPort = urlComponents.nPort;
 
         heap_free(session->userName);
         session->userName = NULL;
-        if (userName[0])
-            session->userName = heap_strdupW(userName);
+        if (urlComponents.dwUserNameLength)
+            session->userName = heap_strndupW(urlComponents.lpszUserName, urlComponents.dwUserNameLength);
 
         reset_data_stream(request);
 
-        if(strcmpiW(request->server->name, hostName) || request->server->port != urlComponents.nPort) {
+        host = substr(urlComponents.lpszHostName, urlComponents.dwHostNameLength);
+
+        if(host.len != strlenW(request->server->name) || strncmpiW(request->server->name, host.str, host.len)
+           || request->server->port != urlComponents.nPort) {
             server_t *new_server;
 
-            new_server = get_server(hostName, urlComponents.nPort, urlComponents.nScheme == INTERNET_SCHEME_HTTPS, TRUE);
+            new_server = get_server(host, urlComponents.nPort, urlComponents.nScheme == INTERNET_SCHEME_HTTPS, TRUE);
             server_release(request->server);
             request->server = new_server;
         }
@@ -4222,16 +4172,18 @@ static DWORD HTTP_HandleRedirect(http_request_t *request, LPCWSTR lpszUrl)
             HTTP_ProcessHeader(request, hostW, request->server->host_port, HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE | HTTP_ADDHDR_FLAG_REQ);
         else
             HTTP_ProcessHeader(request, hostW, request->server->name, HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE | HTTP_ADDHDR_FLAG_REQ);
+
+        path = heap_strndupW(urlComponents.lpszUrlPath, urlComponents.dwUrlPathLength);
     }
     heap_free(request->path);
-    request->path=NULL;
+    request->path = NULL;
     if (*path)
     {
         DWORD needed = 0;
         HRESULT rc;
 
         rc = UrlEscapeW(path, NULL, &needed, URL_ESCAPE_SPACES_ONLY);
-        if (rc != E_POINTER)
+        if (rc == E_POINTER)
             needed = strlenW(path)+1;
         request->path = heap_alloc(needed*sizeof(WCHAR));
         rc = UrlEscapeW(path, request->path, &needed,
@@ -4239,9 +4191,11 @@ static DWORD HTTP_HandleRedirect(http_request_t *request, LPCWSTR lpszUrl)
         if (rc != S_OK)
         {
             ERR("Unable to escape string!(%s) (%d)\n",debugstr_w(path),rc);
-            strcpyW(request->path,path);
+            strcpyW(request->path, path);
         }
     }
+
+    heap_free(path);
 
     /* Remove custom content-type/length headers on redirects.  */
     remove_header(request, szContent_Type, TRUE);
@@ -5133,14 +5087,15 @@ static DWORD HTTP_HttpSendRequestW(http_request_t *request, LPCWSTR lpszHeaders,
 
             if (!(request->hdr.dwFlags & INTERNET_FLAG_NO_AUTO_REDIRECT) && responseLen)
             {
-                WCHAR *new_url, szNewLocation[INTERNET_MAX_URL_LENGTH];
-                dwBufferSize=sizeof(szNewLocation);
+                WCHAR *new_url;
+
                 switch(request->status_code) {
                 case HTTP_STATUS_REDIRECT:
                 case HTTP_STATUS_MOVED:
                 case HTTP_STATUS_REDIRECT_KEEP_VERB:
                 case HTTP_STATUS_REDIRECT_METHOD:
-                    if(HTTP_HttpQueryInfoW(request,HTTP_QUERY_LOCATION,szNewLocation,&dwBufferSize,NULL) != ERROR_SUCCESS)
+                    new_url = get_redirect_url(request);
+                    if(!new_url)
                         break;
 
                     if (strcmpW(request->verb, szGET) && strcmpW(request->verb, szHEAD) &&
@@ -5150,17 +5105,13 @@ static DWORD HTTP_HttpSendRequestW(http_request_t *request, LPCWSTR lpszHeaders,
                         request->verb = heap_strdupW(szGET);
                     }
                     http_release_netconn(request, drain_content(request, FALSE));
-                    if ((new_url = HTTP_GetRedirectURL( request, szNewLocation )))
-                    {
-                        INTERNET_SendCallback(&request->hdr, request->hdr.dwContext, INTERNET_STATUS_REDIRECT,
-                                              new_url, (strlenW(new_url) + 1) * sizeof(WCHAR));
-                        res = HTTP_HandleRedirect(request, new_url);
-                        if (res == ERROR_SUCCESS)
-                        {
-                            heap_free(requestString);
-                            loop_next = TRUE;
-                        }
-                        heap_free( new_url );
+                    INTERNET_SendCallback(&request->hdr, request->hdr.dwContext, INTERNET_STATUS_REDIRECT,
+                                          new_url, (strlenW(new_url) + 1) * sizeof(WCHAR));
+                    res = HTTP_HandleRedirect(request, new_url);
+                    heap_free(new_url);
+                    if (res == ERROR_SUCCESS) {
+                        heap_free(requestString);
+                        loop_next = TRUE;
                     }
                     redirected = TRUE;
                 }
@@ -5303,7 +5254,6 @@ static void AsyncHttpSendRequestProc(task_header_t *hdr)
 
 static DWORD HTTP_HttpEndRequestW(http_request_t *request, DWORD dwFlags, DWORD_PTR dwContext)
 {
-    DWORD dwBufferSize;
     INT responseLen;
     DWORD res = ERROR_SUCCESS;
 
@@ -5340,9 +5290,10 @@ static DWORD HTTP_HttpEndRequestW(http_request_t *request, DWORD dwFlags, DWORD_
         case HTTP_STATUS_MOVED:
         case HTTP_STATUS_REDIRECT_METHOD:
         case HTTP_STATUS_REDIRECT_KEEP_VERB: {
-            WCHAR *new_url, szNewLocation[INTERNET_MAX_URL_LENGTH];
-            dwBufferSize=sizeof(szNewLocation);
-            if (HTTP_HttpQueryInfoW(request, HTTP_QUERY_LOCATION, szNewLocation, &dwBufferSize, NULL) != ERROR_SUCCESS)
+            WCHAR *new_url;
+
+            new_url = get_redirect_url(request);
+            if(!new_url)
                 break;
 
             if (strcmpW(request->verb, szGET) && strcmpW(request->verb, szHEAD) &&
@@ -5352,15 +5303,12 @@ static DWORD HTTP_HttpEndRequestW(http_request_t *request, DWORD dwFlags, DWORD_
                 request->verb = heap_strdupW(szGET);
             }
             http_release_netconn(request, drain_content(request, FALSE));
-            if ((new_url = HTTP_GetRedirectURL( request, szNewLocation )))
-            {
-                INTERNET_SendCallback(&request->hdr, request->hdr.dwContext, INTERNET_STATUS_REDIRECT,
-                                      new_url, (strlenW(new_url) + 1) * sizeof(WCHAR));
-                res = HTTP_HandleRedirect(request, new_url);
-                if (res == ERROR_SUCCESS)
-                    res = HTTP_HttpSendRequestW(request, NULL, 0, NULL, 0, 0, TRUE);
-                heap_free( new_url );
-            }
+            INTERNET_SendCallback(&request->hdr, request->hdr.dwContext, INTERNET_STATUS_REDIRECT,
+                                  new_url, (strlenW(new_url) + 1) * sizeof(WCHAR));
+            res = HTTP_HandleRedirect(request, new_url);
+            heap_free(new_url);
+            if (res == ERROR_SUCCESS)
+                res = HTTP_HttpSendRequestW(request, NULL, 0, NULL, 0, 0, TRUE);
         }
         }
     }

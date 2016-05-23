@@ -3072,9 +3072,15 @@ static void apply_format_fixups(struct wined3d_adapter *adapter, struct wined3d_
     gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
     idx = get_format_idx(WINED3DFMT_BC1_UNORM);
     gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
+    idx = get_format_idx(WINED3DFMT_BC1_UNORM_SRGB);
+    gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
     idx = get_format_idx(WINED3DFMT_BC2_UNORM);
     gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
+    idx = get_format_idx(WINED3DFMT_BC2_UNORM_SRGB);
+    gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
     idx = get_format_idx(WINED3DFMT_BC3_UNORM);
+    gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
+    idx = get_format_idx(WINED3DFMT_BC3_UNORM_SRGB);
     gl_info->formats[idx].flags[WINED3D_GL_RES_TYPE_TEX_3D] &= ~WINED3DFMT_FLAG_TEXTURE;
     /* Similarly with ATI1N / ATI2N and GL_ARB_texture_compression_rgtc. */
     idx = get_format_idx(WINED3DFMT_ATI1N);
@@ -3363,6 +3369,14 @@ const char *debug_color(const struct wined3d_color *color)
         return "(null)";
     return wine_dbg_sprintf("{%.8e, %.8e, %.8e, %.8e}",
             color->r, color->g, color->b, color->a);
+}
+
+const char *debug_ivec4(const struct wined3d_ivec4 *v)
+{
+    if (!v)
+        return "(null)";
+    return wine_dbg_sprintf("{%d, %d, %d, %d}",
+            v->x, v->y, v->z, v->w);
 }
 
 const char *debug_vec4(const struct wined3d_vec4 *v)
@@ -3875,7 +3889,7 @@ const char *debug_d3dtexturefiltertype(enum wined3d_texture_filter_type filter_t
         D3DTEXTUREFILTERTYPE_TO_STR(WINED3D_TEXF_GAUSSIAN_QUAD);
 #undef D3DTEXTUREFILTERTYPE_TO_STR
         default:
-            FIXME("Unrecognied texture filter type 0x%08x.\n", filter_type);
+            FIXME("Unrecognized texture filter type 0x%08x.\n", filter_type);
             return "unrecognized";
     }
 }
@@ -4113,7 +4127,7 @@ const char *debug_fbostatus(GLenum status) {
         FBOSTATUS_TO_STR(GL_FRAMEBUFFER_UNDEFINED);
 #undef FBOSTATUS_TO_STR
         default:
-            FIXME("Unrecognied FBO status 0x%08x\n", status);
+            FIXME("Unrecognized FBO status 0x%08x.\n", status);
             return "unrecognized";
     }
 }
@@ -4131,7 +4145,7 @@ const char *debug_glerror(GLenum error) {
         GLERROR_TO_STR(GL_INVALID_FRAMEBUFFER_OPERATION);
 #undef GLERROR_TO_STR
         default:
-            FIXME("Unrecognied GL error 0x%08x\n", error);
+            FIXME("Unrecognized GL error 0x%08x.\n", error);
             return "unrecognized";
     }
 }

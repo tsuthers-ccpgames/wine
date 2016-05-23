@@ -3822,7 +3822,7 @@ static void test_EM_SETTEXTEX(void)
   getText.flags = GT_DEFAULT;
   getText.lpDefaultChar = NULL;
   getText.lpUsedDefChar = NULL;
-  memset(buf, 0, MAX_BUF_LEN);
+  memset(buf, 0, sizeof(buf));
   SendMessageA(hwndRichEdit, EM_GETTEXTEX, (WPARAM)&getText, (LPARAM)buf);
   ok(lstrcmpW(buf, TestItem2) == 0,
       "EM_GETTEXTEX results not what was set by EM_SETTEXTEX\n");
@@ -3837,7 +3837,7 @@ static void test_EM_SETTEXTEX(void)
   getText.flags = GT_USECRLF;   /* <-- asking for CR -> CRLF conversion */
   getText.lpDefaultChar = NULL;
   getText.lpUsedDefChar = NULL;
-  memset(buf, 0, MAX_BUF_LEN);
+  memset(buf, 0, sizeof(buf));
   SendMessageA(hwndRichEdit, EM_GETTEXTEX, (WPARAM)&getText, (LPARAM)buf);
   ok(lstrcmpW(buf, TestItem1) == 0,
       "EM_GETTEXTEX results not what was set by EM_SETTEXTEX\n");
@@ -5046,7 +5046,7 @@ static void test_EM_REPLACESEL(int redraw)
     todo_wine ok(!strcmp(buffer, "WTestSomeTextne"), "WM_GETTEXT returned incorrect string\n");
 
     if (!redraw)
-        /* This is needed to avoid interferring with keybd_event calls
+        /* This is needed to avoid interfering with keybd_event calls
          * on other tests that simulate keyboard events. */
         SendMessageA(hwndRichEdit, WM_SETREDRAW, TRUE, 0);
 
@@ -8337,6 +8337,17 @@ static void test_rtf_specials(void)
     DestroyWindow( edit );
 }
 
+static void test_background(void)
+{
+    HWND hwndRichEdit = new_richedit(NULL);
+
+    /* set the background color to black */
+    ValidateRect(hwndRichEdit, NULL);
+    SendMessageA(hwndRichEdit, EM_SETBKGNDCOLOR, FALSE, RGB(0, 0, 0));
+    ok(GetUpdateRect(hwndRichEdit, NULL, FALSE), "Update rectangle is empty!\n");
+
+    DestroyWindow(hwndRichEdit);
+}
 
 START_TEST( editor )
 {
@@ -8408,6 +8419,7 @@ START_TEST( editor )
   test_EM_SETFONTSIZE();
   test_alignment_style();
   test_rtf_specials();
+  test_background();
 
   /* Set the environment variable WINETEST_RICHED20 to keep windows
    * responsive and open for 30 seconds. This is useful for debugging.

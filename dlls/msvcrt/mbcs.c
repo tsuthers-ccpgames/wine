@@ -2157,17 +2157,25 @@ int CDECL MSVCRT_mbtowc_l(MSVCRT_wchar_t *dst, const char* str, MSVCRT_size_t n,
 
     if(n <= 0 || !str)
         return 0;
-    if(!locinfo->lc_codepage)
-        tmpdst = (unsigned char)*str;
-    else if(!MultiByteToWideChar(locinfo->lc_codepage, 0, str, n, &tmpdst, 1))
-        return -1;
-    if(dst)
-        *dst = tmpdst;
-    /* return the number of bytes from src that have been used */
-    if(!*str)
+
+    if(!*str) {
+        if(dst) *dst = 0;
         return 0;
-    if(n >= 2 && MSVCRT__isleadbyte_l((unsigned char)*str, locale) && str[1])
+    }
+
+    if(!locinfo->lc_codepage) {
+        if(dst) *dst = (unsigned char)*str;
+        return 1;
+    }
+    if(n>=2 && MSVCRT__isleadbyte_l((unsigned char)*str, locale)) {
+        if(!MultiByteToWideChar(locinfo->lc_codepage, 0, str, 2, &tmpdst, 1))
+            return -1;
+        if(dst) *dst = tmpdst;
         return 2;
+    }
+    if(!MultiByteToWideChar(locinfo->lc_codepage, 0, str, 1, &tmpdst, 1))
+        return -1;
+    if(dst) *dst = tmpdst;
     return 1;
 }
 
@@ -2336,27 +2344,59 @@ MSVCRT_size_t CDECL MSVCRT_mbsrtowcs(MSVCRT_wchar_t *wcstr,
     MSVCRT_mbstate_t s = (state ? *state : 0);
     MSVCRT_wchar_t tmpdst;
     MSVCRT_size_t ret = 0;
+    const char *p;
 
     if(!MSVCRT_CHECK_PMT(pmbstr != NULL))
         return -1;
 
+    p = *pmbstr;
     while(!wcstr || count>ret) {
-        int ch_len = MSVCRT_mbrtowc(&tmpdst, *pmbstr, 2, &s);
+        int ch_len = MSVCRT_mbrtowc(&tmpdst, p, 2, &s);
         if(wcstr)
             wcstr[ret] = tmpdst;
 
         if(ch_len < 0) {
             return -1;
         }else if(ch_len == 0) {
-            *pmbstr = NULL;
+            if(wcstr) *pmbstr = NULL;
             return ret;
         }
 
-        *pmbstr += ch_len;
+        p += ch_len;
         ret++;
     }
 
+    if(wcstr) *pmbstr = p;
     return ret;
+}
+
+/*********************************************************************
+ *              mbsrtowcs_s(MSVCRT.@)
+ */
+int CDECL MSVCRT_mbsrtowcs_s(MSVCRT_size_t *ret, MSVCRT_wchar_t *wcstr, MSVCRT_size_t len,
+        const char **mbstr, MSVCRT_size_t count, MSVCRT_mbstate_t *state)
+{
+    MSVCRT_size_t tmp;
+
+    if(!ret) ret = &tmp;
+    if(!MSVCRT_CHECK_PMT(!!wcstr == !!len)) {
+        *ret = -1;
+        return MSVCRT_EINVAL;
+    }
+
+    *ret = MSVCRT_mbsrtowcs(wcstr, mbstr, count>len ? len : count, state);
+    if(*ret == -1) {
+        if(wcstr) *wcstr = 0;
+        return *MSVCRT__errno();
+    }
+    (*ret)++;
+    if(*ret > len) {
+        /* no place for terminating '\0' */
+        if(wcstr) *wcstr = 0;
+        return 0;
+    }
+    if(wcstr) wcstr[(*ret)-1] = 0;
+    return 0;
 }
 
 /*********************************************************************

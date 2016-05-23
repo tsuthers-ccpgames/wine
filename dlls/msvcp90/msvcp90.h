@@ -142,6 +142,7 @@ typedef struct
     char null_str;
 } _Yarn_char;
 
+_Yarn_char* __thiscall _Yarn_char_ctor(_Yarn_char*);
 _Yarn_char* __thiscall _Yarn_char_ctor_cstr(_Yarn_char*, const char*);
 _Yarn_char* __thiscall _Yarn_char_copy_ctor(_Yarn_char*, const _Yarn_char*);
 const char* __thiscall _Yarn_char_c_str(const _Yarn_char*);
@@ -549,7 +550,9 @@ istreambuf_iterator_wchar *__thiscall num_get_wchar_get_bool(const num_get*, ist
 /* class num_put<wchar> */
 typedef struct {
     locale_facet facet;
+#if _MSVCP_VER < 110
     _Cvtvec cvt;
+#endif
 } num_put;
 
 num_put* num_put_char_use_facet(const locale*);

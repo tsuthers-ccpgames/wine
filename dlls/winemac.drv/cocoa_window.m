@@ -290,6 +290,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 {
     NSMutableArray* glContexts;
     NSMutableArray* pendingGlContexts;
+    BOOL _cachedHasGLDescendant;
+    BOOL _cachedHasGLDescendantValid;
     BOOL clearedGlSurface;
 
     NSMutableAttributedString* markedText;
@@ -454,6 +456,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (void) addGLContext:(WineOpenGLContext*)context
     {
+        BOOL hadContext = [self hasGLContext];
         if (!glContexts)
             glContexts = [[NSMutableArray alloc] init];
         if (!pendingGlContexts)
@@ -475,13 +478,18 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
             [self setNeedsDisplay:YES];
         }
 
+        if (!hadContext)
+            [self invalidateHasGLDescendant];
         [(WineWindow*)[self window] updateForGLSubviews];
     }
 
     - (void) removeGLContext:(WineOpenGLContext*)context
     {
+        BOOL hadContext = [self hasGLContext];
         [glContexts removeObjectIdenticalTo:context];
         [pendingGlContexts removeObjectIdenticalTo:context];
+        if (hadContext && ![self hasGLContext])
+            [self invalidateHasGLDescendant];
         [(WineWindow*)[self window] updateForGLSubviews];
     }
 
@@ -496,6 +504,42 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         return [glContexts count] || [pendingGlContexts count];
     }
 
+    - (BOOL) _hasGLDescendant
+    {
+        if ([self isHidden])
+            return NO;
+        if ([self hasGLContext])
+            return YES;
+        for (WineContentView* view in [self subviews])
+        {
+            if ([view hasGLDescendant])
+                return YES;
+        }
+        return NO;
+    }
+
+    - (BOOL) hasGLDescendant
+    {
+        if (!_cachedHasGLDescendantValid)
+        {
+            _cachedHasGLDescendant = [self _hasGLDescendant];
+            _cachedHasGLDescendantValid = YES;
+        }
+        return _cachedHasGLDescendant;
+    }
+
+    - (void) invalidateHasGLDescendant
+    {
+        BOOL invalidateAncestors = _cachedHasGLDescendantValid;
+        _cachedHasGLDescendantValid = NO;
+        if (invalidateAncestors && self != [[self window] contentView])
+        {
+            WineContentView* superview = (WineContentView*)[self superview];
+            if ([superview isKindOfClass:[WineContentView class]])
+                [superview invalidateHasGLDescendant];
+        }
+    }
+
     - (void) wine_getBackingSize:(int*)outBackingSize
     {
         @synchronized(self) {
@@ -506,6 +550,24 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     {
         @synchronized(self) {
             memcpy(backingSize, newBackingSize, sizeof(backingSize));
+        }
+    }
+
+    - (void) setRetinaMode:(int)mode
+    {
+        double scale = mode ? 0.5 : 2.0;
+        NSRect frame = self.frame;
+        frame.origin.x *= scale;
+        frame.origin.y *= scale;
+        frame.size.width *= scale;
+        frame.size.height *= scale;
+        [self setFrame:frame];
+        [self updateGLContexts];
+
+        for (WineContentView* subview in [self subviews])
+        {
+            if ([subview isKindOfClass:[WineContentView class]])
+                [subview setRetinaMode:mode];
         }
     }
 
@@ -558,6 +620,34 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     - (NSFocusRingType) focusRingType
     {
         return NSFocusRingTypeNone;
+    }
+
+    - (void) didAddSubview:(NSView*)subview
+    {
+        if ([subview isKindOfClass:[WineContentView class]])
+        {
+            WineContentView* view = (WineContentView*)subview;
+            if (!view->_cachedHasGLDescendantValid || view->_cachedHasGLDescendant)
+                [self invalidateHasGLDescendant];
+        }
+        [super didAddSubview:subview];
+    }
+
+    - (void) willRemoveSubview:(NSView*)subview
+    {
+        if ([subview isKindOfClass:[WineContentView class]])
+        {
+            WineContentView* view = (WineContentView*)subview;
+            if (!view->_cachedHasGLDescendantValid || view->_cachedHasGLDescendant)
+                [self invalidateHasGLDescendant];
+        }
+        [super willRemoveSubview:subview];
+    }
+
+    - (void) setHidden:(BOOL)hidden
+    {
+        [super setHidden:hidden];
+        [self invalidateHasGLDescendant];
     }
 
     /*
@@ -1606,7 +1696,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     - (BOOL) needsTransparency
     {
         return self.shape || self.colorKeyed || self.usePerPixelAlpha ||
-                (gl_surface_mode == GL_SURFACE_BEHIND && [[self.contentView valueForKeyPath:@"subviews.@max.hasGLContext"] boolValue]);
+                (gl_surface_mode == GL_SURFACE_BEHIND && [(WineContentView*)self.contentView hasGLDescendant]);
     }
 
     - (void) checkTransparency
@@ -2194,17 +2284,12 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     {
         NSRect contentRect = [[self contentView] frame];
         BOOL coveredByGLView = FALSE;
-        for (WineContentView* view in [[self contentView] subviews])
+        WineContentView* view = (WineContentView*)[[self contentView] hitTest:NSMakePoint(NSMidX(contentRect), NSMidY(contentRect))];
+        if ([view isKindOfClass:[WineContentView class]] && [view hasGLContext])
         {
-            if ([view hasGLContext])
-            {
-                NSRect frame = [view convertRect:[view bounds] toView:nil];
-                if (NSContainsRect(frame, contentRect))
-                {
-                    coveredByGLView = TRUE;
-                    break;
-                }
-            }
+            NSRect frame = [view convertRect:[view bounds] toView:nil];
+            if (NSContainsRect(frame, contentRect))
+                coveredByGLView = TRUE;
         }
 
         if (coveredByGLView)
@@ -2234,15 +2319,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         for (WineContentView* subview in [self.contentView subviews])
         {
             if ([subview isKindOfClass:[WineContentView class]])
-            {
-                frame = subview.frame;
-                frame.origin.x *= scale;
-                frame.origin.y *= scale;
-                frame.size.width *= scale;
-                frame.size.height *= scale;
-                [subview setFrame:frame];
-                [subview updateGLContexts];
-            }
+                [subview setRetinaMode:mode];
         }
 
         frame = [self contentRectForFrameRect:self.wine_fractionalFrame];
@@ -3145,14 +3222,13 @@ void macdrv_set_window_min_max_sizes(macdrv_window w, CGSize min_size, CGSize ma
 /***********************************************************************
  *              macdrv_create_view
  *
- * Creates and returns a view in the specified rect of the window.  The
+ * Creates and returns a view with the specified frame rect.  The
  * caller is responsible for calling macdrv_dispose_view() on the view
  * when it is done with it.
  */
-macdrv_view macdrv_create_view(macdrv_window w, CGRect rect)
+macdrv_view macdrv_create_view(CGRect rect)
 {
     NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
-    WineWindow* window = (WineWindow*)w;
     __block WineContentView* view;
 
     if (CGRectIsNull(rect)) rect = CGRectZero;
@@ -3162,6 +3238,7 @@ macdrv_view macdrv_create_view(macdrv_window w, CGRect rect)
 
         view = [[WineContentView alloc] initWithFrame:NSRectFromCGRect(cgrect_mac_from_win(rect))];
         [view setAutoresizesSubviews:NO];
+        [view setHidden:YES];
         [nc addObserver:view
                selector:@selector(updateGLContexts)
                    name:NSViewGlobalFrameDidChangeNotification
@@ -3170,8 +3247,6 @@ macdrv_view macdrv_create_view(macdrv_window w, CGRect rect)
                selector:@selector(updateGLContexts)
                    name:NSApplicationDidChangeScreenParametersNotification
                  object:NSApp];
-        [[window contentView] addSubview:view];
-        [window updateForGLSubviews];
     });
 
     [pool release];
@@ -3207,39 +3282,22 @@ void macdrv_dispose_view(macdrv_view v)
 }
 
 /***********************************************************************
- *              macdrv_set_view_window_and_frame
- *
- * Move a view to a new window and/or position within its window.  If w
- * is NULL, leave the view in its current window and just change its
- * frame.
+ *              macdrv_set_view_frame
  */
-void macdrv_set_view_window_and_frame(macdrv_view v, macdrv_window w, CGRect rect)
+void macdrv_set_view_frame(macdrv_view v, CGRect rect)
 {
     NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
     WineContentView* view = (WineContentView*)v;
-    WineWindow* window = (WineWindow*)w;
 
     if (CGRectIsNull(rect)) rect = CGRectZero;
 
     OnMainThread(^{
-        BOOL changedWindow = (window && window != [view window]);
         NSRect newFrame = NSRectFromCGRect(cgrect_mac_from_win(rect));
         NSRect oldFrame = [view frame];
-        BOOL needUpdateWindowForGLSubviews = FALSE;
-
-        if (changedWindow)
-        {
-            WineWindow* oldWindow = (WineWindow*)[view window];
-            [view removeFromSuperview];
-            [oldWindow updateForGLSubviews];
-            [[window contentView] addSubview:view];
-            needUpdateWindowForGLSubviews = TRUE;
-        }
 
         if (!NSEqualRects(oldFrame, newFrame))
         {
-            if (!changedWindow)
-                [[view superview] setNeedsDisplayInRect:oldFrame];
+            [[view superview] setNeedsDisplayInRect:oldFrame];
             if (NSEqualPoints(oldFrame.origin, newFrame.origin))
                 [view setFrameSize:newFrame.size];
             else if (NSEqualSizes(oldFrame.size, newFrame.size))
@@ -3247,17 +3305,81 @@ void macdrv_set_view_window_and_frame(macdrv_view v, macdrv_window w, CGRect rec
             else
                 [view setFrame:newFrame];
             [view setNeedsDisplay:YES];
-            needUpdateWindowForGLSubviews = TRUE;
 
             if (retina_enabled)
             {
                 int backing_size[2] = { 0 };
                 [view wine_setBackingSize:backing_size];
             }
+            [(WineWindow*)[view window] updateForGLSubviews];
+        }
+    });
+
+    [pool release];
+}
+
+/***********************************************************************
+ *              macdrv_set_view_superview
+ *
+ * Move a view to a new superview and position it relative to its
+ * siblings.  If p is non-NULL, the view is ordered behind it.
+ * Otherwise, the view is ordered above n.  If s is NULL, use the
+ * content view of w as the new superview.
+ */
+void macdrv_set_view_superview(macdrv_view v, macdrv_view s, macdrv_window w, macdrv_view p, macdrv_view n)
+{
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+    WineContentView* view = (WineContentView*)v;
+    WineContentView* superview = (WineContentView*)s;
+    WineWindow* window = (WineWindow*)w;
+    WineContentView* prev = (WineContentView*)p;
+    WineContentView* next = (WineContentView*)n;
+
+    if (!superview)
+        superview = [window contentView];
+
+    OnMainThread(^{
+        if (superview == [view superview])
+        {
+            NSArray* subviews = [superview subviews];
+            NSUInteger index = [subviews indexOfObjectIdenticalTo:view];
+            if (!prev && !next && index == 0)
+                return;
+            if (prev && index > 0 && [subviews objectAtIndex:index - 1] == prev)
+                return;
+            if (!prev && next && index + 1 < [subviews count] && [subviews objectAtIndex:index + 1] == next)
+                return;
         }
 
-        if (needUpdateWindowForGLSubviews)
-            [(WineWindow*)[view window] updateForGLSubviews];
+        WineWindow* oldWindow = (WineWindow*)[view window];
+        WineWindow* newWindow = (WineWindow*)[superview window];
+
+        [view removeFromSuperview];
+        if (prev)
+            [superview addSubview:view positioned:NSWindowBelow relativeTo:prev];
+        else
+            [superview addSubview:view positioned:NSWindowAbove relativeTo:next];
+
+        if (oldWindow != newWindow)
+        {
+            [oldWindow updateForGLSubviews];
+            [newWindow updateForGLSubviews];
+        }
+    });
+
+    [pool release];
+}
+
+/***********************************************************************
+ *              macdrv_set_view_hidden
+ */
+void macdrv_set_view_hidden(macdrv_view v, int hidden)
+{
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+    WineContentView* view = (WineContentView*)v;
+
+    OnMainThread(^{
+        [view setHidden:hidden];
     });
 
     [pool release];

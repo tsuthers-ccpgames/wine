@@ -3766,6 +3766,18 @@ static void test_GetStringTypeW(void)
     GetStringTypeW(CT_CTYPE1, ch, 2, types);
     ok(types[0] == (C1_DEFINED|C1_SPACE), "got %x\n", types[0]);
     ok(types[1] == (C1_DEFINED|C1_SPACE), "got %x\n", types[1]);
+
+    /* check Arabic range for kashida flag */
+    for (ch[0] = 0x600; ch[0] <= 0x6ff; ch[0] += 1)
+    {
+        types[0] = 0;
+        ret = GetStringTypeW(CT_CTYPE3, ch, 1, types);
+        ok(ret, "%#x: failed %d\n", ch[0], ret);
+        if (ch[0] == 0x640) /* ARABIC TATWEEL (Kashida) */
+            ok(types[0] & C3_KASHIDA, "%#x: type %#x\n", ch[0], types[0]);
+        else
+            ok(!(types[0] & C3_KASHIDA), "%#x: type %#x\n", ch[0], types[0]);
+    }
 }
 
 static void test_IdnToNameprepUnicode(void)
@@ -4179,6 +4191,8 @@ static void test_IsValidLocaleName(void)
     ok(!ret, "IsValidLocaleName should have failed\n");
     ret = pIsValidLocaleName(LOCALE_NAME_INVARIANT);
     ok(ret, "IsValidLocaleName failed\n");
+    ret = pIsValidLocaleName(NULL);
+    ok(!ret, "IsValidLocaleName should have failed\n");
 }
 
 static void test_CompareStringOrdinal(void)

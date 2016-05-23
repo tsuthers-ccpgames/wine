@@ -410,6 +410,7 @@ struct reader
     struct node             *root;
     struct node             *current;
     ULONG                    current_attr;
+    struct node             *last;
     struct prefix           *prefixes;
     ULONG                    nb_prefixes;
     ULONG                    nb_prefixes_allocated;
@@ -524,14 +525,14 @@ static void read_insert_eof( struct reader *reader, struct node *eof )
         eof->parent = reader->root;
         list_add_tail( &reader->root->children, &eof->entry );
     }
-    reader->current = eof;
+    reader->current = reader->last = eof;
 }
 
 static void read_insert_bof( struct reader *reader, struct node *bof )
 {
     reader->root->parent = bof;
     list_add_tail( &bof->children, &reader->root->entry );
-    reader->current = reader->root = bof;
+    reader->current = reader->last = reader->root = bof;
 }
 
 static void read_insert_node( struct reader *reader, struct node *parent, struct node *node )
@@ -543,7 +544,7 @@ static void read_insert_node( struct reader *reader, struct node *parent, struct
         list_add_before( eof, &node->entry );
     }
     else list_add_tail( &parent->children, &node->entry );
-    reader->current = node;
+    reader->current = reader->last = node;
 }
 
 static HRESULT read_init_state( struct reader *reader )
@@ -1076,39 +1077,22 @@ error:
     return hr;
 }
 
-static int cmp_name( const unsigned char *name1, ULONG len1, const unsigned char *name2, ULONG len2 )
+static inline BOOL is_valid_parent( const struct node *node )
 {
-    ULONG i;
-    if (len1 != len2) return 1;
-    for (i = 0; i < len1; i++) { if (toupper( name1[i] ) != toupper( name2[i] )) return 1; }
-    return 0;
+    if (!node) return FALSE;
+    return node_type( node ) == WS_XML_NODE_TYPE_ELEMENT || node_type( node ) == WS_XML_NODE_TYPE_BOF;
 }
 
-static struct node *read_find_parent( struct reader *reader, const WS_XML_STRING *prefix,
-                                      const WS_XML_STRING *localname )
+static struct node *read_find_parent( struct reader *reader )
 {
-    struct node *parent;
-    const WS_XML_STRING *str;
-
-    for (parent = reader->current; parent; parent = parent->parent)
+    struct node *node = reader->current;
+    if (node_type( node ) == WS_XML_NODE_TYPE_END_ELEMENT)
     {
-        if (node_type( parent ) == WS_XML_NODE_TYPE_BOF)
-        {
-            if (!localname) return parent;
-            return NULL;
-        }
-        else if (node_type( parent ) == WS_XML_NODE_TYPE_ELEMENT)
-        {
-            if (!localname) return parent;
-
-            str = parent->hdr.prefix;
-            if (cmp_name( str->bytes, str->length, prefix->bytes, prefix->length )) continue;
-            str = parent->hdr.localName;
-            if (cmp_name( str->bytes, str->length, localname->bytes, localname->length )) continue;
-            return parent;
-       }
+        if (!node->parent || !is_valid_parent( node->parent->parent )) return NULL;
+        return node->parent->parent;
     }
-
+    else if (is_valid_parent( node )) return node;
+    else if (is_valid_parent( node->parent )) return node->parent;
     return NULL;
 }
 
@@ -1167,7 +1151,7 @@ static HRESULT read_element( struct reader *reader )
     }
     if (!len) goto error;
 
-    if (!(parent = read_find_parent( reader, NULL, NULL ))) goto error;
+    if (!(parent = read_find_parent( reader ))) goto error;
 
     hr = E_OUTOFMEMORY;
     if (!(node = alloc_node( WS_XML_NODE_TYPE_ELEMENT ))) goto error;
@@ -1202,7 +1186,7 @@ static HRESULT read_text( struct reader *reader )
 {
     unsigned int len = 0, ch, skip;
     const unsigned char *start;
-    struct node *node;
+    struct node *node, *parent;
     WS_XML_TEXT_NODE *text;
     WS_XML_UTF8_TEXT *utf8;
 
@@ -1216,6 +1200,8 @@ static HRESULT read_text( struct reader *reader )
         len += skip;
     }
 
+    if (!(parent = read_find_parent( reader ))) return WS_E_INVALID_FORMAT;
+
     if (!(node = alloc_node( WS_XML_NODE_TYPE_TEXT ))) return E_OUTOFMEMORY;
     text = (WS_XML_TEXT_NODE *)node;
     if (!(utf8 = alloc_utf8_text( start, len )))
@@ -1225,7 +1211,7 @@ static HRESULT read_text( struct reader *reader )
     }
     text->text = &utf8->text;
 
-    read_insert_node( reader, reader->current, node );
+    read_insert_node( reader, parent, node );
     reader->state = READER_STATE_TEXT;
     return S_OK;
 }
@@ -1283,6 +1269,36 @@ static HRESULT read_to_startelement( struct reader *reader, BOOL *found )
     return hr;
 }
 
+static int cmp_name( const unsigned char *name1, ULONG len1, const unsigned char *name2, ULONG len2 )
+{
+    ULONG i;
+    if (len1 != len2) return 1;
+    for (i = 0; i < len1; i++) { if (toupper( name1[i] ) != toupper( name2[i] )) return 1; }
+    return 0;
+}
+
+static struct node *read_find_start_element( struct reader *reader, const WS_XML_STRING *prefix,
+                                             const WS_XML_STRING *localname )
+{
+    struct node *parent;
+    const WS_XML_STRING *str;
+
+    for (parent = reader->current; parent; parent = parent->parent)
+    {
+        if (node_type( parent ) == WS_XML_NODE_TYPE_BOF) return NULL;
+        if (node_type( parent ) == WS_XML_NODE_TYPE_ELEMENT)
+        {
+            str = parent->hdr.prefix;
+            if (cmp_name( str->bytes, str->length, prefix->bytes, prefix->length )) continue;
+            str = parent->hdr.localName;
+            if (cmp_name( str->bytes, str->length, localname->bytes, localname->length )) continue;
+            return parent;
+       }
+    }
+
+    return NULL;
+}
+
 static HRESULT read_endelement( struct reader *reader )
 {
     struct node *node, *parent;
@@ -1319,7 +1335,7 @@ static HRESULT read_endelement( struct reader *reader )
     }
 
     if ((hr = parse_name( start, len, &prefix, &localname )) != S_OK) return hr;
-    parent = read_find_parent( reader, prefix, localname );
+    parent = read_find_start_element( reader, prefix, localname );
     heap_free( prefix );
     heap_free( localname );
     if (!parent) return WS_E_INVALID_FORMAT;
@@ -1334,7 +1350,7 @@ static HRESULT read_comment( struct reader *reader )
 {
     unsigned int len = 0, ch, skip;
     const unsigned char *start;
-    struct node *node;
+    struct node *node, *parent;
     WS_XML_COMMENT_NODE *comment;
 
     if (read_cmp( reader, "<!--", 4 )) return WS_E_INVALID_FORMAT;
@@ -1353,6 +1369,8 @@ static HRESULT read_comment( struct reader *reader )
         len += skip;
     }
 
+    if (!(parent = read_find_parent( reader ))) return WS_E_INVALID_FORMAT;
+
     if (!(node = alloc_node( WS_XML_NODE_TYPE_COMMENT ))) return E_OUTOFMEMORY;
     comment = (WS_XML_COMMENT_NODE *)node;
     if (!(comment->value.bytes = heap_alloc( len )))
@@ -1363,20 +1381,22 @@ static HRESULT read_comment( struct reader *reader )
     memcpy( comment->value.bytes, start, len );
     comment->value.length = len;
 
-    read_insert_node( reader, reader->current, node );
+    read_insert_node( reader, parent, node );
     reader->state = READER_STATE_COMMENT;
     return S_OK;
 }
 
 static HRESULT read_startcdata( struct reader *reader )
 {
-    struct node *node;
+    struct node *node, *parent;
 
     if (read_cmp( reader, "<![CDATA[", 9 )) return WS_E_INVALID_FORMAT;
     read_skip( reader, 9 );
 
+    if (!(parent = read_find_parent( reader ))) return WS_E_INVALID_FORMAT;
+
     if (!(node = alloc_node( WS_XML_NODE_TYPE_CDATA ))) return E_OUTOFMEMORY;
-    read_insert_node( reader, reader->current, node );
+    read_insert_node( reader, parent, node );
     reader->state = READER_STATE_STARTCDATA;
     return S_OK;
 }
@@ -1631,6 +1651,58 @@ static BOOL move_to_parent_element( struct reader *reader )
     return FALSE;
 }
 
+static BOOL move_to_first_node( struct reader *reader )
+{
+    struct list *ptr;
+    if ((ptr = list_head( &reader->current->parent->children )))
+    {
+        reader->current = LIST_ENTRY( ptr, struct node, entry );
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL move_to_next_node( struct reader *reader )
+{
+    struct list *ptr;
+    if ((ptr = list_next( &reader->current->parent->children, &reader->current->entry )))
+    {
+        reader->current = LIST_ENTRY( ptr, struct node, entry );
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL move_to_prev_node( struct reader *reader )
+{
+    struct list *ptr;
+    if ((ptr = list_prev( &reader->current->parent->children, &reader->current->entry )))
+    {
+        reader->current = LIST_ENTRY( ptr, struct node, entry );
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL move_to_child_node( struct reader *reader )
+{
+    struct list *ptr;
+    if ((ptr = list_head( &reader->current->children )))
+    {
+        reader->current = LIST_ENTRY( ptr, struct node, entry );
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL move_to_parent_node( struct reader *reader )
+{
+    struct node *parent = reader->current->parent;
+    if (!parent) return FALSE;
+    reader->current = parent;
+    return TRUE;
+}
+
 static HRESULT read_move_to( struct reader *reader, WS_MOVE_TO move, BOOL *found )
 {
     struct list *ptr;
@@ -1669,35 +1741,19 @@ static HRESULT read_move_to( struct reader *reader, WS_MOVE_TO move, BOOL *found
         break;
 
     case WS_MOVE_TO_FIRST_NODE:
-        if ((ptr = list_head( &reader->current->parent->children )))
-        {
-            reader->current = LIST_ENTRY( ptr, struct node, entry );
-            success = TRUE;
-        }
+        success = move_to_first_node( reader );
         break;
 
     case WS_MOVE_TO_NEXT_NODE:
-        if ((ptr = list_next( &reader->current->parent->children, &reader->current->entry )))
-        {
-            reader->current = LIST_ENTRY( ptr, struct node, entry );
-            success = TRUE;
-        }
+        success = move_to_next_node( reader );
         break;
 
     case WS_MOVE_TO_PREVIOUS_NODE:
-        if ((ptr = list_prev( &reader->current->parent->children, &reader->current->entry )))
-        {
-            reader->current = LIST_ENTRY( ptr, struct node, entry );
-            success = TRUE;
-        }
+        success = move_to_prev_node( reader );
         break;
 
     case WS_MOVE_TO_CHILD_NODE:
-        if ((ptr = list_head( &reader->current->children )))
-        {
-            reader->current = LIST_ENTRY( ptr, struct node, entry );
-            success = TRUE;
-        }
+        success = move_to_child_node( reader );
         break;
 
     case WS_MOVE_TO_BOF:
@@ -1879,6 +1935,160 @@ static HRESULT str_to_uint64( const unsigned char *str, ULONG len, UINT64 max, U
     }
 
     return S_OK;
+}
+
+#if defined(__i386__) || defined(__x86_64__)
+
+#define RC_DOWN 0x100;
+static BOOL set_fp_rounding( unsigned short *save )
+{
+#ifdef __GNUC__
+    unsigned short fpword;
+
+    __asm__ __volatile__( "fstcw %0" : "=m" (fpword) );
+    *save = fpword;
+    fpword |= RC_DOWN;
+    __asm__ __volatile__( "fldcw %0" : : "m" (fpword) );
+    return TRUE;
+#else
+    FIXME( "not implemented\n" );
+    return FALSE;
+#endif
+}
+static void restore_fp_rounding( unsigned short fpword )
+{
+#ifdef __GNUC__
+    __asm__ __volatile__( "fldcw %0" : : "m" (fpword) );
+#else
+    FIXME( "not implemented\n" );
+#endif
+}
+#else
+static BOOL set_fp_rounding( unsigned short *save )
+{
+    FIXME( "not implemented\n" );
+    return FALSE;
+}
+static void restore_fp_rounding( unsigned short fpword )
+{
+    FIXME( "not implemented\n" );
+}
+#endif
+
+static HRESULT str_to_double( const unsigned char *str, ULONG len, double *ret )
+{
+    static const unsigned __int64 nan = 0xfff8000000000000;
+    static const unsigned __int64 inf = 0x7ff0000000000000;
+    static const unsigned __int64 inf_min = 0xfff0000000000000;
+    HRESULT hr = WS_E_INVALID_FORMAT;
+    const unsigned char *p = str, *q;
+    int sign = 1, exp_sign = 1, exp = 0, exp_tmp = 0, neg_exp, i, nb_digits, have_digits;
+    unsigned __int64 val = 0, tmp;
+    long double exp_val = 1.0, exp_mul = 10.0;
+    unsigned short fpword;
+
+    while (len && read_isspace( *p )) { p++; len--; }
+    while (len && read_isspace( p[len - 1] )) { len--; }
+    if (!len) return WS_E_INVALID_FORMAT;
+
+    if (len == 3 && !memcmp( p, "NaN", 3 ))
+    {
+        *(unsigned __int64 *)ret = nan;
+        return S_OK;
+    }
+    else if (len == 3 && !memcmp( p, "INF", 3 ))
+    {
+        *(unsigned __int64 *)ret = inf;
+        return S_OK;
+    }
+    else if (len == 4 && !memcmp( p, "-INF", 4 ))
+    {
+        *(unsigned __int64 *)ret = inf_min;
+        return S_OK;
+    }
+
+    *ret = 0.0;
+    if (*p == '-')
+    {
+        sign = -1;
+        p++; len--;
+    }
+    else if (*p == '+') { p++; len--; };
+    if (!len) return S_OK;
+
+    if (!set_fp_rounding( &fpword )) return E_NOTIMPL;
+
+    q = p;
+    while (len && isdigit( *q )) { q++; len--; }
+    have_digits = nb_digits = q - p;
+    for (i = 0; i < nb_digits; i++)
+    {
+        tmp = val * 10 + p[i] - '0';
+        if (val > MAX_UINT64 / 10 || tmp < val)
+        {
+            for (; i < nb_digits; i++) exp++;
+            break;
+        }
+        val = tmp;
+    }
+
+    if (len)
+    {
+        if (*q == '.')
+        {
+            p = ++q; len--;
+            while (len && isdigit( *q )) { q++; len--; };
+            have_digits |= nb_digits = q - p;
+            for (i = 0; i < nb_digits; i++)
+            {
+                tmp = val * 10 + p[i] - '0';
+                if (val > MAX_UINT64 / 10 || tmp < val) break;
+                val = tmp;
+                exp--;
+            }
+        }
+        if (len > 1 && tolower(*q) == 'e')
+        {
+            if (!have_digits) goto done;
+            p = ++q; len--;
+            if (*p == '-')
+            {
+                exp_sign = -1;
+                p++; len--;
+            }
+            else if (*p == '+') { p++; len--; };
+
+            q = p;
+            while (len && isdigit( *q )) { q++; len--; };
+            nb_digits = q - p;
+            if (!nb_digits || len) goto done;
+            for (i = 0; i < nb_digits; i++)
+            {
+                if (exp_tmp > MAX_INT32 / 10 || (exp_tmp = exp_tmp * 10 + p[i] - '0') < 0)
+                    exp_tmp = MAX_INT32;
+            }
+            exp_tmp *= exp_sign;
+
+            if (exp < 0 && exp_tmp < 0 && exp + exp_tmp >= 0) exp = MIN_INT32;
+            else if (exp > 0 && exp_tmp > 0 && exp + exp_tmp < 0) exp = MAX_INT32;
+            else exp += exp_tmp;
+        }
+    }
+    if (!have_digits || len) goto done;
+
+    if ((neg_exp = exp < 0)) exp = -exp;
+    for (; exp; exp >>= 1)
+    {
+        if (exp & 1) exp_val *= exp_mul;
+        exp_mul *= exp_mul;
+    }
+
+    *ret = sign * (neg_exp ? val / exp_val : val * exp_val);
+    hr = S_OK;
+
+done:
+    restore_fp_rounding( fpword );
+    return hr;
 }
 
 #define TICKS_PER_SEC   10000000
@@ -2655,6 +2865,53 @@ static HRESULT read_type_uint64( struct reader *reader, WS_TYPE_MAPPING mapping,
     return S_OK;
 }
 
+static HRESULT read_type_double( struct reader *reader, WS_TYPE_MAPPING mapping,
+                                 const WS_XML_STRING *localname, const WS_XML_STRING *ns,
+                                 const WS_DOUBLE_DESCRIPTION *desc, WS_READ_OPTION option,
+                                 WS_HEAP *heap, void *ret, ULONG size )
+{
+    WS_XML_UTF8_TEXT *utf8;
+    HRESULT hr;
+    double val = 0.0;
+    BOOL found;
+
+    if (desc) FIXME( "ignoring description\n" );
+
+    if ((hr = read_get_text( reader, mapping, localname, ns, &utf8, &found )) != S_OK) return hr;
+    if (found && (hr = str_to_double( utf8->value.bytes, utf8->value.length, &val )) != S_OK) return hr;
+
+    switch (option)
+    {
+    case WS_READ_REQUIRED_VALUE:
+        if (!found) return WS_E_INVALID_FORMAT;
+        if (size != sizeof(double)) return E_INVALIDARG;
+        *(double *)ret = val;
+        break;
+
+    case WS_READ_REQUIRED_POINTER:
+        if (!found) return WS_E_INVALID_FORMAT;
+        /* fall through */
+
+    case WS_READ_OPTIONAL_POINTER:
+    {
+        double *heap_val = NULL;
+        if (size != sizeof(heap_val)) return E_INVALIDARG;
+        if (found)
+        {
+            if (!(heap_val = ws_alloc( heap, sizeof(*heap_val) ))) return WS_E_QUOTA_EXCEEDED;
+            *heap_val = val;
+        }
+        *(double **)ret = heap_val;
+        break;
+    }
+    default:
+        FIXME( "read option %u not supported\n", option );
+        return E_NOTIMPL;
+    }
+
+    return S_OK;
+}
+
 static HRESULT read_type_wsz( struct reader *reader, WS_TYPE_MAPPING mapping,
                               const WS_XML_STRING *localname, const WS_XML_STRING *ns,
                               const WS_WSZ_DESCRIPTION *desc, WS_READ_OPTION option,
@@ -2817,6 +3074,16 @@ static BOOL is_empty_text_node( const struct node *node )
     return TRUE;
 }
 
+static HRESULT read_next_node( struct reader *reader )
+{
+    if (reader->current == reader->last) return read_node( reader );
+    if (move_to_child_node( reader )) return S_OK;
+    if (move_to_next_node( reader )) return S_OK;
+    if (!move_to_parent_node( reader )) return WS_E_INVALID_FORMAT;
+    if (move_to_next_node( reader )) return S_OK;
+    return WS_E_INVALID_FORMAT;
+}
+
 /* skips comment and empty text nodes */
 static HRESULT read_type_next_node( struct reader *reader )
 {
@@ -2825,7 +3092,7 @@ static HRESULT read_type_next_node( struct reader *reader )
         HRESULT hr;
         WS_XML_NODE_TYPE type;
 
-        if ((hr = read_node( reader )) != S_OK) return hr;
+        if ((hr = read_next_node( reader )) != S_OK) return hr;
         type = node_type( reader->current );
         if (type == WS_XML_NODE_TYPE_COMMENT ||
             (type == WS_XML_NODE_TYPE_TEXT && is_empty_text_node( reader->current ))) continue;
@@ -2833,22 +3100,41 @@ static HRESULT read_type_next_node( struct reader *reader )
     }
 }
 
+static BOOL match_current_element( struct reader *reader, const WS_XML_STRING *localname,
+                                   const WS_XML_STRING *ns )
+{
+    const WS_XML_ELEMENT_NODE *elem = &reader->current->hdr;
+    if (node_type( reader->current ) != WS_XML_NODE_TYPE_ELEMENT) return FALSE;
+    return WsXmlStringEquals( localname, elem->localName, NULL ) == S_OK &&
+           WsXmlStringEquals( ns, elem->ns, NULL ) == S_OK;
+}
+
 static HRESULT read_type_next_element_node( struct reader *reader, const WS_XML_STRING *localname,
                                             const WS_XML_STRING *ns )
 {
-    const WS_XML_ELEMENT_NODE *elem;
+    struct node *node;
+    ULONG attr;
     HRESULT hr;
-    BOOL found;
 
     if (!localname) return S_OK; /* assume reader is already correctly positioned */
-    if ((hr = read_to_startelement( reader, &found )) != S_OK) return hr;
-    if (!found) return WS_E_INVALID_FORMAT;
+    if (reader->current == reader->last)
+    {
+        BOOL found;
+        if ((hr = read_to_startelement( reader, &found )) != S_OK) return hr;
+        if (!found) return WS_E_INVALID_FORMAT;
+    }
+    if (match_current_element( reader, localname, ns )) return S_OK;
 
-    elem = &reader->current->hdr;
-    if (WsXmlStringEquals( localname, elem->localName, NULL ) == S_OK &&
-        WsXmlStringEquals( ns, elem->ns, NULL ) == S_OK) return S_OK;
+    node = reader->current;
+    attr = reader->current_attr;
 
-    return read_type_next_node( reader );
+    if ((hr = read_type_next_node( reader )) != S_OK) return hr;
+    if (match_current_element( reader, localname, ns )) return S_OK;
+
+    reader->current = node;
+    reader->current_attr = attr;
+
+    return WS_E_INVALID_FORMAT;
 }
 
 static ULONG get_type_size( WS_TYPE type, const WS_STRUCT_DESCRIPTION *desc )
@@ -2873,6 +3159,9 @@ static ULONG get_type_size( WS_TYPE type, const WS_STRUCT_DESCRIPTION *desc )
     case WS_UINT64_TYPE:
         return sizeof(INT64);
 
+    case WS_DOUBLE_TYPE:
+        return sizeof(double);
+
     case WS_DATETIME_TYPE:
         return sizeof(WS_DATETIME);
 
@@ -2888,25 +3177,57 @@ static ULONG get_type_size( WS_TYPE type, const WS_STRUCT_DESCRIPTION *desc )
     }
 }
 
+static WS_READ_OPTION get_array_read_option( WS_TYPE type )
+{
+    switch (type)
+    {
+    case WS_BOOL_TYPE:
+    case WS_INT8_TYPE:
+    case WS_INT16_TYPE:
+    case WS_INT32_TYPE:
+    case WS_INT64_TYPE:
+    case WS_UINT8_TYPE:
+    case WS_UINT16_TYPE:
+    case WS_UINT32_TYPE:
+    case WS_UINT64_TYPE:
+    case WS_DOUBLE_TYPE:
+    case WS_ENUM_TYPE:
+    case WS_STRUCT_TYPE:
+    case WS_DATETIME_TYPE:
+        return WS_READ_REQUIRED_VALUE;
+
+    case WS_WSZ_TYPE:
+        return WS_READ_REQUIRED_POINTER;
+
+    default:
+        FIXME( "unhandled type %u\n", type );
+        return 0;
+    }
+}
+
 static HRESULT read_type( struct reader *, WS_TYPE_MAPPING, WS_TYPE, const WS_XML_STRING *,
                           const WS_XML_STRING *, const void *, WS_READ_OPTION, WS_HEAP *,
                           void *, ULONG );
 
 static HRESULT read_type_repeating_element( struct reader *reader, const WS_FIELD_DESCRIPTION *desc,
-                                            WS_READ_OPTION option, WS_HEAP *heap, void **ret,
-                                            ULONG size, ULONG *count )
+                                            WS_HEAP *heap, void **ret, ULONG size, ULONG *count )
 {
     HRESULT hr;
     ULONG item_size, nb_items = 0, nb_allocated = 1, offset = 0;
+    WS_READ_OPTION option;
     char *buf;
 
-    if (size != sizeof(void *)) return E_INVALIDARG;
+    if (size != sizeof(void *) || !(option = get_array_read_option( desc->type ))) return E_INVALIDARG;
 
     /* wrapper element */
     if (desc->localName && ((hr = read_type_next_element_node( reader, desc->localName, desc->ns )) != S_OK))
         return hr;
 
-    item_size = get_type_size( desc->type, desc->typeDescription );
+    if (option == WS_READ_REQUIRED_VALUE)
+        item_size = get_type_size( desc->type, desc->typeDescription );
+    else
+        item_size = sizeof(void *);
+
     if (!(buf = ws_alloc_zero( heap, item_size ))) return WS_E_QUOTA_EXCEEDED;
     for (;;)
     {
@@ -2917,7 +3238,7 @@ static HRESULT read_type_repeating_element( struct reader *reader, const WS_FIEL
             nb_allocated *= 2;
         }
         hr = read_type( reader, WS_ELEMENT_TYPE_MAPPING, desc->type, desc->itemLocalName, desc->itemNs,
-                        desc->typeDescription, WS_READ_REQUIRED_VALUE, heap, buf + offset, item_size );
+                        desc->typeDescription, option, heap, buf + offset, item_size );
         if (hr == WS_E_INVALID_FORMAT) break;
         if (hr != S_OK)
         {
@@ -2948,25 +3269,21 @@ static HRESULT read_type_text( struct reader *reader, const WS_FIELD_DESCRIPTION
                                WS_READ_OPTION option, WS_HEAP *heap, void *ret, ULONG size )
 {
     HRESULT hr;
-    BOOL found;
-
-    if ((hr = read_to_startelement( reader, &found )) != S_OK) return S_OK;
-    if (!found) return WS_E_INVALID_FORMAT;
-    if ((hr = read_node( reader )) != S_OK) return hr;
+    if (reader->current == reader->last)
+    {
+        BOOL found;
+        if ((hr = read_to_startelement( reader, &found )) != S_OK) return S_OK;
+        if (!found) return WS_E_INVALID_FORMAT;
+    }
+    if ((hr = read_next_node( reader )) != S_OK) return hr;
     if (node_type( reader->current ) != WS_XML_NODE_TYPE_TEXT) return WS_E_INVALID_FORMAT;
 
     return read_type( reader, WS_ANY_ELEMENT_TYPE_MAPPING, desc->type, NULL, NULL,
                       desc->typeDescription, option, heap, ret, size );
 }
 
-static WS_READ_OPTION map_field_options( WS_TYPE type, ULONG options )
+static WS_READ_OPTION get_field_read_option( WS_TYPE type )
 {
-    if (options & ~(WS_FIELD_POINTER | WS_FIELD_OPTIONAL))
-    {
-        FIXME( "options %08x not supported\n", options );
-        return 0;
-    }
-
     switch (type)
     {
     case WS_BOOL_TYPE:
@@ -2978,6 +3295,7 @@ static WS_READ_OPTION map_field_options( WS_TYPE type, ULONG options )
     case WS_UINT16_TYPE:
     case WS_UINT32_TYPE:
     case WS_UINT64_TYPE:
+    case WS_DOUBLE_TYPE:
     case WS_ENUM_TYPE:
     case WS_DATETIME_TYPE:
         return WS_READ_REQUIRED_VALUE;
@@ -3000,7 +3318,13 @@ static HRESULT read_type_struct_field( struct reader *reader, const WS_FIELD_DES
     ULONG size;
     HRESULT hr;
 
-    if (!desc || !(option = map_field_options( desc->type, desc->options ))) return E_INVALIDARG;
+    if (!desc) return E_INVALIDARG;
+    if (desc->options & ~(WS_FIELD_POINTER | WS_FIELD_OPTIONAL))
+    {
+        FIXME( "options %08x not supported\n", desc->options );
+        return E_NOTIMPL;
+    }
+    if (!(option = get_field_read_option( desc->type ))) return E_INVALIDARG;
 
     if (option == WS_READ_REQUIRED_VALUE)
         size = get_type_size( desc->type, desc->typeDescription );
@@ -3023,7 +3347,7 @@ static HRESULT read_type_struct_field( struct reader *reader, const WS_FIELD_DES
     case WS_REPEATING_ELEMENT_FIELD_MAPPING:
     {
         ULONG count;
-        hr = read_type_repeating_element( reader, desc, option, heap, (void **)ptr, size, &count );
+        hr = read_type_repeating_element( reader, desc, heap, (void **)ptr, size, &count );
         if (hr == S_OK) *(ULONG *)(buf + desc->countOffset) = count;
         break;
     }
@@ -3203,6 +3527,11 @@ static HRESULT read_type( struct reader *reader, WS_TYPE_MAPPING mapping, WS_TYP
             return hr;
         break;
 
+    case WS_DOUBLE_TYPE:
+        if ((hr = read_type_double( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
+            return hr;
+        break;
+
     case WS_WSZ_TYPE:
         if ((hr = read_type_wsz( reader, mapping, localname, ns, desc, option, heap, value, size )) != S_OK)
             return hr;
@@ -3266,6 +3595,42 @@ HRESULT WINAPI WsReadType( WS_XML_READER *handle, WS_TYPE_MAPPING mapping, WS_TY
 
     if (!read_end_of_data( reader )) return WS_E_INVALID_FORMAT;
     return S_OK;
+}
+
+/**************************************************************************
+ *          WsReadElement		[webservices.@]
+ */
+HRESULT WINAPI WsReadElement( WS_XML_READER *handle, const WS_ELEMENT_DESCRIPTION *desc,
+                              WS_READ_OPTION option, WS_HEAP *heap, void *value, ULONG size,
+                              WS_ERROR *error )
+{
+    struct reader *reader = (struct reader *)handle;
+
+    TRACE( "%p %p %u %p %p %u %p\n", handle, desc, option, heap, value, size, error );
+    if (error) FIXME( "ignoring error parameter\n" );
+
+    if (!reader || !desc || !value) return E_INVALIDARG;
+
+    return read_type( reader, WS_ELEMENT_TYPE_MAPPING, desc->type, desc->elementLocalName,
+                      desc->elementNs, desc->typeDescription, option, heap, value, size );
+}
+
+/**************************************************************************
+ *          WsReadValue		[webservices.@]
+ */
+HRESULT WINAPI WsReadValue( WS_XML_READER *handle, WS_VALUE_TYPE value_type, void *value, ULONG size,
+                            WS_ERROR *error )
+{
+    struct reader *reader = (struct reader *)handle;
+    WS_TYPE type = map_value_type( value_type );
+
+    TRACE( "%p %u %p %u %p\n", handle, type, value, size, error );
+    if (error) FIXME( "ignoring error parameter\n" );
+
+    if (!reader || !value || type == ~0u) return E_INVALIDARG;
+
+    return read_type( reader, WS_ELEMENT_TYPE_MAPPING, type, NULL, NULL, NULL, WS_READ_REQUIRED_VALUE,
+                      NULL, value, size );
 }
 
 /**************************************************************************

@@ -118,7 +118,6 @@ typedef struct
     HFONT	hFont;
     HFONT	hBoldFont;
     int		textHeight;
-    int		textWidth;
     int		height_increment;
     int		width_increment;
     INT		delta;	/* scroll rate; # of months that the */
@@ -1156,6 +1155,18 @@ static void MONTHCAL_PaintLeadTrailMonths(const MONTHCAL_INFO *infoPtr, HDC hdc,
   }
 }
 
+static int get_localized_dayname(const MONTHCAL_INFO *infoPtr, unsigned int day, WCHAR *buff, unsigned int count)
+{
+  LCTYPE lctype;
+
+  if (infoPtr->dwStyle & MCS_SHORTDAYSOFWEEK)
+      lctype = LOCALE_SSHORTESTDAYNAME1 + day;
+  else
+      lctype = LOCALE_SABBREVDAYNAME1 + day;
+
+  return GetLocaleInfoW(LOCALE_USER_DEFAULT, lctype, buff, count);
+}
+
 /* paint a calendar area */
 static void MONTHCAL_PaintCalendar(const MONTHCAL_INFO *infoPtr, HDC hdc, const PAINTSTRUCT *ps, INT calIdx)
 {
@@ -1196,7 +1207,7 @@ static void MONTHCAL_PaintCalendar(const MONTHCAL_INFO *infoPtr, HDC hdc, const 
 
   i = infoPtr->firstDay;
   for(j = 0; j < 7; j++) {
-    GetLocaleInfoW(LOCALE_USER_DEFAULT, LOCALE_SABBREVDAYNAME1 + (i+j+6)%7, buf, countof(buf));
+    get_localized_dayname(infoPtr, (i + j + 6) % 7, buf, countof(buf));
     DrawTextW(hdc, buf, strlenW(buf), &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     OffsetRect(&r, infoPtr->width_increment, 0);
   }
@@ -2482,9 +2493,10 @@ static void MONTHCAL_UpdateSize(MONTHCAL_INFO *infoPtr)
   INT xdiv, dx, dy, i, j, x, y, c_dx, c_dy;
   WCHAR buff[80];
   TEXTMETRICW tm;
-  SIZE size, sz;
+  INT day_width;
   RECT client;
   HFONT font;
+  SIZE size;
   HDC hdc;
 
   GetClientRect(infoPtr->hwndSelf, &client);
@@ -2496,28 +2508,30 @@ static void MONTHCAL_UpdateSize(MONTHCAL_INFO *infoPtr)
   GetTextMetricsW(hdc, &tm);
   infoPtr->textHeight = tm.tmHeight + tm.tmExternalLeading + tm.tmInternalLeading;
 
-  /* find largest abbreviated day name for current locale */
-  size.cx = sz.cx = 0;
+  /* find widest day name for current locale and font */
+  day_width = 0;
   for (i = 0; i < 7; i++)
   {
-      if(GetLocaleInfoW(LOCALE_USER_DEFAULT, LOCALE_SABBREVDAYNAME1 + i,
-                        buff, countof(buff)))
+      SIZE sz;
+
+      if (get_localized_dayname(infoPtr, i, buff, countof(buff)))
       {
           GetTextExtentPoint32W(hdc, buff, lstrlenW(buff), &sz);
-          if (sz.cx > size.cx) size.cx = sz.cx;
+          if (sz.cx > day_width) day_width = sz.cx;
       }
       else /* locale independent fallback on failure */
       {
-          static const WCHAR SunW[] = { 'S','u','n',0 };
-
-          GetTextExtentPoint32W(hdc, SunW, lstrlenW(SunW), &size);
+          static const WCHAR sunW[] = { 'S','u','n' };
+          GetTextExtentPoint32W(hdc, sunW, countof(sunW), &sz);
+          day_width = sz.cx;
           break;
       }
   }
 
-  infoPtr->textWidth = size.cx + 2;
+  day_width += 2;
 
   /* recalculate the height and width increments and offsets */
+  size.cx = 0;
   GetTextExtentPoint32W(hdc, O0W, 2, &size);
 
   /* restore the originally selected font */
@@ -2526,7 +2540,7 @@ static void MONTHCAL_UpdateSize(MONTHCAL_INFO *infoPtr)
 
   xdiv = (infoPtr->dwStyle & MCS_WEEKNUMBERS) ? 8 : 7;
 
-  infoPtr->width_increment  = size.cx * 2 + 4;
+  infoPtr->width_increment  = max(day_width, size.cx * 2 + 4);
   infoPtr->height_increment = infoPtr->textHeight;
 
   /* calculate title area */
@@ -2703,7 +2717,7 @@ static INT MONTHCAL_StyleChanged(MONTHCAL_INFO *infoPtr, WPARAM wStyleType,
     infoPtr->dwStyle = lpss->styleNew;
 
     /* make room for week numbers */
-    if ((lpss->styleNew ^ lpss->styleOld) & MCS_WEEKNUMBERS)
+    if ((lpss->styleNew ^ lpss->styleOld) & (MCS_WEEKNUMBERS | MCS_SHORTDAYSOFWEEK))
         MONTHCAL_UpdateSize(infoPtr);
 
     return 0;

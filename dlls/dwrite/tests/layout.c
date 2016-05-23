@@ -32,7 +32,16 @@
 static const WCHAR tahomaW[] = {'T','a','h','o','m','a',0};
 static const WCHAR enusW[] = {'e','n','-','u','s',0};
 
-static DWRITE_SCRIPT_ANALYSIS g_sa;
+struct testanalysissink
+{
+    IDWriteTextAnalysisSink IDWriteTextAnalysisSink_iface;
+    DWRITE_SCRIPT_ANALYSIS sa; /* last analysis, with SetScriptAnalysis() */
+};
+
+static inline struct testanalysissink *impl_from_IDWriteTextAnalysisSink(IDWriteTextAnalysisSink *iface)
+{
+    return CONTAINING_RECORD(iface, struct testanalysissink, IDWriteTextAnalysisSink_iface);
+}
 
 /* test IDWriteTextAnalysisSink */
 static HRESULT WINAPI analysissink_QueryInterface(IDWriteTextAnalysisSink *iface, REFIID riid, void **obj)
@@ -60,7 +69,8 @@ static ULONG WINAPI analysissink_Release(IDWriteTextAnalysisSink *iface)
 static HRESULT WINAPI analysissink_SetScriptAnalysis(IDWriteTextAnalysisSink *iface,
     UINT32 position, UINT32 length, DWRITE_SCRIPT_ANALYSIS const* sa)
 {
-    g_sa = *sa;
+    struct testanalysissink *sink = impl_from_IDWriteTextAnalysisSink(iface);
+    sink->sa = *sa;
     return S_OK;
 }
 
@@ -95,7 +105,10 @@ static IDWriteTextAnalysisSinkVtbl analysissinkvtbl = {
     analysissink_SetNumberSubstitution
 };
 
-static IDWriteTextAnalysisSink analysissink = { &analysissinkvtbl };
+static struct testanalysissink analysissink = {
+    { &analysissinkvtbl },
+    { 0 }
+};
 
 /* test IDWriteTextAnalysisSource */
 static HRESULT WINAPI analysissource_QueryInterface(IDWriteTextAnalysisSource *iface,
@@ -202,19 +215,20 @@ static void get_script_analysis(const WCHAR *str, UINT32 len, DWRITE_SCRIPT_ANAL
     hr = IDWriteFactory_CreateTextAnalyzer(factory, &analyzer);
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
-    hr = IDWriteTextAnalyzer_AnalyzeScript(analyzer, &analysissource, 0, len, &analysissink);
+    hr = IDWriteTextAnalyzer_AnalyzeScript(analyzer, &analysissource, 0, len, &analysissink.IDWriteTextAnalysisSink_iface);
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
-    *sa = g_sa;
+    *sa = analysissink.sa;
     IDWriteFactory_Release(factory);
 }
 
 #define EXPECT_REF(obj,ref) _expect_ref((IUnknown*)obj, ref, __LINE__)
 static void _expect_ref(IUnknown* obj, ULONG ref, int line)
 {
-    ULONG rc = IUnknown_AddRef(obj);
-    IUnknown_Release(obj);
-    ok_(__FILE__,line)(rc-1 == ref, "expected refcount %d, got %d\n", ref, rc-1);
+    ULONG rc;
+    IUnknown_AddRef(obj);
+    rc = IUnknown_Release(obj);
+    ok_(__FILE__,line)(rc == ref, "expected refcount %d, got %d\n", ref, rc);
 }
 
 enum drawcall_modifiers_kind {
@@ -305,13 +319,6 @@ static inline void flush_sequence(struct drawcall_sequence **seg, int sequence_i
     HeapFree(GetProcessHeap(), 0, call_seq->sequence);
     call_seq->sequence = NULL;
     call_seq->count = call_seq->size = 0;
-}
-
-static inline void flush_sequences(struct drawcall_sequence **seq, int n)
-{
-    int i;
-    for (i = 0; i < n; i++)
-        flush_sequence(seq, i);
 }
 
 static void init_call_sequences(struct drawcall_sequence **seq, int n)

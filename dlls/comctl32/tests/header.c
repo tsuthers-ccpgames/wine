@@ -994,8 +994,19 @@ static void test_hdm_filterMessages(HWND hParent)
     ok_sequence(sequences, PARENT_SEQ_INDEX, add_header_to_parent_seq,
                                     "adder header control to parent", FALSE);
 
+    timeout = SendMessageA(hChild, HDM_SETFILTERCHANGETIMEOUT, 0, 0);
+    ok(timeout == 1000, "got %d\n", timeout);
+
+    timeout = SendMessageA(hChild, HDM_SETFILTERCHANGETIMEOUT, 0, 0);
+    ok(timeout == 1000, "got %d\n", timeout);
+
+    timeout = SendMessageA(hChild, HDM_SETFILTERCHANGETIMEOUT, 0, -100);
+    ok(timeout == 1000, "got %d\n", timeout);
+
     timeout = SendMessageA(hChild, HDM_SETFILTERCHANGETIMEOUT, 1, 100);
-    SendMessageA(hChild, HDM_SETFILTERCHANGETIMEOUT, 1, timeout);
+    ok(timeout == -100, "got %d\n", timeout);
+    retVal = SendMessageA(hChild, HDM_SETFILTERCHANGETIMEOUT, 1, timeout);
+    ok(retVal == 100, "got %d\n", retVal);
 
     flush_sequences(sequences, NUM_MSG_SEQUENCES);
 
@@ -1707,17 +1718,17 @@ static void check_orderarray(HWND hwnd, DWORD start, DWORD set, DWORD expected,
         order[i-1] = start>>(4*(count-i)) & 0xf;
 
     ret = SendMessageA(hwnd, HDM_SETORDERARRAY, count, (LPARAM)order);
-    ok_(__FILE__, line)(ret, "Expected HDM_SETORDERARAY to succeed, got %d\n", ret);
+    ok_(__FILE__, line)(ret, "Expected HDM_SETORDERARRAY to succeed, got %d\n", ret);
 
     /* new order */
     for(i = 1; i<=count; i++)
         order[i-1] = set>>(4*(count-i)) & 0xf;
     ret = SendMessageA(hwnd, HDM_SETORDERARRAY, count, (LPARAM)order);
-    ok_(__FILE__, line)(ret, "Expected HDM_SETORDERARAY to succeed, got %d\n", ret);
+    ok_(__FILE__, line)(ret, "Expected HDM_SETORDERARRAY to succeed, got %d\n", ret);
 
     /* check actual order */
     ret = SendMessageA(hwnd, HDM_GETORDERARRAY, count, (LPARAM)order);
-    ok_(__FILE__, line)(ret, "Expected HDM_GETORDERARAY to succeed, got %d\n", ret);
+    ok_(__FILE__, line)(ret, "Expected HDM_GETORDERARRAY to succeed, got %d\n", ret);
     for(i = 1; i<=count; i++)
         array |= order[i-1]<<(4*(count-i));
 

@@ -1147,8 +1147,7 @@ HRESULT surface_upload_from_surface(struct wined3d_surface *dst_surface, const P
                 wined3d_texture_get_level_height(src_texture, src_surface->texture_level));
         src_rect = &r;
     }
-    else if (src_rect->left < 0 || src_rect->left >= src_rect->right
-            || src_rect->top < 0 || src_rect->top >= src_rect->bottom)
+    else if (src_rect->left < 0 || src_rect->top < 0 || IsRectEmpty(src_rect))
     {
         WARN("Invalid source rectangle.\n");
         return WINED3DERR_INVALIDCALL;
@@ -1898,7 +1897,7 @@ static void fb_copy_to_texture_direct(struct wined3d_surface *dst_surface, struc
 
     if ((xrel - 1.0f < -eps) || (xrel - 1.0f > eps))
     {
-        FIXME("Doing a pixel by pixel copy from the framebuffer to a texture, expect major performance issues\n");
+        FIXME_(d3d_perf)("Doing a pixel by pixel copy from the framebuffer to a texture.\n");
 
         if (filter != WINED3D_TEXF_NONE && filter != WINED3D_TEXF_POINT)
             ERR("Texture filtering not supported in direct blit.\n");
@@ -2911,8 +2910,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
         if ((sub_resource->locations & (WINED3D_LOCATION_TEXTURE_RGB | texture->resource.map_binding))
                 == WINED3D_LOCATION_TEXTURE_RGB)
         {
-            /* Performance warning... */
-            FIXME("Downloading RGB surface %p to reload it as sRGB.\n", surface);
+            FIXME_(d3d_perf)("Downloading RGB surface %p to reload it as sRGB.\n", surface);
             surface_load_location(surface, context, texture->resource.map_binding);
         }
     }
@@ -2921,8 +2919,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
         if ((sub_resource->locations & (WINED3D_LOCATION_TEXTURE_SRGB | texture->resource.map_binding))
                 == WINED3D_LOCATION_TEXTURE_SRGB)
         {
-            /* Performance warning... */
-            FIXME("Downloading sRGB surface %p to reload it as RGB.\n", surface);
+            FIXME_(d3d_perf)("Downloading sRGB surface %p to reload it as RGB.\n", surface);
             surface_load_location(surface, context, texture->resource.map_binding);
         }
     }
@@ -4032,8 +4029,7 @@ HRESULT wined3d_surface_blt(struct wined3d_surface *dst_surface, const RECT *dst
 
     dst_w = wined3d_texture_get_level_width(dst_texture, dst_surface->texture_level);
     dst_h = wined3d_texture_get_level_height(dst_texture, dst_surface->texture_level);
-    if (dst_rect->left >= dst_rect->right || dst_rect->top >= dst_rect->bottom
-            || dst_rect->left > dst_w || dst_rect->left < 0
+    if (IsRectEmpty(dst_rect) || dst_rect->left > dst_w || dst_rect->left < 0
             || dst_rect->top > dst_h || dst_rect->top < 0
             || dst_rect->right > dst_w || dst_rect->right < 0
             || dst_rect->bottom > dst_h || dst_rect->bottom < 0)
@@ -4046,8 +4042,7 @@ HRESULT wined3d_surface_blt(struct wined3d_surface *dst_surface, const RECT *dst
     {
         src_w = wined3d_texture_get_level_width(src_texture, src_surface->texture_level);
         src_h = wined3d_texture_get_level_height(src_texture, src_surface->texture_level);
-        if (src_rect->left >= src_rect->right || src_rect->top >= src_rect->bottom
-                || src_rect->left > src_w || src_rect->left < 0
+        if (IsRectEmpty(src_rect) || src_rect->left > src_w || src_rect->left < 0
                 || src_rect->top > src_h || src_rect->top < 0
                 || src_rect->right > src_w || src_rect->right < 0
                 || src_rect->bottom > src_h || src_rect->bottom < 0)
@@ -4305,12 +4300,4 @@ fallback:
 cpu:
     return surface_cpu_blt(dst_texture, dst_sub_resource_idx, &dst_box,
             src_texture, src_sub_resource_idx, &src_box, flags, fx, filter);
-}
-
-/* Context activation is done by the caller. Context may be NULL in
- * WINED3D_NO3D mode. */
-void wined3d_surface_prepare(struct wined3d_surface *surface, struct wined3d_context *context, DWORD location)
-{
-    wined3d_texture_prepare_location(surface->container,
-            surface_get_sub_resource_idx(surface), context, location);
 }
