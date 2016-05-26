@@ -1530,6 +1530,13 @@ static BOOL create_context(struct wgl_context *context, CGLContextObj share, uns
             WARN("CGLSetParameter(kCGLCPSurfaceOrder) failed with error %d %s; leaving in front\n", err, CGLErrorString(err));
     }
 
+    TRACE("Enabling the multithreaded OpenGL engine\n");
+    err = CGLEnable(context->cglcontext, kCGLCEMPEngine);
+    if(err != kCGLNoError)
+    {
+        WARN("Enabling the multithreaded OpenGL engine failed\n");
+    }
+
     context->context = macdrv_create_opengl_context(context->cglcontext);
     CGLReleaseContext(context->cglcontext);
     if (!context->context)
@@ -1538,6 +1545,7 @@ static BOOL create_context(struct wgl_context *context, CGLContextObj share, uns
         SetLastError(ERROR_INVALID_OPERATION);
         return FALSE;
     }
+
     context->major = major;
 
     if (allow_vsync)
