@@ -2235,6 +2235,23 @@ void macdrv_window_got_focus(HWND hwnd, const macdrv_event *event)
     macdrv_window_rejected_focus(event);
 }
 
+// CCP addition - copied from keyboard.c
+// This is to help deal with sticky modifier keys when switching to different apps
+// Not an ideal solution, but as a workaround macdrv_window_lost_focus sends keyup events
+// for shift, control and alt keys.
+static void macdrv_send_keyboard_input(HWND hwnd, WORD vkey, WORD scan, DWORD flags, DWORD time)
+{
+    INPUT input;
+
+    input.type              = INPUT_KEYBOARD;
+    input.ki.wVk            = vkey;
+    input.ki.wScan          = scan;
+    input.ki.dwFlags        = flags;
+    input.ki.time           = time;
+    input.ki.dwExtraInfo    = 0;
+
+    __wine_send_input(hwnd, &input);
+}
 
 /***********************************************************************
  *              macdrv_window_lost_focus
@@ -2247,6 +2264,17 @@ void macdrv_window_lost_focus(HWND hwnd, const macdrv_event *event)
 
     TRACE("win %p/%p fg %p\n", hwnd, event->window, GetForegroundWindow());
 
+    // CCP addition
+    struct macdrv_thread_data *thread_data = macdrv_thread_data();
+    thread_data->last_modifiers = 0;
+    macdrv_send_keyboard_input(GetActiveWindow(), VK_LCONTROL, 0x1d, KEYEVENTF_KEYUP, 0);
+    macdrv_send_keyboard_input(GetActiveWindow(), VK_LCONTROL, 0x1d, KEYEVENTF_KEYUP | KEYEVENTF_EXTENDEDKEY, 0);
+    macdrv_send_keyboard_input(GetActiveWindow(), VK_LMENU, 0x38, KEYEVENTF_KEYUP, 0);
+    macdrv_send_keyboard_input(GetActiveWindow(), VK_LMENU, 0x38, KEYEVENTF_KEYUP | KEYEVENTF_EXTENDEDKEY, 0);
+    macdrv_send_keyboard_input(GetActiveWindow(), VK_LSHIFT, 0x2a, KEYEVENTF_KEYUP, 0);
+    macdrv_send_keyboard_input(GetActiveWindow(), VK_LSHIFT, 0x36, KEYEVENTF_KEYUP, 0);
+    // End CCP addition
+    
     if (hwnd == GetForegroundWindow())
     {
         SendMessageW(hwnd, WM_CANCELMODE, 0, 0);
@@ -2254,7 +2282,6 @@ void macdrv_window_lost_focus(HWND hwnd, const macdrv_event *event)
             SetForegroundWindow(GetDesktopWindow());
     }
 }
-
 
 /***********************************************************************
  *              macdrv_app_deactivated
