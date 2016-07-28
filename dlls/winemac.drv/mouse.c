@@ -30,6 +30,7 @@
 #include "wine/unicode.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(cursor);
+WINE_DECLARE_DEBUG_CHANNEL(key);
 
 
 static CRITICAL_SECTION cursor_cache_section;
@@ -828,6 +829,10 @@ BOOL CDECL macdrv_SetCursorPos(INT x, INT y)
     return ret;
 }
 
+static BOOL isCmdKeyPressed()
+{
+    return (GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000 ? TRUE : FALSE;
+}
 
 /***********************************************************************
  *              macdrv_mouse_button
@@ -848,7 +853,19 @@ void macdrv_mouse_button(HWND hwnd, const macdrv_event *event)
     {
         switch (event->mouse_button.button)
         {
-        case 0: flags |= MOUSEEVENTF_LEFTDOWN; break;
+        case 0: 
+            {
+                if(isCmdKeyPressed())
+                {
+                    TRACE_(key)("Cmd left down treated as right click\n");
+                    flags |= MOUSEEVENTF_RIGHTDOWN;
+                }
+                else
+                {
+                    flags |= MOUSEEVENTF_LEFTDOWN;
+                }
+            }
+            break;
         case 1: flags |= MOUSEEVENTF_RIGHTDOWN; break;
         case 2: flags |= MOUSEEVENTF_MIDDLEDOWN; break;
         default:
@@ -861,7 +878,19 @@ void macdrv_mouse_button(HWND hwnd, const macdrv_event *event)
     {
         switch (event->mouse_button.button)
         {
-        case 0: flags |= MOUSEEVENTF_LEFTUP; break;
+        case 0:
+            {
+                if(isCmdKeyPressed())
+                {
+                    TRACE_(key)("Cmd left up treated as right click\n");
+                    flags |= MOUSEEVENTF_RIGHTUP;
+                }
+                else
+                {
+                    flags |= MOUSEEVENTF_LEFTUP;
+                }
+            }
+            break;
         case 1: flags |= MOUSEEVENTF_RIGHTUP; break;
         case 2: flags |= MOUSEEVENTF_MIDDLEUP; break;
         default:
