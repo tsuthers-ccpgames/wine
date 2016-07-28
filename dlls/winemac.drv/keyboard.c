@@ -238,8 +238,8 @@ static const struct {
     { VK_BACK,                  0x0E,           TRUE },     /* kVK_Delete */
     { 0,                        0,              FALSE },    /* 0x34 unused */
     { VK_ESCAPE,                0x01,           TRUE },     /* kVK_Escape */
-    { VK_RCONTROL,              0x5C | 0x100,   TRUE },     /* kVK_RightCommand */  // CCP see http://www.columbia.edu/~em36/winekeymap.html
-    { VK_LCONTROL,              0x5B,           TRUE },     /* kVK_Command */       // CCP
+    { VK_RWIN,                  0x5C | 0x100,   TRUE },     /* kVK_RightCommand */ 
+    { VK_LWIN,                  0x5B,           TRUE },     /* kVK_Command */       // CCP
     { VK_LSHIFT,                0x2A,           TRUE },     /* kVK_Shift */
     { VK_CAPITAL,               0x3A,           TRUE },     /* kVK_CapsLock */
     { VK_LMENU,                 0x38,           TRUE },     /* kVK_Option */        // CCP
@@ -994,6 +994,10 @@ static void update_modifier_state(unsigned int modifier, unsigned int modifiers,
     }
 }
 
+static BOOL isCmdKeyPressed()
+{
+    return GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN);
+}
 
 /***********************************************************************
  *              macdrv_key_event
@@ -1005,6 +1009,7 @@ void macdrv_key_event(HWND hwnd, const macdrv_event *event)
     struct macdrv_thread_data *thread_data = macdrv_thread_data();
     WORD vkey, scan;
     DWORD flags;
+    BOOL isCopyPaste;
 
     TRACE_(key)("win %p/%p key %s keycode %hu modifiers 0x%08llx\n",
                 hwnd, event->window, (event->type == KEY_PRESS ? "press" : "release"),
@@ -1029,7 +1034,29 @@ void macdrv_key_event(HWND hwnd, const macdrv_event *event)
     if (event->type == KEY_RELEASE) flags |= KEYEVENTF_KEYUP;
     if (scan & 0x100)               flags |= KEYEVENTF_EXTENDEDKEY;
 
+    isCopyPaste = FALSE;
+    if(vkey == 'C' || vkey == 'V' || vkey == 'X')
+    {
+        if(event->type == KEY_PRESS)
+        {
+            if(isCmdKeyPressed())
+            {
+                isCopyPaste = TRUE;
+            }
+        }
+    }
+
+    if(isCopyPaste)
+    {
+        TRACE_(key)("Sending extra VK_LCONTROL down\n");
+        macdrv_send_keyboard_input(hwnd, VK_LCONTROL, 0x1d, 0, event->key.time_ms);
+    }
     macdrv_send_keyboard_input(hwnd, vkey, scan & 0xff, flags, event->key.time_ms);
+    if(isCopyPaste)
+    {
+        TRACE_(key)("Sending extra VK_LCONTROL up\n");
+        macdrv_send_keyboard_input(hwnd, VK_LCONTROL, 0x1d, KEYEVENTF_KEYUP, event->key.time_ms + 100);
+    }
 }
 
 

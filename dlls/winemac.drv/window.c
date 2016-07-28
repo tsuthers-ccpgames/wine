@@ -2269,6 +2269,8 @@ void macdrv_window_lost_focus(HWND hwnd, const macdrv_event *event)
     thread_data->last_modifiers = 0;
     macdrv_send_keyboard_input(GetActiveWindow(), VK_LCONTROL, 0x1d, KEYEVENTF_KEYUP, 0);
     macdrv_send_keyboard_input(GetActiveWindow(), VK_LCONTROL, 0x1d, KEYEVENTF_KEYUP | KEYEVENTF_EXTENDEDKEY, 0);
+    macdrv_send_keyboard_input(GetActiveWindow(), VK_LWIN, 0x5B, KEYEVENTF_KEYUP, 0);
+    macdrv_send_keyboard_input(GetActiveWindow(), VK_LWIN, 0x5C, KEYEVENTF_KEYUP | KEYEVENTF_EXTENDEDKEY, 0);
     macdrv_send_keyboard_input(GetActiveWindow(), VK_LMENU, 0x38, KEYEVENTF_KEYUP, 0);
     macdrv_send_keyboard_input(GetActiveWindow(), VK_LMENU, 0x38, KEYEVENTF_KEYUP | KEYEVENTF_EXTENDEDKEY, 0);
     macdrv_send_keyboard_input(GetActiveWindow(), VK_LSHIFT, 0x2a, KEYEVENTF_KEYUP, 0);

@@ -61,14 +61,37 @@ static WORD get_key_state(void)
 {
     WORD ret = 0;
 
+    TRACE("\n");
+
     if (GetSystemMetrics( SM_SWAPBUTTON ))
     {
-        if (GetAsyncKeyState(VK_RBUTTON) & 0x80) ret |= MK_LBUTTON;
+        if (GetAsyncKeyState(VK_RBUTTON) & 0x80)
+        {
+            if(GetAsyncKeyState(VK_LCONTROL) & 0x80)
+            {
+                ret |= MK_RBUTTON;
+            }
+            else
+            {
+                ret |= MK_LBUTTON;
+            }
+        }
         if (GetAsyncKeyState(VK_LBUTTON) & 0x80) ret |= MK_RBUTTON;
     }
     else
     {
-        if (GetAsyncKeyState(VK_LBUTTON) & 0x80) ret |= MK_LBUTTON;
+        if (GetAsyncKeyState(VK_LBUTTON) & 0x80)
+        {
+            if(GetAsyncKeyState(VK_LCONTROL) & 0x80)
+            {
+                ret |= MK_RBUTTON;
+            }
+            else
+            {
+                ret |= MK_LBUTTON;
+            }
+
+        }
         if (GetAsyncKeyState(VK_RBUTTON) & 0x80) ret |= MK_RBUTTON;
     }
     if (GetAsyncKeyState(VK_MBUTTON) & 0x80)  ret |= MK_MBUTTON;
@@ -772,6 +795,26 @@ BOOL WINAPI AttachThreadInput( DWORD from, DWORD to, BOOL attach )
 SHORT WINAPI DECLSPEC_HOTPATCH GetKeyState(INT vkey)
 {
     SHORT retval = 0;
+    SHORT cmdKeyDown = 0;
+
+    if(vkey == VK_CONTROL)
+    {
+        TRACE("Checking Cmd key as well as control key\n");
+        SERVER_START_REQ( get_key_state )
+        {
+            req->tid = GetCurrentThreadId();
+            req->key = VK_LWIN;
+            if (!wine_server_call( req )) cmdKeyDown = (signed char)reply->state;
+        }
+        SERVER_END_REQ;
+        SERVER_START_REQ( get_key_state )
+        {
+            req->tid = GetCurrentThreadId();
+            req->key = VK_RWIN;
+            if (!wine_server_call( req )) cmdKeyDown |= (signed char)reply->state;
+        }
+        SERVER_END_REQ;
+    }
 
     SERVER_START_REQ( get_key_state )
     {
@@ -780,6 +823,9 @@ SHORT WINAPI DECLSPEC_HOTPATCH GetKeyState(INT vkey)
         if (!wine_server_call( req )) retval = (signed char)reply->state;
     }
     SERVER_END_REQ;
+
+    retval |= cmdKeyDown;
+
     TRACE("key (0x%x) -> %x\n", vkey, retval);
     return retval;
 }
