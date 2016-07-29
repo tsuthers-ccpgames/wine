@@ -1035,7 +1035,7 @@ void macdrv_key_event(HWND hwnd, const macdrv_event *event)
     if (scan & 0x100)               flags |= KEYEVENTF_EXTENDEDKEY;
 
     isCopyPaste = FALSE;
-    if(vkey == 'C' || vkey == 'V' || vkey == 'X')
+    if(vkey == 'C' || vkey == 'V' || vkey == 'X' || vkey == 'A')
     {
         if(event->type == KEY_PRESS)
         {
