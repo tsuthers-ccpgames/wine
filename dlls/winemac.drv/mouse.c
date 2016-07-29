@@ -841,6 +841,10 @@ static BOOL isCmdKeyPressed()
  */
 void macdrv_mouse_button(HWND hwnd, const macdrv_event *event)
 {
+    // Holding down Command while left-clicking the mouse emits a right mouse down.
+    // This flag is set on left mouse down so it can be matched with a right mouse up.
+    static BOOL s_isCommandClick = FALSE;
+
     UINT flags = 0;
     WORD data = 0;
 
@@ -859,6 +863,7 @@ void macdrv_mouse_button(HWND hwnd, const macdrv_event *event)
                 {
                     TRACE_(key)("Cmd left down treated as right click\n");
                     flags |= MOUSEEVENTF_RIGHTDOWN;
+                    s_isCommandClick = TRUE;
                 }
                 else
                 {
@@ -880,10 +885,11 @@ void macdrv_mouse_button(HWND hwnd, const macdrv_event *event)
         {
         case 0:
             {
-                if(isCmdKeyPressed())
+                if(s_isCommandClick)
                 {
                     TRACE_(key)("Cmd left up treated as right click\n");
                     flags |= MOUSEEVENTF_RIGHTUP;
+                    s_isCommandClick = FALSE;
                 }
                 else
                 {
