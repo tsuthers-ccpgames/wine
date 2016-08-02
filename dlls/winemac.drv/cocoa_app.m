@@ -234,7 +234,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_HIDE_APPNAME), bundleName];
             else
                 title = WineLocalizedString(STRING_MENU_ITEM_HIDE);
-            item = [submenu addItemWithTitle:title action:@selector(hide:) keyEquivalent:@""];
+            item = [submenu addItemWithTitle:title action:@selector(hide:) keyEquivalent:@"h"];
 
             item = [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_HIDE_OTHERS)
                                       action:@selector(hideOtherApplications:)
