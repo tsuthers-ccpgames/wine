@@ -213,80 +213,88 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
     - (void) transformProcessToForeground
     {
-        if ([NSApp activationPolicy] != NSApplicationActivationPolicyRegular)
+        NSMenu* mainMenu;
+        NSMenu* submenu;
+        NSString* bundleName;
+        NSString* title;
+        NSMenuItem* item;
+        NSString* hideKey;
+
+        BOOL anyFullscreen = [self isAnyWindowFullscreen];
+
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        [NSApp activateIgnoringOtherApps:YES];
+
+        mainMenu = [[[NSMenu alloc] init] autorelease];
+
+        // Application menu
+        submenu = [[[NSMenu alloc] initWithTitle:WineLocalizedString(STRING_MENU_WINE)] autorelease];
+        bundleName = [[NSBundle mainBundle] objectForInfoDictionaryKey:(NSString*)kCFBundleNameKey];
+
+        if ([bundleName length])
+            title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_HIDE_APPNAME), bundleName];
+        else
+            title = WineLocalizedString(STRING_MENU_ITEM_HIDE);
+        if(anyFullscreen)
         {
-            NSMenu* mainMenu;
-            NSMenu* submenu;
-            NSString* bundleName;
-            NSString* title;
-            NSMenuItem* item;
-
-            [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-            [NSApp activateIgnoringOtherApps:YES];
-
-            mainMenu = [[[NSMenu alloc] init] autorelease];
-
-            // Application menu
-            submenu = [[[NSMenu alloc] initWithTitle:WineLocalizedString(STRING_MENU_WINE)] autorelease];
-            bundleName = [[NSBundle mainBundle] objectForInfoDictionaryKey:(NSString*)kCFBundleNameKey];
-
-            if ([bundleName length])
-                title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_HIDE_APPNAME), bundleName];
-            else
-                title = WineLocalizedString(STRING_MENU_ITEM_HIDE);
-            item = [submenu addItemWithTitle:title action:@selector(hide:) keyEquivalent:@"h"];
-
-            item = [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_HIDE_OTHERS)
-                                      action:@selector(hideOtherApplications:)
-                               keyEquivalent:@"h"];
-            [item setKeyEquivalentModifierMask:NSCommandKeyMask | NSAlternateKeyMask];
-
-            item = [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_SHOW_ALL)
-                                      action:@selector(unhideAllApplications:)
-                               keyEquivalent:@""];
-
-            [submenu addItem:[NSMenuItem separatorItem]];
-
-            if ([bundleName length])
-                title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_QUIT_APPNAME), bundleName];
-            else
-                title = WineLocalizedString(STRING_MENU_ITEM_QUIT);
-            item = [submenu addItemWithTitle:title action:@selector(terminate:) keyEquivalent:@"q"];
-            [item setKeyEquivalentModifierMask:NSCommandKeyMask | NSAlternateKeyMask];
-            item = [[[NSMenuItem alloc] init] autorelease];
-            [item setTitle:WineLocalizedString(STRING_MENU_WINE)];
-            [item setSubmenu:submenu];
-            [mainMenu addItem:item];
-
-            // Window menu
-            submenu = [[[NSMenu alloc] initWithTitle:WineLocalizedString(STRING_MENU_WINDOW)] autorelease];
-            [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_MINIMIZE)
-                               action:@selector(performMiniaturize:)
-                        keyEquivalent:@""];
-            [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_ZOOM)
-                               action:@selector(performZoom:)
-                        keyEquivalent:@""];
-            if ([NSWindow instancesRespondToSelector:@selector(toggleFullScreen:)])
-            {
-                item = [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_ENTER_FULL_SCREEN)
-                                          action:@selector(toggleFullScreen:)
-                                   keyEquivalent:@"f"];
-                [item setKeyEquivalentModifierMask:NSCommandKeyMask | NSAlternateKeyMask | NSControlKeyMask];
-            }
-            [submenu addItem:[NSMenuItem separatorItem]];
-            [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_BRING_ALL_TO_FRONT)
-                               action:@selector(arrangeInFront:)
-                        keyEquivalent:@""];
-            item = [[[NSMenuItem alloc] init] autorelease];
-            [item setTitle:WineLocalizedString(STRING_MENU_WINDOW)];
-            [item setSubmenu:submenu];
-            [mainMenu addItem:item];
-
-            [NSApp setMainMenu:mainMenu];
-            [NSApp setWindowsMenu:submenu];
-
-            [NSApp setApplicationIconImage:self.applicationIcon];
+            hideKey = @"";
         }
+        else
+        {
+            hideKey = @"h";
+        }
+        item = [submenu addItemWithTitle:title action:@selector(hide:) keyEquivalent:hideKey];
+
+        item = [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_HIDE_OTHERS)
+                                  action:@selector(hideOtherApplications:)
+                           keyEquivalent:@"h"];
+        [item setKeyEquivalentModifierMask:NSCommandKeyMask | NSAlternateKeyMask];
+
+        item = [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_SHOW_ALL)
+                                  action:@selector(unhideAllApplications:)
+                           keyEquivalent:@""];
+
+        [submenu addItem:[NSMenuItem separatorItem]];
+
+        if ([bundleName length])
+            title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_QUIT_APPNAME), bundleName];
+        else
+            title = WineLocalizedString(STRING_MENU_ITEM_QUIT);
+        item = [submenu addItemWithTitle:title action:@selector(terminate:) keyEquivalent:@"q"];
+        [item setKeyEquivalentModifierMask:NSCommandKeyMask | NSAlternateKeyMask];
+        item = [[[NSMenuItem alloc] init] autorelease];
+        [item setTitle:WineLocalizedString(STRING_MENU_WINE)];
+        [item setSubmenu:submenu];
+        [mainMenu addItem:item];
+
+        // Window menu
+        submenu = [[[NSMenu alloc] initWithTitle:WineLocalizedString(STRING_MENU_WINDOW)] autorelease];
+        [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_MINIMIZE)
+                           action:@selector(performMiniaturize:)
+                    keyEquivalent:@""];
+        [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_ZOOM)
+                           action:@selector(performZoom:)
+                    keyEquivalent:@""];
+        if ([NSWindow instancesRespondToSelector:@selector(toggleFullScreen:)])
+        {
+            item = [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_ENTER_FULL_SCREEN)
+                                      action:@selector(toggleFullScreen:)
+                               keyEquivalent:@"f"];
+            [item setKeyEquivalentModifierMask:NSCommandKeyMask | NSAlternateKeyMask | NSControlKeyMask];
+        }
+        [submenu addItem:[NSMenuItem separatorItem]];
+        [submenu addItemWithTitle:WineLocalizedString(STRING_MENU_ITEM_BRING_ALL_TO_FRONT)
+                           action:@selector(arrangeInFront:)
+                    keyEquivalent:@""];
+        item = [[[NSMenuItem alloc] init] autorelease];
+        [item setTitle:WineLocalizedString(STRING_MENU_WINDOW)];
+        [item setSubmenu:submenu];
+        [mainMenu addItem:item];
+
+        [NSApp setMainMenu:mainMenu];
+        [NSApp setWindowsMenu:submenu];
+
+        [NSApp setApplicationIconImage:self.applicationIcon];
     }
 
     - (BOOL) waitUntilQueryDone:(int*)done timeout:(NSDate*)timeout processEvents:(BOOL)processEvents
@@ -624,21 +632,28 @@ static NSString* WineLocalizedString(unsigned int stringID)
         [self adjustWindowLevels:[NSApp isActive]];
     }
 
+    - (BOOL) isAnyWindowFullscreen
+    {
+        BOOL anyFullscreen = FALSE;
+        NSNumber* windowNumber;
+        for (windowNumber in [NSWindow windowNumbersWithOptions:0])
+        {
+            WineWindow* window = (WineWindow*)[NSApp windowWithWindowNumber:[windowNumber integerValue]];
+            if ([window isKindOfClass:[WineWindow class]] && window.fullscreen)
+            {
+                anyFullscreen = TRUE;
+                break;
+            }
+        }
+
+        return anyFullscreen;
+    }
+
     - (void) updateFullscreenWindows
     {
         if (capture_displays_for_fullscreen && [NSApp isActive])
         {
-            BOOL anyFullscreen = FALSE;
-            NSNumber* windowNumber;
-            for (windowNumber in [NSWindow windowNumbersWithOptions:0])
-            {
-                WineWindow* window = (WineWindow*)[NSApp windowWithWindowNumber:[windowNumber integerValue]];
-                if ([window isKindOfClass:[WineWindow class]] && window.fullscreen)
-                {
-                    anyFullscreen = TRUE;
-                    break;
-                }
-            }
+            BOOL anyFullscreen = [self isAnyWindowFullscreen];
 
             if (anyFullscreen)
             {

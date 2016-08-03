@@ -130,6 +130,7 @@ enum {
     - (BOOL) handleEvent:(NSEvent*)anEvent;
     - (void) didSendEvent:(NSEvent*)anEvent;
 
+    - (BOOL) isAnyWindowFullscreen;
 @end
 
 
