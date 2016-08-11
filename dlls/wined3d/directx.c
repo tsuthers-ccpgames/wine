@@ -1351,6 +1351,7 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9,             "AMD Radeon R9 290",                DRIVER_AMD_R600,         4096},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M290X,       "AMD Radeon R9 M290X",              DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M380,        "AMD Radeon R9 M380 OpenGL Engine", DRIVER_AMD_R600,         2048},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M395X,       "AMD Radeon R9 M395X OpenGL Engine", DRIVER_AMD_R600,         4096},
 
     /* VMware */
     {HW_VENDOR_VMWARE,     CARD_VMWARE_SVGA3D,             "VMware SVGA 3D (Microsoft Corporation - WDDM)",             DRIVER_VMWARE,        1024},
@@ -1912,6 +1913,7 @@ cards_amd_binary[] =
     {"R9 290",                      CARD_AMD_RADEON_R9},
     {"R9 M290X",                    CARD_AMD_RADEON_R9_M290X},
     {"R9 M380",                     CARD_AMD_RADEON_R9_M380},
+    {"R9 M395X",                    CARD_AMD_RADEON_R9_M395X},
 
     /* Southern Islands */
     {"HD 7900",                     CARD_AMD_RADEON_HD7900},

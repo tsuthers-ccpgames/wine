@@ -1710,6 +1710,7 @@ enum wined3d_pci_device
     CARD_AMD_RADEON_R9              = 0x67b1,
     CARD_AMD_RADEON_R9_M290X        = 0x67b0, /* Also known as Radeon HD 7970 */
     CARD_AMD_RADEON_R9_M380         = 0x6647,
+    CARD_AMD_RADEON_R9_M395X        = 0x6920,
 
     CARD_NVIDIA_RIVA_128            = 0x0018,
     CARD_NVIDIA_RIVA_TNT            = 0x0020,
