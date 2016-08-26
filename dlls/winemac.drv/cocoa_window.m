@@ -43,10 +43,12 @@ enum {
 #endif
 
 
+#if !defined(MAC_OS_X_VERSION_10_12) || MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_12
 /* Additional Mac virtual keycode, to complement those in Carbon's <HIToolbox/Events.h>. */
 enum {
     kVK_RightCommand              = 0x36, /* Invented for Wine; was unused */
 };
+#endif
 
 
 static NSUInteger style_mask_for_features(const struct macdrv_window_features* wf)
@@ -1425,7 +1427,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
             BOOL wasVisible;
 
             [controller transformProcessToForeground];
-            [NSApp unhide:nil];
+            if ([NSApp isHidden])
+                [NSApp unhide:nil];
             wasVisible = [self isVisible];
 
             if (activate)
@@ -3343,18 +3346,21 @@ void macdrv_set_view_superview(macdrv_view v, macdrv_view s, macdrv_window w, ma
         {
             NSArray* subviews = [superview subviews];
             NSUInteger index = [subviews indexOfObjectIdenticalTo:view];
-            if (!prev && !next && index == 0)
+            if (!prev && !next && index == [subviews count] - 1)
                 return;
-            if (prev && index > 0 && [subviews objectAtIndex:index - 1] == prev)
+            if (prev && index + 1 < [subviews count] && [subviews objectAtIndex:index + 1] == prev)
                 return;
-            if (!prev && next && index + 1 < [subviews count] && [subviews objectAtIndex:index + 1] == next)
+            if (!prev && next && index > 0 && [subviews objectAtIndex:index - 1] == next)
                 return;
         }
 
         WineWindow* oldWindow = (WineWindow*)[view window];
         WineWindow* newWindow = (WineWindow*)[superview window];
 
-        [view removeFromSuperview];
+#if !defined(MAC_OS_X_VERSION_10_10) || MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_10
+        if (floor(NSAppKitVersionNumber) <= 1265 /*NSAppKitVersionNumber10_9*/)
+            [view removeFromSuperview];
+#endif
         if (prev)
             [superview addSubview:view positioned:NSWindowBelow relativeTo:prev];
         else

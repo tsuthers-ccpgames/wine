@@ -79,14 +79,20 @@ struct dxgi_device_layer
 
 /* TRACE helper functions */
 const char *debug_dxgi_format(DXGI_FORMAT format) DECLSPEC_HIDDEN;
+const char *debug_dxgi_mode(const DXGI_MODE_DESC *desc) DECLSPEC_HIDDEN;
 void dump_feature_levels(const D3D_FEATURE_LEVEL *feature_levels, unsigned int level_count) DECLSPEC_HIDDEN;
 
 DXGI_FORMAT dxgi_format_from_wined3dformat(enum wined3d_format_id format) DECLSPEC_HIDDEN;
 enum wined3d_format_id wined3dformat_from_dxgi_format(DXGI_FORMAT format) DECLSPEC_HIDDEN;
+UINT dxgi_rational_to_uint(const DXGI_RATIONAL *rational) DECLSPEC_HIDDEN;
+enum wined3d_scanline_ordering wined3d_scanline_ordering_from_dxgi(
+        DXGI_MODE_SCANLINE_ORDER scanline_order) DECLSPEC_HIDDEN;
 void dxgi_sample_desc_from_wined3d(DXGI_SAMPLE_DESC *desc,
         enum wined3d_multisample_type wined3d_type, unsigned int wined3d_quality) DECLSPEC_HIDDEN;
 void wined3d_sample_desc_from_dxgi(enum wined3d_multisample_type *wined3d_type,
         unsigned int *wined3d_quality, const DXGI_SAMPLE_DESC *dxgi_desc) DECLSPEC_HIDDEN;
+unsigned int dxgi_swapchain_flags_from_wined3d(unsigned int wined3d_flags) DECLSPEC_HIDDEN;
+unsigned int wined3d_swapchain_flags_from_dxgi(unsigned int flags) DECLSPEC_HIDDEN;
 HRESULT dxgi_get_private_data(struct wined3d_private_store *store,
         REFGUID guid, UINT *data_size, void *data) DECLSPEC_HIDDEN;
 HRESULT dxgi_set_private_data(struct wined3d_private_store *store,
@@ -158,6 +164,9 @@ struct dxgi_swapchain
     struct wined3d_swapchain *wined3d_swapchain;
     IWineDXGIDevice *device;
     IDXGIFactory *factory;
+
+    BOOL fullscreen;
+    IDXGIOutput *target;
 };
 
 HRESULT dxgi_swapchain_init(struct dxgi_swapchain *swapchain, struct dxgi_device *device,

@@ -83,6 +83,9 @@ static DWORD WINAPI service_handler(DWORD ctrl, DWORD event_type, void *event_da
         SetServiceStatus(service_handle, &status);
         SetEvent(service_stop_event);
         return NO_ERROR;
+    case 128:
+        service_event("CUSTOM");
+        return 0xdeadbeef;
     default:
         status.dwCurrentState = SERVICE_RUNNING;
         SetServiceStatus( service_handle, &status );
@@ -318,7 +321,9 @@ static DWORD WINAPI pipe_thread(void *arg)
 static void test_service(void)
 {
     SC_HANDLE service_handle = register_service("simple_service");
+    SERVICE_STATUS_PROCESS status2;
     SERVICE_STATUS status;
+    DWORD bytes;
     BOOL res;
 
     if(!service_handle)
@@ -346,6 +351,15 @@ static void test_service(void)
     ok(status.dwCheckPoint == 0, "status.dwCheckPoint = %d\n", status.dwCheckPoint);
     todo_wine ok(status.dwWaitHint == 0, "status.dwWaitHint = %d\n", status.dwWaitHint);
 
+    res = QueryServiceStatusEx(service_handle, SC_STATUS_PROCESS_INFO, (BYTE *)&status2, sizeof(status2), &bytes);
+    ok(res, "QueryServiceStatusEx failed: %u\n", GetLastError());
+    ok(status2.dwCurrentState == SERVICE_RUNNING, "status2.dwCurrentState = %x\n", status2.dwCurrentState);
+    ok(status2.dwProcessId != 0, "status2.dwProcessId = %d\n", status2.dwProcessId);
+
+    res = ControlService(service_handle, 128, &status);
+    ok(res, "ControlService failed: %u\n", GetLastError());
+    expect_event("CUSTOM");
+
     res = ControlService(service_handle, SERVICE_CONTROL_STOP, &status);
     ok(res, "ControlService failed: %u\n", GetLastError());
     expect_event("STOP");
@@ -359,7 +373,9 @@ static void test_service(void)
 static inline void test_no_stop(void)
 {
     SC_HANDLE service_handle = register_service("no_stop");
+    SERVICE_STATUS_PROCESS status2;
     SERVICE_STATUS status;
+    DWORD bytes;
     BOOL res;
 
     if(!service_handle)
@@ -390,6 +406,11 @@ static inline void test_no_stop(void)
     ok(status.dwCheckPoint == 0, "status.dwCheckPoint = %d\n", status.dwCheckPoint);
     todo_wine ok(status.dwWaitHint == 0, "status.dwWaitHint = %d\n", status.dwWaitHint);
 
+    res = QueryServiceStatusEx(service_handle, SC_STATUS_PROCESS_INFO, (BYTE *)&status2, sizeof(status2), &bytes);
+    ok(res, "QueryServiceStatusEx failed: %u\n", GetLastError());
+    ok(status2.dwCurrentState == SERVICE_RUNNING, "status2.dwCurrentState = %x\n", status2.dwCurrentState);
+    ok(status2.dwProcessId != 0, "status2.dwProcessId = %d\n", status2.dwProcessId);
+
     res = ControlService(service_handle, SERVICE_CONTROL_STOP, &status);
     ok(res, "ControlService failed: %u\n", GetLastError());
     expect_event("STOP");
@@ -406,6 +427,11 @@ static inline void test_no_stop(void)
     ok(status.dwCheckPoint == 0, "status.dwCheckPoint = %d\n", status.dwCheckPoint);
     ok(status.dwWaitHint == 0, "status.dwWaitHint = %d\n", status.dwWaitHint);
 
+    res = QueryServiceStatusEx(service_handle, SC_STATUS_PROCESS_INFO, (BYTE *)&status2, sizeof(status2), &bytes);
+    ok(res, "QueryServiceStatusEx failed: %u\n", GetLastError());
+    ok(status2.dwProcessId == 0 || broken(status2.dwProcessId != 0),
+       "status2.dwProcessId = %d\n", status2.dwProcessId);
+
     res = DeleteService(service_handle);
     ok(res, "DeleteService failed: %u\n", GetLastError());
 
@@ -420,6 +446,11 @@ static inline void test_no_stop(void)
             status.dwServiceSpecificExitCode);
     ok(status.dwCheckPoint == 0, "status.dwCheckPoint = %d\n", status.dwCheckPoint);
     ok(status.dwWaitHint == 0, "status.dwWaitHint = %d\n", status.dwWaitHint);
+
+    res = QueryServiceStatusEx(service_handle, SC_STATUS_PROCESS_INFO, (BYTE *)&status2, sizeof(status2), &bytes);
+    ok(res, "QueryServiceStatusEx failed: %u\n", GetLastError());
+    ok(status2.dwProcessId == 0 || broken(status2.dwProcessId != 0),
+       "status2.dwProcessId = %d\n", status2.dwProcessId);
 
     CloseServiceHandle(service_handle);
 

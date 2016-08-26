@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2016-05-03 21:19+0300\n"
+"PO-Revision-Date: 2016-07-16 12:20+0300\n"
 "Last-Translator: Aurimas Fišeras <aurimas@members.fsf.org>\n"
 "Language-Team: Lithuanian <komp_lt@konf.lt>\n"
 "Language: lt\n"
@@ -7629,7 +7629,7 @@ msgstr "Kopijuoti failus iš:"
 
 #: setupapi.rc:34
 msgid "Type the path where the file is located, and then click OK."
-msgstr "Įveskite kelią iki failo, o tada spauskite Gerai."
+msgstr "Įrašykite kelią iki failo, o tada spauskite Gerai."
 
 #: shdoclc.rc:42
 msgid "F&orward"
@@ -10232,12 +10232,12 @@ msgstr ""
 msgid "Are you sure?"
 msgstr "Ar tikrai?"
 
-#: cmd.rc:354 reg.rc:45 xcopy.rc:43
+#: cmd.rc:354 reg.rc:50 xcopy.rc:43
 msgctxt "Yes key"
 msgid "Y"
 msgstr "T"
 
-#: cmd.rc:355 reg.rc:46 xcopy.rc:44
+#: cmd.rc:355 reg.rc:51 xcopy.rc:44
 msgctxt "No key"
 msgid "N"
 msgstr "N"
@@ -10375,7 +10375,7 @@ msgstr "Tomas diske %1!c! yra %2\n"
 msgid "Volume in drive %1!c! has no label.\n"
 msgstr "Tomas diske %1!c! neturi vardo.\n"
 
-#: cmd.rc:390 reg.rc:44
+#: cmd.rc:390 reg.rc:49
 msgid " (Yes|No)"
 msgstr " (Taip|Ne)"
 
@@ -11545,19 +11545,29 @@ msgstr "Piktogramų failai"
 msgid "Icons (*.ico)"
 msgstr "Piktogramos (*.ico)"
 
-#: reg.rc:30
+#: reg.rc:35
 msgid ""
-"The syntax of this command is:\n"
+"Usage:\n"
+"  REG [operation] [parameters]\n"
 "\n"
-"REG [ ADD | DELETE | QUERY ]\n"
-"REG command /?\n"
+"Supported operations:\n"
+"  ADD | DELETE | QUERY\n"
+"\n"
+"For help on a specific operation, type:\n"
+"  REG [operation] /?\n"
+"\n"
 msgstr ""
-"Šios komandos sintaksė:\n"
+"Naudojimas:\n"
+"  REG [operacija] [parametrai]\n"
 "\n"
-"REG [ ADD | DELETE | QUERY ]\n"
-"REG komanda /?\n"
+"Palaikomos operacijos:\n"
+"  ADD | DELETE | QUERY\n"
+"\n"
+"Pagalbai apie specifinę operaciją, įrašykite:\n"
+"  REG [operacija] /?\n"
+"\n"
 
-#: reg.rc:31
+#: reg.rc:36
 msgid ""
 "REG ADD key_name [/v value_name | /ve] [/t type] [/s separator] [/d data] [/"
 "f]\n"
@@ -11565,95 +11575,115 @@ msgstr ""
 "REG ADD rakto_vardas [/v reikšmės_vardas | /ve] [/t tipas] [/s skirtukas] [/"
 "d duomenys] [/f]\n"
 
-#: reg.rc:32
+#: reg.rc:37
 msgid "REG DELETE key_name [/v value_name | /ve | /va] [/f]\n"
 msgstr "REG DELETE rakto_vardas [/v reikšmės_vardas | /ve | /va] [/f]\n"
 
-#: reg.rc:33
+#: reg.rc:38
 msgid "REG QUERY key_name [/v value_name | /ve] [/s]\n"
 msgstr "REG QUERY rakto_vardas [/v reikšmės_vardas | /ve] [/s]\n"
 
-#: reg.rc:34
+#: reg.rc:39
 msgid "The operation completed successfully\n"
 msgstr "Operacija sėkmingai įvykdyta\n"
 
-#: reg.rc:35
+#: reg.rc:40
 msgid "reg: Invalid key name\n"
 msgstr "reg: Netinkamas rakto vardas\n"
 
-#: reg.rc:36
+#: reg.rc:41
 msgid "reg: Invalid command line parameters\n"
 msgstr "reg: Netinkami komandos eilutės parametrai\n"
 
-#: reg.rc:37
+#: reg.rc:42
 msgid "reg: Unable to access remote machine\n"
 msgstr "reg: Nepavyko prieiti prie nuotolinio kompiuterio\n"
 
-#: reg.rc:38
+#: reg.rc:43
 msgid ""
 "reg: The system was unable to find the specified registry key or value\n"
 msgstr "reg: Sistemai nepavyko rasti nurodyto registro rakto ar reikšmės\n"
 
-#: reg.rc:39
+#: reg.rc:44
 msgid "reg: Unsupported registry data type [%1]\n"
 msgstr "reg: Nepalaikomas registro duomenų tipas [%1]\n"
 
-#: reg.rc:40
+#: reg.rc:45
 msgid "reg: The option [/d] must be followed by a valid integer\n"
 msgstr "reg: Už parametro [/d] privalo būti tinkamas sveikasis skaičius\n"
 
-#: reg.rc:41
+#: reg.rc:46
 msgid "reg: The option [/d] must be followed by a valid hexadecimal value\n"
 msgstr "reg: Už parametro [/d] privalo būti tinkama šešioliktainė reikšmė\n"
 
-#: reg.rc:42
+#: reg.rc:47
 msgid "reg: Unhandled registry data type [/t 0x%1!x!, /d %2]\n"
 msgstr "reg: Neapdorojamas registro duomenų tipas [/t 0x%1!x!, /d %2]\n"
 
-#: reg.rc:43
+#: reg.rc:48
 msgid "The registry value '%1' already exists. Do you want to overwrite it?"
 msgstr "Registro reikšmė „%1“ jau egzistuoja. Ar norite ją perrašyti?"
 
-#: reg.rc:47
+#: reg.rc:52
 msgid "The registry operation was cancelled\n"
 msgstr "Registro operacija buvo nutraukta\n"
 
-#: reg.rc:48 regedit.rc:204
+#: reg.rc:53 regedit.rc:204
 msgid "(Default)"
 msgstr "(numatytoji)"
 
-#: reg.rc:49
+#: reg.rc:54
 msgid "Are you sure you want to delete the registry value '%1'?"
 msgstr "Ar tikrai norite pašalinti registro reikšmę „%1“?"
 
-#: reg.rc:50
+#: reg.rc:55
 msgid "Are you sure you want to delete all registry values in '%1'?"
 msgstr "Ar tikrai norite pašalinti visas registro „%1“ reikšmes?"
 
-#: reg.rc:51
+#: reg.rc:56
 msgid "Are you sure you want to delete the registry key '%1'?"
 msgstr "Ar tikrai norite pašalinti registro raktą „%1“?"
 
-#: reg.rc:52
+#: reg.rc:57
 msgid "reg: The option [/d] must be followed by a valid string\n"
 msgstr "reg: Už parametro [/d] privalo būti tinkama eilutė\n"
 
-#: reg.rc:53
+#: reg.rc:58
 msgid ""
 "reg: Unable to delete all registry values in '%1'. An unexpected error "
 "occurred.\n"
 msgstr ""
 "reg: Nepavyko pašalinti visų „%1“ registro reikšmių. Įvyko netikėta klaida.\n"
 
-#: reg.rc:54
+#: reg.rc:59
 msgid ""
 "reg: Unable to complete the specified operation. An unexpected error "
 "occurred.\n"
 msgstr "reg: Nepavyko užbaigti nurodytos operacijos. Įvyko netikėta klaida.\n"
 
-#: reg.rc:55
+#: reg.rc:60
 msgid "Search complete. Number of matches found: %1!d!\n"
 msgstr "Paieška baigta. Rasta atitikimų: %1!d!\n"
+
+#: reg.rc:61
+msgid "reg: Invalid syntax. "
+msgstr "reg: Netinkama sintaksė. "
+
+#: reg.rc:62
+msgid "reg: Invalid option [%1]. "
+msgstr "reg: Netinkamas parametras [%1]. "
+
+#: reg.rc:63
+msgid "Type \"REG /?\" for help.\n"
+msgstr "Pagalbai įrašykite „REG /?“.\n"
+
+#: reg.rc:64
+msgid "Type \"REG %1 /?\" for help.\n"
+msgstr "Pagalbai įrašykite „REG %1 /?“.\n"
+
+#: reg.rc:65 regedit.rc:205
+msgid "(value not set)"
+msgstr "(reikšmė nenustatyta)"
 
 #: regedit.rc:34
 msgid "&Registry"
@@ -11857,10 +11887,6 @@ msgstr "Registro failai (*.reg)"
 msgid "Win9x/NT4 Registry files (REGEDIT4)"
 msgstr "Win9x/NT4 registro failai (REGEDIT4)"
 
-#: regedit.rc:205
-msgid "(value not set)"
-msgstr "(reikšmė nenustatyta)"
-
 #: regedit.rc:206
 msgid "(cannot display value)"
 msgstr "(negalima parodyti reikšmės)"
@@ -11868,6 +11894,154 @@ msgstr "(negalima parodyti reikšmės)"
 #: regedit.rc:207
 msgid "(unknown %d)"
 msgstr "(nežinomas %d)"
+
+#: regedit.rc:359
+msgid ""
+"Usage:\n"
+"  regedit [options] [filename] [reg_key]\n"
+"\n"
+"Options:\n"
+"  [no option]    Launch the graphical version of this program.\n"
+"  /L:system.dat  The location of the system.dat file to be modified.\n"
+"                 Compatible with any other switch. Ignored.\n"
+"  /R:user.dat    The location of the user.dat file to be modified.\n"
+"                 Compatible with any other switch. Ignored.\n"
+"  /C             Import the contents of a registry file.\n"
+"  /D             Delete a specified registry key.\n"
+"  /E             Export the contents of a specified registry key to a file.\n"
+"                 If no key is specified, the entire registry is exported.\n"
+"  /S             Silent mode. No messages will be displayed.\n"
+"  /V             Launch the GUI in advanced mode. Ignored.\n"
+"  /?             Display this information and exit.\n"
+"  [filename]     The location of the file containing registry information "
+"to\n"
+"                 be imported. When used with [/E], this option specifies "
+"the\n"
+"                 file location where registry information will be exported.\n"
+"  [reg_key]      The registry key to be modified.\n"
+"\n"
+"Usage examples:\n"
+"  regedit \"import.reg\"\n"
+"  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
+"  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
+msgstr ""
+"Naudojimas:\n"
+"  regedit [parametrai] [failas] [reg_key]\n"
+"\n"
+"Parametrai:\n"
+"  [be parametro] Paleidžia šios programos grafinę versiją.\n"
+"  /L:system.dat  Modifikuojamo system.dat failo vieta.\n"
+"                 Suderinamas su bet kuriuo kitu parametru. Ignoruojamas.\n"
+"  /R:user.dat    Modifikuojamo user.dat failo vieta.\n"
+"                 Suderinamas su bet kuriuo kitu parametru. Ignoruojamas.\n"
+"  /C             Importuoti registro failo turinį.\n"
+"  /D             Pašalinti nurodytą registro raktą.\n"
+"  /E             Eksportuoti nurodyto registro rakto turinį į failą.\n"
+"                 Jei nenurodytas raktas, eksportuojamas visas registras.\n"
+"  /S             Tyli veiksena. Nebus rodomi pranešimai.\n"
+"  /V             Paleisti grafinę sąsają išplėstinėje veiksenoje. "
+"Ignoruojamas.\n"
+"  /?             Parodyti šią informaciją ir išeiti.\n"
+"  [failas]       Failo su registro informacija importui vieta.\n"
+"                 Kai naudojama su [/E], šis parametras nurodo\n"
+"                 failo vietą registro informacijos eksportui.\n"
+"  [reg_key]      Registro raktas modifikavimui.\n"
+"\n"
+"Naudojimo pavyzdžiai:\n"
+"  regedit \"importui.reg\"\n"
+"  regedit /E \"eksportuota.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
+"  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
+
+#: regedit.rc:360
+msgid "regedit: Invalid or unrecognized switch [%1]\n"
+msgstr "regedit: Netinkamas arba neatpažintas parametras [%1]\n"
+
+#: regedit.rc:361
+msgid "Type \"regedit /?\" for help.\n"
+msgstr "Pagalbai įrašykite „regedit /?“.\n"
+
+#: regedit.rc:362
+msgid "regedit: No filename was specified.\n"
+msgstr "regedit: Nenurodytas joks failas.\n"
+
+#: regedit.rc:363
+msgid "regedit: No registry key was specified for removal.\n"
+msgstr "regedit: Nenurodytas registro raktas šalinimui.\n"
+
+#: regedit.rc:364
+msgid "regedit: The file '%1' was not found.\n"
+msgstr "regedit: Failas „%1“ nerastas.\n"
+
+#: regedit.rc:365
+msgid "regedit: Unable to open the file '%1'.\n"
+msgstr "regedit: Nepavyko atverti failo „%1“.\n"
+
+#: regedit.rc:366
+msgid "regedit: Unhandled action.\n"
+msgstr "regedit: Neapdorojamas veiksmas.\n"
+
+#: regedit.rc:367
+msgid "regedit: Out of memory! (%1!S!, line %2!u!)\n"
+msgstr "regedit: Trūksta atminties! (%1!S!, eilutė %2!u!)\n"
+
+#: regedit.rc:368
+msgid "regedit: Invalid hexadecimal value.\n"
+msgstr "regedit: Netinkama šešioliktainė reikšmė.\n"
+
+#: regedit.rc:369
+msgid ""
+"regedit: Unable to convert hexadecimal data. An invalid value was "
+"encountered at '%1'.\n"
+msgstr ""
+"regedit: Nepavyko konvertuoti šešioliktainių duomenų. Neteisinga reikšmė "
+"sutikta „%1“.\n"
+
+#: regedit.rc:370
+msgid "regedit: Unrecognized escape sequence [\\%1!c!]\n"
+msgstr "regedit: Neatpažinta kaitos seka [\\%1!c!]\n"
+
+#: regedit.rc:371
+msgid "regedit: Unsupported registry data type [%1]\n"
+msgstr "regedit: Nepalaikomas registro duomenų tipas [%1]\n"
+
+#: regedit.rc:372
+msgid "regedit: Unexpected end of line in '%1'.\n"
+msgstr "regedit: Netikėta eilutės pabaiga „%1“.\n"
+
+#: regedit.rc:373
+msgid "regedit: The line '%1' was not recognized.\n"
+msgstr "regedit: Eilutė „%1“ neatpažinta.\n"
+
+#: regedit.rc:374
+msgid "regedit: Unable to add the registry value '%1' to '%2'.\n"
+msgstr "regedit: Nepavyko pridėti registro reikšmės „%1“ į „%2“.\n"
+
+#: regedit.rc:375
+msgid "regedit: Unable to open the registry key '%1'.\n"
+msgstr "regedit: Nepavyko atverti registro rakto „%1“.\n"
+
+#: regedit.rc:376
+msgid "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
+msgstr "regedit: Nepalaikomas registro duomenų tipas [%1] sutiktas „%2“.\n"
+
+#: regedit.rc:377
+msgid "regedit: The registry value '%1' will be exported as binary data.\n"
+msgstr ""
+"regedit: Registro reikšmė „%1“ bus eksportuota kaip dvejetainiai duomenys.\n"
+
+#: regedit.rc:378
+msgid "regedit: Incorrect registry class specification in '%1'.\n"
+msgstr "regedit: Neteisinga registro klasės specifikacija „%1“.\n"
+
+#: regedit.rc:379
+msgid ""
+"regedit: Unable to export '%1'. The specified registry key was not found.\n"
+msgstr ""
+"regedit: Nepavyko eksportuoti „%1“. Nurodytas registro raktas nerastas.\n"
+
+#: regedit.rc:380
+msgid "regedit: Unable to delete the registry class '%1'.\n"
+msgstr "regedit: Nepavyko pašalinti registro klasės „%1“.\n"
 
 #: regedit.rc:163
 msgid "Quits the registry editor"

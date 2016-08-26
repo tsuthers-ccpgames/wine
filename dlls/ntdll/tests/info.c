@@ -504,6 +504,7 @@ static void test_query_handle(void)
 
     SystemInformationLength = ReturnLength;
     shi = HeapReAlloc(GetProcessHeap(), 0, shi , SystemInformationLength);
+    memset(shi, 0x55, SystemInformationLength);
 
     ReturnLength = 0xdeadbeef;
     status = pNtQuerySystemInformation(SystemHandleInformation, shi, SystemInformationLength, &ReturnLength);
@@ -511,6 +512,7 @@ static void test_query_handle(void)
     {
         SystemInformationLength *= 2;
         shi = HeapReAlloc(GetProcessHeap(), 0, shi, SystemInformationLength);
+        memset(shi, 0x55, SystemInformationLength);
         status = pNtQuerySystemInformation(SystemHandleInformation, shi, SystemInformationLength, &ReturnLength);
     }
     ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status );
@@ -518,10 +520,23 @@ static void test_query_handle(void)
     ok( ReturnLength == ExpectedLength || broken(ReturnLength == ExpectedLength - sizeof(DWORD)), /* Vista / 2008 */
         "Expected length %u, got %u\n", ExpectedLength, ReturnLength );
     ok( shi->Count > 1, "Expected more than 1 handle, got %u\n", shi->Count );
+    ok( shi->Handle[1].HandleValue != 0x5555 || broken( shi->Handle[1].HandleValue == 0x5555 ), /* Vista / 2008 */
+        "Uninitialized second handle\n" );
+    if (shi->Handle[1].HandleValue == 0x5555)
+    {
+        win_skip("Skipping broken SYSTEM_HANDLE_INFORMATION\n");
+        CloseHandle(EventHandle);
+        goto done;
+    }
+
     for (i = 0, found = FALSE; i < shi->Count && !found; i++)
         found = (shi->Handle[i].OwnerPid == GetCurrentProcessId()) &&
                 ((HANDLE)(ULONG_PTR)shi->Handle[i].HandleValue == EventHandle);
-    ok( found, "Expected to find event handle in handle list\n" );
+    ok( found, "Expected to find event handle %p (pid %x) in handle list\n", EventHandle, GetCurrentProcessId() );
+
+    if (!found)
+        for (i = 0; i < shi->Count; i++)
+            trace( "%d: handle %x pid %x\n", i, shi->Handle[i].HandleValue, shi->Handle[i].OwnerPid );
 
     CloseHandle(EventHandle);
 
@@ -542,6 +557,7 @@ static void test_query_handle(void)
     status = pNtQuerySystemInformation(SystemHandleInformation, NULL, SystemInformationLength, &ReturnLength);
     ok( status == STATUS_ACCESS_VIOLATION, "Expected STATUS_ACCESS_VIOLATION, got %08x\n", status );
 
+done:
     HeapFree( GetProcessHeap(), 0, shi);
 }
 
@@ -1643,7 +1659,7 @@ static void test_mapprotection(void)
     status = pNtSetInformationProcess( GetCurrentProcess(), ProcessExecuteFlags, &flags, sizeof(flags) );
     ok( (status == STATUS_SUCCESS) || (status == STATUS_INVALID_INFO_CLASS), "Expected STATUS_SUCCESS, got %08x\n", status);
 
-    size.u.LowPart  = 0x1000;
+    size.u.LowPart  = 0x2000;
     size.u.HighPart = 0;
     status = pNtCreateSection ( &h,
         STANDARD_RIGHTS_REQUIRED | SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE,
@@ -1657,7 +1673,7 @@ static void test_mapprotection(void)
 
     offset.u.LowPart  = 0;
     offset.u.HighPart = 0;
-    count = 0x1000;
+    count = 0x2000;
     addr = NULL;
     status = pNtMapViewOfSection ( h, GetCurrentProcess(), &addr, 0, 0, &offset, &count, ViewShare, 0, PAGE_READWRITE);
     ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status);
@@ -1680,7 +1696,7 @@ static void test_mapprotection(void)
     ok( retlen == sizeof(info), "Expected STATUS_SUCCESS, got %08x\n", status);
     ok((info.Protect & ~PAGE_NOCACHE) == PAGE_READWRITE, "addr.Protect is not PAGE_READWRITE, but 0x%x\n", info.Protect);
 
-    status = pNtUnmapViewOfSection (GetCurrentProcess(), addr);
+    status = pNtUnmapViewOfSection( GetCurrentProcess(), (char *)addr + 0x1050 );
     ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status);
     pNtClose (h);
 

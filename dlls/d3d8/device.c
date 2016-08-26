@@ -183,7 +183,7 @@ static void present_parameters_from_wined3d_swapchain_desc(D3DPRESENT_PARAMETERS
     present_parameters->EnableAutoDepthStencil = swapchain_desc->enable_auto_depth_stencil;
     present_parameters->AutoDepthStencilFormat
             = d3dformat_from_wined3dformat(swapchain_desc->auto_depth_stencil_format);
-    present_parameters->Flags = swapchain_desc->flags;
+    present_parameters->Flags = swapchain_desc->flags & D3DPRESENTFLAGS_MASK;
     present_parameters->FullScreen_RefreshRateInHz = swapchain_desc->refresh_rate;
     present_parameters->FullScreen_PresentationInterval = swapchain_desc->swap_interval;
 }
@@ -217,10 +217,14 @@ static BOOL wined3d_swapchain_desc_from_present_parameters(struct wined3d_swapch
     swapchain_desc->enable_auto_depth_stencil = present_parameters->EnableAutoDepthStencil;
     swapchain_desc->auto_depth_stencil_format
             = wined3dformat_from_d3dformat(present_parameters->AutoDepthStencilFormat);
-    swapchain_desc->flags = present_parameters->Flags;
+    swapchain_desc->flags
+            = (present_parameters->Flags & D3DPRESENTFLAGS_MASK) | WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH;
     swapchain_desc->refresh_rate = present_parameters->FullScreen_RefreshRateInHz;
     swapchain_desc->swap_interval = present_parameters->FullScreen_PresentationInterval;
     swapchain_desc->auto_restore_display_mode = TRUE;
+
+    if (present_parameters->Flags & ~D3DPRESENTFLAGS_MASK)
+        FIXME("Unhandled flags %#x.\n", present_parameters->Flags & ~D3DPRESENTFLAGS_MASK);
 
     return TRUE;
 }
@@ -1810,39 +1814,43 @@ static HRESULT WINAPI d3d8_device_SetTexture(IDirect3DDevice8 *iface, DWORD stag
 static const struct tss_lookup
 {
     BOOL sampler_state;
-    enum wined3d_texture_stage_state state;
+    union
+    {
+        enum wined3d_texture_stage_state texture_state;
+        enum wined3d_sampler_state sampler_state;
+    } u;
 }
 tss_lookup[] =
 {
-    {FALSE, WINED3D_TSS_INVALID},                   /*  0, unused */
-    {FALSE, WINED3D_TSS_COLOR_OP},                  /*  1, D3DTSS_COLOROP */
-    {FALSE, WINED3D_TSS_COLOR_ARG1},                /*  2, D3DTSS_COLORARG1 */
-    {FALSE, WINED3D_TSS_COLOR_ARG2},                /*  3, D3DTSS_COLORARG2 */
-    {FALSE, WINED3D_TSS_ALPHA_OP},                  /*  4, D3DTSS_ALPHAOP */
-    {FALSE, WINED3D_TSS_ALPHA_ARG1},                /*  5, D3DTSS_ALPHAARG1 */
-    {FALSE, WINED3D_TSS_ALPHA_ARG2},                /*  6, D3DTSS_ALPHAARG2 */
-    {FALSE, WINED3D_TSS_BUMPENV_MAT00},             /*  7, D3DTSS_BUMPENVMAT00 */
-    {FALSE, WINED3D_TSS_BUMPENV_MAT01},             /*  8, D3DTSS_BUMPENVMAT01 */
-    {FALSE, WINED3D_TSS_BUMPENV_MAT10},             /*  9, D3DTSS_BUMPENVMAT10 */
-    {FALSE, WINED3D_TSS_BUMPENV_MAT11},             /* 10, D3DTSS_BUMPENVMAT11 */
-    {FALSE, WINED3D_TSS_TEXCOORD_INDEX},            /* 11, D3DTSS_TEXCOORDINDEX */
-    {FALSE, WINED3D_TSS_INVALID},                   /* 12, unused */
-    {TRUE,  WINED3D_SAMP_ADDRESS_U},                /* 13, D3DTSS_ADDRESSU */
-    {TRUE,  WINED3D_SAMP_ADDRESS_V},                /* 14, D3DTSS_ADDRESSV */
-    {TRUE,  WINED3D_SAMP_BORDER_COLOR},             /* 15, D3DTSS_BORDERCOLOR */
-    {TRUE,  WINED3D_SAMP_MAG_FILTER},               /* 16, D3DTSS_MAGFILTER */
-    {TRUE,  WINED3D_SAMP_MIN_FILTER},               /* 17, D3DTSS_MINFILTER */
-    {TRUE,  WINED3D_SAMP_MIP_FILTER},               /* 18, D3DTSS_MIPFILTER */
-    {TRUE,  WINED3D_SAMP_MIPMAP_LOD_BIAS},          /* 19, D3DTSS_MIPMAPLODBIAS */
-    {TRUE,  WINED3D_SAMP_MAX_MIP_LEVEL},            /* 20, D3DTSS_MAXMIPLEVEL */
-    {TRUE,  WINED3D_SAMP_MAX_ANISOTROPY},           /* 21, D3DTSS_MAXANISOTROPY */
-    {FALSE, WINED3D_TSS_BUMPENV_LSCALE},            /* 22, D3DTSS_BUMPENVLSCALE */
-    {FALSE, WINED3D_TSS_BUMPENV_LOFFSET},           /* 23, D3DTSS_BUMPENVLOFFSET */
-    {FALSE, WINED3D_TSS_TEXTURE_TRANSFORM_FLAGS},   /* 24, D3DTSS_TEXTURETRANSFORMFLAGS */
-    {TRUE,  WINED3D_SAMP_ADDRESS_W},                /* 25, D3DTSS_ADDRESSW */
-    {FALSE, WINED3D_TSS_COLOR_ARG0},                /* 26, D3DTSS_COLORARG0 */
-    {FALSE, WINED3D_TSS_ALPHA_ARG0},                /* 27, D3DTSS_ALPHAARG0 */
-    {FALSE, WINED3D_TSS_RESULT_ARG},                /* 28, D3DTSS_RESULTARG */
+    {FALSE, {WINED3D_TSS_INVALID}},                   /*  0, unused */
+    {FALSE, {WINED3D_TSS_COLOR_OP}},                  /*  1, D3DTSS_COLOROP */
+    {FALSE, {WINED3D_TSS_COLOR_ARG1}},                /*  2, D3DTSS_COLORARG1 */
+    {FALSE, {WINED3D_TSS_COLOR_ARG2}},                /*  3, D3DTSS_COLORARG2 */
+    {FALSE, {WINED3D_TSS_ALPHA_OP}},                  /*  4, D3DTSS_ALPHAOP */
+    {FALSE, {WINED3D_TSS_ALPHA_ARG1}},                /*  5, D3DTSS_ALPHAARG1 */
+    {FALSE, {WINED3D_TSS_ALPHA_ARG2}},                /*  6, D3DTSS_ALPHAARG2 */
+    {FALSE, {WINED3D_TSS_BUMPENV_MAT00}},             /*  7, D3DTSS_BUMPENVMAT00 */
+    {FALSE, {WINED3D_TSS_BUMPENV_MAT01}},             /*  8, D3DTSS_BUMPENVMAT01 */
+    {FALSE, {WINED3D_TSS_BUMPENV_MAT10}},             /*  9, D3DTSS_BUMPENVMAT10 */
+    {FALSE, {WINED3D_TSS_BUMPENV_MAT11}},             /* 10, D3DTSS_BUMPENVMAT11 */
+    {FALSE, {WINED3D_TSS_TEXCOORD_INDEX}},            /* 11, D3DTSS_TEXCOORDINDEX */
+    {FALSE, {WINED3D_TSS_INVALID}},                   /* 12, unused */
+    {TRUE,  {WINED3D_SAMP_ADDRESS_U}},                /* 13, D3DTSS_ADDRESSU */
+    {TRUE,  {WINED3D_SAMP_ADDRESS_V}},                /* 14, D3DTSS_ADDRESSV */
+    {TRUE,  {WINED3D_SAMP_BORDER_COLOR}},             /* 15, D3DTSS_BORDERCOLOR */
+    {TRUE,  {WINED3D_SAMP_MAG_FILTER}},               /* 16, D3DTSS_MAGFILTER */
+    {TRUE,  {WINED3D_SAMP_MIN_FILTER}},               /* 17, D3DTSS_MINFILTER */
+    {TRUE,  {WINED3D_SAMP_MIP_FILTER}},               /* 18, D3DTSS_MIPFILTER */
+    {TRUE,  {WINED3D_SAMP_MIPMAP_LOD_BIAS}},          /* 19, D3DTSS_MIPMAPLODBIAS */
+    {TRUE,  {WINED3D_SAMP_MAX_MIP_LEVEL}},            /* 20, D3DTSS_MAXMIPLEVEL */
+    {TRUE,  {WINED3D_SAMP_MAX_ANISOTROPY}},           /* 21, D3DTSS_MAXANISOTROPY */
+    {FALSE, {WINED3D_TSS_BUMPENV_LSCALE}},            /* 22, D3DTSS_BUMPENVLSCALE */
+    {FALSE, {WINED3D_TSS_BUMPENV_LOFFSET}},           /* 23, D3DTSS_BUMPENVLOFFSET */
+    {FALSE, {WINED3D_TSS_TEXTURE_TRANSFORM_FLAGS}},   /* 24, D3DTSS_TEXTURETRANSFORMFLAGS */
+    {TRUE,  {WINED3D_SAMP_ADDRESS_W}},                /* 25, D3DTSS_ADDRESSW */
+    {FALSE, {WINED3D_TSS_COLOR_ARG0}},                /* 26, D3DTSS_COLORARG0 */
+    {FALSE, {WINED3D_TSS_ALPHA_ARG0}},                /* 27, D3DTSS_ALPHAARG0 */
+    {FALSE, {WINED3D_TSS_RESULT_ARG}},                /* 28, D3DTSS_RESULTARG */
 };
 
 static HRESULT WINAPI d3d8_device_GetTextureStageState(IDirect3DDevice8 *iface,
@@ -1863,9 +1871,9 @@ static HRESULT WINAPI d3d8_device_GetTextureStageState(IDirect3DDevice8 *iface,
 
     wined3d_mutex_lock();
     if (l->sampler_state)
-        *value = wined3d_device_get_sampler_state(device->wined3d_device, stage, l->state);
+        *value = wined3d_device_get_sampler_state(device->wined3d_device, stage, l->u.sampler_state);
     else
-        *value = wined3d_device_get_texture_stage_state(device->wined3d_device, stage, l->state);
+        *value = wined3d_device_get_texture_stage_state(device->wined3d_device, stage, l->u.texture_state);
     wined3d_mutex_unlock();
 
     return D3D_OK;
@@ -1889,9 +1897,9 @@ static HRESULT WINAPI d3d8_device_SetTextureStageState(IDirect3DDevice8 *iface,
 
     wined3d_mutex_lock();
     if (l->sampler_state)
-        wined3d_device_set_sampler_state(device->wined3d_device, stage, l->state, value);
+        wined3d_device_set_sampler_state(device->wined3d_device, stage, l->u.sampler_state, value);
     else
-        wined3d_device_set_texture_stage_state(device->wined3d_device, stage, l->state, value);
+        wined3d_device_set_texture_stage_state(device->wined3d_device, stage, l->u.texture_state, value);
     wined3d_mutex_unlock();
 
     return D3D_OK;
@@ -2178,14 +2186,14 @@ static HRESULT WINAPI d3d8_device_DrawIndexedPrimitiveUP(IDirect3DDevice8 *iface
         goto done;
 
     wined3d_device_set_index_buffer(device->wined3d_device, device->index_buffer,
-            wined3dformat_from_d3dformat(index_format));
+            wined3dformat_from_d3dformat(index_format), 0);
     wined3d_device_set_base_vertex_index(device->wined3d_device, vb_pos / vertex_stride);
 
     wined3d_device_set_primitive_type(device->wined3d_device, primitive_type);
     hr = wined3d_device_draw_indexed_primitive(device->wined3d_device, ib_pos / idx_fmt_size, idx_count);
 
     wined3d_device_set_stream_source(device->wined3d_device, 0, NULL, 0, 0);
-    wined3d_device_set_index_buffer(device->wined3d_device, NULL, WINED3DFMT_UNKNOWN);
+    wined3d_device_set_index_buffer(device->wined3d_device, NULL, WINED3DFMT_UNKNOWN, 0);
     wined3d_device_set_base_vertex_index(device->wined3d_device, 0);
 
 done:
@@ -2550,8 +2558,7 @@ static HRESULT WINAPI d3d8_device_SetIndices(IDirect3DDevice8 *iface,
     wined3d_mutex_lock();
     wined3d_device_set_base_vertex_index(device->wined3d_device, base_vertex_idx);
     wined3d_device_set_index_buffer(device->wined3d_device,
-            ib ? ib->wined3d_buffer : NULL,
-            ib ? ib->format : WINED3DFMT_UNKNOWN);
+            ib ? ib->wined3d_buffer : NULL, ib ? ib->format : WINED3DFMT_UNKNOWN, 0);
     wined3d_mutex_unlock();
 
     return D3D_OK;
@@ -2573,7 +2580,7 @@ static HRESULT WINAPI d3d8_device_GetIndices(IDirect3DDevice8 *iface,
     /* The case from UINT to INT is safe because d3d8 will never set negative values */
     wined3d_mutex_lock();
     *base_vertex_index = wined3d_device_get_base_vertex_index(device->wined3d_device);
-    if ((wined3d_buffer = wined3d_device_get_index_buffer(device->wined3d_device, &wined3d_format)))
+    if ((wined3d_buffer = wined3d_device_get_index_buffer(device->wined3d_device, &wined3d_format, NULL)))
     {
         buffer_impl = wined3d_buffer_get_parent(wined3d_buffer);
         *buffer = &buffer_impl->IDirect3DIndexBuffer8_iface;

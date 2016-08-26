@@ -1,7 +1,7 @@
 @ stub _Exit
 @ cdecl -arch=i386 __control87_2(long long ptr ptr) ucrtbase.__control87_2
 @ cdecl __doserrno() ucrtbase.__doserrno
-@ stub __fpe_flt_rounds
+@ cdecl __fpe_flt_rounds() ucrtbase.__fpe_flt_rounds
 @ cdecl __fpecode() ucrtbase.__fpecode
 @ cdecl __p___argc() ucrtbase.__p___argc
 @ cdecl __p___argv() ucrtbase.__p___argv
@@ -36,18 +36,18 @@
 @ cdecl _errno() ucrtbase._errno
 @ cdecl _execute_onexit_table(ptr) ucrtbase._execute_onexit_table
 @ cdecl _exit(long) ucrtbase._exit
-@ cdecl _fpieee_flt(long ptr ptr) ucrtbase._fpieee_flt
+@ cdecl -arch=i386,x86_64,arm _fpieee_flt(long ptr ptr) ucrtbase._fpieee_flt
 @ cdecl _fpreset() ucrtbase._fpreset
 @ cdecl _get_doserrno(ptr) ucrtbase._get_doserrno
 @ cdecl _get_errno(ptr) ucrtbase._get_errno
 @ cdecl _get_initial_narrow_environment() ucrtbase._get_initial_narrow_environment
 @ cdecl _get_initial_wide_environment() ucrtbase._get_initial_wide_environment
 @ cdecl _get_invalid_parameter_handler() ucrtbase._get_invalid_parameter_handler
-@ stub _get_narrow_winmain_command_line
+@ cdecl _get_narrow_winmain_command_line() ucrtbase._get_narrow_winmain_command_line
 @ cdecl _get_pgmptr(ptr) ucrtbase._get_pgmptr
 @ cdecl _get_terminate() ucrtbase._get_terminate
-@ stub _get_thread_local_invalid_parameter_handler
-@ stub _get_wide_winmain_command_line
+@ cdecl _get_thread_local_invalid_parameter_handler() ucrtbase._get_thread_local_invalid_parameter_handler
+@ cdecl _get_wide_winmain_command_line() ucrtbase._get_wide_winmain_command_line
 @ cdecl _get_wpgmptr(ptr) ucrtbase._get_wpgmptr
 @ cdecl _getdllprocaddr(long str long) ucrtbase._getdllprocaddr
 @ cdecl _getpid() ucrtbase._getpid
@@ -73,7 +73,7 @@
 @ cdecl _set_error_mode(long) ucrtbase._set_error_mode
 @ cdecl _set_invalid_parameter_handler(ptr) ucrtbase._set_invalid_parameter_handler
 @ cdecl _set_new_handler(ptr) ucrtbase._set_new_handler
-@ stub _set_thread_local_invalid_parameter_handler
+@ cdecl _set_thread_local_invalid_parameter_handler(ptr) ucrtbase._set_thread_local_invalid_parameter_handler
 @ cdecl _seterrormode(long) ucrtbase._seterrormode
 @ cdecl _sleep(long) ucrtbase._sleep
 @ cdecl _statusfp() ucrtbase._statusfp
@@ -88,7 +88,7 @@
 @ cdecl abort() ucrtbase.abort
 @ cdecl exit(long) ucrtbase.exit
 @ stub feclearexcept
-@ stub fegetenv
+@ cdecl fegetenv(ptr) ucrtbase.fegetenv
 @ stub fegetexceptflag
 @ stub fegetround
 @ stub feholdexcept
@@ -99,7 +99,7 @@
 @ cdecl perror(str) ucrtbase.perror
 @ stub quick_exit
 @ cdecl raise(long) ucrtbase.raise
-@ stub set_terminate
+@ cdecl set_terminate(ptr) ucrtbase.set_terminate
 @ cdecl signal(long long) ucrtbase.signal
 @ cdecl strerror(long) ucrtbase.strerror
 @ cdecl strerror_s(ptr long long) ucrtbase.strerror_s

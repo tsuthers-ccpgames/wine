@@ -150,6 +150,7 @@ extern BOOL X11DRV_Chord( PHYSDEV dev, INT left, INT top, INT right, INT bottom,
 extern BOOL X11DRV_Ellipse( PHYSDEV dev, INT left, INT top, INT right, INT bottom ) DECLSPEC_HIDDEN;
 extern INT X11DRV_EnumICMProfiles( PHYSDEV dev, ICMENUMPROCW proc, LPARAM lparam ) DECLSPEC_HIDDEN;
 extern BOOL X11DRV_ExtFloodFill( PHYSDEV dev, INT x, INT y, COLORREF color, UINT fillType ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_FillPath( PHYSDEV dev ) DECLSPEC_HIDDEN;
 extern BOOL X11DRV_GetDeviceGammaRamp( PHYSDEV dev, LPVOID ramp ) DECLSPEC_HIDDEN;
 extern BOOL X11DRV_GetICMProfile( PHYSDEV dev, LPDWORD size, LPWSTR filename ) DECLSPEC_HIDDEN;
 extern DWORD X11DRV_GetImage( PHYSDEV dev, BITMAPINFO *info,
@@ -183,6 +184,8 @@ extern BOOL X11DRV_SetDeviceGammaRamp( PHYSDEV dev, LPVOID ramp ) DECLSPEC_HIDDE
 extern COLORREF X11DRV_SetPixel( PHYSDEV dev, INT x, INT y, COLORREF color ) DECLSPEC_HIDDEN;
 extern BOOL X11DRV_StretchBlt( PHYSDEV dst_dev, struct bitblt_coords *dst,
                                PHYSDEV src_dev, struct bitblt_coords *src, DWORD rop ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_StrokeAndFillPath( PHYSDEV dev ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_StrokePath( PHYSDEV dev ) DECLSPEC_HIDDEN;
 extern BOOL X11DRV_UnrealizePalette( HPALETTE hpal ) DECLSPEC_HIDDEN;
 
 /* X11 driver internal functions */
@@ -492,21 +495,21 @@ extern Atom systray_atom DECLSPEC_HIDDEN;
 
 /* X11 event driver */
 
-typedef void (*x11drv_event_handler)( HWND hwnd, XEvent *event );
+typedef BOOL (*x11drv_event_handler)( HWND hwnd, XEvent *event );
 
 extern void X11DRV_register_event_handler( int type, x11drv_event_handler handler, const char *name ) DECLSPEC_HIDDEN;
 
-extern void X11DRV_ButtonPress( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_ButtonRelease( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_MotionNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_EnterNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_KeyEvent( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_KeymapNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_DestroyNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_SelectionRequest( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_SelectionClear( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_MappingNotify( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
-extern void X11DRV_GenericEvent( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_ButtonPress( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_ButtonRelease( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_MotionNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_EnterNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_KeyEvent( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_KeymapNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_DestroyNotify( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_SelectionRequest( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_SelectionClear( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_MappingNotify( HWND hWnd, XEvent *event ) DECLSPEC_HIDDEN;
+extern BOOL X11DRV_GenericEvent( HWND hwnd, XEvent *event ) DECLSPEC_HIDDEN;
 
 extern int xinput2_opcode DECLSPEC_HIDDEN;
 extern Bool (*pXGetEventData)( Display *display, XEvent /*XGenericEventCookie*/ *event ) DECLSPEC_HIDDEN;

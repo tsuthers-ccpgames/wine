@@ -677,6 +677,30 @@ typedef union
     } ioctl;
 } irp_params_t;
 
+
+typedef struct
+{
+    client_ptr_t   base;
+    client_ptr_t   entry_point;
+    mem_size_t     map_size;
+    mem_size_t     stack_size;
+    mem_size_t     stack_commit;
+    unsigned int   zerobits;
+    unsigned int   subsystem;
+    unsigned short subsystem_low;
+    unsigned short subsystem_high;
+    unsigned int   gp;
+    unsigned short image_charact;
+    unsigned short dll_charact;
+    unsigned short machine;
+    unsigned char  contains_code;
+    unsigned char  image_flags;
+    unsigned int   loader_flags;
+    unsigned int   header_size;
+    unsigned int   file_size;
+    unsigned int   checksum;
+} pe_image_info_t;
+
 struct rawinput_device
 {
     unsigned short usage_page;
@@ -1915,6 +1939,7 @@ struct set_console_output_info_request
     short int    width;
     short int    height;
     short int    attr;
+    short int    popup_attr;
     short int    win_left;
     short int    win_top;
     short int    win_right;
@@ -1923,19 +1948,22 @@ struct set_console_output_info_request
     short int    max_height;
     short int    font_width;
     short int    font_height;
-    char __pad_50[6];
+    /* VARARG(colors,uints); */
+    char __pad_52[4];
 };
 struct set_console_output_info_reply
 {
     struct reply_header __header;
 };
-#define SET_CONSOLE_OUTPUT_INFO_CURSOR_GEOM     0x01
-#define SET_CONSOLE_OUTPUT_INFO_CURSOR_POS      0x02
-#define SET_CONSOLE_OUTPUT_INFO_SIZE            0x04
-#define SET_CONSOLE_OUTPUT_INFO_ATTR            0x08
-#define SET_CONSOLE_OUTPUT_INFO_DISPLAY_WINDOW  0x10
-#define SET_CONSOLE_OUTPUT_INFO_MAX_SIZE        0x20
-#define SET_CONSOLE_OUTPUT_INFO_FONT            0x40
+#define SET_CONSOLE_OUTPUT_INFO_CURSOR_GEOM     0x0001
+#define SET_CONSOLE_OUTPUT_INFO_CURSOR_POS      0x0002
+#define SET_CONSOLE_OUTPUT_INFO_SIZE            0x0004
+#define SET_CONSOLE_OUTPUT_INFO_ATTR            0x0008
+#define SET_CONSOLE_OUTPUT_INFO_DISPLAY_WINDOW  0x0010
+#define SET_CONSOLE_OUTPUT_INFO_MAX_SIZE        0x0020
+#define SET_CONSOLE_OUTPUT_INFO_FONT            0x0040
+#define SET_CONSOLE_OUTPUT_INFO_COLORTABLE      0x0080
+#define SET_CONSOLE_OUTPUT_INFO_POPUP_ATTR      0x0100
 
 
 
@@ -1954,6 +1982,7 @@ struct get_console_output_info_reply
     short int    width;
     short int    height;
     short int    attr;
+    short int    popup_attr;
     short int    win_left;
     short int    win_top;
     short int    win_right;
@@ -1962,7 +1991,7 @@ struct get_console_output_info_reply
     short int    max_height;
     short int    font_width;
     short int    font_height;
-    char __pad_38[2];
+    /* VARARG(colors,uints); */
 };
 
 
@@ -2129,8 +2158,8 @@ struct create_mapping_request
 {
     struct request_header __header;
     unsigned int access;
+    unsigned int flags;
     unsigned int protect;
-    char __pad_20[4];
     mem_size_t   size;
     obj_handle_t file_handle;
     /* VARARG(objattr,object_attributes); */
@@ -2187,11 +2216,11 @@ struct get_mapping_info_reply
 {
     struct reply_header __header;
     mem_size_t   size;
+    unsigned int flags;
     int          protect;
-    int          header_size;
-    client_ptr_t base;
     obj_handle_t mapping;
     obj_handle_t shared_file;
+    /* VARARG(image,pe_image_info); */
 };
 
 
@@ -4431,14 +4460,40 @@ struct set_class_info_reply
 
 
 
+struct open_clipboard_request
+{
+    struct request_header __header;
+    user_handle_t  window;
+};
+struct open_clipboard_reply
+{
+    struct reply_header __header;
+    int            owner;
+    char __pad_12[4];
+};
+
+
+
+struct close_clipboard_request
+{
+    struct request_header __header;
+    int            changed;
+};
+struct close_clipboard_reply
+{
+    struct reply_header __header;
+    user_handle_t  viewer;
+    int            owner;
+};
+
+
+
 struct set_clipboard_info_request
 {
     struct request_header __header;
     unsigned int   flags;
-    user_handle_t  clipboard;
     user_handle_t  owner;
-    user_handle_t  viewer;
-    unsigned int   seqno;
+    char __pad_20[4];
 };
 struct set_clipboard_info_reply
 {
@@ -4451,11 +4506,9 @@ struct set_clipboard_info_reply
     char __pad_28[4];
 };
 
-#define SET_CB_OPEN      0x001
-#define SET_CB_VIEWER    0x004
 #define SET_CB_SEQNO     0x008
 #define SET_CB_RELOWNER  0x010
-#define SET_CB_CLOSE     0x020
+#define CB_OPEN_ANY      0x020
 #define CB_OPEN          0x040
 #define CB_OWNER         0x080
 #define CB_PROCESS       0x100
@@ -4470,6 +4523,38 @@ struct empty_clipboard_request
 struct empty_clipboard_reply
 {
     struct reply_header __header;
+};
+
+
+
+struct get_clipboard_info_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+};
+struct get_clipboard_info_reply
+{
+    struct reply_header __header;
+    user_handle_t  window;
+    user_handle_t  owner;
+    user_handle_t  viewer;
+    unsigned int   seqno;
+};
+
+
+
+struct set_clipboard_viewer_request
+{
+    struct request_header __header;
+    user_handle_t  viewer;
+    user_handle_t  previous;
+    char __pad_20[4];
+};
+struct set_clipboard_viewer_reply
+{
+    struct reply_header __header;
+    user_handle_t  old_viewer;
+    user_handle_t  owner;
 };
 
 
@@ -5602,8 +5687,12 @@ enum request
     REQ_create_class,
     REQ_destroy_class,
     REQ_set_class_info,
+    REQ_open_clipboard,
+    REQ_close_clipboard,
     REQ_set_clipboard_info,
     REQ_empty_clipboard,
+    REQ_get_clipboard_info,
+    REQ_set_clipboard_viewer,
     REQ_open_token,
     REQ_set_global_windows,
     REQ_adjust_token_privileges,
@@ -5882,8 +5971,12 @@ union generic_request
     struct create_class_request create_class_request;
     struct destroy_class_request destroy_class_request;
     struct set_class_info_request set_class_info_request;
+    struct open_clipboard_request open_clipboard_request;
+    struct close_clipboard_request close_clipboard_request;
     struct set_clipboard_info_request set_clipboard_info_request;
     struct empty_clipboard_request empty_clipboard_request;
+    struct get_clipboard_info_request get_clipboard_info_request;
+    struct set_clipboard_viewer_request set_clipboard_viewer_request;
     struct open_token_request open_token_request;
     struct set_global_windows_request set_global_windows_request;
     struct adjust_token_privileges_request adjust_token_privileges_request;
@@ -6160,8 +6253,12 @@ union generic_reply
     struct create_class_reply create_class_reply;
     struct destroy_class_reply destroy_class_reply;
     struct set_class_info_reply set_class_info_reply;
+    struct open_clipboard_reply open_clipboard_reply;
+    struct close_clipboard_reply close_clipboard_reply;
     struct set_clipboard_info_reply set_clipboard_info_reply;
     struct empty_clipboard_reply empty_clipboard_reply;
+    struct get_clipboard_info_reply get_clipboard_info_reply;
+    struct set_clipboard_viewer_reply set_clipboard_viewer_reply;
     struct open_token_reply open_token_reply;
     struct set_global_windows_reply set_global_windows_reply;
     struct adjust_token_privileges_reply adjust_token_privileges_reply;
@@ -6221,6 +6318,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 504
+#define SERVER_PROTOCOL_VERSION 513
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

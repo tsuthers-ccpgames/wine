@@ -68,6 +68,7 @@ static int   (WINAPI *pgetaddrinfo)(LPCSTR,LPCSTR,const struct addrinfo *,struct
 static void  (WINAPI *pFreeAddrInfoW)(PADDRINFOW);
 static int   (WINAPI *pGetAddrInfoW)(LPCWSTR,LPCWSTR,const ADDRINFOW *,PADDRINFOW *);
 static PCSTR (WINAPI *pInetNtop)(INT,LPVOID,LPSTR,ULONG);
+static PCWSTR(WINAPI *pInetNtopW)(INT,LPVOID,LPWSTR,ULONG);
 static int   (WINAPI *pInetPtonA)(INT,LPCSTR,LPVOID);
 static int   (WINAPI *pInetPtonW)(INT,LPWSTR,LPVOID);
 static int   (WINAPI *pWSALookupServiceBeginW)(LPWSAQUERYSETW,DWORD,LPHANDLE);
@@ -638,14 +639,14 @@ static VOID WINAPI oob_server ( server_params *par )
     ok ( n_sent == n_expected,
          "oob_server (%x): sent less data than expected: %d of %d\n", id, n_sent, n_expected );
 
-    /* Receive a part of the out-of-band data and check atmark state */
+    /* Receive a part of the out-of-band data and print atmark state */
     n_recvd = do_synchronous_recv ( mem->sock[0].s, mem->sock[0].buf, 8, 0, par->buflen );
     ok ( n_recvd == 8,
          "oob_server (%x): received less data than expected: %d of %d\n", id, n_recvd, 8 );
     n_expected -= 8;
 
     ioctlsocket ( mem->sock[0].s, SIOCATMARK, &atmark );
-    todo_wine ok ( atmark == 0, "oob_server (%x): not at the OOB mark: %i\n", id, atmark );
+    trace( "oob_server (%x): %s the OOB mark: %i\n", id, atmark == 1 ? "not at" : "at", atmark );
 
     /* Receive the rest of the out-of-band data and check atmark state */
     do_synchronous_recv ( mem->sock[0].s, mem->sock[0].buf, n_expected, 0, par->buflen );
@@ -1227,6 +1228,7 @@ static void Init (void)
     pFreeAddrInfoW = (void *)GetProcAddress(hws2_32, "FreeAddrInfoW");
     pGetAddrInfoW = (void *)GetProcAddress(hws2_32, "GetAddrInfoW");
     pInetNtop = (void *)GetProcAddress(hws2_32, "inet_ntop");
+    pInetNtopW = (void *)GetProcAddress(hws2_32, "InetNtopW");
     pInetPtonA = (void *)GetProcAddress(hws2_32, "inet_pton");
     pInetPtonW = (void *)GetProcAddress(hws2_32, "InetPtonW");
     pWSALookupServiceBeginW = (void *)GetProcAddress(hws2_32, "WSALookupServiceBeginW");
@@ -2652,7 +2654,7 @@ static void test_WSADuplicateSocket(void)
     closesocket(source);
 
     /* create a socket, bind it, duplicate it then send data on source and
-     * receve in the duplicated socket */
+     * receive in the duplicated socket */
     source = WSASocketA(AF_INET, SOCK_DGRAM, IPPROTO_UDP, NULL, 0, 0);
     ok(source != INVALID_SOCKET, "WSASocketA should have succeeded\n");
 
@@ -4556,7 +4558,6 @@ static void test_gethostbyname(void)
             }
         }
     }
-todo_wine
     ok (found_default, "failed to find the first IP from gethostbyname!\n");
 
 cleanup:
@@ -4870,11 +4871,12 @@ static void test_inet_pton(void)
     int i, ret;
     DWORD err;
     char buffer[64],str[64];
-    WCHAR printableW[64];
+    WCHAR printableW[64], collapsedW[64];
     const char *ptr;
+    const WCHAR *ptrW;
 
     /* InetNtop and InetPton became available in Vista and Win2008 */
-    if (!pInetNtop || !pInetPtonA || !pInetPtonW)
+    if (!pInetNtop || !pInetNtopW || !pInetPtonA || !pInetPtonW)
     {
         win_skip("InetNtop and/or InetPton not present, not executing tests\n");
         return;
@@ -4922,6 +4924,18 @@ static void test_inet_pton(void)
         ok(memcmp(buffer, tests[i].raw_data,
            tests[i].family == AF_INET ? sizeof(struct in_addr) : sizeof(struct in6_addr)) == 0,
            "Test [%d]: Expected binary data differs\n", i);
+
+        /* Test the result from Pton with Ntop */
+        printableW[0] = 0xdead;
+        ptrW = pInetNtopW(tests[i].family, buffer, printableW, sizeof(printableW) / sizeof(printableW[0]));
+        ok (ptrW != NULL, "Test [%d]: Failed with NULL\n", i);
+        ok (ptrW == printableW, "Test [%d]: Pointers differ (%p != %p)\n", i, ptrW, printableW);
+        if (!ptrW) continue;
+
+        MultiByteToWideChar(CP_ACP, 0, tests[i].collapsed, -1, collapsedW,
+                            sizeof(collapsedW) / sizeof(collapsedW[0]));
+        ok (lstrcmpW(ptrW, collapsedW) == 0, "Test [%d]: Expected '%s', got '%s'\n",
+            i, tests[i].collapsed, wine_dbgstr_w(ptrW));
     }
 }
 
@@ -8450,6 +8464,22 @@ static HWND create_async_message_window(void)
     return hWnd;
 }
 
+static void wait_for_async_message(HWND hwnd, HANDLE handle)
+{
+    BOOL ret;
+    MSG msg;
+
+    while ((ret = GetMessageA(&msg, 0, 0, 0)) &&
+           !(msg.hwnd == hwnd && msg.message == WM_ASYNCCOMPLETE))
+    {
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+    }
+
+    ok(ret, "did not expect WM_QUIT message\n");
+    ok(msg.wParam == (WPARAM)handle, "expected wParam = %p, got %lx\n", handle, msg.wParam);
+}
+
 static void test_WSAAsyncGetServByPort(void)
 {
     HWND hwnd = create_async_message_window();
@@ -8467,12 +8497,15 @@ static void test_WSAAsyncGetServByPort(void)
 
     ret = WSAAsyncGetServByPort(hwnd, WM_ASYNCCOMPLETE, 0, NULL, NULL, 0);
     ok(ret != NULL, "WSAAsyncGetServByPort returned NULL\n");
+    wait_for_async_message(hwnd, ret);
 
     ret = WSAAsyncGetServByPort(hwnd, WM_ASYNCCOMPLETE, htons(80), NULL, NULL, 0);
     ok(ret != NULL, "WSAAsyncGetServByPort returned NULL\n");
+    wait_for_async_message(hwnd, ret);
 
     ret = WSAAsyncGetServByPort(hwnd, WM_ASYNCCOMPLETE, htons(80), NULL, buffer, MAXGETHOSTSTRUCT);
     ok(ret != NULL, "WSAAsyncGetServByPort returned NULL\n");
+    wait_for_async_message(hwnd, ret);
 
     DestroyWindow(hwnd);
 }
@@ -8491,15 +8524,19 @@ static void test_WSAAsyncGetServByName(void)
     /* Parameters are not checked when initiating the asynchronous operation.  */
     ret = WSAAsyncGetServByName(hwnd, WM_ASYNCCOMPLETE, "", NULL, NULL, 0);
     ok(ret != NULL, "WSAAsyncGetServByName returned NULL\n");
+    wait_for_async_message(hwnd, ret);
 
     ret = WSAAsyncGetServByName(hwnd, WM_ASYNCCOMPLETE, "", "", buffer, MAXGETHOSTSTRUCT);
     ok(ret != NULL, "WSAAsyncGetServByName returned NULL\n");
+    wait_for_async_message(hwnd, ret);
 
     ret = WSAAsyncGetServByName(hwnd, WM_ASYNCCOMPLETE, "http", NULL, NULL, 0);
     ok(ret != NULL, "WSAAsyncGetServByName returned NULL\n");
+    wait_for_async_message(hwnd, ret);
 
     ret = WSAAsyncGetServByName(hwnd, WM_ASYNCCOMPLETE, "http", "tcp", buffer, MAXGETHOSTSTRUCT);
     ok(ret != NULL, "WSAAsyncGetServByName returned NULL\n");
+    wait_for_async_message(hwnd, ret);
 
     DestroyWindow(hwnd);
 }

@@ -280,7 +280,7 @@ int get_clipped_rects( const dib_info *dib, const RECT *rc, HRGN clip, struct cl
 
     if (!(region = get_wine_region( clip ))) return 0;
 
-    for (i = 0; i < region->numRects; i++)
+    for (i = region_find_pt( region, rect.left, rect.top, NULL ); i < region->numRects; i++)
     {
         if (region->rects[i].top >= rect.bottom) break;
         if (!intersect_rect( out, &rect, &region->rects[i] )) continue;
@@ -424,7 +424,7 @@ const struct gdi_dc_funcs dib_driver =
     dibdrv_ExtFloodFill,                /* pExtFloodFill */
     NULL,                               /* pExtSelectClipRgn */
     dibdrv_ExtTextOut,                  /* pExtTextOut */
-    NULL,                               /* pFillPath */
+    dibdrv_FillPath,                    /* pFillPath */
     NULL,                               /* pFillRgn */
     NULL,                               /* pFlattenPath */
     NULL,                               /* pFontIsLinked */
@@ -519,8 +519,8 @@ const struct gdi_dc_funcs dib_driver =
     NULL,                               /* pStartPage */
     dibdrv_StretchBlt,                  /* pStretchBlt */
     NULL,                               /* pStretchDIBits */
-    NULL,                               /* pStrokeAndFillPath */
-    NULL,                               /* pStrokePath */
+    dibdrv_StrokeAndFillPath,           /* pStrokeAndFillPath */
+    dibdrv_StrokePath,                  /* pStrokePath */
     NULL,                               /* pUnrealizePalette */
     NULL,                               /* pWidenPath */
     dibdrv_wine_get_wgl_driver,         /* wine_get_wgl_driver */

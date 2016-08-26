@@ -55,15 +55,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(clipboard);
 
-#define  CF_REGFORMATBASE  0xC000
-
-typedef struct
-{
-    HWND hWndOpen;
-    HWND hWndOwner;
-    UINT flags;
-} CLIPBOARDINFO, *LPCLIPBOARDINFO;
-
 /*
  * Indicates if data has changed since open.
  */
@@ -71,26 +62,19 @@ static BOOL bCBHasChanged = FALSE;
 
 
 /**************************************************************************
- *                      CLIPBOARD_GetClipboardInfo
+ *                      get_clipboard_flags
  */
-static BOOL CLIPBOARD_GetClipboardInfo(LPCLIPBOARDINFO cbInfo)
+static UINT get_clipboard_flags(void)
 {
-    BOOL bRet;
+    UINT ret = 0;
 
     SERVER_START_REQ( set_clipboard_info )
     {
-        req->flags = 0;
-
-        if (((bRet = !wine_server_call_err( req ))))
-        {
-            cbInfo->hWndOpen = wine_server_ptr_handle( reply->old_clipboard );
-            cbInfo->hWndOwner = wine_server_ptr_handle( reply->old_owner );
-            cbInfo->flags = reply->flags;
-        }
+        if (!wine_server_call_err( req )) ret = reply->flags;
     }
     SERVER_END_REQ;
 
-    return bRet;
+    return ret;
 }
 
 
@@ -108,25 +92,6 @@ void CLIPBOARD_ReleaseOwner( HWND hwnd )
     SERVER_END_REQ;
 }
 
-
-/**************************************************************************
- *		CLIPBOARD_SetClipboardViewer
- */
-static HWND CLIPBOARD_SetClipboardViewer( HWND hWnd )
-{
-    HWND hwndPrev = 0;
-
-    SERVER_START_REQ( set_clipboard_info )
-    {
-        req->flags = SET_CB_VIEWER;
-        req->viewer = wine_server_user_handle( hWnd );
-        if (!wine_server_call_err( req ))
-            hwndPrev = wine_server_ptr_handle( reply->old_viewer );
-    }
-    SERVER_END_REQ;
-
-    return hwndPrev;
-}
 
 /**************************************************************************
  *                WIN32 Clipboard implementation
@@ -172,33 +137,24 @@ INT WINAPI GetClipboardFormatNameA(UINT wFormat, LPSTR retStr, INT maxlen)
 
 /**************************************************************************
  *		OpenClipboard (USER32.@)
- *
- * Note: Netscape uses NULL hWnd to open the clipboard.
  */
-BOOL WINAPI OpenClipboard( HWND hWnd )
+BOOL WINAPI OpenClipboard( HWND hwnd )
 {
-    BOOL bRet;
-    UINT flags;
+    BOOL ret;
 
-    TRACE("(%p)...\n", hWnd);
+    TRACE( "%p\n", hwnd );
 
-    SERVER_START_REQ( set_clipboard_info )
+    SERVER_START_REQ( open_clipboard )
     {
-        req->flags = SET_CB_OPEN;
-        req->clipboard = wine_server_user_handle( hWnd );
-        if ((bRet = !wine_server_call( req )))
-            flags = reply->flags;
+        req->window = wine_server_user_handle( hwnd );
+        if ((ret = !wine_server_call( req )))
+        {
+            if (!reply->owner) bCBHasChanged = FALSE;
+        }
     }
     SERVER_END_REQ;
 
-    if (bRet && !(flags & CB_PROCESS))
-    {
-        bCBHasChanged = FALSE;
-    }
-
-    TRACE(" returning %i\n", bRet);
-
-    return bRet;
+    return ret;
 }
 
 
@@ -208,31 +164,29 @@ BOOL WINAPI OpenClipboard( HWND hWnd )
 BOOL WINAPI CloseClipboard(void)
 {
     HWND viewer = 0;
-    UINT flags;
-    BOOL ret;
+    BOOL ret, owner = FALSE;
 
     TRACE("() Changed=%d\n", bCBHasChanged);
 
-    SERVER_START_REQ( set_clipboard_info )
+    SERVER_START_REQ( close_clipboard )
     {
-        req->flags = SET_CB_CLOSE;
-        if (bCBHasChanged) req->flags |= SET_CB_SEQNO;
+        req->changed = bCBHasChanged;
         if ((ret = !wine_server_call_err( req )))
         {
-            viewer = wine_server_ptr_handle( reply->old_viewer );
-            flags = reply->flags;
+            viewer = wine_server_ptr_handle( reply->viewer );
+            owner = reply->owner;
         }
     }
     SERVER_END_REQ;
 
     if (!ret) return FALSE;
 
-    if (bCBHasChanged && (flags & CB_PROCESS))
+    if (bCBHasChanged)
     {
-        USER_Driver->pEndClipboardUpdate();
+        if (owner) USER_Driver->pEndClipboardUpdate();
+        bCBHasChanged = FALSE;
         if (viewer) SendNotifyMessageW(viewer, WM_DRAWCLIPBOARD, (WPARAM) GetClipboardOwner(), 0);
     }
-    bCBHasChanged = FALSE;
     return TRUE;
 }
 
@@ -273,10 +227,9 @@ HWND WINAPI GetClipboardOwner(void)
 {
     HWND hWndOwner = 0;
 
-    SERVER_START_REQ( set_clipboard_info )
+    SERVER_START_REQ( get_clipboard_info )
     {
-        req->flags = 0;
-        if (!wine_server_call_err( req )) hWndOwner = wine_server_ptr_handle( reply->old_owner );
+        if (!wine_server_call_err( req )) hWndOwner = wine_server_ptr_handle( reply->owner );
     }
     SERVER_END_REQ;
 
@@ -293,10 +246,9 @@ HWND WINAPI GetOpenClipboardWindow(void)
 {
     HWND hWndOpen = 0;
 
-    SERVER_START_REQ( set_clipboard_info )
+    SERVER_START_REQ( get_clipboard_info )
     {
-        req->flags = 0;
-        if (!wine_server_call_err( req )) hWndOpen = wine_server_ptr_handle( reply->old_clipboard );
+        if (!wine_server_call_err( req )) hWndOpen = wine_server_ptr_handle( reply->window );
     }
     SERVER_END_REQ;
 
@@ -309,15 +261,25 @@ HWND WINAPI GetOpenClipboardWindow(void)
 /**************************************************************************
  *		SetClipboardViewer (USER32.@)
  */
-HWND WINAPI SetClipboardViewer( HWND hWnd )
+HWND WINAPI SetClipboardViewer( HWND hwnd )
 {
-    HWND hwndPrev = CLIPBOARD_SetClipboardViewer(hWnd);
+    HWND prev = 0, owner = 0;
 
-    if (hWnd)
-        SendNotifyMessageW(hWnd, WM_DRAWCLIPBOARD, (WPARAM) GetClipboardOwner(), 0);
-    TRACE("(%p): returning %p\n", hWnd, hwndPrev);
+    SERVER_START_REQ( set_clipboard_viewer )
+    {
+        req->viewer = wine_server_user_handle( hwnd );
+        if (!wine_server_call_err( req ))
+        {
+            prev = wine_server_ptr_handle( reply->old_viewer );
+            owner = wine_server_ptr_handle( reply->owner );
+        }
+    }
+    SERVER_END_REQ;
 
-    return hwndPrev;
+    if (hwnd) SendNotifyMessageW( hwnd, WM_DRAWCLIPBOARD, (WPARAM)owner, 0 );
+
+    TRACE( "(%p): returning %p\n", hwnd, prev );
+    return prev;
 }
 
 
@@ -328,10 +290,9 @@ HWND WINAPI GetClipboardViewer(void)
 {
     HWND hWndViewer = 0;
 
-    SERVER_START_REQ( set_clipboard_info )
+    SERVER_START_REQ( get_clipboard_info )
     {
-        req->flags = 0;
-        if (!wine_server_call_err( req )) hWndViewer = wine_server_ptr_handle( reply->old_viewer );
+        if (!wine_server_call_err( req )) hWndViewer = wine_server_ptr_handle( reply->viewer );
     }
     SERVER_END_REQ;
 
@@ -344,22 +305,27 @@ HWND WINAPI GetClipboardViewer(void)
 /**************************************************************************
  *              ChangeClipboardChain (USER32.@)
  */
-BOOL WINAPI ChangeClipboardChain(HWND hWnd, HWND hWndNext)
+BOOL WINAPI ChangeClipboardChain( HWND hwnd, HWND next )
 {
-    BOOL bRet = TRUE;
-    HWND hWndViewer = GetClipboardViewer();
+    NTSTATUS status;
+    HWND viewer;
 
-    if (hWndViewer)
+    if (!hwnd) return FALSE;
+
+    SERVER_START_REQ( set_clipboard_viewer )
     {
-        if (WIN_GetFullHandle(hWnd) == hWndViewer)
-            CLIPBOARD_SetClipboardViewer(WIN_GetFullHandle(hWndNext));
-        else
-            bRet = !SendMessageW(hWndViewer, WM_CHANGECBCHAIN, (WPARAM)hWnd, (LPARAM)hWndNext);
+        req->viewer = wine_server_user_handle( next );
+        req->previous = wine_server_user_handle( hwnd );
+        status = wine_server_call( req );
+        viewer = wine_server_ptr_handle( reply->old_viewer );
     }
-    else
-        ERR("hWndViewer is lost\n");
+    SERVER_END_REQ;
 
-    return bRet;
+    if (status == STATUS_PENDING)
+        return !SendMessageW( viewer, WM_CHANGECBCHAIN, (WPARAM)hwnd, (LPARAM)next );
+
+    if (status) SetLastError( RtlNtStatusToDosError( status ));
+    return !status;
 }
 
 
@@ -368,8 +334,8 @@ BOOL WINAPI ChangeClipboardChain(HWND hWnd, HWND hWndNext)
  */
 HANDLE WINAPI SetClipboardData(UINT wFormat, HANDLE hData)
 {
-    CLIPBOARDINFO cbinfo;
     HANDLE hResult = 0;
+    UINT flags;
 
     TRACE("(%04X, %p) !\n", wFormat, hData);
 
@@ -379,16 +345,14 @@ HANDLE WINAPI SetClipboardData(UINT wFormat, HANDLE hData)
         return 0;
     }
 
-    /* If it's not owned, data can only be set if the format isn't
-       available and its rendering is not delayed */
-    if (!CLIPBOARD_GetClipboardInfo(&cbinfo) ||
-       (!(cbinfo.flags & CB_OWNER) && !hData))
+    flags = get_clipboard_flags();
+    if (!(flags & CB_OPEN_ANY))
     {
-        WARN("Clipboard not owned by calling task. Operation failed.\n");
+        SetLastError( ERROR_CLIPBOARD_NOT_OPEN );
         return 0;
     }
 
-    if (USER_Driver->pSetClipboardData(wFormat, hData, cbinfo.flags & CB_OWNER))
+    if (USER_Driver->pSetClipboardData(wFormat, hData, flags & CB_OWNER))
     {
         hResult = hData;
         bCBHasChanged = TRUE;
@@ -414,12 +378,9 @@ INT WINAPI CountClipboardFormats(void)
  */
 UINT WINAPI EnumClipboardFormats(UINT wFormat)
 {
-    CLIPBOARDINFO cbinfo;
-
     TRACE("(%04X)\n", wFormat);
 
-    if (!CLIPBOARD_GetClipboardInfo(&cbinfo) ||
-        (~cbinfo.flags & CB_OPEN))
+    if (!(get_clipboard_flags() & CB_OPEN))
     {
         WARN("Clipboard not opened by calling task.\n");
         SetLastError(ERROR_CLIPBOARD_NOT_OPEN);
@@ -446,12 +407,10 @@ BOOL WINAPI IsClipboardFormatAvailable(UINT wFormat)
 HANDLE WINAPI GetClipboardData(UINT wFormat)
 {
     HANDLE hData = 0;
-    CLIPBOARDINFO cbinfo;
 
     TRACE("%04x\n", wFormat);
 
-    if (!CLIPBOARD_GetClipboardInfo(&cbinfo) ||
-        (~cbinfo.flags & CB_OPEN))
+    if (!(get_clipboard_flags() & CB_OPEN))
     {
         WARN("Clipboard not opened by calling task.\n");
         SetLastError(ERROR_CLIPBOARD_NOT_OPEN);
@@ -497,9 +456,8 @@ DWORD WINAPI GetClipboardSequenceNumber(VOID)
 {
     DWORD seqno = 0;
 
-    SERVER_START_REQ( set_clipboard_info )
+    SERVER_START_REQ( get_clipboard_info )
     {
-        req->flags = 0;
         if (!wine_server_call_err( req )) seqno = reply->seqno;
     }
     SERVER_END_REQ;

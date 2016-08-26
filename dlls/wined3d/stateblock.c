@@ -705,7 +705,8 @@ void CDECL wined3d_stateblock_capture(struct wined3d_stateblock *stateblock)
     if (stateblock->changed.indices
             && ((stateblock->state.index_buffer != src_state->index_buffer)
                 || (stateblock->state.base_vertex_index != src_state->base_vertex_index)
-                || (stateblock->state.index_format != src_state->index_format)))
+                || (stateblock->state.index_format != src_state->index_format)
+                || (stateblock->state.index_offset != src_state->index_offset)))
     {
         TRACE("Updating index buffer to %p, base vertex index to %d.\n",
                 src_state->index_buffer, src_state->base_vertex_index);
@@ -717,6 +718,7 @@ void CDECL wined3d_stateblock_capture(struct wined3d_stateblock *stateblock)
         stateblock->state.index_buffer = src_state->index_buffer;
         stateblock->state.base_vertex_index = src_state->base_vertex_index;
         stateblock->state.index_format = src_state->index_format;
+        stateblock->state.index_offset = src_state->index_offset;
     }
 
     if (stateblock->changed.vertexDecl && stateblock->state.vertex_declaration != src_state->vertex_declaration)
@@ -985,7 +987,8 @@ void CDECL wined3d_stateblock_apply(const struct wined3d_stateblock *stateblock)
 
     if (stateblock->changed.indices)
     {
-        wined3d_device_set_index_buffer(device, stateblock->state.index_buffer, stateblock->state.index_format);
+        wined3d_device_set_index_buffer(device, stateblock->state.index_buffer,
+                stateblock->state.index_format, stateblock->state.index_offset);
         wined3d_device_set_base_vertex_index(device, stateblock->state.base_vertex_index);
     }
 
@@ -1080,7 +1083,7 @@ static void state_init_default(struct wined3d_state *state, const struct wined3d
     state->render_states[WINED3D_RS_LASTPIXEL] = TRUE;
     state->render_states[WINED3D_RS_SRCBLEND] = WINED3D_BLEND_ONE;
     state->render_states[WINED3D_RS_DESTBLEND] = WINED3D_BLEND_ZERO;
-    state->render_states[WINED3D_RS_CULLMODE] = WINED3D_CULL_CCW;
+    state->render_states[WINED3D_RS_CULLMODE] = WINED3D_CULL_BACK;
     state->render_states[WINED3D_RS_ZFUNC] = WINED3D_CMP_LESSEQUAL;
     state->render_states[WINED3D_RS_ALPHAFUNC] = WINED3D_CMP_ALWAYS;
     state->render_states[WINED3D_RS_ALPHAREF] = 0;

@@ -1012,7 +1012,7 @@ static HRESULT surface_lock(struct ddraw_surface *surface,
     if (surface->surface_desc.ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
     {
         if (flags & DDLOCK_READONLY)
-            memset(&surface->ddraw->primary_lock, 0, sizeof(surface->ddraw->primary_lock));
+            SetRectEmpty(&surface->ddraw->primary_lock);
         else if (rect)
             surface->ddraw->primary_lock = *rect;
         else
@@ -4289,7 +4289,7 @@ static HRESULT WINAPI ddraw_surface7_GetClipper(IDirectDrawSurface7 *iface, IDir
         return DDERR_NOCLIPPERATTACHED;
     }
 
-    *Clipper = (IDirectDrawClipper *)surface->clipper;
+    *Clipper = &surface->clipper->IDirectDrawClipper_iface;
     IDirectDrawClipper_AddRef(*Clipper);
     wined3d_mutex_unlock();
 
@@ -5754,10 +5754,9 @@ HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_
         if (desc->dwFlags & DDSD_BACKBUFFERCOUNT)
         {
             WARN("Tried to specify a back buffer count for a non-flippable surface.\n");
+            hr = desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP ? DDERR_INVALIDPARAMS : DDERR_INVALIDCAPS;
             HeapFree(GetProcessHeap(), 0, texture);
-            if (desc->ddsCaps.dwCaps2 & DDSCAPS2_CUBEMAP)
-                return DDERR_INVALIDPARAMS;
-            return DDERR_INVALIDCAPS;
+            return hr;
         }
     }
 

@@ -204,17 +204,63 @@ static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetBuffer(IDXGISwapChain *iface,
 static HRESULT STDMETHODCALLTYPE DECLSPEC_HOTPATCH dxgi_swapchain_SetFullscreenState(IDXGISwapChain *iface,
         BOOL fullscreen, IDXGIOutput *target)
 {
-    FIXME("iface %p, fullscreen %#x, target %p stub!\n", iface, fullscreen, target);
+    struct dxgi_swapchain *swapchain = impl_from_IDXGISwapChain(iface);
+    struct wined3d_swapchain_desc swapchain_desc;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, fullscreen %#x, target %p.\n", iface, fullscreen, target);
+
+    if (!fullscreen && target)
+    {
+        WARN("Invalid call.\n");
+        return DXGI_ERROR_INVALID_CALL;
+    }
+
+    if (fullscreen)
+    {
+        if (target)
+        {
+            IDXGIOutput_AddRef(target);
+        }
+        else if (FAILED(hr = IDXGISwapChain_GetContainingOutput(iface, &target)))
+        {
+            WARN("Failed to get default target output for swapchain, hr %#x.\n", hr);
+            return hr;
+        }
+    }
+
+    swapchain->fullscreen = fullscreen;
+    if (swapchain->target)
+        IDXGIOutput_Release(swapchain->target);
+    swapchain->target = target;
+
+    wined3d_mutex_lock();
+    wined3d_swapchain_get_desc(swapchain->wined3d_swapchain, &swapchain_desc);
+    swapchain_desc.windowed = !fullscreen;
+    hr = wined3d_swapchain_set_fullscreen(swapchain->wined3d_swapchain, &swapchain_desc, NULL);
+    wined3d_mutex_unlock();
+
+    return hr;
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetFullscreenState(IDXGISwapChain *iface,
         BOOL *fullscreen, IDXGIOutput **target)
 {
-    FIXME("iface %p, fullscreen %p, target %p stub!\n", iface, fullscreen, target);
+    struct dxgi_swapchain *swapchain = impl_from_IDXGISwapChain(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, fullscreen %p, target %p.\n", iface, fullscreen, target);
+
+    if (fullscreen)
+        *fullscreen = swapchain->fullscreen;
+
+    if (target)
+    {
+        *target = swapchain->target;
+        if (*target)
+            IDXGIOutput_AddRef(*target);
+    }
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetDesc(IDXGISwapChain *iface, DXGI_SWAP_CHAIN_DESC *desc)
@@ -231,7 +277,7 @@ static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetDesc(IDXGISwapChain *iface, D
     wined3d_swapchain_get_desc(swapchain->wined3d_swapchain, &wined3d_desc);
     wined3d_mutex_unlock();
 
-    FIXME("Ignoring ScanlineOrdering, Scaling, SwapEffect and Flags\n");
+    FIXME("Ignoring ScanlineOrdering, Scaling and SwapEffect.\n");
 
     desc->BufferDesc.Width = wined3d_desc.backbuffer_width;
     desc->BufferDesc.Height = wined3d_desc.backbuffer_height;
@@ -245,7 +291,7 @@ static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetDesc(IDXGISwapChain *iface, D
     desc->OutputWindow = wined3d_desc.device_window;
     desc->Windowed = wined3d_desc.windowed;
     desc->SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-    desc->Flags = 0;
+    desc->Flags = dxgi_swapchain_flags_from_wined3d(wined3d_desc.flags);
 
     return S_OK;
 }
@@ -291,18 +337,47 @@ static HRESULT STDMETHODCALLTYPE dxgi_swapchain_ResizeBuffers(IDXGISwapChain *if
 static HRESULT STDMETHODCALLTYPE dxgi_swapchain_ResizeTarget(IDXGISwapChain *iface,
         const DXGI_MODE_DESC *target_mode_desc)
 {
-    FIXME("iface %p, target_mode_desc %p stub!\n", iface, target_mode_desc);
+    struct dxgi_swapchain *swapchain = impl_from_IDXGISwapChain(iface);
+    struct wined3d_display_mode mode;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, target_mode_desc %p.\n", iface, target_mode_desc);
+
+    if (!target_mode_desc)
+        return DXGI_ERROR_INVALID_CALL;
+
+    TRACE("Mode: %s.\n", debug_dxgi_mode(target_mode_desc));
+
+    if (target_mode_desc->Scaling)
+        FIXME("Ignoring scaling %#x.\n", target_mode_desc->Scaling);
+
+    mode.width = target_mode_desc->Width;
+    mode.height = target_mode_desc->Height;
+    mode.refresh_rate = dxgi_rational_to_uint(&target_mode_desc->RefreshRate);
+    mode.format_id = wined3dformat_from_dxgi_format(target_mode_desc->Format);
+    mode.scanline_ordering = wined3d_scanline_ordering_from_dxgi(target_mode_desc->ScanlineOrdering);
+
+    wined3d_mutex_lock();
+    hr = wined3d_swapchain_resize_target(swapchain->wined3d_swapchain, &mode);
+    wined3d_mutex_unlock();
+
+    return hr;
 }
 
 static HRESULT STDMETHODCALLTYPE dxgi_swapchain_GetContainingOutput(IDXGISwapChain *iface, IDXGIOutput **output)
 {
+    struct dxgi_swapchain *swapchain = impl_from_IDXGISwapChain(iface);
     IDXGIAdapter *adapter;
     IDXGIDevice *device;
     HRESULT hr;
 
     TRACE("iface %p, output %p.\n", iface, output);
+
+    if (swapchain->target)
+    {
+        IDXGIOutput_AddRef(*output = swapchain->target);
+        return S_OK;
+    }
 
     if (FAILED(hr = dxgi_swapchain_GetDevice(iface, &IID_IDXGIDevice, (void **)&device)))
         return hr;
@@ -397,8 +472,7 @@ HRESULT dxgi_swapchain_init(struct dxgi_swapchain *swapchain, struct dxgi_device
             WARN("Failed to get adapter parent, hr %#x.\n", hr);
             return hr;
         }
-        swapchain->device = &device->IWineDXGIDevice_iface;
-        IWineDXGIDevice_AddRef(swapchain->device);
+        IWineDXGIDevice_AddRef(swapchain->device = &device->IWineDXGIDevice_iface);
     }
     else
     {
@@ -411,19 +485,45 @@ HRESULT dxgi_swapchain_init(struct dxgi_swapchain *swapchain, struct dxgi_device
     wined3d_mutex_lock();
     wined3d_private_store_init(&swapchain->private_store);
 
+    swapchain->fullscreen = !desc->windowed;
+    desc->windowed = TRUE;
     if (FAILED(hr = wined3d_swapchain_create(device->wined3d_device, desc, swapchain,
             &dxgi_swapchain_wined3d_parent_ops, &swapchain->wined3d_swapchain)))
     {
         WARN("Failed to create wined3d swapchain, hr %#x.\n", hr);
-        wined3d_private_store_cleanup(&swapchain->private_store);
-        wined3d_mutex_unlock();
-        if (swapchain->factory)
-            IDXGIFactory_Release(swapchain->factory);
-        if (swapchain->device)
-            IWineDXGIDevice_Release(swapchain->device);
-        return hr;
+        goto cleanup;
+    }
+
+    swapchain->target = NULL;
+    if (swapchain->fullscreen)
+    {
+        desc->windowed = FALSE;
+        if (FAILED(hr = wined3d_swapchain_set_fullscreen(swapchain->wined3d_swapchain,
+                desc, NULL)))
+        {
+            WARN("Failed to set fullscreen state, hr %#x.\n", hr);
+            wined3d_swapchain_decref(swapchain->wined3d_swapchain);
+            goto cleanup;
+        }
+
+        if (FAILED(hr = IDXGISwapChain_GetContainingOutput(&swapchain->IDXGISwapChain_iface,
+                &swapchain->target)))
+        {
+            WARN("Failed to get target output for fullscreen swapchain, hr %#x.\n", hr);
+            wined3d_swapchain_decref(swapchain->wined3d_swapchain);
+            goto cleanup;
+        }
     }
     wined3d_mutex_unlock();
 
     return S_OK;
+
+cleanup:
+    wined3d_private_store_cleanup(&swapchain->private_store);
+    wined3d_mutex_unlock();
+    if (swapchain->factory)
+        IDXGIFactory_Release(swapchain->factory);
+    if (swapchain->device)
+        IWineDXGIDevice_Release(swapchain->device);
+    return hr;
 }

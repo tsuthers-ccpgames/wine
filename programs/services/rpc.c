@@ -85,50 +85,44 @@ struct sc_lock
     struct scmdatabase *db;
 };
 
-static HANDLE timeout_queue_event;
-static CRITICAL_SECTION timeout_queue_cs;
-static CRITICAL_SECTION_DEBUG timeout_queue_cs_debug =
+static PTP_CLEANUP_GROUP cleanup_group;
+HANDLE exit_event;
+
+static void CALLBACK group_cancel_callback(void *object, void *userdata)
 {
-    0, 0, &timeout_queue_cs,
-    { &timeout_queue_cs_debug.ProcessLocksList, &timeout_queue_cs_debug.ProcessLocksList },
-    0, 0, { (DWORD_PTR)(__FILE__ ": timeout_queue_cs") }
-};
-static CRITICAL_SECTION timeout_queue_cs = { &timeout_queue_cs_debug, -1, 0, 0, 0, 0 };
-static struct list timeout_queue = LIST_INIT(timeout_queue);
-struct timeout_queue_elem
+    struct process_entry *process = object;
+    release_process(process);
+}
+
+static void CALLBACK terminate_callback(TP_CALLBACK_INSTANCE *instance, void *context,
+                                        TP_WAIT *wait, TP_WAIT_RESULT result)
 {
-    struct list entry;
+    struct process_entry *process = context;
+    if (result == WAIT_TIMEOUT) process_terminate(process);
+    release_process(process);
+    CloseThreadpoolWait(wait);
+}
 
-    FILETIME time;
-    void (*func)(struct process_entry *);
-    struct process_entry *process;
-};
-
-static void run_after_timeout(void (*func)(struct process_entry *), struct process_entry *process, DWORD timeout)
+static void terminate_after_timeout(struct process_entry *process, DWORD timeout)
 {
-    struct timeout_queue_elem *elem = HeapAlloc(GetProcessHeap(), 0, sizeof(struct timeout_queue_elem));
-    ULARGE_INTEGER time;
+    TP_CALLBACK_ENVIRON environment;
+    LARGE_INTEGER timestamp;
+    TP_WAIT *wait;
+    FILETIME ft;
 
-    if(!elem) {
-        func(process);
-        return;
-    }
+    memset(&environment, 0, sizeof(environment));
+    environment.Version = 1;
+    environment.CleanupGroup = cleanup_group;
+    environment.CleanupGroupCancelCallback = group_cancel_callback;
 
-    elem->func = func;
-    elem->process = grab_process(process);
+    timestamp.QuadPart = (ULONGLONG)timeout * -10000;
+    ft.dwLowDateTime   = timestamp.u.LowPart;
+    ft.dwHighDateTime  = timestamp.u.HighPart;
 
-    GetSystemTimeAsFileTime(&elem->time);
-    time.u.LowPart = elem->time.dwLowDateTime;
-    time.u.HighPart = elem->time.dwHighDateTime;
-    time.QuadPart += (ULONGLONG)timeout * 10000;
-    elem->time.dwLowDateTime = time.u.LowPart;
-    elem->time.dwHighDateTime = time.u.HighPart;
-
-    EnterCriticalSection(&timeout_queue_cs);
-    list_add_head(&timeout_queue, &elem->entry);
-    LeaveCriticalSection(&timeout_queue_cs);
-
-    SetEvent(timeout_queue_event);
+    if ((wait = CreateThreadpoolWait(terminate_callback, grab_process(process), &environment)))
+        SetThreadpoolWait(wait, process->process, &ft);
+    else
+        release_process(process);
 }
 
 static void free_service_strings(struct service_entry *old, struct service_entry *new)
@@ -377,9 +371,7 @@ DWORD __cdecl svcctl_OpenServiceW(
         return ERROR_INVALID_NAME;
 
     scmdatabase_lock(manager->db);
-    entry = scmdatabase_find_service(manager->db, lpServiceName);
-    if (entry != NULL)
-        InterlockedIncrement(&entry->ref_count);
+    entry = grab_service(scmdatabase_find_service(manager->db, lpServiceName));
     scmdatabase_unlock(manager->db);
 
     if (entry == NULL)
@@ -759,22 +751,21 @@ DWORD __cdecl svcctl_SetServiceStatus(
         return err;
 
     service_lock(service->service_entry);
+
     /* FIXME: be a bit more discriminant about what parts of the status we set
      * and check that fields are valid */
-    service->service_entry->status.dwServiceType = lpServiceStatus->dwServiceType;
-    service->service_entry->status.dwCurrentState = lpServiceStatus->dwCurrentState;
-    service->service_entry->status.dwControlsAccepted = lpServiceStatus->dwControlsAccepted;
-    service->service_entry->status.dwWin32ExitCode = lpServiceStatus->dwWin32ExitCode;
-    service->service_entry->status.dwServiceSpecificExitCode = lpServiceStatus->dwServiceSpecificExitCode;
-    service->service_entry->status.dwCheckPoint = lpServiceStatus->dwCheckPoint;
-    service->service_entry->status.dwWaitHint = lpServiceStatus->dwWaitHint;
-    if ((process = service->service_entry->process))
+    service->service_entry->status = *lpServiceStatus;
+    SetEvent(service->service_entry->status_changed_event);
+
+    if ((process = service->service_entry->process) &&
+        lpServiceStatus->dwCurrentState == SERVICE_STOPPED)
     {
-        if (lpServiceStatus->dwCurrentState == SERVICE_STOPPED)
-            run_after_timeout(process_terminate, process, service_kill_timeout);
-        else
-            SetEvent(process->status_changed_event);
+        service->service_entry->process = NULL;
+        if (!--process->use_count)
+            terminate_after_timeout(process, service_kill_timeout);
+        release_process(process);
     }
+
     service_unlock(service->service_entry);
 
     return ERROR_SUCCESS;
@@ -886,6 +877,14 @@ DWORD __cdecl svcctl_QueryServiceConfig2W( SC_RPC_HANDLE hService, DWORD level,
     return err;
 }
 
+static void fill_status_process(SERVICE_STATUS_PROCESS *status, struct service_entry *service)
+{
+    struct process_entry *process = service->process;
+    memcpy(status, &service->status, sizeof(service->status));
+    status->dwProcessId     = process ? process->process_id : 0;
+    status->dwServiceFlags  = 0;
+}
+
 DWORD __cdecl svcctl_QueryServiceStatusEx(
     SC_RPC_HANDLE hService,
     SC_STATUS_TYPE InfoLevel,
@@ -918,17 +917,7 @@ DWORD __cdecl svcctl_QueryServiceStatusEx(
     }
 
     service_lock(service->service_entry);
-
-    pSvcStatusData->dwServiceType = service->service_entry->status.dwServiceType;
-    pSvcStatusData->dwCurrentState = service->service_entry->status.dwCurrentState;
-    pSvcStatusData->dwControlsAccepted = service->service_entry->status.dwControlsAccepted;
-    pSvcStatusData->dwWin32ExitCode = service->service_entry->status.dwWin32ExitCode;
-    pSvcStatusData->dwServiceSpecificExitCode = service->service_entry->status.dwServiceSpecificExitCode;
-    pSvcStatusData->dwCheckPoint = service->service_entry->status.dwCheckPoint;
-    pSvcStatusData->dwWaitHint = service->service_entry->status.dwWaitHint;
-    pSvcStatusData->dwProcessId = service->service_entry->status.dwProcessId;
-    pSvcStatusData->dwServiceFlags = service->service_entry->status.dwServiceFlags;
-
+    fill_status_process(pSvcStatusData, service->service_entry);
     service_unlock(service->service_entry);
 
     return ERROR_SUCCESS;
@@ -940,6 +929,9 @@ DWORD __cdecl svcctl_QueryServiceStatusEx(
 static BOOL service_accepts_control(const struct service_entry *service, DWORD dwControl)
 {
     DWORD a = service->status.dwControlsAccepted;
+
+    if (dwControl >= 128 && dwControl <= 255)
+        return TRUE;
 
     switch (dwControl)
     {
@@ -1032,28 +1024,29 @@ BOOL process_send_command(struct process_entry *process, const void *data, DWORD
         return FALSE;
     }
 
-    *result = ERROR_SUCCESS;
     return TRUE;
 }
 
 /******************************************************************************
  * process_send_control
  */
-static BOOL process_send_control(struct process_entry *process, const WCHAR *name, DWORD dwControl, DWORD *result)
+static BOOL process_send_control(struct process_entry *process, const WCHAR *name, DWORD control,
+                                 const BYTE *data, DWORD data_size, DWORD *result)
 {
     service_start_info *ssi;
     DWORD len;
     BOOL r;
 
     /* calculate how much space we need to send the startup info */
-    len = strlenW(name) + 1;
+    len = (strlenW(name) + 1) * sizeof(WCHAR) + data_size;
 
     ssi = HeapAlloc(GetProcessHeap(),0,FIELD_OFFSET(service_start_info, data[len]));
     ssi->cmd = WINESERV_SENDCONTROL;
-    ssi->control = dwControl;
+    ssi->control = control;
     ssi->total_size = FIELD_OFFSET(service_start_info, data[len]);
     ssi->name_size = strlenW(name) + 1;
-    strcpyW(ssi->data, name);
+    strcpyW((WCHAR *)ssi->data, name);
+    if (data_size) memcpy(&ssi->data[ssi->name_size * sizeof(WCHAR)], data, data_size);
 
     r = process_send_command(process, ssi, ssi->total_size, result);
     HeapFree( GetProcessHeap(), 0, ssi );
@@ -1076,8 +1069,12 @@ DWORD __cdecl svcctl_StartServiceW(
     if (service->service_entry->config.dwStartType == SERVICE_DISABLED)
         return ERROR_SERVICE_DISABLED;
 
+    if (!scmdatabase_lock_startup(service->service_entry->db))
+        return ERROR_SERVICE_DATABASE_LOCKED;
+
     err = service_start(service->service_entry, dwNumServiceArgs, lpServiceArgVectors);
 
+    scmdatabase_unlock_startup(service->service_entry->db);
     return err;
 }
 
@@ -1090,7 +1087,6 @@ DWORD __cdecl svcctl_ControlService(
     struct sc_service_handle *service;
     struct process_entry *process;
     DWORD result;
-    BOOL ret;
 
     WINE_TRACE("(%p, %d, %p)\n", hService, dwControl, lpServiceStatus);
 
@@ -1141,21 +1137,17 @@ DWORD __cdecl svcctl_ControlService(
     if (result == ERROR_SUCCESS && service->service_entry->force_shutdown)
     {
         result = ERROR_SERVICE_CANNOT_ACCEPT_CTRL;
-        service_terminate(service->service_entry);
+        if ((process = service->service_entry->process))
+        {
+            service->service_entry->process = NULL;
+            if (!--process->use_count) process_terminate(process);
+            release_process(process);
+        }
     }
 
     if (result != ERROR_SUCCESS)
     {
-        if (lpServiceStatus)
-        {
-            lpServiceStatus->dwServiceType = service->service_entry->status.dwServiceType;
-            lpServiceStatus->dwCurrentState = service->service_entry->status.dwCurrentState;
-            lpServiceStatus->dwControlsAccepted = service->service_entry->status.dwControlsAccepted;
-            lpServiceStatus->dwWin32ExitCode = service->service_entry->status.dwWin32ExitCode;
-            lpServiceStatus->dwServiceSpecificExitCode = service->service_entry->status.dwServiceSpecificExitCode;
-            lpServiceStatus->dwCheckPoint = service->service_entry->status.dwCheckPoint;
-            lpServiceStatus->dwWaitHint = service->service_entry->status.dwWaitHint;
-        }
+        if (lpServiceStatus) *lpServiceStatus = service->service_entry->status;
         service_unlock(service->service_entry);
         return result;
     }
@@ -1178,25 +1170,20 @@ DWORD __cdecl svcctl_ControlService(
     if (!process)
         return ERROR_SERVICE_CANNOT_ACCEPT_CTRL;
 
-    ret = WaitForSingleObject(process->control_mutex, 30000);
-    if (ret != WAIT_OBJECT_0)
+    result = WaitForSingleObject(process->control_mutex, 30000);
+    if (result != WAIT_OBJECT_0)
     {
         release_process(process);
         return ERROR_SERVICE_REQUEST_TIMEOUT;
     }
 
-    process_send_control(process, service->service_entry->name, dwControl, &result);
+    if (process_send_control(process, service->service_entry->name, dwControl, NULL, 0, &result))
+        result = ERROR_SUCCESS;
 
     if (lpServiceStatus)
     {
         service_lock(service->service_entry);
-        lpServiceStatus->dwServiceType = service->service_entry->status.dwServiceType;
-        lpServiceStatus->dwCurrentState = service->service_entry->status.dwCurrentState;
-        lpServiceStatus->dwControlsAccepted = service->service_entry->status.dwControlsAccepted;
-        lpServiceStatus->dwWin32ExitCode = service->service_entry->status.dwWin32ExitCode;
-        lpServiceStatus->dwServiceSpecificExitCode = service->service_entry->status.dwServiceSpecificExitCode;
-        lpServiceStatus->dwCheckPoint = service->service_entry->status.dwCheckPoint;
-        lpServiceStatus->dwWaitHint = service->service_entry->status.dwWaitHint;
+        *lpServiceStatus = service->service_entry->status;
         service_unlock(service->service_entry);
     }
 
@@ -1241,9 +1228,8 @@ DWORD __cdecl svcctl_LockServiceDatabase(
     if ((err = validate_scm_handle(hSCManager, SC_MANAGER_LOCK, &manager)) != ERROR_SUCCESS)
         return err;
 
-    err = scmdatabase_lock_startup(manager->db);
-    if (err != ERROR_SUCCESS)
-        return err;
+    if (!scmdatabase_lock_startup(manager->db))
+        return ERROR_SERVICE_DATABASE_LOCKED;
 
     lock = HeapAlloc(GetProcessHeap(), 0, sizeof(struct sc_lock));
     if (!lock)
@@ -1360,7 +1346,7 @@ DWORD __cdecl svcctl_EnumServicesStatusW(
                 s->lpDisplayName = (WCHAR *)offset;
                 offset += sz;
             }
-            memcpy(&s->ServiceStatus, &service->status, sizeof(SERVICE_STATUS));
+            s->ServiceStatus = service->status;
             s++;
         }
     }
@@ -1485,7 +1471,7 @@ DWORD __cdecl svcctl_EnumServicesStatusExW(
                 s->lpDisplayName = (WCHAR *)offset;
                 offset += sz;
             }
-            s->ServiceStatusProcess = service->status;
+            fill_status_process(&s->ServiceStatusProcess, service);
             s++;
         }
     }
@@ -1888,6 +1874,12 @@ DWORD RPC_Init(void)
     WCHAR endpoint[] = SVCCTL_ENDPOINT;
     DWORD err;
 
+    if (!(cleanup_group = CreateThreadpoolCleanupGroup()))
+    {
+        WINE_ERR("CreateThreadpoolCleanupGroup failed with error %u\n", GetLastError());
+        return GetLastError();
+    }
+
     if ((err = RpcServerUseProtseqEpW(transport, 0, endpoint, NULL)) != ERROR_SUCCESS)
     {
         WINE_ERR("RpcServerUseProtseq failed with error %u\n", err);
@@ -1905,106 +1897,19 @@ DWORD RPC_Init(void)
         WINE_ERR("RpcServerListen failed with error %u\n", err);
         return err;
     }
+
+    exit_event = __wine_make_process_system();
     return ERROR_SUCCESS;
 }
 
-DWORD events_loop(void)
+void RPC_Stop(void)
 {
-    struct timeout_queue_elem *iter, *iter_safe;
-    DWORD err;
-    HANDLE wait_handles[MAXIMUM_WAIT_OBJECTS];
-    DWORD timeout = INFINITE;
+    RpcMgmtStopServerListening(NULL);
+    RpcServerUnregisterIf(svcctl_v2_0_s_ifspec, NULL, TRUE);
 
-    wait_handles[0] = __wine_make_process_system();
-    wait_handles[1] = CreateEventW(NULL, FALSE, FALSE, NULL);
-    timeout_queue_event = wait_handles[1];
-
-    SetEvent(g_hStartedEvent);
-
-    WINE_TRACE("Entered main loop\n");
-
-    do
-    {
-        DWORD num_handles = 2;
-
-        /* monitor tracked process handles for process end */
-        EnterCriticalSection(&timeout_queue_cs);
-        LIST_FOR_EACH_ENTRY(iter, &timeout_queue, struct timeout_queue_elem, entry)
-        {
-            if(num_handles == MAXIMUM_WAIT_OBJECTS){
-                WINE_TRACE("Exceeded maximum wait object count\n");
-                break;
-            }
-            wait_handles[num_handles] = iter->process->process;
-            num_handles++;
-        }
-        LeaveCriticalSection(&timeout_queue_cs);
-
-        err = WaitForMultipleObjects(num_handles, wait_handles, FALSE, timeout);
-        WINE_TRACE("Wait returned %d\n", err);
-
-        if(err > WAIT_OBJECT_0 || err == WAIT_TIMEOUT)
-        {
-            FILETIME cur_time;
-            ULARGE_INTEGER time;
-            DWORD idx = 0;
-
-            GetSystemTimeAsFileTime(&cur_time);
-            time.u.LowPart = cur_time.dwLowDateTime;
-            time.u.HighPart = cur_time.dwHighDateTime;
-
-            EnterCriticalSection(&timeout_queue_cs);
-            timeout = INFINITE;
-            LIST_FOR_EACH_ENTRY_SAFE(iter, iter_safe, &timeout_queue, struct timeout_queue_elem, entry)
-            {
-                if(CompareFileTime(&cur_time, &iter->time) >= 0 ||
-                        (err > WAIT_OBJECT_0 + 1 && idx == err - WAIT_OBJECT_0 - 2))
-                {
-                    LeaveCriticalSection(&timeout_queue_cs);
-                    iter->func(iter->process);
-                    EnterCriticalSection(&timeout_queue_cs);
-
-                    release_process(iter->process);
-                    list_remove(&iter->entry);
-                    HeapFree(GetProcessHeap(), 0, iter);
-                }
-                else
-                {
-                    ULARGE_INTEGER time_diff;
-
-                    time_diff.u.LowPart = iter->time.dwLowDateTime;
-                    time_diff.u.HighPart = iter->time.dwHighDateTime;
-                    time_diff.QuadPart = (time_diff.QuadPart-time.QuadPart)/10000;
-
-                    if(time_diff.QuadPart < timeout)
-                        timeout = time_diff.QuadPart;
-                }
-                idx++;
-            }
-            LeaveCriticalSection(&timeout_queue_cs);
-
-            if(timeout != INFINITE)
-                timeout += 1000;
-        }
-    } while (err != WAIT_OBJECT_0);
-
-    WINE_TRACE("Object signaled - wine shutdown\n");
-    EnterCriticalSection(&timeout_queue_cs);
-    LIST_FOR_EACH_ENTRY_SAFE(iter, iter_safe, &timeout_queue, struct timeout_queue_elem, entry)
-    {
-        LeaveCriticalSection(&timeout_queue_cs);
-        iter->func(iter->process);
-        EnterCriticalSection(&timeout_queue_cs);
-
-        release_process(iter->process);
-        list_remove(&iter->entry);
-        HeapFree(GetProcessHeap(), 0, iter);
-    }
-    LeaveCriticalSection(&timeout_queue_cs);
-
-    CloseHandle(wait_handles[0]);
-    CloseHandle(wait_handles[1]);
-    return ERROR_SUCCESS;
+    CloseThreadpoolCleanupGroupMembers(cleanup_group, TRUE, NULL);
+    CloseThreadpoolCleanupGroup(cleanup_group);
+    CloseHandle(exit_event);
 }
 
 void __RPC_USER SC_RPC_HANDLE_rundown(SC_RPC_HANDLE handle)

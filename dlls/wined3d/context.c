@@ -378,7 +378,7 @@ static inline void context_set_fbo_key_for_surface(const struct wined3d_context 
         struct wined3d_fbo_entry_key *key, UINT idx, struct wined3d_surface *surface,
         DWORD location)
 {
-    if (!surface)
+    if (!surface || surface->container->resource.format->id == WINED3DFMT_NULL)
     {
         key->objects[idx].object = 0;
         key->objects[idx].target = 0;
@@ -1550,6 +1550,25 @@ static void bind_dummy_textures(const struct wined3d_device *device, const struc
     }
 }
 
+void wined3d_check_gl_call(const struct wined3d_gl_info *gl_info,
+        const char *file, unsigned int line, const char *name)
+{
+    GLint err;
+
+    if (gl_info->supported[ARB_DEBUG_OUTPUT] || (err = gl_info->gl_ops.gl.p_glGetError()) == GL_NO_ERROR)
+    {
+        TRACE("%s call ok %s / %u.\n", name, file, line);
+        return;
+    }
+
+    do
+    {
+        ERR(">>>>>>> %s (%#x) from %s @ %s / %u.\n",
+                debug_glerror(err), err, name, file,line);
+        err = gl_info->gl_ops.gl.p_glGetError();
+    } while (err != GL_NO_ERROR);
+}
+
 static BOOL context_debug_output_enabled(const struct wined3d_gl_info *gl_info)
 {
     return gl_info->supported[ARB_DEBUG_OUTPUT]
@@ -1636,14 +1655,10 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
     if (!ret)
         return NULL;
 
-    ret->blit_targets = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
-            gl_info->limits.buffers * sizeof(*ret->blit_targets));
-    if (!ret->blit_targets)
+    if (!(ret->blit_targets = wined3d_calloc(gl_info->limits.buffers, sizeof(*ret->blit_targets))))
         goto out;
 
-    ret->draw_buffers = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
-            gl_info->limits.buffers * sizeof(*ret->draw_buffers));
-    if (!ret->draw_buffers)
+    if (!(ret->draw_buffers = wined3d_calloc(gl_info->limits.buffers, sizeof(*ret->draw_buffers))))
         goto out;
 
     ret->fbo_key = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
@@ -1652,24 +1667,21 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
         goto out;
 
     ret->free_timestamp_query_size = 4;
-    ret->free_timestamp_queries = HeapAlloc(GetProcessHeap(), 0,
-            ret->free_timestamp_query_size * sizeof(*ret->free_timestamp_queries));
-    if (!ret->free_timestamp_queries)
+    if (!(ret->free_timestamp_queries = wined3d_calloc(ret->free_timestamp_query_size,
+            sizeof(*ret->free_timestamp_queries))))
         goto out;
     list_init(&ret->timestamp_queries);
 
     ret->free_occlusion_query_size = 4;
-    ret->free_occlusion_queries = HeapAlloc(GetProcessHeap(), 0,
-            ret->free_occlusion_query_size * sizeof(*ret->free_occlusion_queries));
-    if (!ret->free_occlusion_queries)
+    if (!(ret->free_occlusion_queries = wined3d_calloc(ret->free_occlusion_query_size,
+            sizeof(*ret->free_occlusion_queries))))
         goto out;
 
     list_init(&ret->occlusion_queries);
 
     ret->free_event_query_size = 4;
-    ret->free_event_queries = HeapAlloc(GetProcessHeap(), 0,
-            ret->free_event_query_size * sizeof(*ret->free_event_queries));
-    if (!ret->free_event_queries)
+    if (!(ret->free_event_queries = wined3d_calloc(ret->free_event_query_size,
+            sizeof(*ret->free_event_queries))))
         goto out;
 
     list_init(&ret->event_queries);
@@ -1975,7 +1987,8 @@ struct wined3d_context *context_create(struct wined3d_swapchain *swapchain,
             | (1u << WINED3D_SHADER_TYPE_VERTEX)
             | (1u << WINED3D_SHADER_TYPE_GEOMETRY)
             | (1u << WINED3D_SHADER_TYPE_HULL)
-            | (1u << WINED3D_SHADER_TYPE_DOMAIN);
+            | (1u << WINED3D_SHADER_TYPE_DOMAIN)
+            | (1u << WINED3D_SHADER_TYPE_COMPUTE);
 
     /* If this happens to be the first context for the device, dummy textures
      * are not created yet. In that case, they will be created (and bound) by
@@ -2442,7 +2455,6 @@ static void context_validate_onscreen_formats(struct wined3d_context *context,
 {
     /* Onscreen surfaces are always in a swapchain */
     struct wined3d_swapchain *swapchain = context->current_rt.texture->swapchain;
-    struct wined3d_surface *surface;
 
     if (context->render_offscreen || !depth_stencil) return;
     if (match_depth_stencil_format(swapchain->ds_format, depth_stencil->format)) return;
@@ -2453,8 +2465,9 @@ static void context_validate_onscreen_formats(struct wined3d_context *context,
     WARN("Depth stencil format is not supported by WGL, rendering the backbuffer in an FBO\n");
 
     /* The currently active context is the necessary context to access the swapchain's onscreen buffers */
-    surface = context->current_rt.texture->sub_resources[context->current_rt.sub_resource_idx].u.surface;
-    surface_load_location(surface, context, WINED3D_LOCATION_TEXTURE_RGB);
+    if (!(wined3d_texture_load_location(context->current_rt.texture, context->current_rt.sub_resource_idx,
+            context, WINED3D_LOCATION_TEXTURE_RGB)))
+        ERR("Failed to load location.\n");
     swapchain->render_to_fbo = TRUE;
     swapchain_update_draw_bindings(swapchain);
     context_set_render_offscreen(context, TRUE);
@@ -3020,12 +3033,17 @@ void context_stream_info_from_declaration(struct wined3d_context *context,
 {
     /* We need to deal with frequency data! */
     struct wined3d_vertex_declaration *declaration = state->vertex_declaration;
-    BOOL use_vshader = use_vs(state);
     BOOL generic_attributes = context->d3d_info->ffp_generic_attributes;
+    BOOL use_vshader = use_vs(state);
     unsigned int i;
 
     stream_info->use_map = 0;
     stream_info->swizzle_map = 0;
+    stream_info->position_transformed = 0;
+
+    if (!declaration)
+        return;
+
     stream_info->position_transformed = declaration->position_transformed;
 
     /* Translate the declaration into strided data. */
@@ -3120,9 +3138,9 @@ void context_stream_info_from_declaration(struct wined3d_context *context,
 /* Context activation is done by the caller. */
 static void context_update_stream_info(struct wined3d_context *context, const struct wined3d_state *state)
 {
-    const struct wined3d_gl_info *gl_info = context->gl_info;
-    const struct wined3d_d3d_info *d3d_info = context->d3d_info;
     struct wined3d_stream_info *stream_info = &context->stream_info;
+    const struct wined3d_d3d_info *d3d_info = context->d3d_info;
+    const struct wined3d_gl_info *gl_info = context->gl_info;
     DWORD prev_all_vbo = stream_info->all_vbo;
     unsigned int i;
     WORD map;
@@ -3177,33 +3195,32 @@ static void context_update_stream_info(struct wined3d_context *context, const st
         TRACE("Load array %u {%#x:%p}.\n", i, element->data.buffer_object, element->data.addr);
     }
 
+    if (prev_all_vbo != stream_info->all_vbo)
+        context_invalidate_state(context, STATE_INDEXBUFFER);
+
+    context->use_immediate_mode_draw = FALSE;
+
+    if (stream_info->all_vbo)
+        return;
+
     if (use_vs(state))
     {
-        if (state->vertex_declaration->half_float_conv_needed && !stream_info->all_vbo)
+        if (state->vertex_declaration->half_float_conv_needed)
         {
             TRACE("Using immediate mode draw with vertex shaders for FLOAT16 conversion.\n");
             context->use_immediate_mode_draw = TRUE;
-        }
-        else
-        {
-            context->use_immediate_mode_draw = FALSE;
         }
     }
     else
     {
         WORD slow_mask = -!d3d_info->ffp_generic_attributes & (1u << WINED3D_FFP_PSIZE);
-        slow_mask |= -!gl_info->supported[ARB_VERTEX_ARRAY_BGRA]
-                & ((1u << WINED3D_FFP_DIFFUSE) | (1u << WINED3D_FFP_SPECULAR));
+        slow_mask |= -(!gl_info->supported[ARB_VERTEX_ARRAY_BGRA] && !d3d_info->ffp_generic_attributes)
+                & ((1u << WINED3D_FFP_DIFFUSE) | (1u << WINED3D_FFP_SPECULAR) | (1u << WINED3D_FFP_BLENDWEIGHT));
 
-        if (((stream_info->position_transformed && !d3d_info->xyzrhw)
-                || (stream_info->use_map & slow_mask)) && !stream_info->all_vbo)
+        if ((stream_info->position_transformed && !d3d_info->xyzrhw)
+                || (stream_info->use_map & slow_mask))
             context->use_immediate_mode_draw = TRUE;
-        else
-            context->use_immediate_mode_draw = FALSE;
     }
-
-    if (prev_all_vbo != stream_info->all_vbo)
-        context_invalidate_state(context, STATE_INDEXBUFFER);
 }
 
 /* Context activation is done by the caller. */
@@ -3295,7 +3312,6 @@ static void context_bind_shader_resources(struct wined3d_context *context, const
     struct wined3d_shader_sampler_map_entry *entry;
     struct wined3d_shader_resource_view *view;
     struct wined3d_sampler *sampler;
-    struct wined3d_texture *texture;
     struct wined3d_shader *shader;
     unsigned int i, j, count;
     GLuint sampler_name;
@@ -3335,32 +3351,17 @@ static void context_bind_shader_resources(struct wined3d_context *context, const
                 continue;
             }
 
-            if (view->resource->type == WINED3D_RTYPE_BUFFER)
-            {
-                FIXME("Buffer shader resources not supported.\n");
-                continue;
-            }
-
             if (entry->sampler_idx == WINED3D_SAMPLER_DEFAULT)
-            {
                 sampler_name = device->default_sampler;
-            }
             else if ((sampler = state->sampler[shader_types[i].type][entry->sampler_idx]))
-            {
                 sampler_name = sampler->name;
-            }
             else
-            {
-                WARN("No sampler object bound at index %u, %u.\n", shader_types[i].type, entry->sampler_idx);
-                continue;
-            }
+                sampler_name = device->null_sampler;
 
-            texture = texture_from_resource(view->resource);
             context_active_texture(context, gl_info, shader_types[i].base_idx + entry->bind_idx);
-            wined3d_texture_bind(texture, context, FALSE);
-
             GL_EXTCALL(glBindSampler(shader_types[i].base_idx + entry->bind_idx, sampler_name));
             checkGLcall("glBindSampler");
+            wined3d_shader_resource_view_bind(view, context);
         }
     }
 }

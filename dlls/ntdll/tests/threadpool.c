@@ -1,7 +1,7 @@
 /*
  * Unit test suite for thread pool functions
  *
- * Copyright 2015 Sebastian Lackner
+ * Copyright 2015-2016 Sebastian Lackner
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -579,14 +579,14 @@ static void test_tp_simple(void)
 static void CALLBACK work_cb(TP_CALLBACK_INSTANCE *instance, void *userdata, TP_WORK *work)
 {
     trace("Running work callback\n");
-    Sleep(10);
+    Sleep(100);
     InterlockedIncrement((LONG *)userdata);
 }
 
 static void CALLBACK work2_cb(TP_CALLBACK_INSTANCE *instance, void *userdata, TP_WORK *work)
 {
     trace("Running work2 callback\n");
-    Sleep(10);
+    Sleep(100);
     InterlockedExchangeAdd((LONG *)userdata, 0x10000);
 }
 
@@ -599,11 +599,12 @@ static void test_tp_work(void)
     LONG userdata;
     int i;
 
-    /* allocate new threadpool */
+    /* allocate new threadpool with only one thread */
     pool = NULL;
     status = pTpAllocPool(&pool, NULL);
     ok(!status, "TpAllocPool failed with status %x\n", status);
     ok(pool != NULL, "expected pool != NULL\n");
+    pTpSetPoolMaxThreads(pool, 1);
 
     /* allocate new work item */
     work = NULL;
@@ -614,12 +615,12 @@ static void test_tp_work(void)
     ok(!status, "TpAllocWork failed with status %x\n", status);
     ok(work != NULL, "expected work != NULL\n");
 
-    /* post 10 identical work items at once */
+    /* post 5 identical work items at once */
     userdata = 0;
-    for (i = 0; i < 10; i++)
+    for (i = 0; i < 5; i++)
         pTpPostWork(work);
     pTpWaitForWork(work, FALSE);
-    ok(userdata == 10, "expected userdata = 10, got %u\n", userdata);
+    ok(userdata == 5, "expected userdata = 5, got %u\n", userdata);
 
     /* add more tasks and cancel them immediately */
     userdata = 0;
@@ -643,13 +644,11 @@ static void test_tp_work_scheduler(void)
     LONG userdata;
     int i;
 
-    /* allocate new threadpool */
+    /* allocate new threadpool with only one thread */
     pool = NULL;
     status = pTpAllocPool(&pool, NULL);
     ok(!status, "TpAllocPool failed with status %x\n", status);
     ok(pool != NULL, "expected pool != NULL\n");
-
-    /* we limit the pool to a single thread */
     pTpSetPoolMaxThreads(pool, 1);
 
     /* create a cleanup group */
@@ -683,7 +682,7 @@ static void test_tp_work_scheduler(void)
         pTpPostWork(work);
     for (i = 0; i < 10; i++)
         pTpPostWork(work2);
-    Sleep(30);
+    Sleep(500);
     pTpWaitForWork(work, TRUE);
     pTpWaitForWork(work2, TRUE);
     ok(userdata & 0xffff, "expected userdata & 0xffff != 0, got %u\n", userdata & 0xffff);
@@ -691,14 +690,14 @@ static void test_tp_work_scheduler(void)
 
     /* test TpReleaseCleanupGroupMembers on a work item */
     userdata = 0;
-    for (i = 0; i < 100; i++)
-        pTpPostWork(work);
     for (i = 0; i < 10; i++)
+        pTpPostWork(work);
+    for (i = 0; i < 3; i++)
         pTpPostWork(work2);
     pTpReleaseCleanupGroupMembers(group, FALSE, NULL);
     pTpWaitForWork(work, TRUE);
-    ok((userdata & 0xffff) < 100, "expected userdata & 0xffff < 100, got %u\n", userdata & 0xffff);
-    ok((userdata >> 16) == 10, "expected userdata >> 16 == 10, got %u\n", userdata >> 16);
+    ok((userdata & 0xffff) < 10, "expected userdata & 0xffff < 10, got %u\n", userdata & 0xffff);
+    ok((userdata >> 16) == 3, "expected userdata >> 16 == 3, got %u\n", userdata >> 16);
 
     /* cleanup */
     pTpReleaseWork(work);
@@ -706,23 +705,154 @@ static void test_tp_work_scheduler(void)
     pTpReleasePool(pool);
 }
 
+static void CALLBACK simple_release_cb(TP_CALLBACK_INSTANCE *instance, void *userdata)
+{
+    HANDLE *semaphores = userdata;
+    trace("Running simple release callback\n");
+    ReleaseSemaphore(semaphores, 1, NULL);
+    Sleep(200); /* wait until main thread is in TpReleaseCleanupGroupMembers */
+}
+
+static void CALLBACK work_release_cb(TP_CALLBACK_INSTANCE *instance, void *userdata, TP_WORK *work)
+{
+    HANDLE semaphore = userdata;
+    trace("Running work release callback\n");
+    ReleaseSemaphore(semaphore, 1, NULL);
+    Sleep(200); /* wait until main thread is in TpReleaseCleanupGroupMembers */
+    pTpReleaseWork(work);
+}
+
+static void CALLBACK timer_release_cb(TP_CALLBACK_INSTANCE *instance, void *userdata, TP_TIMER *timer)
+{
+    HANDLE semaphore = userdata;
+    trace("Running timer release callback\n");
+    ReleaseSemaphore(semaphore, 1, NULL);
+    Sleep(200); /* wait until main thread is in TpReleaseCleanupGroupMembers */
+    pTpReleaseTimer(timer);
+}
+
+static void CALLBACK wait_release_cb(TP_CALLBACK_INSTANCE *instance, void *userdata,
+                                     TP_WAIT *wait, TP_WAIT_RESULT result)
+{
+    HANDLE semaphore = userdata;
+    trace("Running wait release callback\n");
+    ReleaseSemaphore(semaphore, 1, NULL);
+    Sleep(200); /* wait until main thread is in TpReleaseCleanupGroupMembers */
+    pTpReleaseWait(wait);
+}
+
+static void test_tp_group_wait(void)
+{
+    TP_CALLBACK_ENVIRON environment;
+    TP_CLEANUP_GROUP *group;
+    LARGE_INTEGER when;
+    HANDLE semaphore;
+    NTSTATUS status;
+    TP_TIMER *timer;
+    TP_WAIT *wait;
+    TP_WORK *work;
+    TP_POOL *pool;
+    DWORD result;
+
+    semaphore = CreateSemaphoreA(NULL, 0, 1, NULL);
+    ok(semaphore != NULL, "CreateSemaphoreA failed %u\n", GetLastError());
+
+    /* allocate new threadpool */
+    pool = NULL;
+    status = pTpAllocPool(&pool, NULL);
+    ok(!status, "TpAllocPool failed with status %x\n", status);
+    ok(pool != NULL, "expected pool != NULL\n");
+
+    /* allocate a cleanup group */
+    group = NULL;
+    status = pTpAllocCleanupGroup(&group);
+    ok(!status, "TpAllocCleanupGroup failed with status %x\n", status);
+    ok(group != NULL, "expected pool != NULL\n");
+
+    /* release work object during TpReleaseCleanupGroupMembers */
+    work = NULL;
+    memset(&environment, 0, sizeof(environment));
+    environment.Version = 1;
+    environment.Pool = pool;
+    environment.CleanupGroup = group;
+    status = pTpAllocWork(&work, work_release_cb, semaphore, &environment);
+    ok(!status, "TpAllocWork failed with status %x\n", status);
+    ok(work != NULL, "expected work != NULL\n");
+    pTpPostWork(work);
+    result = WaitForSingleObject(semaphore, 1000);
+    ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
+    pTpReleaseCleanupGroupMembers(group, FALSE, NULL);
+
+    /* release timer object during TpReleaseCleanupGroupMembers */
+    timer = NULL;
+    memset(&environment, 0, sizeof(environment));
+    environment.Version = 1;
+    environment.Pool = pool;
+    environment.CleanupGroup = group;
+    status = pTpAllocTimer(&timer, timer_release_cb, semaphore, &environment);
+    ok(!status, "TpAllocTimer failed with status %x\n", status);
+    ok(timer != NULL, "expected timer != NULL\n");
+    when.QuadPart = 0;
+    pTpSetTimer(timer, &when, 0, 0);
+    result = WaitForSingleObject(semaphore, 1000);
+    ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
+    pTpReleaseCleanupGroupMembers(group, FALSE, NULL);
+
+    /* release wait object during TpReleaseCleanupGroupMembers */
+    wait = NULL;
+    memset(&environment, 0, sizeof(environment));
+    environment.Version = 1;
+    environment.Pool = pool;
+    environment.CleanupGroup = group;
+    status = pTpAllocWait(&wait, wait_release_cb, semaphore, &environment);
+    ok(!status, "TpAllocWait failed with status %x\n", status);
+    ok(wait != NULL, "expected wait != NULL\n");
+    when.QuadPart = 0;
+    pTpSetWait(wait, INVALID_HANDLE_VALUE, &when);
+    result = WaitForSingleObject(semaphore, 1000);
+    ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
+    pTpReleaseCleanupGroupMembers(group, FALSE, NULL);
+
+    /* cleanup */
+    pTpReleaseCleanupGroup(group);
+    pTpReleasePool(pool);
+    CloseHandle(semaphore);
+}
+
 static DWORD group_cancel_tid;
 
-static void CALLBACK group_cancel_cb(TP_CALLBACK_INSTANCE *instance, void *userdata)
+static void CALLBACK simple_group_cancel_cb(TP_CALLBACK_INSTANCE *instance, void *userdata)
 {
     HANDLE *semaphores = userdata;
     NTSTATUS status;
     DWORD result;
+    int i;
 
-    trace("Running group cancel callback\n");
+    trace("Running simple group cancel callback\n");
 
     status = pTpCallbackMayRunLong(instance);
     ok(status == STATUS_TOO_MANY_THREADS || broken(status == 1) /* Win Vista / 2008 */,
        "expected STATUS_TOO_MANY_THREADS, got %08x\n", status);
 
-    result = WaitForSingleObject(semaphores[0], 1000);
-    ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
     ReleaseSemaphore(semaphores[1], 1, NULL);
+    for (i = 0; i < 4; i++)
+    {
+        result = WaitForSingleObject(semaphores[0], 1000);
+        ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
+    }
+    ReleaseSemaphore(semaphores[1], 1, NULL);
+}
+
+static void CALLBACK work_group_cancel_cb(TP_CALLBACK_INSTANCE *instance, void *userdata, TP_WORK *work)
+{
+    HANDLE *semaphores = userdata;
+    DWORD result;
+
+    trace("Running work group cancel callback\n");
+
+    ReleaseSemaphore(semaphores[1], 1, NULL);
+    result = WaitForSingleObject(semaphores[0], 200);
+    ok(result == WAIT_TIMEOUT, "WaitForSingleObject returned %u\n", result);
 }
 
 static void CALLBACK group_cancel_cleanup_release_cb(void *object, void *userdata)
@@ -730,6 +860,16 @@ static void CALLBACK group_cancel_cleanup_release_cb(void *object, void *userdat
     HANDLE *semaphores = userdata;
     trace("Running group cancel cleanup release callback\n");
     group_cancel_tid = GetCurrentThreadId();
+    ok(object == (void *)0xdeadbeef, "expected 0xdeadbeef, got %p\n", object);
+    ReleaseSemaphore(semaphores[0], 1, NULL);
+}
+
+static void CALLBACK group_cancel_cleanup_release2_cb(void *object, void *userdata)
+{
+    HANDLE *semaphores = userdata;
+    trace("Running group cancel cleanup release2 callback\n");
+    group_cancel_tid = GetCurrentThreadId();
+    ok(object == userdata, "expected %p, got %p\n", userdata, object);
     ReleaseSemaphore(semaphores[0], 1, NULL);
 }
 
@@ -740,7 +880,28 @@ static void CALLBACK group_cancel_cleanup_increment_cb(void *object, void *userd
     InterlockedIncrement((LONG *)userdata);
 }
 
-static void CALLBACK unexpected_cb(TP_CALLBACK_INSTANCE *instance, void *userdata)
+static void CALLBACK unexpected_simple_cb(TP_CALLBACK_INSTANCE *instance, void *userdata)
+{
+    ok(0, "Unexpected callback\n");
+}
+
+static void CALLBACK unexpected_work_cb(TP_CALLBACK_INSTANCE *instance, void *userdata, TP_WORK *work)
+{
+    ok(0, "Unexpected callback\n");
+}
+
+static void CALLBACK unexpected_timer_cb(TP_CALLBACK_INSTANCE *instance, void *userdata, TP_TIMER *timer)
+{
+    ok(0, "Unexpected callback\n");
+}
+
+static void CALLBACK unexpected_wait_cb(TP_CALLBACK_INSTANCE *instance, void *userdata,
+                                        TP_WAIT *wait, TP_WAIT_RESULT result)
+{
+    ok(0, "Unexpected callback\n");
+}
+
+static void CALLBACK unexpected_group_cancel_cleanup_cb(void *object, void *userdata)
 {
     ok(0, "Unexpected callback\n");
 }
@@ -752,12 +913,14 @@ static void test_tp_group_cancel(void)
     LONG userdata, userdata2;
     HANDLE semaphores[2];
     NTSTATUS status;
+    TP_TIMER *timer;
+    TP_WAIT *wait;
     TP_WORK *work;
     TP_POOL *pool;
     DWORD result;
     int i;
 
-    semaphores[0] = CreateSemaphoreA(NULL, 0, 1, NULL);
+    semaphores[0] = CreateSemaphoreA(NULL, 0, 4, NULL);
     ok(semaphores[0] != NULL, "CreateSemaphoreA failed %u\n", GetLastError());
     semaphores[1] = CreateSemaphoreA(NULL, 0, 1, NULL);
     ok(semaphores[1] != NULL, "CreateSemaphoreA failed %u\n", GetLastError());
@@ -779,16 +942,33 @@ static void test_tp_group_cancel(void)
     memset(&environment, 0, sizeof(environment));
     environment.Version = 1;
     environment.Pool = pool;
-    status = pTpSimpleTryPost(group_cancel_cb, semaphores, &environment);
+    status = pTpSimpleTryPost(simple_group_cancel_cb, semaphores, &environment);
     ok(!status, "TpSimpleTryPost failed with status %x\n", status);
+    result = WaitForSingleObject(semaphores[1], 1000);
+    ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
 
     memset(&environment, 0, sizeof(environment));
     environment.Version = 1;
     environment.Pool = pool;
     environment.CleanupGroup = group;
     environment.CleanupGroupCancelCallback = group_cancel_cleanup_release_cb;
-    status = pTpSimpleTryPost(unexpected_cb, NULL, &environment);
+    status = pTpSimpleTryPost(unexpected_simple_cb, (void *)0xdeadbeef, &environment);
     ok(!status, "TpSimpleTryPost failed with status %x\n", status);
+
+    work = NULL;
+    status = pTpAllocWork(&work, unexpected_work_cb, (void *)0xdeadbeef, &environment);
+    ok(!status, "TpAllocWork failed with status %x\n", status);
+    ok(work != NULL, "expected work != NULL\n");
+
+    timer = NULL;
+    status = pTpAllocTimer(&timer, unexpected_timer_cb, (void *)0xdeadbeef, &environment);
+    ok(!status, "TpAllocTimer failed with status %x\n", status);
+    ok(timer != NULL, "expected timer != NULL\n");
+
+    wait = NULL;
+    status = pTpAllocWait(&wait, unexpected_wait_cb, (void *)0xdeadbeef, &environment);
+    ok(!status, "TpAllocWait failed with status %x\n", status);
+    ok(wait != NULL, "expected wait != NULL\n");
 
     group_cancel_tid = 0xdeadbeef;
     pTpReleaseCleanupGroupMembers(group, TRUE, semaphores);
@@ -796,6 +976,57 @@ static void test_tp_group_cancel(void)
     ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
     ok(group_cancel_tid == GetCurrentThreadId(), "expected tid %x, got %x\n",
        GetCurrentThreadId(), group_cancel_tid);
+
+    /* test if cancellation callbacks are executed before or after wait */
+    work = NULL;
+    memset(&environment, 0, sizeof(environment));
+    environment.Version = 1;
+    environment.Pool = pool;
+    environment.CleanupGroup = group;
+    environment.CleanupGroupCancelCallback = group_cancel_cleanup_release2_cb;
+    status = pTpAllocWork(&work, work_group_cancel_cb, semaphores, &environment);
+    ok(!status, "TpAllocWork failed with status %x\n", status);
+    ok(work != NULL, "expected work != NULL\n");
+    pTpPostWork(work);
+    pTpPostWork(work);
+
+    result = WaitForSingleObject(semaphores[1], 1000);
+    ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
+
+    group_cancel_tid = 0xdeadbeef;
+    pTpReleaseCleanupGroupMembers(group, TRUE, semaphores);
+    result = WaitForSingleObject(semaphores[0], 1000);
+    ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
+    ok(group_cancel_tid == GetCurrentThreadId(), "expected tid %x, got %x\n",
+       GetCurrentThreadId(), group_cancel_tid);
+
+    /* group cancel callback is not executed if object is destroyed while waiting */
+    work = NULL;
+    memset(&environment, 0, sizeof(environment));
+    environment.Version = 1;
+    environment.Pool = pool;
+    environment.CleanupGroup = group;
+    environment.CleanupGroupCancelCallback = unexpected_group_cancel_cleanup_cb;
+    status = pTpAllocWork(&work, work_release_cb, semaphores[1], &environment);
+    ok(!status, "TpAllocWork failed with status %x\n", status);
+    ok(work != NULL, "expected work != NULL\n");
+    pTpPostWork(work);
+
+    result = WaitForSingleObject(semaphores[1], 1000);
+    ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
+    pTpReleaseCleanupGroupMembers(group, TRUE, NULL);
+
+    /* terminated simple callbacks should not trigger the group cancel callback */
+    memset(&environment, 0, sizeof(environment));
+    environment.Version = 1;
+    environment.Pool = pool;
+    environment.CleanupGroup = group;
+    environment.CleanupGroupCancelCallback = unexpected_group_cancel_cleanup_cb;
+    status = pTpSimpleTryPost(simple_release_cb, semaphores[1], &environment);
+    ok(!status, "TpSimpleTryPost failed with status %x\n", status);
+    result = WaitForSingleObject(semaphores[1], 1000);
+    ok(result == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", result);
+    pTpReleaseCleanupGroupMembers(group, TRUE, semaphores);
 
     /* test cancellation callback for objects with multiple instances */
     work = NULL;
@@ -816,7 +1047,7 @@ static void test_tp_group_cancel(void)
     /* check if we get multiple cancellation callbacks */
     group_cancel_tid = 0xdeadbeef;
     pTpReleaseCleanupGroupMembers(group, TRUE, &userdata2);
-    ok(userdata <= 8, "expected userdata <= 8, got %u\n", userdata);
+    ok(userdata <= 5, "expected userdata <= 5, got %u\n", userdata);
     ok(userdata2 == 1, "expected only one cancellation callback, got %u\n", userdata2);
     ok(group_cancel_tid == GetCurrentThreadId(), "expected tid %x, got %x\n",
        GetCurrentThreadId(), group_cancel_tid);
@@ -1677,6 +1908,7 @@ START_TEST(threadpool)
     test_tp_simple();
     test_tp_work();
     test_tp_work_scheduler();
+    test_tp_group_wait();
     test_tp_group_cancel();
     test_tp_instance();
     test_tp_disassociate();

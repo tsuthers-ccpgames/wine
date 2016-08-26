@@ -63,7 +63,7 @@ WINE_DECLARE_DEBUG_CHANNEL(file);
  *	Success: Base address of allocated region of pages.
  *	Failure: NULL.
  */
-LPVOID WINAPI VirtualAlloc( LPVOID addr, SIZE_T size, DWORD type, DWORD protect )
+LPVOID WINAPI DECLSPEC_HOTPATCH VirtualAlloc( void *addr, SIZE_T size, DWORD type, DWORD protect )
 {
     return VirtualAllocEx( GetCurrentProcess(), addr, size, type, protect );
 }
@@ -238,7 +238,7 @@ BOOL WINAPI VirtualProtectEx( HANDLE process, LPVOID addr, SIZE_T size,
     NTSTATUS status;
     DWORD prot;
 
-    /* Win9x allows to pass NULL as old_prot while it fails on NT */
+    /* Win9x allows passing NULL as old_prot while this fails on NT */
     if (!old_prot && (GetVersion() & 0x80000000)) old_prot = &prot;
 
     status = NtProtectVirtualMemory( process, &addr, &size, new_prot, old_prot );
@@ -504,7 +504,7 @@ HANDLE WINAPI OpenFileMappingW( DWORD access, BOOL inherit, LPCWSTR name)
  *	Success: Starting address of mapped view.
  *	Failure: NULL.
  */
-LPVOID WINAPI MapViewOfFile( HANDLE mapping, DWORD access,
+LPVOID WINAPI DECLSPEC_HOTPATCH MapViewOfFile( HANDLE mapping, DWORD access,
     DWORD offset_high, DWORD offset_low, SIZE_T count )
 {
     return MapViewOfFileEx( mapping, access, offset_high,
@@ -576,7 +576,19 @@ LPVOID WINAPI MapViewOfFileEx( HANDLE handle, DWORD access,
  */
 BOOL WINAPI UnmapViewOfFile( LPCVOID addr )
 {
-    NTSTATUS status = NtUnmapViewOfSection( GetCurrentProcess(), (void *)addr );
+    NTSTATUS status;
+
+    if (GetVersion() & 0x80000000)
+    {
+        MEMORY_BASIC_INFORMATION info;
+        if (!VirtualQuery( addr, &info, sizeof(info) ) || info.AllocationBase != addr)
+        {
+            SetLastError( ERROR_INVALID_ADDRESS );
+            return FALSE;
+        }
+    }
+
+    status = NtUnmapViewOfSection( GetCurrentProcess(), (void *)addr );
     if (status) SetLastError( RtlNtStatusToDosError(status) );
     return !status;
 }

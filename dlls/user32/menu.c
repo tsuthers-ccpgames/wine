@@ -1343,10 +1343,7 @@ MENU_DrawScrollArrows(const POPUPMENU *lppop, HDC hdc)
         hOrigBitmap = SelectObject(hdcMem, get_up_arrow_bitmap());
     else
         hOrigBitmap = SelectObject(hdcMem, get_up_arrow_inactive_bitmap());
-    rect.left = 0;
-    rect.top = 0;
-    rect.right = lppop->Width;
-    rect.bottom = arrow_bitmap_height;
+    SetRect(&rect, 0, 0, lppop->Width, arrow_bitmap_height);
     FillRect(hdc, &rect, GetSysColorBrush(COLOR_MENU));
     BitBlt(hdc, (lppop->Width - arrow_bitmap_width) / 2, 0,
            arrow_bitmap_width, arrow_bitmap_height, hdcMem, 0, 0, SRCCOPY);
@@ -3478,6 +3475,10 @@ BOOL WINAPI TrackPopupMenuEx( HMENU hMenu, UINT wFlags, INT x, INT y,
         /* Send WM_INITMENUPOPUP message only if TPM_NONOTIFY flag is not specified */
         if (!(wFlags & TPM_NONOTIFY))
             SendMessageW( hWnd, WM_INITMENUPOPUP, (WPARAM)hMenu, 0);
+
+        if (menu->wFlags & MF_SYSMENU)
+            MENU_InitSysMenuPopup( hMenu, GetWindowLongW( hWnd, GWL_STYLE ),
+                                   GetClassLongW( hWnd, GCL_STYLE));
 
         if (MENU_ShowPopup( hWnd, hMenu, 0, wFlags, x, y, 0, 0 ))
             ret = MENU_TrackMenu( hMenu, wFlags | TPM_POPUPMENU, 0, 0, hWnd,

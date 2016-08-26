@@ -54,7 +54,7 @@ static const char elem_test_str[] =
     "<a id=\"a\" href=\"http://test\" name=\"x\">link</a>"
     "<label for=\"in\" id=\"labelid\">Label:</label>"
     "<input id=\"in\" class=\"testclass\" tabIndex=\"2\" title=\"test title\" />"
-    "<button id=\"btnid\"></button>"
+    "<button id=\"btnid\" type=\"submit\"></button>"
     "<select id=\"s\"><option id=\"x\" value=\"val1\">opt1</option><option id=\"y\">opt2</option></select>"
     "<textarea id=\"X\">text text</textarea>"
     "<table id=\"tbl\"><tbody><tr></tr><tr id=\"row2\"><td id=\"td1\">td1 text</td><td id=\"td2\">td2 text</td></tr></tbody></table>"
@@ -147,6 +147,7 @@ static const IID * const doc_node_iids[] = {
     &IID_IHTMLDocument3,
     &IID_IHTMLDocument4,
     &IID_IHTMLDocument5,
+    &IID_IDocumentSelector,
     &IID_IDispatchEx,
     &IID_IConnectionPointContainer,
     &IID_IInternetHostSecurityManager,
@@ -162,6 +163,7 @@ static const IID * const doc_obj_iids[] = {
     &IID_IHTMLDocument3,
     &IID_IHTMLDocument4,
     &IID_IHTMLDocument5,
+    &IID_IDocumentSelector,
     &IID_IDispatchEx,
     &IID_IConnectionPointContainer,
     &IID_ICustomDoc,
@@ -2696,6 +2698,20 @@ static void _test_doc_all(unsigned line, IHTMLDocument2 *doc, const elem_type_t 
     IHTMLElementCollection_Release(col);
 }
 
+#define test_children_collection_length(a,b) _test_children_collection_length(__LINE__,a,b)
+static LONG _test_children_collection_length(unsigned line, IHTMLDOMChildrenCollection *collection, LONG exlen)
+{
+    LONG length;
+    HRESULT hres;
+
+    hres = IHTMLDOMChildrenCollection_get_length(collection, &length);
+    ok_(__FILE__,line)(hres == S_OK, "get_length failed: %08x\n", hres);
+    if(exlen != -1)
+        ok_(__FILE__,line)(length == exlen, "length = %d, expected %d\n", length, exlen);
+
+    return length;
+}
+
 #define test_elem_getelembytag(a,b,c,d) _test_elem_getelembytag(__LINE__,a,b,c,d)
 static void _test_elem_getelembytag(unsigned line, IUnknown *unk, elem_type_t type, LONG exlen, IHTMLElement **ret)
 {
@@ -2791,12 +2807,10 @@ static void _test_elem_set_innertext(unsigned line, IHTMLElement *elem, const ch
     col = _get_child_nodes(line, (IUnknown*)elem);
     ok(col != NULL, "col == NULL\n");
     if(col) {
-        LONG length = 0, type;
+        LONG type;
         IHTMLDOMNode *node;
 
-        hres = IHTMLDOMChildrenCollection_get_length(col, &length);
-        ok(hres == S_OK, "get_length failed: %08x\n", hres);
-        ok(length == 1, "length = %d\n", length);
+        _test_children_collection_length(line, col, 1);
 
         node = _get_child_item(line, col, 0);
         ok(node != NULL, "node == NULL\n");
@@ -4536,7 +4550,7 @@ static void test_select_form(IUnknown *uselect, IUnknown  *uform)
     ok(hres == S_OK, "get_form failed: %08x\n", hres);
     ok(form != NULL, "form == NULL\n");
 
-    test_form_length((IUnknown*)form, 1);
+    test_form_length((IUnknown*)form, 2);
     test_form_elements((IUnknown*)form);
     test_form_name((IUnknown*)form, "form_name");
 
@@ -6632,6 +6646,12 @@ static void test_window(IHTMLDocument2 *doc)
     set_window_status(window, "Test!");
     test_history(window);
 
+    hres = IHTMLWindow2_moveBy(window, 0, 0);
+    ok(hres == S_FALSE, "moveBy failed: %08x\n", hres);
+
+    hres = IHTMLWindow2_resizeBy(window, 0, 0);
+    ok(hres == S_FALSE, "resizeBy failed: %08x\n", hres);
+
     hres = IHTMLWindow2_QueryInterface(window, &IID_IHTMLWindow5, (void**)&window5);
     if(SUCCEEDED(hres)) {
         ok(window5 != NULL, "window5 == NULL\n");
@@ -6915,10 +6935,79 @@ static void _test_button_set_disabled(unsigned line, IHTMLElement *elem, VARIANT
     _test_button_get_disabled(line, elem, b);
 }
 
+#define test_button_type(a,b) _test_button_type(__LINE__,a,b)
+static void _test_button_type(unsigned line, IHTMLElement *elem, const char *extype)
+{
+    IHTMLButtonElement *button = _get_button_iface(line, (IUnknown*)elem);
+    BSTR str;
+    HRESULT hres;
+
+    hres = IHTMLButtonElement_get_type(button, &str);
+    ok_(__FILE__,line)(hres == S_OK, "get_type failed: %08x\n", hres);
+    ok_(__FILE__,line)(!strcmp_wa(str, extype), "type = %s, expected %s\n", wine_dbgstr_w(str), extype);
+    SysFreeString(str);
+
+    IHTMLButtonElement_Release(button);
+}
+
+#define test_button_value(a,b) _test_button_value(__LINE__,a,b)
+static void _test_button_value(unsigned line, IHTMLElement *elem, const char *exvalue)
+{
+    IHTMLButtonElement *button = _get_button_iface(line, (IUnknown*)elem);
+    BSTR str;
+    HRESULT hres;
+
+    hres = IHTMLButtonElement_get_value(button, &str);
+    ok_(__FILE__,line)(hres == S_OK, "get_value failed: %08x\n", hres);
+    if(exvalue)
+        ok_(__FILE__,line)(!strcmp_wa(str, exvalue), "value = %s, expected %s\n", wine_dbgstr_w(str), exvalue);
+    else
+        ok_(__FILE__,line)(!str, "value = %s, expected NULL\n", wine_dbgstr_w(str));
+    SysFreeString(str);
+
+    IHTMLButtonElement_Release(button);
+}
+
+#define set_button_value(a,b) _set_button_value(__LINE__,a,b)
+static void _set_button_value(unsigned line, IHTMLElement *elem, const char *value)
+{
+    IHTMLButtonElement *button = _get_button_iface(line, (IUnknown*)elem);
+    BSTR str = a2bstr(value);
+    HRESULT hres;
+
+    hres = IHTMLButtonElement_put_value(button, str);
+    ok_(__FILE__,line)(hres == S_OK, "put_value failed: %08x\n", hres);
+    IHTMLButtonElement_Release(button);
+
+    _test_button_value(line, elem, value);
+}
+
+#define get_button_form(a) _get_button_form(__LINE__,a)
+static IHTMLFormElement *_get_button_form(unsigned line, IHTMLElement *elem)
+{
+    IHTMLButtonElement *button = _get_button_iface(line, (IUnknown*)elem);
+    IHTMLFormElement *form;
+    HRESULT hres;
+
+    hres = IHTMLButtonElement_get_form(button, &form);
+    ok_(__FILE__,line)(hres == S_OK, "get_form failed: %08x\n", hres);
+    IHTMLButtonElement_Release(button);
+
+    return form;
+}
+
 static void test_button_elem(IHTMLElement *elem)
 {
+    IHTMLFormElement *form;
+
     test_button_name(elem, NULL);
     set_button_name(elem, "button name");
+    test_button_type(elem, "submit");
+    test_button_value(elem, NULL);
+    set_button_value(elem, "val");
+
+    form = get_button_form(elem);
+    ok(!form, "form != NULL\n");
 
     test_elem_istextedit(elem, VARIANT_TRUE);
 }
@@ -7892,6 +7981,100 @@ static void test_enum_children(IUnknown *unk, unsigned len)
     IEnumVARIANT_Release(enum_var);
 }
 
+static void test_selectors(IHTMLDocument2 *doc, IHTMLElement *div)
+{
+    IHTMLDOMChildrenCollection *collection;
+    IDocumentSelector *doc_selector;
+    IElementSelector *elem_selector;
+    BSTR str;
+    HRESULT hres;
+
+    test_elem_set_innerhtml((IUnknown*)div, "<div class=\"cl1\"><form class=\"cl1\"></form></div><div class=\"cl2\"></div>");
+
+    hres = IHTMLDocument2_QueryInterface(doc, &IID_IDocumentSelector, (void**)&doc_selector);
+    ok(hres == S_OK || broken(hres == E_NOINTERFACE), "Could not get IDocumentSelector iface: %08x\n", hres);
+    if(FAILED(hres)) {
+        win_skip("IDocumentSelector tests skipped.\n");
+        return;
+    }
+
+    collection = NULL;
+    str = a2bstr("nomatch");
+    hres = IDocumentSelector_querySelectorAll(doc_selector, str, &collection);
+    ok(hres == S_OK, "querySelectorAll failed: %08x\n", hres);
+    ok(collection != NULL, "collection == NULL\n");
+    test_children_collection_length(collection, 0);
+    IHTMLDOMChildrenCollection_Release(collection);
+
+    collection = NULL;
+    str = a2bstr(".cl1");
+    hres = IDocumentSelector_querySelectorAll(doc_selector, str, &collection);
+    ok(hres == S_OK, "querySelectorAll failed: %08x\n", hres);
+    ok(collection != NULL, "collection == NULL\n");
+    test_children_collection_length(collection, 2);
+    IHTMLDOMChildrenCollection_Release(collection);
+
+    IDocumentSelector_Release(doc_selector);
+
+    hres = IHTMLElement_QueryInterface(div, &IID_IElementSelector, (void**)&elem_selector);
+    ok(hres == S_OK, "Could not get IElementSelector iface: %08x\n", hres);
+
+    collection = NULL;
+    str = a2bstr("nomatch");
+    hres = IElementSelector_querySelectorAll(elem_selector, str, &collection);
+    ok(hres == S_OK, "querySelectorAll failed: %08x\n", hres);
+    ok(collection != NULL, "collection == NULL\n");
+    test_children_collection_length(collection, 0);
+    IHTMLDOMChildrenCollection_Release(collection);
+
+    collection = NULL;
+    str = a2bstr(".cl1");
+    hres = IElementSelector_querySelectorAll(elem_selector, str, &collection);
+    ok(hres == S_OK, "querySelectorAll failed: %08x\n", hres);
+    ok(collection != NULL, "collection == NULL\n");
+    test_children_collection_length(collection, 2);
+    IHTMLDOMChildrenCollection_Release(collection);
+
+    IElementSelector_Release(elem_selector);
+}
+
+static void test_elemsbyclass(IHTMLElement *div)
+{
+    IHTMLElementCollection *collection;
+    IHTMLElement6 *elem;
+    BSTR str;
+    HRESULT hres;
+
+    static const elem_type_t types[] = {ET_DIV, ET_FORM};
+
+    test_elem_set_innerhtml((IUnknown*)div, "<div class=\"cl1\"><form class=\"cl1\"></form></div><div class=\"cl2\"></div>");
+
+    hres = IHTMLElement_QueryInterface(div, &IID_IHTMLElement6, (void**)&elem);
+    ok(hres == S_OK || broken(hres == E_NOINTERFACE), "Could not get IHTMLElement6 iface: %08x\n", hres);
+    if(FAILED(hres)) {
+        win_skip("IHTMLElement6 tests skipped.\n");
+        return;
+    }
+
+    collection = NULL;
+    str = a2bstr("nomatch");
+    hres = IHTMLElement6_getElementsByClassName(elem, str, &collection);
+    ok(hres == S_OK, "getElementsByClassName failed: %08x\n", hres);
+    ok(collection != NULL, "collection == NULL\n");
+    test_elem_collection((IUnknown*)collection, NULL, 0);
+    IHTMLElementCollection_Release(collection);
+
+    collection = NULL;
+    str = a2bstr("cl1");
+    hres = IHTMLElement6_getElementsByClassName(elem, str, &collection);
+    ok(hres == S_OK, "getElementsByClassName failed: %08x\n", hres);
+    ok(collection != NULL, "collection == NULL\n");
+    test_elem_collection((IUnknown*)collection, types, sizeof(types)/sizeof(*types));
+    IHTMLElementCollection_Release(collection);
+
+    IHTMLElement6_Release(elem);
+}
+
 static void test_elems(IHTMLDocument2 *doc)
 {
     IHTMLElementCollection *col;
@@ -8418,13 +8601,10 @@ static void test_elems(IHTMLDocument2 *doc)
     ok(child_col != NULL, "child_coll == NULL\n");
     if(child_col) {
         IUnknown *enum_unk;
-        LONG length = 0;
+        LONG length;
 
         test_disp((IUnknown*)child_col, &DIID_DispDOMChildrenCollection, "[object]");
-
-        hres = IHTMLDOMChildrenCollection_get_length(child_col, &length);
-        ok(hres == S_OK, "get_length failed: %08x\n", hres);
-        ok(length, "length=0\n");
+        length = test_children_collection_length(child_col, -1);
 
         node2 = NULL;
         node = get_child_item(child_col, 0);
@@ -8944,10 +9124,12 @@ static void test_elems2(IHTMLDocument2 *doc)
     }
 
     test_elem_set_innerhtml((IUnknown*)div,
-            "<form id=\"form\" name=\"form_name\"><select id=\"sform\"><option id=\"oform\"></option></select></form>");
+            "<form id=\"form\" name=\"form_name\"><select id=\"sform\"><option id=\"oform\"></option></select><button id=\"btnid\"></button></form>");
     elem = get_elem_by_id(doc, "sform", TRUE);
     elem2 = get_elem_by_id(doc, "form", TRUE);
     if(elem && elem2) {
+        IHTMLFormElement *form;
+
         test_select_form((IUnknown*)elem, (IUnknown*)elem2);
         IHTMLElement_Release(elem);
 
@@ -8956,8 +9138,19 @@ static void test_elems2(IHTMLDocument2 *doc)
             test_option_form((IUnknown*)elem, (IUnknown*)elem2);
             IHTMLElement_Release(elem);
         }
+
+        elem = get_elem_by_id(doc, "btnid", TRUE);
+
+        form = get_button_form(elem);
+        ok(iface_cmp((IUnknown*)form, (IUnknown*)elem2), "form != elem2\n");
+        IHTMLFormElement_Release(form);
+
+        IHTMLElement_Release(elem);
         IHTMLElement_Release(elem2);
     }
+
+    test_selectors(doc, div);
+    test_elemsbyclass(div);
 
     test_elem_set_innerhtml((IUnknown*)div, "<div id=\"elemid\">test</div>");
     elem = get_elem_by_id(doc, "elemid", TRUE);

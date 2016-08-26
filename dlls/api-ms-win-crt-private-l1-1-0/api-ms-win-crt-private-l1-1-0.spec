@@ -45,9 +45,9 @@
 @ cdecl __std_exception_copy(ptr ptr) ucrtbase.__std_exception_copy
 @ cdecl __std_exception_destroy(ptr) ucrtbase.__std_exception_destroy
 @ cdecl __std_type_info_compare(ptr ptr) ucrtbase.__std_type_info_compare
-@ stub __std_type_info_destroy_list
+@ cdecl __std_type_info_destroy_list(ptr) ucrtbase.__std_type_info_destroy_list
 @ stub __std_type_info_hash
-@ stub __std_type_info_name
+@ cdecl __std_type_info_name(ptr ptr) ucrtbase.__std_type_info_name
 @ cdecl __unDName(ptr str long ptr ptr long) ucrtbase.__unDName
 @ cdecl __unDNameEx(ptr str long ptr ptr ptr long) ucrtbase.__unDNameEx
 @ cdecl __uncaught_exception() ucrtbase.__uncaught_exception
@@ -1149,14 +1149,14 @@
 @ stdcall -arch=i386 _seh_longjmp_unwind(ptr) ucrtbase._seh_longjmp_unwind
 @ stdcall -arch=i386 _seh_longjmp_unwind4(ptr) ucrtbase._seh_longjmp_unwind4
 @ cdecl _set_purecall_handler(ptr) ucrtbase._set_purecall_handler
-@ stub _set_se_translator
+@ cdecl _set_se_translator(ptr) ucrtbase._set_se_translator
 @ cdecl -arch=i386 -norelay _setjmp3(ptr long) ucrtbase._setjmp3
 @ cdecl -arch=i386,x86_64,arm longjmp(ptr long) ucrtbase.longjmp
 @ cdecl memchr(ptr long long) ucrtbase.memchr
 @ cdecl memcmp(ptr ptr long) ucrtbase.memcmp
 @ cdecl memcpy(ptr ptr long) ucrtbase.memcpy
 @ cdecl memmove(ptr ptr long) ucrtbase.memmove
-@ stub set_unexpected
+@ cdecl set_unexpected(ptr) ucrtbase.set_unexpected
 @ cdecl -arch=arm,x86_64 -norelay -private setjmp(ptr) ucrtbase.setjmp
 @ cdecl strchr(str long) ucrtbase.strchr
 @ cdecl strrchr(str long) ucrtbase.strrchr

@@ -53,6 +53,9 @@
 # include <sys/sysmacros.h>
 #endif
 #ifdef HAVE_SYS_VNODE_H
+# ifdef HAVE_STDINT_H
+# include <stdint.h>  /* needed for kfreebsd */
+# endif
 /* Work around a conflict with Solaris' system list defined in sys/list.h. */
 #define list SYSLIST
 #define list_next SYSLIST_NEXT
@@ -106,6 +109,7 @@
 #include "wine/list.h"
 #include "wine/library.h"
 #include "wine/debug.h"
+#include "wine/exception.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(file);
 
@@ -2996,9 +3000,17 @@ NTSTATUS WINAPI RtlWow64EnableFsRedirection( BOOLEAN enable )
 NTSTATUS WINAPI RtlWow64EnableFsRedirectionEx( ULONG disable, ULONG *old_value )
 {
     if (!is_wow64) return STATUS_NOT_IMPLEMENTED;
-    if (((ULONG_PTR)old_value >> 16) == 0) return STATUS_ACCESS_VIOLATION;
 
-    *old_value = !ntdll_get_thread_data()->wow64_redir;
+    __TRY
+    {
+        *old_value = !ntdll_get_thread_data()->wow64_redir;
+    }
+    __EXCEPT_PAGE_FAULT
+    {
+        return STATUS_ACCESS_VIOLATION;
+    }
+    __ENDTRY
+
     ntdll_get_thread_data()->wow64_redir = !disable;
     return STATUS_SUCCESS;
 }

@@ -729,12 +729,6 @@ static void shader_arb_update_float_vertex_constants(struct wined3d_device *devi
 {
     struct wined3d_context *context = context_get_current();
     struct shader_arb_priv *priv = device->shader_priv;
-    unsigned int i;
-
-    for (i = 0; i < device->context_count; ++i)
-    {
-        device->contexts[i]->constant_update_mask |= WINED3D_SHADER_CONST_VS_F;
-    }
 
     /* We don't want shader constant dirtification to be an O(contexts), so just dirtify the active
      * context. On a context switch the old context will be fully dirtified */
@@ -748,12 +742,6 @@ static void shader_arb_update_float_pixel_constants(struct wined3d_device *devic
 {
     struct wined3d_context *context = context_get_current();
     struct shader_arb_priv *priv = device->shader_priv;
-    unsigned int i;
-
-    for (i = 0; i < device->context_count; ++i)
-    {
-        device->contexts[i]->constant_update_mask |= WINED3D_SHADER_CONST_PS_F;
-    }
 
     /* We don't want shader constant dirtification to be an O(contexts), so just dirtify the active
      * context. On a context switch the old context will be fully dirtified */
@@ -1386,7 +1374,7 @@ static const char *shader_arb_get_modifier(const struct wined3d_shader_instructi
 
     mod = ins->dst[0].modifiers;
 
-    /* Silently ignore PARTIALPRECISION if its not supported */
+    /* Silently ignore PARTIALPRECISION if it's not supported */
     if(priv->target_version == ARB) mod &= ~WINED3DSPDM_PARTIALPRECISION;
 
     if(mod & WINED3DSPDM_MSAMPCENTROID)
@@ -4006,7 +3994,7 @@ static void clone_sig(struct wined3d_shader_signature *new, const struct wined3d
     char *name;
 
     new->element_count = sig->element_count;
-    new->elements = HeapAlloc(GetProcessHeap(), 0, sizeof(*new->elements) * new->element_count);
+    new->elements = wined3d_calloc(new->element_count, sizeof(*new->elements));
     for (i = 0; i < sig->element_count; ++i)
     {
         new->elements[i] = sig->elements[i];
@@ -4854,7 +4842,8 @@ static void shader_arb_disable(void *shader_priv, struct wined3d_context *contex
             | (1u << WINED3D_SHADER_TYPE_VERTEX)
             | (1u << WINED3D_SHADER_TYPE_GEOMETRY)
             | (1u << WINED3D_SHADER_TYPE_HULL)
-            | (1u << WINED3D_SHADER_TYPE_DOMAIN);
+            | (1u << WINED3D_SHADER_TYPE_DOMAIN)
+            | (1u << WINED3D_SHADER_TYPE_COMPUTE);
 }
 
 /* Context activation is done by the caller. */
@@ -5129,6 +5118,7 @@ static void shader_arb_get_caps(const struct wined3d_gl_info *gl_info, struct sh
     caps->hs_version = 0;
     caps->ds_version = 0;
     caps->gs_version = 0;
+    caps->cs_version = 0;
 
     if (gl_info->supported[ARB_FRAGMENT_PROGRAM])
     {
@@ -5224,21 +5214,28 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_ADD                              */ shader_hw_map2gl,
     /* WINED3DSIH_AND                              */ NULL,
     /* WINED3DSIH_BEM                              */ pshader_hw_bem,
+    /* WINED3DSIH_BFI                              */ NULL,
+    /* WINED3DSIH_BFREV                            */ NULL,
     /* WINED3DSIH_BREAK                            */ shader_hw_break,
     /* WINED3DSIH_BREAKC                           */ shader_hw_breakc,
     /* WINED3DSIH_BREAKP                           */ NULL,
+    /* WINED3DSIH_BUFINFO                          */ NULL,
     /* WINED3DSIH_CALL                             */ shader_hw_call,
     /* WINED3DSIH_CALLNZ                           */ NULL,
+    /* WINED3DSIH_CASE                             */ NULL,
     /* WINED3DSIH_CMP                              */ pshader_hw_cmp,
     /* WINED3DSIH_CND                              */ pshader_hw_cnd,
+    /* WINED3DSIH_CONTINUE                         */ NULL,
     /* WINED3DSIH_CRS                              */ shader_hw_map2gl,
     /* WINED3DSIH_CUT                              */ NULL,
+    /* WINED3DSIH_CUT_STREAM                       */ NULL,
     /* WINED3DSIH_DCL                              */ shader_hw_nop,
     /* WINED3DSIH_DCL_CONSTANT_BUFFER              */ shader_hw_nop,
     /* WINED3DSIH_DCL_GLOBAL_FLAGS                 */ NULL,
     /* WINED3DSIH_DCL_HS_FORK_PHASE_INSTANCE_COUNT */ NULL,
     /* WINED3DSIH_DCL_HS_MAX_TESSFACTOR            */ NULL,
     /* WINED3DSIH_DCL_IMMEDIATE_CONSTANT_BUFFER    */ NULL,
+    /* WINED3DSIH_DCL_INDEXABLE_TEMP               */ NULL,
     /* WINED3DSIH_DCL_INPUT                        */ NULL,
     /* WINED3DSIH_DCL_INPUT_CONTROL_POINT_COUNT    */ NULL,
     /* WINED3DSIH_DCL_INPUT_PRIMITIVE              */ shader_hw_nop,
@@ -5253,13 +5250,18 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_DCL_OUTPUT_TOPOLOGY              */ shader_hw_nop,
     /* WINED3DSIH_DCL_RESOURCE_STRUCTURED          */ NULL,
     /* WINED3DSIH_DCL_SAMPLER                      */ NULL,
+    /* WINED3DSIH_DCL_STREAM                       */ NULL,
     /* WINED3DSIH_DCL_TEMPS                        */ NULL,
     /* WINED3DSIH_DCL_TESSELLATOR_DOMAIN           */ NULL,
     /* WINED3DSIH_DCL_TESSELLATOR_OUTPUT_PRIMITIVE */ NULL,
     /* WINED3DSIH_DCL_TESSELLATOR_PARTITIONING     */ NULL,
+    /* WINED3DSIH_DCL_TGSM_RAW                     */ NULL,
+    /* WINED3DSIH_DCL_TGSM_STRUCTURED              */ NULL,
+    /* WINED3DSIH_DCL_THREAD_GROUP                 */ NULL,
     /* WINED3DSIH_DCL_UAV_TYPED                    */ NULL,
     /* WINED3DSIH_DCL_VERTICES_OUT                 */ shader_hw_nop,
     /* WINED3DSIH_DEF                              */ shader_hw_nop,
+    /* WINED3DSIH_DEFAULT                          */ NULL,
     /* WINED3DSIH_DEFB                             */ shader_hw_nop,
     /* WINED3DSIH_DEFI                             */ shader_hw_nop,
     /* WINED3DSIH_DIV                              */ NULL,
@@ -5276,15 +5278,19 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_DSY_FINE                         */ NULL,
     /* WINED3DSIH_ELSE                             */ shader_hw_else,
     /* WINED3DSIH_EMIT                             */ NULL,
+    /* WINED3DSIH_EMIT_STREAM                      */ NULL,
     /* WINED3DSIH_ENDIF                            */ shader_hw_endif,
     /* WINED3DSIH_ENDLOOP                          */ shader_hw_endloop,
     /* WINED3DSIH_ENDREP                           */ shader_hw_endrep,
+    /* WINED3DSIH_ENDSWITCH                        */ NULL,
     /* WINED3DSIH_EQ                               */ NULL,
     /* WINED3DSIH_EXP                              */ shader_hw_scalar_op,
     /* WINED3DSIH_EXPP                             */ shader_hw_scalar_op,
     /* WINED3DSIH_FRC                              */ shader_hw_map2gl,
     /* WINED3DSIH_FTOI                             */ NULL,
     /* WINED3DSIH_FTOU                             */ NULL,
+    /* WINED3DSIH_GATHER4                          */ NULL,
+    /* WINED3DSIH_GATHER4_C                        */ NULL,
     /* WINED3DSIH_GE                               */ NULL,
     /* WINED3DSIH_HS_CONTROL_POINT_PHASE           */ NULL,
     /* WINED3DSIH_HS_DECLS                         */ NULL,
@@ -5299,16 +5305,22 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_IMAD                             */ NULL,
     /* WINED3DSIH_IMAX                             */ NULL,
     /* WINED3DSIH_IMIN                             */ NULL,
+    /* WINED3DSIH_IMM_ATOMIC_ALLOC                 */ NULL,
+    /* WINED3DSIH_IMM_ATOMIC_CONSUME               */ NULL,
     /* WINED3DSIH_IMUL                             */ NULL,
     /* WINED3DSIH_INE                              */ NULL,
     /* WINED3DSIH_INEG                             */ NULL,
     /* WINED3DSIH_ISHL                             */ NULL,
+    /* WINED3DSIH_ISHR                             */ NULL,
     /* WINED3DSIH_ITOF                             */ NULL,
     /* WINED3DSIH_LABEL                            */ shader_hw_label,
     /* WINED3DSIH_LD                               */ NULL,
     /* WINED3DSIH_LD2DMS                           */ NULL,
+    /* WINED3DSIH_LD_RAW                           */ NULL,
     /* WINED3DSIH_LD_STRUCTURED                    */ NULL,
+    /* WINED3DSIH_LD_UAV_TYPED                     */ NULL,
     /* WINED3DSIH_LIT                              */ shader_hw_map2gl,
+    /* WINED3DSIH_LOD                              */ NULL,
     /* WINED3DSIH_LOG                              */ shader_hw_scalar_op,
     /* WINED3DSIH_LOGP                             */ shader_hw_scalar_op,
     /* WINED3DSIH_LOOP                             */ shader_hw_loop,
@@ -5347,15 +5359,21 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_SAMPLE_C                         */ NULL,
     /* WINED3DSIH_SAMPLE_C_LZ                      */ NULL,
     /* WINED3DSIH_SAMPLE_GRAD                      */ NULL,
+    /* WINED3DSIH_SAMPLE_INFO                      */ NULL,
     /* WINED3DSIH_SAMPLE_LOD                       */ NULL,
+    /* WINED3DSIH_SAMPLE_POS                       */ NULL,
     /* WINED3DSIH_SETP                             */ NULL,
     /* WINED3DSIH_SGE                              */ shader_hw_map2gl,
     /* WINED3DSIH_SGN                              */ shader_hw_sgn,
     /* WINED3DSIH_SINCOS                           */ shader_hw_sincos,
     /* WINED3DSIH_SLT                              */ shader_hw_map2gl,
     /* WINED3DSIH_SQRT                             */ NULL,
+    /* WINED3DSIH_STORE_RAW                        */ NULL,
+    /* WINED3DSIH_STORE_STRUCTURED                 */ NULL,
     /* WINED3DSIH_STORE_UAV_TYPED                  */ NULL,
     /* WINED3DSIH_SUB                              */ shader_hw_map2gl,
+    /* WINED3DSIH_SWAPC                            */ NULL,
+    /* WINED3DSIH_SWITCH                           */ NULL,
     /* WINED3DSIH_TEX                              */ pshader_hw_tex,
     /* WINED3DSIH_TEXBEM                           */ pshader_hw_texbem,
     /* WINED3DSIH_TEXBEML                          */ pshader_hw_texbem,
@@ -5378,9 +5396,12 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_TEXREG2AR                        */ pshader_hw_texreg2ar,
     /* WINED3DSIH_TEXREG2GB                        */ pshader_hw_texreg2gb,
     /* WINED3DSIH_TEXREG2RGB                       */ pshader_hw_texreg2rgb,
+    /* WINED3DSIH_UBFE                             */ NULL,
     /* WINED3DSIH_UDIV                             */ NULL,
     /* WINED3DSIH_UGE                              */ NULL,
     /* WINED3DSIH_ULT                              */ NULL,
+    /* WINED3DSIH_UMAX                             */ NULL,
+    /* WINED3DSIH_UMIN                             */ NULL,
     /* WINED3DSIH_USHR                             */ NULL,
     /* WINED3DSIH_UTOF                             */ NULL,
     /* WINED3DSIH_XOR                              */ NULL,
@@ -5496,8 +5517,7 @@ static void record_instruction(struct list *list, const struct wined3d_shader_in
     }
     rec->ins.dst = dst_param;
 
-    src_param = HeapAlloc(GetProcessHeap(), 0, sizeof(*src_param) * ins->src_count);
-    if (!src_param)
+    if (!(src_param = wined3d_calloc(ins->src_count, sizeof(*src_param))))
         goto free;
     for (i = 0; i < ins->src_count; ++i)
     {
@@ -7217,7 +7237,7 @@ static BOOL gen_yv12_read(struct wined3d_string_buffer *buffer, const struct arb
      *        |     0.5        |       0.5       |
      *
      * So it appears as if there are 4 chroma images, but in fact the odd rows
-     * in the chroma images are in the same row as the even ones. So its is
+     * in the chroma images are in the same row as the even ones. So it is
      * kinda tricky to read
      *
      * When reading from rectangle textures, keep in mind that the input y coordinates

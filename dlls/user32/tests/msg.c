@@ -4354,8 +4354,7 @@ static void test_showwindow(void)
     GetWindowRect(hwnd, &rc);
     ok( rc.right-rc.left == GetSystemMetrics(SM_CXSCREEN) &&
         rc.bottom-rc.top == GetSystemMetrics(SM_CYSCREEN),
-        "Invalid maximized size before ShowWindow (%d,%d)-(%d,%d)\n",
-        rc.left, rc.top, rc.right, rc.bottom);
+        "Invalid maximized size before ShowWindow %s\n", wine_dbgstr_rect( &rc ));
     /* Reset window's size & position */
     SetWindowPos(hwnd, 0, 10, 10, 200, 200, SWP_NOZORDER | SWP_NOACTIVATE);
     ok(IsZoomed(hwnd), "window should be maximized\n");
@@ -4369,8 +4368,7 @@ static void test_showwindow(void)
     GetWindowRect(hwnd, &rc);
     ok( rc.right-rc.left == GetSystemMetrics(SM_CXSCREEN) &&
         rc.bottom-rc.top == GetSystemMetrics(SM_CYSCREEN),
-        "Invalid maximized size after ShowWindow (%d,%d)-(%d,%d)\n",
-        rc.left, rc.top, rc.right, rc.bottom);
+        "Invalid maximized size after ShowWindow %s\n", wine_dbgstr_rect( &rc ));
     DestroyWindow(hwnd);
     flush_sequence();
 
@@ -6499,9 +6497,8 @@ static void check_update_rgn( HWND hwnd, HRGN hrgn )
     }
     GetRgnBox( update, &r1 );
     GetUpdateRect( hwnd, &r2, FALSE );
-    ok( r1.left == r2.left && r1.top == r2.top && r1.right == r2.right && r1.bottom == r2.bottom,
-        "Rectangles are different: %d,%d-%d,%d / %d,%d-%d,%d\n",
-        r1.left, r1.top, r1.right, r1.bottom, r2.left, r2.top, r2.right, r2.bottom );
+    ok( EqualRect( &r1, &r2 ), "Rectangles are different: %s / %s\n", wine_dbgstr_rect( &r1 ),
+        wine_dbgstr_rect( &r2 ));
 
     DeleteObject( tmp );
     DeleteObject( update );
@@ -7457,7 +7454,7 @@ static void test_interthread_messages(void)
 
     handle = (void*)0xdeadbeef;
     ret = pGetCurrentActCtx(&handle);
-    ok(ret, "GetCurentActCtx failed: %u\n", GetLastError());
+    ok(ret, "GetCurrentActCtx failed: %u\n", GetLastError());
     ok(handle == 0, "active context %p\n", handle);
 
     wnd_event.start_event = CreateEventW(NULL, 0, 0, NULL);
@@ -7472,7 +7469,7 @@ static void test_interthread_messages(void)
 
     handle = 0;
     ret = pGetCurrentActCtx(&handle);
-    ok(ret, "GetCurentActCtx failed: %u\n", GetLastError());
+    ok(ret, "GetCurrentActCtx failed: %u\n", GetLastError());
     ok(handle != 0, "active context %p\n", handle);
     pReleaseActCtx(handle);
 
@@ -8289,8 +8286,7 @@ static LRESULT WINAPI ParentMsgCheckProcA(HWND hwnd, UINT message, WPARAM wParam
                 RECT rc;
                 INT ret = GetClipBox((HDC)wParam, &rc);
 
-                trace("WM_ERASEBKGND: GetClipBox()=%d, (%d,%d-%d,%d)\n",
-                       ret, rc.left, rc.top, rc.right, rc.bottom);
+                trace("WM_ERASEBKGND: GetClipBox()=%d, %s\n", ret, wine_dbgstr_rect(&rc));
                 break;
             }
         }
@@ -12129,11 +12125,7 @@ static void test_ShowWindow(void)
                "expected %d,%d got %d,%d\n", sw[i].wp_min.x, sw[i].wp_min.y, wp.ptMinPosition.x, wp.ptMinPosition.y);
         }
 
-        if (wp.ptMaxPosition.x != sw[i].wp_max.x || wp.ptMaxPosition.y != sw[i].wp_max.y)
-        todo_wine
-        ok(wp.ptMaxPosition.x == sw[i].wp_max.x && wp.ptMaxPosition.y == sw[i].wp_max.y,
-           "expected %d,%d got %d,%d\n", sw[i].wp_max.x, sw[i].wp_max.y, wp.ptMaxPosition.x, wp.ptMaxPosition.y);
-        else
+        todo_wine_if(wp.ptMaxPosition.x != sw[i].wp_max.x || wp.ptMaxPosition.y != sw[i].wp_max.y)
         ok(wp.ptMaxPosition.x == sw[i].wp_max.x && wp.ptMaxPosition.y == sw[i].wp_max.y,
            "expected %d,%d got %d,%d\n", sw[i].wp_max.x, sw[i].wp_max.y, wp.ptMaxPosition.x, wp.ptMaxPosition.y);
 
@@ -14035,7 +14027,7 @@ static void test_clipboard_viewers(void)
     expect_HWND(hWnd1, GetClipboardViewer());
 
     ChangeClipboardChain(NULL, hWnd2);
-    ok_sequence(WmEmptySeq, "change chain (viewer=1, remove=NULL, next=2)", TRUE);
+    ok_sequence(WmEmptySeq, "change chain (viewer=1, remove=NULL, next=2)", FALSE);
     expect_HWND(hWnd1, GetClipboardViewer());
 
     /* Actually change clipboard viewer with ChangeClipboardChain. */
@@ -14603,10 +14595,10 @@ static void test_SetParent(void)
     ok(child != 0, "Failed to create child window\n");
 
     GetWindowRect(parent1, &rc);
-    trace("parent1 (%d,%d)-(%d,%d)\n", rc.left, rc.top, rc.right, rc.bottom);
+    trace("parent1 %s\n", wine_dbgstr_rect(&rc));
     GetWindowRect(child, &rc_old);
     MapWindowPoints(0, parent1, (POINT *)&rc_old, 2);
-    trace("child (%d,%d)-(%d,%d)\n", rc_old.left, rc_old.top, rc_old.right, rc_old.bottom);
+    trace("child %s\n", wine_dbgstr_rect(&rc_old));
 
     flush_sequence();
 
@@ -14618,14 +14610,13 @@ static void test_SetParent(void)
     ok(!IsWindowVisible(child), "IsWindowVisible() should return FALSE\n");
 
     GetWindowRect(parent2, &rc);
-    trace("parent2 (%d,%d)-(%d,%d)\n", rc.left, rc.top, rc.right, rc.bottom);
+    trace("parent2 %s\n", wine_dbgstr_rect(&rc));
     GetWindowRect(child, &rc);
     MapWindowPoints(0, parent2, (POINT *)&rc, 2);
-    trace("child (%d,%d)-(%d,%d)\n", rc.left, rc.top, rc.right, rc.bottom);
+    trace("child %s\n", wine_dbgstr_rect(&rc));
 
-    ok(EqualRect(&rc_old, &rc), "rects do not match (%d,%d-%d,%d) / (%d,%d-%d,%d)\n",
-       rc_old.left, rc_old.top, rc_old.right, rc_old.bottom,
-       rc.left, rc.top, rc.right, rc.bottom );
+    ok(EqualRect(&rc_old, &rc), "rects do not match %s / %s\n", wine_dbgstr_rect(&rc_old),
+       wine_dbgstr_rect(&rc));
 
     /* WS_POPUP window */
     popup = CreateWindowExA(0, "TestWindowClass", NULL, WS_POPUP | WS_VISIBLE,
@@ -14633,7 +14624,7 @@ static void test_SetParent(void)
     ok(popup != 0, "Failed to create popup window\n");
 
     GetWindowRect(popup, &rc_old);
-    trace("popup (%d,%d)-(%d,%d)\n", rc_old.left, rc_old.top, rc_old.right, rc_old.bottom);
+    trace("popup %s\n", wine_dbgstr_rect(&rc_old));
 
     flush_sequence();
 
@@ -14645,14 +14636,13 @@ static void test_SetParent(void)
     ok(!IsWindowVisible(popup), "IsWindowVisible() should return FALSE\n");
 
     GetWindowRect(child, &rc);
-    trace("parent2 (%d,%d)-(%d,%d)\n", rc.left, rc.top, rc.right, rc.bottom);
+    trace("parent2 %s\n", wine_dbgstr_rect(&rc));
     GetWindowRect(popup, &rc);
     MapWindowPoints(0, child, (POINT *)&rc, 2);
-    trace("popup (%d,%d)-(%d,%d)\n", rc.left, rc.top, rc.right, rc.bottom);
+    trace("popup %s\n", wine_dbgstr_rect(&rc));
 
-    ok(EqualRect(&rc_old, &rc), "rects do not match (%d,%d-%d,%d) / (%d,%d-%d,%d)\n",
-       rc_old.left, rc_old.top, rc_old.right, rc_old.bottom,
-       rc.left, rc.top, rc.right, rc.bottom );
+    ok(EqualRect(&rc_old, &rc), "rects do not match %s / %s\n", wine_dbgstr_rect(&rc_old),
+       wine_dbgstr_rect(&rc));
 
     DestroyWindow(popup);
     DestroyWindow(child);
@@ -15453,10 +15443,10 @@ static void test_layered_window(void)
     ok_sequence( WmEmptySeq, "UpdateLayeredWindow", FALSE );
     GetWindowRect( hwnd, &rect );
     ok( rect.left == 300 && rect.top == 300 && rect.right == 550 && rect.bottom == 550,
-        "wrong window rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong window rect %s\n", wine_dbgstr_rect( &rect ));
     GetClientRect( hwnd, &rect );
     ok( rect.right == client.right - 50 && rect.bottom == client.bottom - 50,
-        "wrong client rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong client rect %s\n", wine_dbgstr_rect( &rect ));
 
     size.cx = 150;
     pos.y = 200;
@@ -15465,10 +15455,10 @@ static void test_layered_window(void)
     ok_sequence( WmEmptySeq, "UpdateLayeredWindow", FALSE );
     GetWindowRect( hwnd, &rect );
     ok( rect.left == 300 && rect.top == 200 && rect.right == 450 && rect.bottom == 450,
-        "wrong window rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong window rect %s\n", wine_dbgstr_rect( &rect ));
     GetClientRect( hwnd, &rect );
     ok( rect.right == client.right - 150 && rect.bottom == client.bottom - 50,
-        "wrong client rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong client rect %s\n", wine_dbgstr_rect( &rect ));
 
     SetWindowLongA( hwnd, GWL_STYLE,
                    GetWindowLongA(hwnd, GWL_STYLE) & ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU) );
@@ -15481,11 +15471,11 @@ static void test_layered_window(void)
     ok_sequence( WmEmptySeq, "UpdateLayeredWindow", FALSE );
     GetWindowRect( hwnd, &rect );
     ok( rect.left == 200 && rect.top == 200 && rect.right == 400 && rect.bottom == 450,
-        "wrong window rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong window rect %s\n", wine_dbgstr_rect( &rect ));
     GetClientRect( hwnd, &rect );
     ok( (rect.right == 200 && rect.bottom == 250) ||
         broken(rect.right == client.right - 100 && rect.bottom == client.bottom - 50),
-        "wrong client rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong client rect %s\n", wine_dbgstr_rect( &rect ));
 
     size.cx = 0;
     ret = pUpdateLayeredWindow( hwnd, 0, &pos, &size, hdc, &src, 0, NULL, ULW_OPAQUE );
@@ -15502,11 +15492,11 @@ static void test_layered_window(void)
     ok_sequence( WmSetLayeredStyle, "WmSetLayeredStyle", FALSE );
     GetWindowRect( hwnd, &rect );
     ok( rect.left == 200 && rect.top == 200 && rect.right == 400 && rect.bottom == 450,
-        "wrong window rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong window rect %s\n", wine_dbgstr_rect( &rect ));
     GetClientRect( hwnd, &rect );
     ok( (rect.right == 200 && rect.bottom == 250) ||
         broken(rect.right == client.right - 100 && rect.bottom == client.bottom - 50),
-        "wrong client rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong client rect %s\n", wine_dbgstr_rect( &rect ));
 
     SetWindowLongA( hwnd, GWL_EXSTYLE, GetWindowLongA(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED );
     info.hwnd = hwnd;
@@ -15522,11 +15512,11 @@ static void test_layered_window(void)
     CloseHandle( thread );
     GetWindowRect( hwnd, &rect );
     ok( rect.left == 200 && rect.top == 200 && rect.right == 450 && rect.bottom == 500,
-        "wrong window rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong window rect %s\n", wine_dbgstr_rect( &rect ));
     GetClientRect( hwnd, &rect );
     ok( (rect.right == 250 && rect.bottom == 300) ||
         broken(rect.right == client.right - 50 && rect.bottom == client.bottom),
-        "wrong client rect %d,%d,%d,%d\n", rect.left, rect.top, rect.right, rect.bottom );
+        "wrong client rect %s\n", wine_dbgstr_rect( &rect ));
 
     DestroyWindow( hwnd );
     DeleteDC( hdc );

@@ -1199,6 +1199,39 @@ int CDECL _controlfp_s(unsigned int *cur, unsigned int newval, unsigned int mask
 }
 
 /*********************************************************************
+ *		fegetenv (MSVCR120.@)
+ */
+int CDECL MSVCRT_fegetenv(MSVCRT_fenv_t *env)
+{
+    env->control = _controlfp(0, 0) & (MSVCRT__EM_INEXACT | MSVCRT__EM_UNDERFLOW |
+            MSVCRT__EM_OVERFLOW | MSVCRT__EM_ZERODIVIDE | MSVCRT__EM_INVALID);
+    env->status = _statusfp();
+    return 0;
+}
+
+/*********************************************************************
+ *		__fpe_flt_rounds (UCRTBASE.@)
+ */
+int CDECL __fpe_flt_rounds(void)
+{
+    unsigned int fpc = _controlfp(0, 0) & MSVCRT__RC_CHOP;
+
+    TRACE("()\n");
+
+    switch(fpc) {
+        case MSVCRT__RC_CHOP: return 0;
+        case MSVCRT__RC_NEAR: return 1;
+#ifdef _WIN64
+        case MSVCRT__RC_UP: return 3;
+        default: return 2;
+#else
+        case MSVCRT__RC_UP: return 2;
+        default: return 3;
+#endif
+    }
+}
+
+/*********************************************************************
  *		_copysign (MSVCRT.@)
  */
 double CDECL MSVCRT__copysign(double num, double sign)
@@ -2809,4 +2842,38 @@ float CDECL MSVCR120_remainderf(float x, float y)
 LDOUBLE CDECL MSVCR120_remainderl(LDOUBLE x, LDOUBLE y)
 {
     return MSVCR120_remainder(x, y);
+}
+
+/*********************************************************************
+ *      lgamma (MSVCR120.@)
+ */
+double CDECL MSVCR120_lgamma(double x)
+{
+#ifdef HAVE_LGAMMA
+    return lgamma(x);
+#else
+    FIXME( "not implemented\n" );
+    return 0.0;
+#endif
+}
+
+/*********************************************************************
+ *      lgammaf (MSVCR120.@)
+ */
+float CDECL MSVCR120_lgammaf(float x)
+{
+#ifdef HAVE_LGAMMAF
+    return lgammaf(x);
+#else
+    FIXME( "not implemented\n" );
+    return 0.0f;
+#endif
+}
+
+/*********************************************************************
+ *      lgammal (MSVCR120.@)
+ */
+LDOUBLE CDECL MSVCR120_lgammal(LDOUBLE x)
+{
+    return MSVCR120_lgamma(x);
 }

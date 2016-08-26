@@ -89,6 +89,7 @@ struct wined3d_settings wined3d_settings =
     ~0U,            /* No DS shader model limit by default. */
     ~0U,            /* No GS shader model limit by default. */
     ~0U,            /* No PS shader model limit by default. */
+    ~0u,            /* No CS shader model limit by default. */
     FALSE,          /* 3D support enabled by default. */
 };
 
@@ -325,6 +326,8 @@ static BOOL wined3d_dll_init(HINSTANCE hInstDLL)
             TRACE("Limiting GS shader model to %u.\n", wined3d_settings.max_sm_gs);
         if (!get_config_key_dword(hkey, appkey, "MaxShaderModelPS", &wined3d_settings.max_sm_ps))
             TRACE("Limiting PS shader model to %u.\n", wined3d_settings.max_sm_ps);
+        if (!get_config_key_dword(hkey, appkey, "MaxShaderModelCS", &wined3d_settings.max_sm_cs))
+            TRACE("Limiting CS shader model to %u.\n", wined3d_settings.max_sm_cs);
         if (!get_config_key(hkey, appkey, "DirectDrawRenderer", buffer, size)
                 && !strcmp(buffer, "gdi"))
         {
@@ -452,8 +455,10 @@ BOOL wined3d_register_window(HWND window, struct wined3d_device *device)
         unsigned int new_size = max(1, wndproc_table.size * 2);
         struct wined3d_wndproc *new_entries;
 
-        if (!wndproc_table.entries) new_entries = HeapAlloc(GetProcessHeap(), 0, new_size * sizeof(*new_entries));
-        else new_entries = HeapReAlloc(GetProcessHeap(), 0, wndproc_table.entries, new_size * sizeof(*new_entries));
+        if (!wndproc_table.entries)
+            new_entries = wined3d_calloc(new_size, sizeof(*new_entries));
+        else
+            new_entries = HeapReAlloc(GetProcessHeap(), 0, wndproc_table.entries, new_size * sizeof(*new_entries));
 
         if (!new_entries)
         {

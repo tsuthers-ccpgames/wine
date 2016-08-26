@@ -36,6 +36,7 @@ WINE_DECLARE_DEBUG_CHANNEL(winediag);
 
 static ALCdevice *(ALC_APIENTRY *palcLoopbackOpenDeviceSOFT)(const ALCchar*);
 static void (ALC_APIENTRY *palcRenderSamplesSOFT)(ALCdevice*, ALCvoid*, ALCsizei);
+static ALCboolean (ALC_APIENTRY *palcSetThreadContext)(ALCcontext*);
 
 static HINSTANCE instance;
 
@@ -98,6 +99,12 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD reason, void *pReserved)
                 !(palcLoopbackOpenDeviceSOFT = alcGetProcAddress(NULL, "alcLoopbackOpenDeviceSOFT")) ||
                 !(palcRenderSamplesSOFT = alcGetProcAddress(NULL, "alcRenderSamplesSOFT"))){
             ERR("XAudio2 requires the ALC_SOFT_loopback extension (OpenAL-Soft >= 1.14)\n");
+            return FALSE;
+        }
+
+        if(!alcIsExtensionPresent(NULL, "ALC_EXT_thread_local_context") ||
+                !(palcSetThreadContext = alcGetProcAddress(NULL, "alcSetThreadContext"))){
+            ERR("XAudio2 requires the ALC_EXT_thread_local_context extension (OpenAL-Soft >= 1.12)\n");
             return FALSE;
         }
 
@@ -173,7 +180,13 @@ static void WINAPI XA2SRC_GetVoiceDetails(IXAudio2SourceVoice *iface,
         XAUDIO2_VOICE_DETAILS *pVoiceDetails)
 {
     XA2SourceImpl *This = impl_from_IXAudio2SourceVoice(iface);
+
     TRACE("%p, %p\n", This, pVoiceDetails);
+
+    pVoiceDetails->CreationFlags = 0;
+    pVoiceDetails->ActiveFlags = 0;
+    pVoiceDetails->InputChannels = This->fmt->nChannels;
+    pVoiceDetails->InputSampleRate = This->fmt->nSamplesPerSec;
 }
 
 static HRESULT WINAPI XA2SRC_SetOutputVoices(IXAudio2SourceVoice *iface,
@@ -307,6 +320,8 @@ static HRESULT WINAPI XA2SRC_SetVolume(IXAudio2SourceVoice *iface, float Volume,
 
     al_gain = Volume;
 
+    palcSetThreadContext(This->xa2->al_ctx);
+
     alSourcef(This->al_src, AL_GAIN, al_gain);
 
     return S_OK;
@@ -359,6 +374,8 @@ static void WINAPI XA2SRC_DestroyVoice(IXAudio2SourceVoice *iface)
     ALint processed;
 
     TRACE("%p\n", This);
+
+    palcSetThreadContext(This->xa2->al_ctx);
 
     EnterCriticalSection(&This->lock);
 
@@ -722,6 +739,8 @@ static HRESULT WINAPI XA2SRC_SetFrequencyRatio(IXAudio2SourceVoice *iface,
     else
         r = Ratio;
 
+    palcSetThreadContext(This->xa2->al_ctx);
+
     alSourcef(This->al_src, AL_PITCH, r);
 
     return S_OK;
@@ -733,6 +752,8 @@ static void WINAPI XA2SRC_GetFrequencyRatio(IXAudio2SourceVoice *iface, float *p
     XA2SourceImpl *This = impl_from_IXAudio2SourceVoice(iface);
 
     TRACE("%p, %p\n", This, pRatio);
+
+    palcSetThreadContext(This->xa2->al_ctx);
 
     alGetSourcef(This->al_src, AL_PITCH, &ratio);
 
@@ -799,6 +820,7 @@ static void WINAPI XA2M_GetVoiceDetails(IXAudio2MasteringVoice *iface,
     IXAudio2Impl *This = impl_from_IXAudio2MasteringVoice(iface);
     TRACE("%p, %p\n", This, pVoiceDetails);
     pVoiceDetails->CreationFlags = 0;
+    pVoiceDetails->ActiveFlags = 0;
     pVoiceDetails->InputChannels = This->fmt.Format.nChannels;
     pVoiceDetails->InputSampleRate = This->fmt.Format.nSamplesPerSec;
 }
@@ -963,11 +985,11 @@ static void WINAPI XA2M_DestroyVoice(IXAudio2MasteringVoice *iface)
     IAudioClient_Release(This->aclient);
     This->aclient = NULL;
 
-    alcCloseDevice(This->al_device);
-    This->al_device = NULL;
-
     alcDestroyContext(This->al_ctx);
     This->al_ctx = NULL;
+
+    alcCloseDevice(This->al_device);
+    This->al_device = NULL;
 
     LeaveCriticalSection(&This->lock);
 }
@@ -1010,7 +1032,10 @@ static void WINAPI XA2SUB_GetVoiceDetails(IXAudio2SubmixVoice *iface,
         XAUDIO2_VOICE_DETAILS *pVoiceDetails)
 {
     XA2SubmixImpl *This = impl_from_IXAudio2SubmixVoice(iface);
+
     TRACE("%p, %p\n", This, pVoiceDetails);
+
+    *pVoiceDetails = This->details;
 }
 
 static HRESULT WINAPI XA2SUB_SetOutputVoices(IXAudio2SubmixVoice *iface,
@@ -1367,6 +1392,8 @@ static HRESULT WINAPI IXAudio2Impl_CreateSourceVoice(IXAudio2 *iface,
 
     dump_fmt(pSourceFormat);
 
+    palcSetThreadContext(This->al_ctx);
+
     EnterCriticalSection(&This->lock);
 
     LIST_FOR_EACH_ENTRY(src, &This->source_voices, XA2SourceImpl, entry){
@@ -1499,6 +1526,8 @@ static HRESULT WINAPI IXAudio2Impl_CreateSubmixVoice(IXAudio2 *iface,
         sub->IXAudio20SubmixVoice_iface.lpVtbl = &XAudio20SubmixVoice_Vtbl;
 #elif XAUDIO2_VER <= 3
         sub->IXAudio23SubmixVoice_iface.lpVtbl = &XAudio23SubmixVoice_Vtbl;
+#elif XAUDIO2_VER <= 7
+        sub->IXAudio27SubmixVoice_iface.lpVtbl = &XAudio27SubmixVoice_Vtbl;
 #endif
 
         InitializeCriticalSection(&sub->lock);
@@ -1509,6 +1538,11 @@ static HRESULT WINAPI IXAudio2Impl_CreateSubmixVoice(IXAudio2 *iface,
 
     sub->in_use = TRUE;
 
+    sub->details.CreationFlags = flags;
+    sub->details.ActiveFlags = flags;
+    sub->details.InputChannels = inputChannels;
+    sub->details.InputSampleRate = inputSampleRate;
+
     LeaveCriticalSection(&This->lock);
     LeaveCriticalSection(&sub->lock);
 
@@ -1516,6 +1550,8 @@ static HRESULT WINAPI IXAudio2Impl_CreateSubmixVoice(IXAudio2 *iface,
     *ppSubmixVoice = (IXAudio2SubmixVoice*)&sub->IXAudio20SubmixVoice_iface;
 #elif XAUDIO2_VER <= 3
     *ppSubmixVoice = (IXAudio2SubmixVoice*)&sub->IXAudio23SubmixVoice_iface;
+#elif XAUDIO2_VER <= 7
+    *ppSubmixVoice = (IXAudio2SubmixVoice*)&sub->IXAudio27SubmixVoice_iface;
 #else
     *ppSubmixVoice = &sub->IXAudio2SubmixVoice_iface;
 #endif
@@ -1733,12 +1769,6 @@ static HRESULT WINAPI IXAudio2Impl_CreateMasteringVoice(IXAudio2 *iface,
         goto exit;
     }
 
-    if(alcMakeContextCurrent(This->al_ctx) == ALC_FALSE){
-        WARN("alcMakeContextCurrent failed\n");
-        hr = COMPAT_E_DEVICE_INVALIDATED;
-        goto exit;
-    }
-
     hr = IAudioClient_Start(This->aclient);
     if (FAILED(hr))
     {
@@ -1751,6 +1781,8 @@ static HRESULT WINAPI IXAudio2Impl_CreateMasteringVoice(IXAudio2 *iface,
     *ppMasteringVoice = (IXAudio2MasteringVoice*)&This->IXAudio20MasteringVoice_iface;
 #elif XAUDIO2_VER <= 3
     *ppMasteringVoice = (IXAudio2MasteringVoice*)&This->IXAudio23MasteringVoice_iface;
+#elif XAUDIO2_VER <= 7
+    *ppMasteringVoice = (IXAudio2MasteringVoice*)&This->IXAudio27MasteringVoice_iface;
 #else
     *ppMasteringVoice = &This->IXAudio2MasteringVoice_iface;
 #endif
@@ -2001,6 +2033,8 @@ static HRESULT WINAPI XAudio2CF_CreateInstance(IClassFactory *iface, IUnknown *p
     object->IXAudio20MasteringVoice_iface.lpVtbl = &XAudio20MasteringVoice_Vtbl;
 #elif XAUDIO2_VER <= 3
     object->IXAudio23MasteringVoice_iface.lpVtbl = &XAudio23MasteringVoice_Vtbl;
+#elif XAUDIO2_VER <= 7
+    object->IXAudio27MasteringVoice_iface.lpVtbl = &XAudio27MasteringVoice_Vtbl;
 #endif
 
     list_init(&object->source_voices);
@@ -2391,6 +2425,8 @@ static DWORD WINAPI engine_threadproc(void *arg)
             LeaveCriticalSection(&This->lock);
             continue;
         }
+
+        palcSetThreadContext(This->al_ctx);
 
         do_engine_tick(This);
 

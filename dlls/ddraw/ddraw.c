@@ -631,6 +631,7 @@ static HRESULT ddraw_create_swapchain(struct ddraw *ddraw, HWND window, BOOL win
     swapchain_desc.swap_effect = WINED3D_SWAP_EFFECT_COPY;
     swapchain_desc.device_window = window;
     swapchain_desc.windowed = windowed;
+    swapchain_desc.flags = WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH;
 
     if (!(ddraw->flags & DDRAW_NO3D))
         hr = ddraw_attach_d3d_device(ddraw, &swapchain_desc);
@@ -889,7 +890,7 @@ static HRESULT ddraw_set_cooperative_level(struct ddraw *ddraw, HWND window,
     if ((cooplevel & DDSCL_FULLSCREEN) != (ddraw->cooperative_level & DDSCL_FULLSCREEN) || window != ddraw->dest_window)
     {
         if (ddraw->cooperative_level & DDSCL_FULLSCREEN)
-            wined3d_device_restore_fullscreen_window(ddraw->wined3d_device, ddraw->dest_window);
+            wined3d_device_restore_fullscreen_window(ddraw->wined3d_device, ddraw->dest_window, NULL);
 
         if (cooplevel & DDSCL_FULLSCREEN)
         {

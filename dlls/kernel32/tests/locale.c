@@ -71,7 +71,6 @@ static inline BOOL isdigitW( WCHAR wc )
 }
 
 /* Some functions are only in later versions of kernel32.dll */
-static HMODULE hKernel32;
 static WORD enumCount;
 
 static INT (WINAPI *pGetTimeFormatEx)(LPCWSTR, DWORD, const SYSTEMTIME *, LPCWSTR, LPWSTR, INT);
@@ -99,12 +98,14 @@ static INT (WINAPI *pGetGeoInfoW)(GEOID, GEOTYPE, LPWSTR, INT, LANGID);
 static BOOL (WINAPI *pEnumSystemGeoID)(GEOCLASS, GEOID, GEO_ENUMPROC);
 static BOOL (WINAPI *pGetSystemPreferredUILanguages)(DWORD, ULONG*, WCHAR*, ULONG*);
 static BOOL (WINAPI *pGetThreadPreferredUILanguages)(DWORD, ULONG*, WCHAR*, ULONG*);
+static WCHAR (WINAPI *pRtlUpcaseUnicodeChar)(WCHAR);
+static INT (WINAPI *pGetNumberFormatEx)(LPCWSTR, DWORD, LPCWSTR, const NUMBERFMTW *, LPWSTR, int);
 
 static void InitFunctionPointers(void)
 {
-  hKernel32 = GetModuleHandleA("kernel32");
+  HMODULE mod = GetModuleHandleA("kernel32");
 
-#define X(f) p##f = (void*)GetProcAddress(hKernel32, #f)
+#define X(f) p##f = (void*)GetProcAddress(mod, #f)
   X(GetTimeFormatEx);
   X(GetDateFormatEx);
   X(EnumSystemLanguageGroupsA);
@@ -129,6 +130,10 @@ static void InitFunctionPointers(void)
   X(EnumSystemGeoID);
   X(GetSystemPreferredUILanguages);
   X(GetThreadPreferredUILanguages);
+  X(GetNumberFormatEx);
+
+  mod = GetModuleHandleA("ntdll");
+  X(RtlUpcaseUnicodeChar);
 #undef X
 }
 
@@ -1587,6 +1592,188 @@ static void test_GetNumberFormatA(void)
   }
 }
 
+static void test_GetNumberFormatEx(void)
+{
+  int ret;
+  NUMBERFMTW format;
+  static WCHAR dotW[] = {'.',0};
+  static WCHAR commaW[] = {',',0};
+  static const WCHAR enW[] = {'e','n','-','U','S',0};
+  static const WCHAR frW[] = {'f','r','-','F','R',0};
+  static const WCHAR bogusW[] = {'b','o','g','u','s',0};
+  WCHAR buffer[BUFFER_SIZE], input[BUFFER_SIZE], Expected[BUFFER_SIZE];
+
+  if (!pGetNumberFormatEx)
+  {
+    win_skip("GetNumberFormatEx is not available.\n");
+    return;
+  }
+
+  STRINGSW("23",""); /* NULL output, length > 0 --> Error */
+  ret = pGetNumberFormatEx(enW, 0, input, NULL, NULL, COUNTOF(buffer));
+  ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+      "Expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+
+  STRINGSW("23,53",""); /* Invalid character --> Error */
+  ret = pGetNumberFormatEx(enW, 0, input, NULL, buffer, COUNTOF(buffer));
+  ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+      "Expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+
+  STRINGSW("--",""); /* Double '-' --> Error */
+  ret = pGetNumberFormatEx(enW, 0, input, NULL, buffer, COUNTOF(buffer));
+  ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+      "Expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+
+  STRINGSW("0-",""); /* Trailing '-' --> Error */
+  ret = pGetNumberFormatEx(enW, 0, input, NULL, buffer, COUNTOF(buffer));
+  ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+      "Expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+
+  STRINGSW("0..",""); /* Double '.' --> Error */
+  ret = pGetNumberFormatEx(enW, 0, input, NULL, buffer, COUNTOF(buffer));
+  ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+      "Expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+
+  STRINGSW(" 0.1",""); /* Leading space --> Error */
+  ret = pGetNumberFormatEx(enW, 0, input, NULL, buffer, COUNTOF(buffer));
+  ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+      "Expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+
+  STRINGSW("1234","1"); /* Length too small --> Write up to length chars */
+  ret = pGetNumberFormatEx(enW, NUO, input, NULL, buffer, 2);
+  ok( !ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+      "Expected ERROR_INSUFFICIENT_BUFFER, got %d\n", GetLastError());
+
+  STRINGSW("23",""); /* Bogus locale --> Error */
+  ret = pGetNumberFormatEx(bogusW, NUO, input, NULL, buffer, COUNTOF(buffer));
+  ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+      "Expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+
+  memset(&format, 0, sizeof(format));
+
+  STRINGSW("2353",""); /* Format and flags given --> Error */
+  ret = pGetNumberFormatEx(enW, NUO, input, &format, buffer, COUNTOF(buffer));
+  ok( !ret, "Expected ret == 0, got %d\n", ret);
+  ok( GetLastError() == ERROR_INVALID_FLAGS || GetLastError() == ERROR_INVALID_PARAMETER,
+      "Expected ERROR_INVALID_FLAGS, got %d\n", GetLastError());
+
+  STRINGSW("2353",""); /* Invalid format --> Error */
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+      "Expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
+
+  STRINGSW("2353","2,353.00"); /* Valid number */
+  ret = pGetNumberFormatEx(enW, NUO, input, NULL, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  STRINGSW("-2353","-2,353.00"); /* Valid negative number */
+  ret = pGetNumberFormatEx(enW, NUO, input, NULL, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  STRINGSW("-353","-353.00"); /* test for off by one error in grouping */
+  ret = pGetNumberFormatEx(enW, NUO, input, NULL, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  STRINGSW("2353.1","2,353.10"); /* Valid real number */
+  ret = pGetNumberFormatEx(enW, NUO, input, NULL, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  STRINGSW("2353.111","2,353.11"); /* Too many DP --> Truncated */
+  ret = pGetNumberFormatEx(enW, NUO, input, NULL, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  STRINGSW("2353.119","2,353.12");  /* Too many DP --> Rounded */
+  ret = pGetNumberFormatEx(enW, NUO, input, NULL, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  format.NumDigits = 0; /* No decimal separator */
+  format.LeadingZero = 0;
+  format.Grouping = 0;  /* No grouping char */
+  format.NegativeOrder = 0;
+  format.lpDecimalSep = dotW;
+  format.lpThousandSep = commaW;
+
+  STRINGSW("2353","2353"); /* No decimal or grouping chars expected */
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  format.NumDigits = 1; /* 1 DP --> Expect decimal separator */
+  STRINGSW("2353","2353.0");
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  format.Grouping = 2; /* Group by 100's */
+  STRINGSW("2353","23,53.0");
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  STRINGSW("235","235.0"); /* Grouping of a positive number */
+  format.Grouping = 3;
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  STRINGSW("-235","-235.0"); /* Grouping of a negative number */
+  format.NegativeOrder = NEG_LEFT;
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  format.LeadingZero = 1; /* Always provide leading zero */
+  STRINGSW(".5","0.5");
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  format.NegativeOrder = NEG_PARENS;
+  STRINGSW("-1","(1.0)");
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  format.NegativeOrder = NEG_LEFT;
+  STRINGSW("-1","-1.0");
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  format.NegativeOrder = NEG_LEFT_SPACE;
+  STRINGSW("-1","- 1.0");
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  format.NegativeOrder = NEG_RIGHT;
+  STRINGSW("-1","1.0-");
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  format.NegativeOrder = NEG_RIGHT_SPACE;
+  STRINGSW("-1","1.0 -");
+  ret = pGetNumberFormatEx(enW, 0, input, &format, buffer, COUNTOF(buffer));
+  ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+  EXPECT_LENW; EXPECT_EQW;
+
+  if (pIsValidLocaleName(frW))
+  {
+    STRINGSW("-12345","-12 345,00"); /* Try French formatting */
+    Expected[3] = 160; /* Non breaking space */
+    ret = pGetNumberFormatEx(frW, NUO, input, NULL, buffer, COUNTOF(buffer));
+    ok(ret, "Expected ret != 0, got %d, error %d\n", ret, GetLastError());
+    EXPECT_LENW; EXPECT_EQW;
+  }
+}
+
 struct comparestringa_entry {
   LCID lcid;
   DWORD flags;
@@ -2457,7 +2644,7 @@ static void test_LocaleNameToLCID(void)
     SetLastError(0xdeadbeef);
     lcid = pLocaleNameToLCID(fooW, 0);
     ok(!lcid && GetLastError() == ERROR_INVALID_PARAMETER,
-       "Expected lcid == 0, got got %08x, error %d\n", lcid, GetLastError());
+       "Expected lcid == 0, got %08x, error %d\n", lcid, GetLastError());
 
     /* english neutral name */
     lcid = pLocaleNameToLCID(enW, 0);
@@ -4209,6 +4396,7 @@ static void test_CompareStringOrdinal(void)
     WCHAR coop2[] = { 'c','o','o','p',0 };
     WCHAR nonascii1[] = { 0x0102,0 };
     WCHAR nonascii2[] = { 0x0201,0 };
+    WCHAR ch1, ch2;
 
     if (!pCompareStringOrdinal)
     {
@@ -4265,6 +4453,21 @@ static void test_CompareStringOrdinal(void)
     ok(ret == CSTR_LESS_THAN, "Got %u, expected %u\n", ret, CSTR_LESS_THAN);
     ret = pCompareStringOrdinal(nonascii1, -1, nonascii2, -1, TRUE);
     ok(ret == CSTR_LESS_THAN, "Got %u, expected %u\n", ret, CSTR_LESS_THAN);
+
+    for (ch1 = 0; ch1 < 512; ch1++)
+    {
+        for (ch2 = 0; ch2 < 1024; ch2++)
+        {
+            int diff = ch1 - ch2;
+            ret = pCompareStringOrdinal( &ch1, 1, &ch2, 1, FALSE );
+            ok( ret == (diff > 0 ? CSTR_GREATER_THAN : diff < 0 ? CSTR_LESS_THAN : CSTR_EQUAL),
+                        "wrong result %d %04x %04x\n", ret, ch1, ch2 );
+            diff = pRtlUpcaseUnicodeChar( ch1 ) - pRtlUpcaseUnicodeChar( ch2 );
+            ret = pCompareStringOrdinal( &ch1, 1, &ch2, 1, TRUE );
+            ok( ret == (diff > 0 ? CSTR_GREATER_THAN : diff < 0 ? CSTR_LESS_THAN : CSTR_EQUAL),
+                        "wrong result %d %04x %04x\n", ret, ch1, ch2 );
+        }
+    }
 }
 
 static void test_GetGeoInfo(void)
@@ -4698,7 +4901,7 @@ static void test_GetSystemPreferredUILanguages(void)
     size_buffer = max(size_id, size_name);
     if(!size_buffer)
     {
-        skip("No vaild buffer size\n");
+        skip("No valid buffer size\n");
         return;
     }
 
@@ -4784,6 +4987,8 @@ static void test_GetSystemPreferredUILanguages(void)
     ok(!ret, "Expected GetSystemPreferredUILanguages to fail\n");
     ok(ERROR_INSUFFICIENT_BUFFER == GetLastError(),
        "Expected error ERROR_INSUFFICIENT_BUFFER, got %d\n", GetLastError());
+
+    HeapFree(GetProcessHeap(), 0, buffer);
 }
 
 static void test_GetThreadPreferredUILanguages(void)
@@ -4829,6 +5034,7 @@ START_TEST(locale)
   test_GetDateFormatW();
   test_GetCurrencyFormatA(); /* Also tests the W version */
   test_GetNumberFormatA();   /* Also tests the W version */
+  test_GetNumberFormatEx();
   test_CompareStringA();
   test_CompareStringW();
   test_CompareStringEx();

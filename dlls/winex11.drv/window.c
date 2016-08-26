@@ -748,9 +748,15 @@ static void set_style_hints( struct x11drv_win_data *data, DWORD style, DWORD ex
 {
     Window group_leader = data->whole_window;
     HWND owner = GetWindow( data->hwnd, GW_OWNER );
-    Window owner_win = X11DRV_get_whole_window( owner );
+    Window owner_win = 0;
     XWMHints *wm_hints;
     Atom window_type;
+
+    if (owner)
+    {
+        owner = GetAncestor( owner, GA_ROOT );
+        owner_win = X11DRV_get_whole_window( owner );
+    }
 
     if (owner_win)
     {
@@ -1676,18 +1682,19 @@ void CDECL X11DRV_DestroyWindow( HWND hwnd )
 /***********************************************************************
  *		X11DRV_DestroyNotify
  */
-void X11DRV_DestroyNotify( HWND hwnd, XEvent *event )
+BOOL X11DRV_DestroyNotify( HWND hwnd, XEvent *event )
 {
     struct x11drv_win_data *data;
     BOOL embedded;
 
-    if (!(data = get_win_data( hwnd ))) return;
+    if (!(data = get_win_data( hwnd ))) return FALSE;
     embedded = data->embedded;
     if (!embedded) FIXME( "window %p/%lx destroyed from the outside\n", hwnd, data->whole_window );
 
     destroy_whole_window( data, TRUE );
     release_win_data( data );
     if (embedded) SendMessageW( hwnd, WM_CLOSE, 0, 0 );
+    return TRUE;
 }
 
 
@@ -2404,6 +2411,16 @@ void CDECL X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags
     release_win_data( data );
 }
 
+/* check if the window icon should be hidden (i.e. moved off-screen) */
+static BOOL hide_icon( struct x11drv_win_data *data )
+{
+    static const WCHAR trayW[] = {'S','h','e','l','l','_','T','r','a','y','W','n','d',0};
+
+    if (data->managed) return TRUE;
+    /* hide icons in desktop mode when the taskbar is active */
+    if (root_window == DefaultRootWindow( gdi_display )) return FALSE;
+    return IsWindowVisible( FindWindowW( trayW, NULL ));
+}
 
 /***********************************************************************
  *           ShowWindow   (X11DRV.@)
@@ -2418,18 +2435,18 @@ UINT CDECL X11DRV_ShowWindow( HWND hwnd, INT cmd, RECT *rect, UINT swp )
     struct x11drv_thread_data *thread_data = x11drv_thread_data();
     struct x11drv_win_data *data = get_win_data( hwnd );
 
-    if (!data || !data->whole_window || !data->managed) goto done;
+    if (!data || !data->whole_window) goto done;
     if (IsRectEmpty( rect )) goto done;
     if (style & WS_MINIMIZE)
     {
-        if (rect->left != -32000 || rect->top != -32000)
+        if (((rect->left != -32000 || rect->top != -32000)) && hide_icon( data ))
         {
             OffsetRect( rect, -32000 - rect->left, -32000 - rect->top );
             swp &= ~(SWP_NOMOVE | SWP_NOCLIENTMOVE);
         }
         goto done;
     }
-    if (!data->mapped || data->iconic) goto done;
+    if (!data->managed || !data->mapped || data->iconic) goto done;
 
     /* only fetch the new rectangle if the ShowWindow was a result of a window manager event */
 

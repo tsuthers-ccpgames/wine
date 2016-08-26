@@ -847,7 +847,7 @@ static HRESULT UNIXFS_copy(LPCWSTR pwszDosSrc, LPCWSTR pwszDosDst)
         op.pFrom = pwszSrc;
         op.pTo = pwszDst;
         op.fFlags = FOF_ALLOWUNDO;
-        if (!SHFileOperationW(&op))
+        if (SHFileOperationW(&op))
         {
             WARN("SHFileOperationW failed\n");
             res = E_FAIL;
@@ -1981,7 +1981,7 @@ static HRESULT UNIXFS_delete_with_shfileop(UnixFolder *This, UINT cidl, const LP
     op.wFunc = FO_DELETE;
     op.pFrom = wszPathsList;
     op.fFlags = FOF_ALLOWUNDO;
-    if (!SHFileOperationW(&op))
+    if (SHFileOperationW(&op))
     {
         WARN("SHFileOperationW failed\n");
         ret = E_FAIL;
@@ -2338,22 +2338,22 @@ static HRESULT CreateUnixFolder(IUnknown *outer, REFIID riid, void **ppv, const 
 }
 
 HRESULT WINAPI UnixFolder_Constructor(IUnknown *pUnkOuter, REFIID riid, LPVOID *ppv) {
-    TRACE("(pUnkOuter=%p, riid=%p, ppv=%p)\n", pUnkOuter, riid, ppv);
+    TRACE("(pUnkOuter=%p, riid=%s, ppv=%p)\n", pUnkOuter, debugstr_guid(riid), ppv);
     return CreateUnixFolder(pUnkOuter, riid, ppv, &CLSID_UnixFolder);
 }
 
 HRESULT WINAPI UnixDosFolder_Constructor(IUnknown *pUnkOuter, REFIID riid, LPVOID *ppv) {
-    TRACE("(pUnkOuter=%p, riid=%p, ppv=%p)\n", pUnkOuter, riid, ppv);
+    TRACE("(pUnkOuter=%p, riid=%s, ppv=%p)\n", pUnkOuter, debugstr_guid(riid), ppv);
     return CreateUnixFolder(pUnkOuter, riid, ppv, &CLSID_UnixDosFolder);
 }
 
 HRESULT WINAPI FolderShortcut_Constructor(IUnknown *pUnkOuter, REFIID riid, LPVOID *ppv) {
-    TRACE("(pUnkOuter=%p, riid=%p, ppv=%p)\n", pUnkOuter, riid, ppv);
+    TRACE("(pUnkOuter=%p, riid=%s, ppv=%p)\n", pUnkOuter, debugstr_guid(riid), ppv);
     return CreateUnixFolder(pUnkOuter, riid, ppv, &CLSID_FolderShortcut);
 }
 
 HRESULT WINAPI MyDocuments_Constructor(IUnknown *pUnkOuter, REFIID riid, LPVOID *ppv) {
-    TRACE("(pUnkOuter=%p, riid=%p, ppv=%p)\n", pUnkOuter, riid, ppv);
+    TRACE("(pUnkOuter=%p, riid=%s, ppv=%p)\n", pUnkOuter, debugstr_guid(riid), ppv);
     return CreateUnixFolder(pUnkOuter, riid, ppv, &CLSID_MyDocuments);
 }
 
@@ -2390,7 +2390,7 @@ static void UnixSubFolderIterator_Destroy(UnixSubFolderIterator *iterator) {
 static HRESULT WINAPI UnixSubFolderIterator_IEnumIDList_QueryInterface(IEnumIDList* iface, 
     REFIID riid, void** ppv)
 {
-    TRACE("(iface=%p, riid=%p, ppv=%p)\n", iface, riid, ppv);
+    TRACE("(iface=%p, riid=%s, ppv=%p)\n", iface, debugstr_guid(riid), ppv);
     
     if (!ppv) return E_INVALIDARG;
     

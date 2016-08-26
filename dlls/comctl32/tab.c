@@ -371,14 +371,8 @@ static BOOL TAB_InternalGetItemRect(
          (itemIndex < infoPtr->leftmostVisible)))
     {
         TRACE("Not Visible\n");
-        /* need to initialize these to empty rects */
-        if (itemRect)
-        {
-            memset(itemRect,0,sizeof(RECT));
-            itemRect->bottom = infoPtr->tabHeight;
-        }
-        if (selectedRect)
-            memset(selectedRect,0,sizeof(RECT));
+        SetRect(itemRect, 0, 0, 0, infoPtr->tabHeight);
+        SetRectEmpty(selectedRect);
         return FALSE;
     }
 
@@ -458,7 +452,7 @@ static BOOL TAB_InternalGetItemRect(
   /* Now, calculate the position of the item as if it were selected. */
   if (selectedRect!=NULL)
   {
-    CopyRect(selectedRect, itemRect);
+    *selectedRect = *itemRect;
 
     /* The rectangle of a selected item is a bit wider. */
     if(infoPtr->dwStyle & TCS_VERTICAL)
@@ -1609,12 +1603,7 @@ TAB_DrawItemInterior(const TAB_INFO *infoPtr, HDC hdc, INT iItem, RECT *drawRect
 	}
       }
       else
-      {
-	drawRect->left   += 2;
-	drawRect->top    += 2;
-	drawRect->right  -= 2;
-	drawRect->bottom -= 2;
-      }
+        InflateRect(drawRect, -2, -2);
     }
     else
     {
@@ -1623,8 +1612,7 @@ TAB_DrawItemInterior(const TAB_INFO *infoPtr, HDC hdc, INT iItem, RECT *drawRect
         if (iItem != infoPtr->iSelected)
 	{
 	  drawRect->left   += 2;
-	  drawRect->top    += 2;
-	  drawRect->bottom -= 2;
+          InflateRect(drawRect, 0, -2);
 	}
       }
       else if (infoPtr->dwStyle & TCS_VERTICAL)
@@ -1635,9 +1623,8 @@ TAB_DrawItemInterior(const TAB_INFO *infoPtr, HDC hdc, INT iItem, RECT *drawRect
 	}
 	else
 	{
-	  drawRect->top    += 2;
 	  drawRect->right  -= 2;
-	  drawRect->bottom -= 2;
+          InflateRect(drawRect, 0, -2);
 	}
       }
       else if (infoPtr->dwStyle & TCS_BOTTOM)
@@ -1720,10 +1707,7 @@ TAB_DrawItemInterior(const TAB_INFO *infoPtr, HDC hdc, INT iItem, RECT *drawRect
     drawRect->top += 2;
     drawRect->right -= 1;
     if ( iItem == infoPtr->iSelected )
-    {
-        drawRect->right -= 1;
-        drawRect->left += 1;
-    }
+        InflateRect(drawRect, -1, 0);
 
     id = (UINT)GetWindowLongPtrW( infoPtr->hwnd, GWLP_ID );
 
@@ -1739,7 +1723,7 @@ TAB_DrawItemInterior(const TAB_INFO *infoPtr, HDC hdc, INT iItem, RECT *drawRect
       dis.itemState |= ODS_FOCUS;
     dis.hwndItem = infoPtr->hwnd;
     dis.hDC      = hdc;
-    CopyRect(&dis.rcItem,drawRect);
+    dis.rcItem = *drawRect;
 
     /* when extra data fits ULONG_PTR, store it directly */
     if (infoPtr->cbInfo > sizeof(LPARAM))

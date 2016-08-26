@@ -517,9 +517,7 @@ static HWND DIALOG_CreateIndirect( HINSTANCE hInst, LPCVOID dlgTemplate,
 
     /* Create dialog main window */
 
-    rect.left = rect.top = 0;
-    rect.right = MulDiv(template.cx, xBaseUnit, 4);
-    rect.bottom =  MulDiv(template.cy, yBaseUnit, 8);
+    SetRect(&rect, 0, 0, MulDiv(template.cx, xBaseUnit, 4), MulDiv(template.cy, yBaseUnit, 8));
 
     if (template.style & DS_CONTROL)
         template.style &= ~(WS_CAPTION|WS_SYSMENU);
@@ -1153,6 +1151,9 @@ static HWND DIALOG_IdToHwnd( HWND hwndDlg, INT id )
 BOOL WINAPI IsDialogMessageW( HWND hwndDlg, LPMSG msg )
 {
     INT dlgCode;
+
+    if (!IsWindow( hwndDlg ))
+        return FALSE;
 
     if (CallMsgFilterW( msg, MSGF_DIALOGBOX )) return TRUE;
 

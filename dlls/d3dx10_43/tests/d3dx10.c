@@ -41,12 +41,21 @@ static BOOL compare_float(float f, float g, unsigned int ulps)
 static ID3D10Device *create_device(void)
 {
     ID3D10Device *device;
+    HMODULE d3d10_mod = LoadLibraryA("d3d10.dll");
+    HRESULT (WINAPI *pD3D10CreateDevice)(IDXGIAdapter *, D3D10_DRIVER_TYPE, HMODULE, UINT, UINT, ID3D10Device **);
 
-    if (SUCCEEDED(D3D10CreateDevice(NULL, D3D10_DRIVER_TYPE_HARDWARE, NULL, 0, D3D10_SDK_VERSION, &device)))
+    if (!d3d10_mod)
+    {
+        win_skip("d3d10.dll not present\n");
+        return NULL;
+    }
+
+    pD3D10CreateDevice = (void *)GetProcAddress(d3d10_mod, "D3D10CreateDevice");
+    if (SUCCEEDED(pD3D10CreateDevice(NULL, D3D10_DRIVER_TYPE_HARDWARE, NULL, 0, D3D10_SDK_VERSION, &device)))
         return device;
-    if (SUCCEEDED(D3D10CreateDevice(NULL, D3D10_DRIVER_TYPE_WARP, NULL, 0, D3D10_SDK_VERSION, &device)))
+    if (SUCCEEDED(pD3D10CreateDevice(NULL, D3D10_DRIVER_TYPE_WARP, NULL, 0, D3D10_SDK_VERSION, &device)))
         return device;
-    if (SUCCEEDED(D3D10CreateDevice(NULL, D3D10_DRIVER_TYPE_REFERENCE, NULL, 0, D3D10_SDK_VERSION, &device)))
+    if (SUCCEEDED(pD3D10CreateDevice(NULL, D3D10_DRIVER_TYPE_REFERENCE, NULL, 0, D3D10_SDK_VERSION, &device)))
         return device;
 
     return NULL;
@@ -344,10 +353,7 @@ float4 main(float4 color : COLOR) : SV_TARGET
 
     for (i = 0; i < D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; ++i)
     {
-        tmp_rect[i].left = i;
-        tmp_rect[i].top = i * 2;
-        tmp_rect[i].right = i + 1;
-        tmp_rect[i].bottom = (i + 1) * 2;
+        SetRect(&tmp_rect[i], i, i * 2, i + 1, (i + 1) * 2);
 
         tmp_viewport[i].TopLeftX = i * 3;
         tmp_viewport[i].TopLeftY = i * 4;
@@ -516,8 +522,8 @@ float4 main(float4 color : COLOR) : SV_TARGET
                     && tmp_rect[i].top == i * 2
                     && tmp_rect[i].right == i + 1
                     && tmp_rect[i].bottom == (i + 1) * 2,
-                    "Got unexpected scissor rect {%d, %d, %d, %d} in slot %u.\n",
-                    tmp_rect[i].left, tmp_rect[i].top, tmp_rect[i].right, tmp_rect[i].bottom, i);
+                    "Got unexpected scissor rect %s in slot %u.\n",
+                    wine_dbgstr_rect(&tmp_rect[i]), i);
     }
     ID3D10Device_RSGetViewports(device, &count, NULL);
     todo_wine ok(count == D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE,

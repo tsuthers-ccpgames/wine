@@ -233,6 +233,15 @@ HRESULT resource_init(struct wined3d_resource *resource, struct wined3d_device *
     return WINED3D_OK;
 }
 
+static void wined3d_resource_destroy_object(void *object)
+{
+    struct wined3d_resource *resource = object;
+
+    wined3d_resource_free_sysmem(resource);
+    context_resource_released(resource->device, resource, resource->type);
+    wined3d_resource_release(resource);
+}
+
 void resource_cleanup(struct wined3d_resource *resource)
 {
     const struct wined3d *d3d = resource->device->wined3d;
@@ -245,9 +254,9 @@ void resource_cleanup(struct wined3d_resource *resource)
         adapter_adjust_memory(resource->device->adapter, (INT64)0 - resource->size);
     }
 
-    wined3d_resource_free_sysmem(resource);
-
     device_resource_released(resource->device, resource);
+    wined3d_resource_acquire(resource);
+    wined3d_cs_emit_destroy_object(resource->device->cs, wined3d_resource_destroy_object, resource);
 }
 
 void resource_unload(struct wined3d_resource *resource)
@@ -316,6 +325,11 @@ HRESULT CDECL wined3d_resource_unmap(struct wined3d_resource *resource, unsigned
     TRACE("resource %p, sub_resource_idx %u.\n", resource, sub_resource_idx);
 
     return resource->resource_ops->resource_sub_resource_unmap(resource, sub_resource_idx);
+}
+
+void CDECL wined3d_resource_preload(struct wined3d_resource *resource)
+{
+    resource->resource_ops->resource_preload(resource);
 }
 
 BOOL wined3d_resource_allocate_sysmem(struct wined3d_resource *resource)

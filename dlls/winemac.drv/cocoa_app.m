@@ -2333,11 +2333,11 @@ static NSString* WineLocalizedString(unsigned int stringID)
  */
 static void PerformRequest(void *info)
 {
+    NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
     WineApplicationController* controller = [WineApplicationController sharedController];
 
     for (;;)
     {
-        NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
         __block dispatch_block_t block;
 
         dispatch_sync(controller->requestsManipQueue, ^{
@@ -2351,15 +2351,16 @@ static void PerformRequest(void *info)
         });
 
         if (!block)
-        {
-            [pool release];
             break;
-        }
 
         block();
         [block release];
+
         [pool release];
+        pool = [[NSAutoreleasePool alloc] init];
     }
+
+    [pool release];
 }
 
 /***********************************************************************

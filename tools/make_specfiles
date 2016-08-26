@@ -40,6 +40,7 @@ my @dll_groups =
   "msvcp100",
   "msvcp110",
   "msvcp120",
+  "msvcp140",
   "msvcp71",
   "msvcp80",
   "msvcp70",
@@ -48,6 +49,7 @@ my @dll_groups =
  [
   "msvcr120",
   "msvcr120_app",
+  "concrt140",
  ],
  [
   "ucrtbase",
@@ -73,28 +75,6 @@ my @dll_groups =
   "msvcp120_app",
  ],
  [
-  "d3dx9_36",
-  "d3dx9_43",
-  "d3dx9_42",
-  "d3dx9_41",
-  "d3dx9_40",
-  "d3dx9_39",
-  "d3dx9_38",
-  "d3dx9_37",
-  "d3dx9_35",
-  "d3dx9_34",
-  "d3dx9_33",
-  "d3dx9_32",
-  "d3dx9_31",
-  "d3dx9_30",
-  "d3dx9_29",
-  "d3dx9_28",
-  "d3dx9_27",
-  "d3dx9_26",
-  "d3dx9_25",
-  "d3dx9_24",
- ],
- [
   "d3dx10_43",
   "d3dx10_42",
   "d3dx10_41",
@@ -106,25 +86,6 @@ my @dll_groups =
   "d3dx10_35",
   "d3dx10_34",
   "d3dx10_33",
- ],
- [
-  "d3dx11_43",
-  "d3dx11_42",
- ],
- [
-  "d3dcompiler_43",
-  "d3dcompiler_47",
-  "d3dcompiler_46",
-  "d3dcompiler_42",
-  "d3dcompiler_41",
-  "d3dcompiler_40",
-  "d3dcompiler_39",
-  "d3dcompiler_38",
-  "d3dcompiler_37",
-  "d3dcompiler_36",
-  "d3dcompiler_35",
-  "d3dcompiler_34",
-  "d3dcompiler_33",
  ],
  [
   "xinput1_3",
@@ -139,6 +100,7 @@ my @dll_groups =
  ],
  [
   "vcomp",
+  "vcomp140",
   "vcomp120",
   "vcomp110",
   "vcomp100",
@@ -153,6 +115,7 @@ my @dll_groups =
   "api-ms-win-core-registry-l1-1-0",
   "api-ms-win-eventing-classicprovider-l1-1-0",
   "api-ms-win-eventing-provider-l1-1-0",
+  "api-ms-win-eventlog-legacy-l1-1-0",
   "api-ms-win-security-base-l1-2-0",
   "api-ms-win-security-lsalookup-l1-1-0",
   "api-ms-win-security-sddl-l1-1-0",
@@ -174,12 +137,14 @@ my @dll_groups =
   "api-ms-win-core-misc-l1-1-0",
   "api-ms-win-core-profile-l1-1-0",
   "api-ms-win-core-string-l1-1-0",
+  "api-ms-win-core-string-obsolete-l1-1-0",
   "api-ms-win-core-sysinfo-l1-1-0",
   "api-ms-win-core-sysinfo-l1-2-0",
   "api-ms-win-core-util-l1-1-0",
   "api-ms-win-core-synch-l1-1-0",
   "api-ms-win-core-synch-l1-2-0",
   "api-ms-win-core-console-l1-1-0",
+  "api-ms-win-core-console-l2-1-0",
   "api-ms-win-core-file-l1-1-0",
   "api-ms-win-core-file-l1-2-1",
   "api-ms-win-core-file-l1-2-0",
@@ -190,6 +155,8 @@ my @dll_groups =
   "api-ms-win-core-heap-l1-2-0",
   "api-ms-win-core-heap-obsolete-l1-1-0",
   "api-ms-win-core-io-l1-1-1",
+  "api-ms-win-core-job-l1-1-0",
+  "api-ms-win-core-job-l2-1-0",
   "api-ms-win-core-kernel32-legacy-l1-1-0",
   "api-ms-win-core-kernel32-legacy-l1-1-1",
   "api-ms-win-core-localization-l1-1-0",
@@ -198,12 +165,15 @@ my @dll_groups =
   "api-ms-win-core-memory-l1-1-0",
   "api-ms-win-core-memory-l1-1-1",
   "api-ms-win-core-memory-l1-1-2",
+  "api-ms-win-core-namespace-l1-1-0",
+  "api-ms-win-core-normalization-l1-1-0",
   "api-ms-win-core-processenvironment-l1-1-0",
   "api-ms-win-core-processenvironment-l1-2-0",
   "api-ms-win-core-psapi-l1-1-0",
   "api-ms-win-core-threadpool-l1-2-0",
   "api-ms-win-core-threadpool-legacy-l1-1-0",
   "api-ms-win-core-timezone-l1-1-0",
+  "api-ms-win-core-toolhelp-l1-1-0",
   "api-ms-win-core-sysinfo-l1-2-1",
   "api-ms-win-core-processthreads-l1-1-2",
   "api-ms-win-core-fibers-l1-1-0",
@@ -214,6 +184,7 @@ my @dll_groups =
   "api-ms-win-core-wow64-l1-1-0",
   "api-ms-win-core-xstate-l2-1-0",
   "api-ms-win-core-errorhandling-l1-1-2",
+  "api-ms-win-core-util-l1-1-0",
  ],
  [
   "kernel32",
@@ -245,6 +216,7 @@ my @dll_groups =
  [
   "shell32",
   "api-ms-win-downlevel-shell32-l1-1-0",
+  "api-ms-win-shell-shellfolders-l1-1-0",
  ],
  [
   "shlwapi",
@@ -289,6 +261,10 @@ my @dll_groups =
   "sfc_os",
   "sfc",
  ],
+ [
+  "bcrypt",
+  "ncrypt",
+ ],
 );
 
 my $update_flags = 0;
@@ -300,21 +276,17 @@ foreach my $arg (@ARGV)
     elsif ($arg eq "-d") { $show_duplicates = 1; }
 }
 
-sub update_file($)
+# update a file if changed
+sub update_file($$)
 {
     my $file = shift;
-    my $ret = !(-f $file) || system "cmp $file $file.new >/dev/null";
-    if (!$ret)
-    {
-        unlink "$file.new";
-    }
-    else
-    {
-        #system "diff -u $file $file.new";
-        rename "$file.new", "$file";
-        print "$file updated\n";
-    }
-    return $ret;
+    my $new = shift;
+
+    open FILE, ">$file.new" or die "cannot create $file.new";
+    print FILE $new;
+    close FILE;
+    rename "$file.new", "$file";
+    print "$file updated\n";
 }
 
 # parse a spec file line
@@ -356,11 +328,12 @@ sub update_spec_file($)
     my $name = shift;
     my $file = "dlls/$name/$name.spec";
     my %stubs;
+    my ($old, $new);
 
     open SPEC, "<$file" or die "cannot open $file";
-    open NEW, ">$file.new" or die "cannot create $file.new";
     while (<SPEC>)
     {
+        $old .= $_;
         chomp;
 
         my $commented_out = 0;
@@ -426,11 +399,10 @@ sub update_spec_file($)
         $_ .= $descr{comment} || "";
 
       done:
-        print NEW "$_\n";
+        $new .= "$_\n";
     }
     close SPEC;
-    close NEW;
-    update_file( $file );
+    update_file( $file, $new ) if $old ne $new;
 }
 
 sub sync_spec_files(@)

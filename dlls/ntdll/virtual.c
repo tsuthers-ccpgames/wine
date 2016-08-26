@@ -38,6 +38,9 @@
 #ifdef HAVE_SYS_MMAN_H
 # include <sys/mman.h>
 #endif
+#ifdef HAVE_SYS_SYSINFO_H
+# include <sys/sysinfo.h>
+#endif
 #ifdef HAVE_VALGRIND_VALGRIND_H
 # include <valgrind/valgrind.h>
 #endif
@@ -1356,11 +1359,22 @@ void virtual_init_threading(void)
  */
 void virtual_get_system_info( SYSTEM_BASIC_INFORMATION *info )
 {
+#ifdef HAVE_SYSINFO
+    struct sysinfo sinfo;
+#endif
+
     info->unknown                 = 0;
     info->KeMaximumIncrement      = 0;  /* FIXME */
     info->PageSize                = page_size;
     info->MmLowestPhysicalPage    = 1;
     info->MmHighestPhysicalPage   = 0x7fffffff / page_size;
+#ifdef HAVE_SYSINFO
+    if (!sysinfo(&sinfo))
+    {
+        ULONG64 total = (ULONG64)sinfo.totalram * sinfo.mem_unit;
+        info->MmHighestPhysicalPage = max(1, total / page_size);
+    }
+#endif
     info->MmNumberOfPhysicalPages = info->MmHighestPhysicalPage - info->MmLowestPhysicalPage;
     info->AllocationGranularity   = get_mask(0) + 1;
     info->LowestUserAddress       = (void *)0x10000;
@@ -2463,20 +2477,13 @@ NTSTATUS WINAPI NtCreateSection( HANDLE *handle, ACCESS_MASK access, const OBJEC
     data_size_t len;
     struct object_attributes *objattr;
 
-    /* Check parameters */
-
     if ((ret = get_vprot_flags( protect, &vprot, sec_flags & SEC_IMAGE ))) return ret;
     if ((ret = alloc_object_attributes( attr, &objattr, &len ))) return ret;
-
-    if (!(sec_flags & SEC_RESERVE)) vprot |= VPROT_COMMITTED;
-    if (sec_flags & SEC_NOCACHE) vprot |= VPROT_NOCACHE;
-    if (sec_flags & SEC_IMAGE) vprot |= VPROT_IMAGE;
-
-    /* Create the server object */
 
     SERVER_START_REQ( create_mapping )
     {
         req->access      = access;
+        req->flags       = sec_flags;
         req->file_handle = wine_server_obj_handle( file );
         req->size        = size ? size->QuadPart : 0;
         req->protect     = vprot;
@@ -2529,10 +2536,9 @@ NTSTATUS WINAPI NtMapViewOfSection( HANDLE handle, HANDLE process, PVOID *addr_p
     ACCESS_MASK access;
     SIZE_T size, mask = get_mask( zero_bits );
     int unix_handle = -1, needs_close;
-    unsigned int map_vprot, vprot;
-    void *base;
+    unsigned int map_vprot, vprot, sec_flags;
     struct file_view *view;
-    DWORD header_size;
+    pe_image_info_t image_info;
     HANDLE dup_mapping, shared_file;
     LARGE_INTEGER offset;
     sigset_t sigset;
@@ -2608,26 +2614,33 @@ NTSTATUS WINAPI NtMapViewOfSection( HANDLE handle, HANDLE process, PVOID *addr_p
     {
         req->handle = wine_server_obj_handle( handle );
         req->access = access;
+        wine_server_set_reply( req, &image_info, sizeof(image_info) );
         res = wine_server_call( req );
         map_vprot   = reply->protect;
-        base        = wine_server_get_ptr( reply->base );
+        sec_flags   = reply->flags;
         full_size   = reply->size;
-        header_size = reply->header_size;
         dup_mapping = wine_server_ptr_handle( reply->mapping );
         shared_file = wine_server_ptr_handle( reply->shared_file );
-        if ((ULONG_PTR)base != reply->base) base = NULL;
     }
     SERVER_END_REQ;
     if (res) return res;
 
+    if (!(sec_flags & SEC_RESERVE)) map_vprot |= VPROT_COMMITTED;
+    if (sec_flags & SEC_NOCACHE) map_vprot |= VPROT_NOCACHE;
+    if (sec_flags & SEC_IMAGE) map_vprot |= VPROT_IMAGE;
+
     if ((res = server_get_unix_fd( handle, 0, &unix_handle, &needs_close, NULL, NULL ))) goto done;
 
-    if (map_vprot & VPROT_IMAGE)
+    if (sec_flags & SEC_IMAGE)
     {
-        size = full_size;
-        if (size != full_size)  /* truncated */
+        void *base = wine_server_get_ptr( image_info.base );
+
+        if ((ULONG_PTR)base != image_info.base) base = NULL;
+        size = image_info.map_size;
+        if (size != image_info.map_size)  /* truncated */
         {
-            WARN( "Modules larger than 4Gb (%s) not supported\n", wine_dbgstr_longlong(full_size) );
+            WARN( "Modules larger than 4Gb (%s) not supported\n",
+                  wine_dbgstr_longlong(image_info.map_size) );
             res = STATUS_INVALID_PARAMETER;
             goto done;
         }
@@ -2637,14 +2650,14 @@ NTSTATUS WINAPI NtMapViewOfSection( HANDLE handle, HANDLE process, PVOID *addr_p
 
             if ((res = server_get_unix_fd( shared_file, FILE_READ_DATA|FILE_WRITE_DATA,
                                            &shared_fd, &shared_needs_close, NULL, NULL ))) goto done;
-            res = map_image( handle, unix_handle, base, size, mask, header_size,
+            res = map_image( handle, unix_handle, base, size, mask, image_info.header_size,
                              shared_fd, dup_mapping, map_vprot, addr_ptr );
             if (shared_needs_close) close( shared_fd );
             close_handle( shared_file );
         }
         else
         {
-            res = map_image( handle, unix_handle, base, size, mask, header_size,
+            res = map_image( handle, unix_handle, base, size, mask, image_info.header_size,
                              -1, dup_mapping, map_vprot, addr_ptr );
         }
         if (needs_close) close( unix_handle );
@@ -2656,9 +2669,12 @@ NTSTATUS WINAPI NtMapViewOfSection( HANDLE handle, HANDLE process, PVOID *addr_p
     if (offset.QuadPart >= full_size) goto done;
     if (*size_ptr)
     {
-        if (*size_ptr > full_size - offset.QuadPart) goto done;
-        size = ROUND_SIZE( offset.u.LowPart, *size_ptr );
-        if (size < *size_ptr) goto done;  /* wrap-around */
+        size = *size_ptr;
+        if (size > full_size - offset.QuadPart)
+        {
+            res = STATUS_INVALID_VIEW_SIZE;
+            goto done;
+        }
     }
     else
     {
@@ -2670,12 +2686,13 @@ NTSTATUS WINAPI NtMapViewOfSection( HANDLE handle, HANDLE process, PVOID *addr_p
             goto done;
         }
     }
+    if (!(size = ROUND_SIZE( 0, size ))) goto done;  /* wrap-around */
 
     /* Reserve a properly aligned area */
 
     server_enter_uninterrupted_section( &csVirtual, &sigset );
 
-    get_vprot_flags( protect, &vprot, map_vprot & VPROT_IMAGE );
+    get_vprot_flags( protect, &vprot, sec_flags & SEC_IMAGE );
     vprot |= (map_vprot & VPROT_COMMITTED);
     res = map_view( &view, *addr_ptr, size, mask, FALSE, vprot );
     if (res)
@@ -2723,7 +2740,6 @@ NTSTATUS WINAPI NtUnmapViewOfSection( HANDLE process, PVOID addr )
     struct file_view *view;
     NTSTATUS status = STATUS_NOT_MAPPED_VIEW;
     sigset_t sigset;
-    void *base = ROUND_ADDR( addr, page_mask );
 
     if (process != NtCurrentProcess())
     {
@@ -2740,12 +2756,81 @@ NTSTATUS WINAPI NtUnmapViewOfSection( HANDLE process, PVOID addr )
     }
 
     server_enter_uninterrupted_section( &csVirtual, &sigset );
-    if ((view = VIRTUAL_FindView( base, 0 )) && (base == view->base) && !(view->protect & VPROT_VALLOC))
+    if ((view = VIRTUAL_FindView( addr, 0 )) && !(view->protect & VPROT_VALLOC))
     {
         delete_view( view );
         status = STATUS_SUCCESS;
     }
     server_leave_uninterrupted_section( &csVirtual, &sigset );
+    return status;
+}
+
+
+/******************************************************************************
+ *             NtQuerySection   (NTDLL.@)
+ *             ZwQuerySection   (NTDLL.@)
+ */
+NTSTATUS WINAPI NtQuerySection( HANDLE handle, SECTION_INFORMATION_CLASS class, void *ptr,
+                                ULONG size, ULONG *ret_size )
+{
+    NTSTATUS status;
+    pe_image_info_t image_info;
+
+    switch (class)
+    {
+    case SectionBasicInformation:
+        if (size < sizeof(SECTION_BASIC_INFORMATION)) return STATUS_INFO_LENGTH_MISMATCH;
+        break;
+    case SectionImageInformation:
+        if (size < sizeof(SECTION_IMAGE_INFORMATION)) return STATUS_INFO_LENGTH_MISMATCH;
+        break;
+    default:
+	FIXME( "class %u not implemented\n", class );
+	return STATUS_NOT_IMPLEMENTED;
+    }
+    if (!ptr) return STATUS_ACCESS_VIOLATION;
+
+    SERVER_START_REQ( get_mapping_info )
+    {
+        req->handle = wine_server_obj_handle( handle );
+        req->access = SECTION_QUERY;
+        wine_server_set_reply( req, &image_info, sizeof(image_info) );
+        if (!(status = wine_server_call( req )))
+        {
+            if (class == SectionBasicInformation)
+            {
+                SECTION_BASIC_INFORMATION *info = ptr;
+                info->Attributes    = reply->flags;
+                info->BaseAddress   = NULL;
+                info->Size.QuadPart = reply->size;
+                if (ret_size) *ret_size = sizeof(*info);
+            }
+            else if (reply->flags & SEC_IMAGE)
+            {
+                SECTION_IMAGE_INFORMATION *info = ptr;
+                info->TransferAddress      = wine_server_get_ptr( image_info.entry_point );
+                info->ZeroBits             = image_info.zerobits;
+                info->MaximumStackSize     = image_info.stack_size;
+                info->CommittedStackSize   = image_info.stack_commit;
+                info->SubSystemType        = image_info.subsystem;
+                info->SubsystemVersionLow  = image_info.subsystem_low;
+                info->SubsystemVersionHigh = image_info.subsystem_high;
+                info->GpValue              = image_info.gp;
+                info->ImageCharacteristics = image_info.image_charact;
+                info->DllCharacteristics   = image_info.dll_charact;
+                info->Machine              = image_info.machine;
+                info->ImageContainsCode    = image_info.contains_code;
+                info->ImageFlags           = image_info.image_flags;
+                info->LoaderFlags          = image_info.loader_flags;
+                info->ImageFileSize        = image_info.file_size;
+                info->CheckSum             = image_info.checksum;
+                if (ret_size) *ret_size = sizeof(*info);
+            }
+            else status = STATUS_SECTION_NOT_IMAGE;
+        }
+    }
+    SERVER_END_REQ;
+
     return status;
 }
 

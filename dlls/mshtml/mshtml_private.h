@@ -124,6 +124,8 @@ typedef struct event_target_t event_target_t;
     XDIID(DispHTMLXMLHttpRequest) \
     XDIID(HTMLDocumentEvents) \
     XDIID(HTMLElementEvents2) \
+    XIID(IDocumentSelector) \
+    XIID(IElementSelector) \
     XIID(IHTMLAnchorElement) \
     XIID(IHTMLAreaElement) \
     XIID(IHTMLAttributeCollection) \
@@ -141,6 +143,7 @@ typedef struct event_target_t event_target_t;
     XIID(IHTMLDocument3) \
     XIID(IHTMLDocument4) \
     XIID(IHTMLDocument5) \
+    XIID(IHTMLDocument6) \
     XIID(IHTMLDOMAttribute) \
     XIID(IHTMLDOMAttribute2) \
     XIID(IHTMLDOMChildrenCollection) \
@@ -153,6 +156,7 @@ typedef struct event_target_t event_target_t;
     XIID(IHTMLElement2) \
     XIID(IHTMLElement3) \
     XIID(IHTMLElement4) \
+    XIID(IHTMLElement6) \
     XIID(IHTMLElementCollection) \
     XIID(IHTMLEmbedElement) \
     XIID(IHTMLEventObj) \
@@ -226,6 +230,18 @@ TID_LIST
     LAST_tid
 } tid_t;
 
+typedef enum {
+    COMPAT_MODE_QUIRKS,
+    COMPAT_MODE_IE7,
+    COMPAT_MODE_IE8,
+    COMPAT_MODE_IE9,
+    COMPAT_MODE_IE10,
+    COMPAT_MODE_IE11
+} compat_mode_t;
+
+#define COMPAT_MODE_CNT (COMPAT_MODE_IE11+1)
+#define COMPAT_MODE_NONE COMPAT_MODE_QUIRKS
+
 typedef struct dispex_data_t dispex_data_t;
 typedef struct dispex_dynamic_data_t dispex_dynamic_data_t;
 
@@ -248,9 +264,9 @@ typedef struct {
 typedef struct {
     const dispex_static_data_vtbl_t *vtbl;
     const tid_t disp_tid;
-    dispex_data_t *data;
     const tid_t* const iface_tids;
-    const tid_t additional_tid;
+    void (*init_info)(dispex_data_t*,compat_mode_t);
+    dispex_data_t *info_cache[COMPAT_MODE_CNT];
 } dispex_static_data_t;
 
 struct DispatchEx {
@@ -258,7 +274,7 @@ struct DispatchEx {
 
     IUnknown *outer;
 
-    dispex_static_data_t *data;
+    dispex_data_t *info;
     dispex_dynamic_data_t *dynamic_data;
 };
 
@@ -289,7 +305,7 @@ void (__cdecl *ccp_init)(ExternalCycleCollectionParticipant*,const CCObjCallback
 void (__cdecl *describe_cc_node)(nsCycleCollectingAutoRefCnt*,const char*,nsCycleCollectionTraversalCallback*) DECLSPEC_HIDDEN;
 void (__cdecl *note_cc_edge)(nsISupports*,const char*,nsCycleCollectionTraversalCallback*) DECLSPEC_HIDDEN;
 
-void init_dispex(DispatchEx*,IUnknown*,dispex_static_data_t*) DECLSPEC_HIDDEN;
+void init_dispex_with_compat_mode(DispatchEx*,IUnknown*,dispex_static_data_t*,compat_mode_t) DECLSPEC_HIDDEN;
 void release_dispex(DispatchEx*) DECLSPEC_HIDDEN;
 BOOL dispex_query_interface(DispatchEx*,REFIID,void**) DECLSPEC_HIDDEN;
 HRESULT dispex_get_dprop_ref(DispatchEx*,const WCHAR*,BOOL,VARIANT**) DECLSPEC_HIDDEN;
@@ -300,6 +316,13 @@ void dispex_traverse(DispatchEx*,nsCycleCollectionTraversalCallback*) DECLSPEC_H
 void dispex_unlink(DispatchEx*) DECLSPEC_HIDDEN;
 void release_typelib(void) DECLSPEC_HIDDEN;
 HRESULT get_htmldoc_classinfo(ITypeInfo **typeinfo) DECLSPEC_HIDDEN;
+const dispex_static_data_vtbl_t *dispex_get_vtbl(DispatchEx*) DECLSPEC_HIDDEN;
+void dispex_info_add_interface(dispex_data_t*,tid_t) DECLSPEC_HIDDEN;
+
+static inline void init_dispex(DispatchEx *dispex, IUnknown *outer, dispex_static_data_t *desc)
+{
+    init_dispex_with_compat_mode(dispex, outer, desc, COMPAT_MODE_NONE);
+}
 
 typedef enum {
     DISPEXPROP_CUSTOM,
@@ -422,6 +445,7 @@ struct HTMLOuterWindow {
 
     HTMLDocumentObj *doc_obj;
     nsIDOMWindow *nswindow;
+    mozIDOMWindowProxy *window_proxy;
     HTMLOuterWindow *parent;
     HTMLFrameBase *frame_element;
 
@@ -529,6 +553,7 @@ struct HTMLDocument {
     IHTMLDocument5              IHTMLDocument5_iface;
     IHTMLDocument6              IHTMLDocument6_iface;
     IHTMLDocument7              IHTMLDocument7_iface;
+    IDocumentSelector           IDocumentSelector_iface;
     IPersistMoniker             IPersistMoniker_iface;
     IPersistFile                IPersistFile_iface;
     IPersistHistory             IPersistHistory_iface;
@@ -713,7 +738,9 @@ typedef struct {
     IHTMLElement2 IHTMLElement2_iface;
     IHTMLElement3 IHTMLElement3_iface;
     IHTMLElement4 IHTMLElement4_iface;
+    IHTMLElement6 IHTMLElement6_iface;
     IHTMLUniqueName IHTMLUniqueName_iface;
+    IElementSelector IElementSelector_iface;
 
     nsIDOMHTMLElement *nselem;
     HTMLStyle *style;
@@ -766,6 +793,7 @@ struct HTMLDocumentNode {
 
     LONG ref;
 
+    compat_mode_t document_mode;
     HTMLInnerWindow *window;
 
     nsIDOMHTMLDocument *nsdoc;
@@ -799,7 +827,7 @@ HRESULT create_doc_from_nsdoc(nsIDOMHTMLDocument*,HTMLDocumentObj*,HTMLInnerWind
 
 HRESULT HTMLOuterWindow_Create(HTMLDocumentObj*,nsIDOMWindow*,HTMLOuterWindow*,HTMLOuterWindow**) DECLSPEC_HIDDEN;
 HRESULT update_window_doc(HTMLInnerWindow*) DECLSPEC_HIDDEN;
-HTMLOuterWindow *nswindow_to_window(const nsIDOMWindow*) DECLSPEC_HIDDEN;
+HTMLOuterWindow *mozwindow_to_window(const mozIDOMWindowProxy*) DECLSPEC_HIDDEN;
 void get_top_window(HTMLOuterWindow*,HTMLOuterWindow**) DECLSPEC_HIDDEN;
 HRESULT HTMLOptionElementFactory_Create(HTMLInnerWindow*,HTMLOptionElementFactory**) DECLSPEC_HIDDEN;
 HRESULT HTMLImageElementFactory_Create(HTMLInnerWindow*,HTMLImageElementFactory**) DECLSPEC_HIDDEN;
@@ -1002,6 +1030,7 @@ void HTMLElement_destructor(HTMLDOMNode*) DECLSPEC_HIDDEN;
 HRESULT HTMLElement_clone(HTMLDOMNode*,nsIDOMNode*,HTMLDOMNode**) DECLSPEC_HIDDEN;
 HRESULT HTMLElement_get_attr_col(HTMLDOMNode*,HTMLAttributeCollection**) DECLSPEC_HIDDEN;
 HRESULT HTMLElement_handle_event(HTMLDOMNode*,DWORD,nsIDOMEvent*,BOOL*) DECLSPEC_HIDDEN;
+void HTMLElement_init_dispex_info(dispex_data_t*,compat_mode_t) DECLSPEC_HIDDEN;
 
 HRESULT HTMLFrameBase_QI(HTMLFrameBase*,REFIID,void**) DECLSPEC_HIDDEN;
 void HTMLFrameBase_destructor(HTMLFrameBase*) DECLSPEC_HIDDEN;
@@ -1022,6 +1051,7 @@ HRESULT wrap_iface(IUnknown*,IUnknown*,IUnknown**) DECLSPEC_HIDDEN;
 IHTMLElementCollection *create_all_collection(HTMLDOMNode*,BOOL) DECLSPEC_HIDDEN;
 IHTMLElementCollection *create_collection_from_nodelist(HTMLDocumentNode*,nsIDOMNodeList*) DECLSPEC_HIDDEN;
 IHTMLElementCollection *create_collection_from_htmlcol(HTMLDocumentNode*,nsIDOMHTMLCollection*) DECLSPEC_HIDDEN;
+IHTMLDOMChildrenCollection *create_child_collection(HTMLDocumentNode*,nsIDOMNodeList*) DECLSPEC_HIDDEN;
 
 HRESULT attr_value_to_string(VARIANT*) DECLSPEC_HIDDEN;
 HRESULT get_elem_attr_value_by_dispid(HTMLElement*,DISPID,VARIANT*) DECLSPEC_HIDDEN;

@@ -70,7 +70,6 @@ static BOOL   (WINAPI *pVirtualFreeEx)(HANDLE, LPVOID, SIZE_T, DWORD);
 static BOOL   (WINAPI *pQueryFullProcessImageNameA)(HANDLE hProcess, DWORD dwFlags, LPSTR lpExeName, PDWORD lpdwSize);
 static BOOL   (WINAPI *pQueryFullProcessImageNameW)(HANDLE hProcess, DWORD dwFlags, LPWSTR lpExeName, PDWORD lpdwSize);
 static DWORD  (WINAPI *pK32GetProcessImageFileNameA)(HANDLE,LPSTR,DWORD);
-static struct _TEB * (WINAPI *pNtCurrentTeb)(void);
 static HANDLE (WINAPI *pCreateJobObjectW)(LPSECURITY_ATTRIBUTES sa, LPCWSTR name);
 static BOOL   (WINAPI *pAssignProcessToJobObject)(HANDLE job, HANDLE process);
 static BOOL   (WINAPI *pIsProcessInJob)(HANDLE process, HANDLE job, PBOOL result);
@@ -88,6 +87,7 @@ static BOOL   (WINAPI *pProcess32Next)(HANDLE, PROCESSENTRY32*);
 static BOOL   (WINAPI *pThread32First)(HANDLE, THREADENTRY32*);
 static BOOL   (WINAPI *pThread32Next)(HANDLE, THREADENTRY32*);
 static BOOL   (WINAPI *pGetLogicalProcessorInformationEx)(LOGICAL_PROCESSOR_RELATIONSHIP,SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*,DWORD*);
+static SIZE_T (WINAPI *pGetLargePageMinimum)(void);
 
 /* ############################### */
 static char     base[MAX_PATH];
@@ -225,7 +225,6 @@ static BOOL init(void)
     hkernel32 = GetModuleHandleA("kernel32");
     hntdll    = GetModuleHandleA("ntdll.dll");
 
-    pNtCurrentTeb = (void *)GetProcAddress(hntdll, "NtCurrentTeb");
     pNtQueryInformationProcess = (void *)GetProcAddress(hntdll, "NtQueryInformationProcess");
 
     pGetNativeSystemInfo = (void *) GetProcAddress(hkernel32, "GetNativeSystemInfo");
@@ -252,6 +251,7 @@ static BOOL init(void)
     pThread32First = (void *)GetProcAddress(hkernel32, "Thread32First");
     pThread32Next = (void *)GetProcAddress(hkernel32, "Thread32Next");
     pGetLogicalProcessorInformationEx = (void *)GetProcAddress(hkernel32, "GetLogicalProcessorInformationEx");
+    pGetLargePageMinimum = (void *)GetProcAddress(hkernel32, "GetLargePageMinimum");
 
     return TRUE;
 }
@@ -295,6 +295,7 @@ static void WINETEST_PRINTF_ATTR(2,3) childPrintf(HANDLE h, const char* fmt, ...
  */
 static void     doChild(const char* file, const char* option)
 {
+    RTL_USER_PROCESS_PARAMETERS *params = NtCurrentTeb()->Peb->ProcessParameters;
     STARTUPINFOA        siA;
     STARTUPINFOW        siW;
     int                 i;
@@ -323,15 +324,10 @@ static void     doChild(const char* file, const char* option)
                 siA.dwFlags, siA.wShowWindow,
                 (DWORD_PTR)siA.hStdInput, (DWORD_PTR)siA.hStdOutput, (DWORD_PTR)siA.hStdError);
 
-    if (pNtCurrentTeb)
-    {
-        RTL_USER_PROCESS_PARAMETERS *params = pNtCurrentTeb()->Peb->ProcessParameters;
-
-        /* check the console handles in the TEB */
-        childPrintf(hFile, "[TEB]\nhStdInput=%lu\nhStdOutput=%lu\nhStdError=%lu\n\n",
-                    (DWORD_PTR)params->hStdInput, (DWORD_PTR)params->hStdOutput,
-                    (DWORD_PTR)params->hStdError);
-    }
+    /* check the console handles in the TEB */
+    childPrintf(hFile, "[TEB]\nhStdInput=%lu\nhStdOutput=%lu\nhStdError=%lu\n\n",
+                (DWORD_PTR)params->hStdInput, (DWORD_PTR)params->hStdOutput,
+                (DWORD_PTR)params->hStdError);
 
     /* since GetStartupInfoW is only implemented in win2k,
      * zero out before calling so we can notice the difference
@@ -2872,12 +2868,6 @@ static void test_StartupNoConsole(void)
     STARTUPINFOA        startup;
     PROCESS_INFORMATION info;
 
-    if (!pNtCurrentTeb)
-    {
-        win_skip( "NtCurrentTeb not supported\n" );
-        return;
-    }
-
     memset(&startup, 0, sizeof(startup));
     startup.cb = sizeof(startup);
     startup.dwFlags = STARTF_USESHOWWINDOW;
@@ -3138,6 +3128,19 @@ static void test_GetLogicalProcessorInformationEx(void)
     HeapFree(GetProcessHeap(), 0, info);
 }
 
+static void test_largepages(void)
+{
+    SIZE_T size;
+
+    if (!pGetLargePageMinimum) {
+        skip("No GetLargePageMinimum support.\n");
+        return;
+    }
+    size = pGetLargePageMinimum();
+
+    ok((size == 0) || (size == 2*1024*1024) || (size == 4*1024*1024), "GetLargePageMinimum reports %ld size\n", size);
+}
+
 START_TEST(process)
 {
     HANDLE job;
@@ -3210,6 +3213,7 @@ START_TEST(process)
     test_GetNumaProcessorNode();
     test_session_info();
     test_GetLogicalProcessorInformationEx();
+    test_largepages();
 
     /* things that can be tested:
      *  lookup:         check the way program to be executed is searched

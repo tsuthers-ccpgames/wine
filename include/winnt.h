@@ -728,10 +728,13 @@ typedef struct _MEMORY_BASIC_INFORMATION
 
 #define SEC_FILE                0x00800000
 #define SEC_IMAGE               0x01000000
+#define SEC_PROTECTED_IMAGE     0x02000000
 #define SEC_RESERVE             0x04000000
 #define SEC_COMMIT              0x08000000
 #define SEC_NOCACHE             0x10000000
+#define SEC_WRITECOMBINE        0x40000000
 #define SEC_LARGE_PAGES         0x80000000
+#define SEC_IMAGE_NO_EXECUTE    (SEC_IMAGE | SEC_NOCACHE)
 #define MEM_IMAGE               SEC_IMAGE
 
 #define WRITE_WATCH_FLAG_RESET  0x00000001
@@ -2328,7 +2331,7 @@ static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)
   __asm mov teb, eax;
   return teb;
 }
-#elif defined(__x86_64__) && defined(__GNUC__) && !defined(__APPLE__)
+#elif defined(__x86_64__) && defined(__GNUC__)
 static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)
 {
     struct _TEB *teb;
@@ -4823,10 +4826,15 @@ typedef struct _QUOTA_LIMITS_EX {
 #define FILE_ATTRIBUTE_OFFLINE             0x00001000
 #define FILE_ATTRIBUTE_NOT_CONTENT_INDEXED 0x00002000
 #define FILE_ATTRIBUTE_ENCRYPTED           0x00004000
+#define FILE_ATTRIBUTE_INTEGRITY_STREAM    0x00008000
+#define FILE_ATTRIBUTE_VIRTUAL             0x00010000
+#define FILE_ATTRIBUTE_NO_SCRUB_DATA       0x00020000
+#define FILE_ATTRIBUTE_EA                  0x00040000
 
 /* File notification flags */
 #define FILE_NOTIFY_CHANGE_FILE_NAME    0x00000001
 #define FILE_NOTIFY_CHANGE_DIR_NAME     0x00000002
+#define FILE_NOTIFY_CHANGE_NAME         0x00000003
 #define FILE_NOTIFY_CHANGE_ATTRIBUTES   0x00000004
 #define FILE_NOTIFY_CHANGE_SIZE         0x00000008
 #define FILE_NOTIFY_CHANGE_LAST_WRITE   0x00000010
@@ -4846,6 +4854,9 @@ typedef struct _QUOTA_LIMITS_EX {
 #define FILE_ACTION_ADDED_STREAM        0x00000006
 #define FILE_ACTION_REMOVED_STREAM      0x00000007
 #define FILE_ACTION_MODIFIED_STREAM     0x00000008
+#define FILE_ACTION_REMOVED_BY_DELETE   0x00000009
+#define FILE_ACTION_ID_NOT_TUNNELLED          0x0000000a
+#define FILE_ACTION_TUNNELLED_ID_COLLISION    0x0000000b
 
 #define FILE_CASE_SENSITIVE_SEARCH      0x00000001
 #define FILE_CASE_PRESERVED_NAMES       0x00000002
@@ -4855,11 +4866,21 @@ typedef struct _QUOTA_LIMITS_EX {
 #define FILE_VOLUME_QUOTAS              0x00000020
 #define FILE_SUPPORTS_SPARSE_FILES      0x00000040
 #define FILE_SUPPORTS_REPARSE_POINTS    0x00000080
+#define FILE_SUPPORTS_REMOTE_STORAGE    0x00000100
 #define FILE_VOLUME_IS_COMPRESSED       0x00008000
 #define FILE_SUPPORTS_OBJECT_IDS        0x00010000
 #define FILE_SUPPORTS_ENCRYPTION        0x00020000
 #define FILE_NAMED_STREAMS              0x00040000
 #define FILE_READ_ONLY_VOLUME           0x00080000
+#define FILE_SEQUENTIAL_WRITE_ONCE      0x00100000
+#define FILE_SUPPORTS_TRANSACTIONS           0x00200000
+#define FILE_SUPPORTS_HARD_LINKS             0x00400000
+#define FILE_SUPPORTS_EXTENDED_ATTRIBUTES    0x00800000
+#define FILE_SUPPORTS_OPEN_BY_FILE_ID        0x01000000
+#define FILE_SUPPORTS_USN_JOURNAL            0x02000000
+#define FILE_SUPPORTS_INTEGRITY_STREAMS      0x04000000
+#define FILE_SUPPORTS_BLOCK_REFCOUNTING      0x08000000
+#define FILE_SUPPORTS_SPARSE_VDL             0x10000000
 
 /* File alignments (NT) */
 #define	FILE_BYTE_ALIGNMENT		0x00000000
@@ -4925,6 +4946,19 @@ typedef enum _POWER_ACTION {
 	PowerActionWarmEject
 } POWER_ACTION,
 *PPOWER_ACTION;
+
+typedef enum _POWER_PLATFORM_ROLE {
+    PlatformRoleUnspecified,
+    PlatformRoleDesktop,
+    PlatformRoleMobile,
+    PlatformRoleWorkstation,
+    PlatformRoleEnterpriseServer,
+    PlatformRoleSOHOServer,
+    PlatformRoleAppliancePC,
+    PlatformRolePerformanceServer,
+    PlatformRoleSlate,
+    PlatformRoleMaximum
+} POWER_PLATFORM_ROLE, *PPOWER_PLATFORM_ROLE;
 
 typedef enum _SYSTEM_POWER_STATE {
 	PowerSystemUnspecified = 0,

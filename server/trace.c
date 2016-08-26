@@ -58,9 +58,9 @@ static inline void remove_data( data_size_t size )
     cur_size -= size;
 }
 
-static void dump_uints( const int *ptr, int len )
+static void dump_uints( const char *prefix, const unsigned int *ptr, int len )
 {
-    fputc( '{', stderr );
+    fprintf( stderr, "%s{", prefix );
     while (len > 0)
     {
         fprintf( stderr, "%08x", *ptr++ );
@@ -407,6 +407,14 @@ static void dump_varargs_ints( const char *prefix, data_size_t size )
     remove_data( size );
 }
 
+static void dump_varargs_uints( const char *prefix, data_size_t size )
+{
+    const unsigned int *data = cur_data;
+
+    dump_uints( prefix, data, size / sizeof(*data) );
+    remove_data( size );
+}
+
 static void dump_varargs_uints64( const char *prefix, data_size_t size )
 {
     const unsigned __int64 *data = cur_data;
@@ -567,13 +575,15 @@ static void dump_varargs_context( const char *prefix, data_size_t size )
             fprintf( stderr, ",fp.data_off=%08x,fp.data_sel=%08x,fp.cr0npx=%08x",
                      ctx.fp.i386_regs.data_off, ctx.fp.i386_regs.data_sel, ctx.fp.i386_regs.cr0npx );
             for (i = 0; i < 8; i++)
-                fprintf( stderr, ",fp.reg%u=%Lg", i, *(long double *)&ctx.fp.i386_regs.regs[10*i] );
+            {
+                long double reg = 0;
+                memcpy( &reg, &ctx.fp.i386_regs.regs[10 * i], 10 );
+                fprintf( stderr, ",fp.reg%u=%Lg", i, reg );
+            }
         }
         if (ctx.flags & SERVER_CTX_EXTENDED_REGISTERS)
-        {
-            fprintf( stderr, ",extended=" );
-            dump_uints( (const int *)ctx.ext.i386_regs, sizeof(ctx.ext.i386_regs) / sizeof(int) );
-        }
+            dump_uints( ",extended=", (const unsigned int *)ctx.ext.i386_regs,
+                        sizeof(ctx.ext.i386_regs) / sizeof(int) );
         break;
     case CPU_x86_64:
         if (ctx.flags & SERVER_CTX_CONTROL)
@@ -1130,6 +1140,33 @@ static void dump_varargs_filesystem_event( const char *prefix, data_size_t size 
         if (size)fputc( ',', stderr );
     }
     fputc( '}', stderr );
+}
+
+static void dump_varargs_pe_image_info( const char *prefix, data_size_t size )
+{
+    pe_image_info_t info;
+
+    if (!size)
+    {
+        fprintf( stderr, "%s{}", prefix );
+        return;
+    }
+    memset( &info, 0, sizeof(info) );
+    memcpy( &info, cur_data, min( size, sizeof(info) ));
+
+    fprintf( stderr, "%s{", prefix );
+    dump_uint64( "base=", &info.base );
+    dump_uint64( ",entry_point=", &info.entry_point );
+    dump_uint64( ",map_size=", &info.map_size );
+    dump_uint64( ",stack_size=", &info.stack_size );
+    dump_uint64( ",stack_commit=", &info.stack_commit );
+    fprintf( stderr, ",zerobits=%08x,subsystem=%08x,subsystem_low=%04x,subsystem_high=%04x,gp=%08x"
+             ",image_charact=%04x,dll_charact=%04x,machine=%04x,contains_code=%u,image_flags=%02x"
+             ",loader_flags=%08x,header_size=%08x,file_size=%08x,checksum=%08x}",
+             info.zerobits, info.subsystem, info.subsystem_low, info.subsystem_high, info.gp,
+             info.image_charact, info.dll_charact, info.machine, info.contains_code, info.image_flags,
+             info.loader_flags, info.header_size, info.file_size, info.checksum );
+    remove_data( size );
 }
 
 static void dump_varargs_rawinput_devices(const char *prefix, data_size_t size )
@@ -1996,6 +2033,7 @@ static void dump_set_console_output_info_request( const struct set_console_outpu
     fprintf( stderr, ", width=%d", req->width );
     fprintf( stderr, ", height=%d", req->height );
     fprintf( stderr, ", attr=%d", req->attr );
+    fprintf( stderr, ", popup_attr=%d", req->popup_attr );
     fprintf( stderr, ", win_left=%d", req->win_left );
     fprintf( stderr, ", win_top=%d", req->win_top );
     fprintf( stderr, ", win_right=%d", req->win_right );
@@ -2004,6 +2042,7 @@ static void dump_set_console_output_info_request( const struct set_console_outpu
     fprintf( stderr, ", max_height=%d", req->max_height );
     fprintf( stderr, ", font_width=%d", req->font_width );
     fprintf( stderr, ", font_height=%d", req->font_height );
+    dump_varargs_uints( ", colors=", cur_size );
 }
 
 static void dump_get_console_output_info_request( const struct get_console_output_info_request *req )
@@ -2020,6 +2059,7 @@ static void dump_get_console_output_info_reply( const struct get_console_output_
     fprintf( stderr, ", width=%d", req->width );
     fprintf( stderr, ", height=%d", req->height );
     fprintf( stderr, ", attr=%d", req->attr );
+    fprintf( stderr, ", popup_attr=%d", req->popup_attr );
     fprintf( stderr, ", win_left=%d", req->win_left );
     fprintf( stderr, ", win_top=%d", req->win_top );
     fprintf( stderr, ", win_right=%d", req->win_right );
@@ -2028,6 +2068,7 @@ static void dump_get_console_output_info_reply( const struct get_console_output_
     fprintf( stderr, ", max_height=%d", req->max_height );
     fprintf( stderr, ", font_width=%d", req->font_width );
     fprintf( stderr, ", font_height=%d", req->font_height );
+    dump_varargs_uints( ", colors=", cur_size );
 }
 
 static void dump_write_console_input_request( const struct write_console_input_request *req )
@@ -2140,6 +2181,7 @@ static void dump_read_change_reply( const struct read_change_reply *req )
 static void dump_create_mapping_request( const struct create_mapping_request *req )
 {
     fprintf( stderr, " access=%08x", req->access );
+    fprintf( stderr, ", flags=%08x", req->flags );
     fprintf( stderr, ", protect=%08x", req->protect );
     dump_uint64( ", size=", &req->size );
     fprintf( stderr, ", file_handle=%04x", req->file_handle );
@@ -2173,11 +2215,11 @@ static void dump_get_mapping_info_request( const struct get_mapping_info_request
 static void dump_get_mapping_info_reply( const struct get_mapping_info_reply *req )
 {
     dump_uint64( " size=", &req->size );
+    fprintf( stderr, ", flags=%08x", req->flags );
     fprintf( stderr, ", protect=%d", req->protect );
-    fprintf( stderr, ", header_size=%d", req->header_size );
-    dump_uint64( ", base=", &req->base );
     fprintf( stderr, ", mapping=%04x", req->mapping );
     fprintf( stderr, ", shared_file=%04x", req->shared_file );
+    dump_varargs_pe_image_info( ", image=", cur_size );
 }
 
 static void dump_get_mapping_committed_range_request( const struct get_mapping_committed_range_request *req )
@@ -3692,13 +3734,31 @@ static void dump_set_class_info_reply( const struct set_class_info_reply *req )
     dump_uint64( ", old_extra_value=", &req->old_extra_value );
 }
 
+static void dump_open_clipboard_request( const struct open_clipboard_request *req )
+{
+    fprintf( stderr, " window=%08x", req->window );
+}
+
+static void dump_open_clipboard_reply( const struct open_clipboard_reply *req )
+{
+    fprintf( stderr, " owner=%d", req->owner );
+}
+
+static void dump_close_clipboard_request( const struct close_clipboard_request *req )
+{
+    fprintf( stderr, " changed=%d", req->changed );
+}
+
+static void dump_close_clipboard_reply( const struct close_clipboard_reply *req )
+{
+    fprintf( stderr, " viewer=%08x", req->viewer );
+    fprintf( stderr, ", owner=%d", req->owner );
+}
+
 static void dump_set_clipboard_info_request( const struct set_clipboard_info_request *req )
 {
     fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", clipboard=%08x", req->clipboard );
     fprintf( stderr, ", owner=%08x", req->owner );
-    fprintf( stderr, ", viewer=%08x", req->viewer );
-    fprintf( stderr, ", seqno=%08x", req->seqno );
 }
 
 static void dump_set_clipboard_info_reply( const struct set_clipboard_info_reply *req )
@@ -3712,6 +3772,30 @@ static void dump_set_clipboard_info_reply( const struct set_clipboard_info_reply
 
 static void dump_empty_clipboard_request( const struct empty_clipboard_request *req )
 {
+}
+
+static void dump_get_clipboard_info_request( const struct get_clipboard_info_request *req )
+{
+}
+
+static void dump_get_clipboard_info_reply( const struct get_clipboard_info_reply *req )
+{
+    fprintf( stderr, " window=%08x", req->window );
+    fprintf( stderr, ", owner=%08x", req->owner );
+    fprintf( stderr, ", viewer=%08x", req->viewer );
+    fprintf( stderr, ", seqno=%08x", req->seqno );
+}
+
+static void dump_set_clipboard_viewer_request( const struct set_clipboard_viewer_request *req )
+{
+    fprintf( stderr, " viewer=%08x", req->viewer );
+    fprintf( stderr, ", previous=%08x", req->previous );
+}
+
+static void dump_set_clipboard_viewer_reply( const struct set_clipboard_viewer_reply *req )
+{
+    fprintf( stderr, " old_viewer=%08x", req->old_viewer );
+    fprintf( stderr, ", owner=%08x", req->owner );
 }
 
 static void dump_open_token_request( const struct open_token_request *req )
@@ -4537,8 +4621,12 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_create_class_request,
     (dump_func)dump_destroy_class_request,
     (dump_func)dump_set_class_info_request,
+    (dump_func)dump_open_clipboard_request,
+    (dump_func)dump_close_clipboard_request,
     (dump_func)dump_set_clipboard_info_request,
     (dump_func)dump_empty_clipboard_request,
+    (dump_func)dump_get_clipboard_info_request,
+    (dump_func)dump_set_clipboard_viewer_request,
     (dump_func)dump_open_token_request,
     (dump_func)dump_set_global_windows_request,
     (dump_func)dump_adjust_token_privileges_request,
@@ -4813,8 +4901,12 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_create_class_reply,
     (dump_func)dump_destroy_class_reply,
     (dump_func)dump_set_class_info_reply,
+    (dump_func)dump_open_clipboard_reply,
+    (dump_func)dump_close_clipboard_reply,
     (dump_func)dump_set_clipboard_info_reply,
     NULL,
+    (dump_func)dump_get_clipboard_info_reply,
+    (dump_func)dump_set_clipboard_viewer_reply,
     (dump_func)dump_open_token_reply,
     (dump_func)dump_set_global_windows_reply,
     (dump_func)dump_adjust_token_privileges_reply,
@@ -5089,8 +5181,12 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "create_class",
     "destroy_class",
     "set_class_info",
+    "open_clipboard",
+    "close_clipboard",
     "set_clipboard_info",
     "empty_clipboard",
+    "get_clipboard_info",
+    "set_clipboard_viewer",
     "open_token",
     "set_global_windows",
     "adjust_token_privileges",

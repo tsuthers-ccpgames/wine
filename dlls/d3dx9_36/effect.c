@@ -188,6 +188,8 @@ static HRESULT d3dx9_parse_state(struct d3dx9_base_effect *base, struct d3dx_sta
         const char *data, const char **ptr, struct d3dx_object *objects);
 static void free_parameter(struct d3dx_parameter *param, BOOL element, BOOL child);
 
+typedef BOOL (*walk_parameter_dep_func)(void *data, struct d3dx_parameter *param);
+
 static const struct
 {
     enum STATE_CLASS class;
@@ -196,7 +198,7 @@ static const struct
 }
 state_table[] =
 {
-    /* Render sates */
+    /* Render states */
     {SC_RENDERSTATE, D3DRS_ZENABLE, "D3DRS_ZENABLE"}, /* 0x0 */
     {SC_RENDERSTATE, D3DRS_FILLMODE, "D3DRS_FILLMODE"},
     {SC_RENDERSTATE, D3DRS_SHADEMODE, "D3DRS_SHADEMODE"},
@@ -348,7 +350,7 @@ state_table[] =
     {SC_LIGHT, LT_ATTENUATION2, "LightAttenuation2"},
     {SC_LIGHT, LT_THETA, "LightTheta"},
     {SC_LIGHT, LT_PHI, "LightPhi"}, /* 0x90 */
-    /* Ligthenable */
+    /* Lightenable */
     {SC_LIGHTENABLE, 0, "LightEnable"},
     /* Vertexshader */
     {SC_VERTEXSHADER, 0, "Vertexshader"},
@@ -1326,9 +1328,7 @@ static HRESULT d3dx9_base_effect_set_value(struct d3dx9_base_effect *base,
     }
 
     /* samplers don't touch data */
-    if (param->class == D3DXPC_OBJECT && (param->type == D3DXPT_SAMPLER
-            || param->type == D3DXPT_SAMPLER1D || param->type == D3DXPT_SAMPLER2D
-            || param->type == D3DXPT_SAMPLER3D || param->type == D3DXPT_SAMPLERCUBE))
+    if (param->class == D3DXPC_OBJECT && is_param_type_sampler(param->type))
     {
         TRACE("Sampler: returning E_FAIL\n");
         return E_FAIL;
@@ -1391,9 +1391,7 @@ static HRESULT d3dx9_base_effect_get_value(struct d3dx9_base_effect *base,
     }
 
     /* samplers don't touch data */
-    if (param->class == D3DXPC_OBJECT && (param->type == D3DXPT_SAMPLER
-            || param->type == D3DXPT_SAMPLER1D || param->type == D3DXPT_SAMPLER2D
-            || param->type == D3DXPT_SAMPLER3D || param->type == D3DXPT_SAMPLERCUBE))
+    if (param->class == D3DXPC_OBJECT && is_param_type_sampler(param->type))
     {
         TRACE("Sampler: returning E_FAIL\n");
         return E_FAIL;
@@ -2743,9 +2741,7 @@ static HRESULT d3dx_set_shader_constants(struct ID3DXEffectImpl *effect, struct 
     ret = D3D_OK;
     for (i = 0; i < parameters_count; ++i)
     {
-        if (params[i] && params[i]->class == D3DXPC_OBJECT && (params[i]->type == D3DXPT_SAMPLER
-                || params[i]->type == D3DXPT_SAMPLER1D || params[i]->type == D3DXPT_SAMPLER2D
-                || params[i]->type == D3DXPT_SAMPLER3D || params[i]->type == D3DXPT_SAMPLERCUBE))
+        if (params[i] && params[i]->class == D3DXPC_OBJECT && is_param_type_sampler(params[i]->type))
         {
             struct d3dx_sampler *sampler;
 
@@ -3551,15 +3547,119 @@ static HRESULT WINAPI ID3DXEffectImpl_FindNextValidTechnique(ID3DXEffect* iface,
     return E_NOTIMPL;
 }
 
+static BOOL walk_parameter_dep(struct d3dx_parameter *param, walk_parameter_dep_func param_func,
+        void *data);
+
+static BOOL walk_param_eval_dep(struct d3dx_param_eval *param_eval, walk_parameter_dep_func param_func,
+        void *data)
+{
+    struct d3dx_parameter **params;
+    unsigned int i, param_count;
+
+    if (!param_eval)
+        return FALSE;
+
+    params = param_eval->shader_inputs.inputs_param;
+    param_count = param_eval->shader_inputs.input_count;
+    for (i = 0; i < param_count; ++i)
+    {
+        if (walk_parameter_dep(params[i], param_func, data))
+            return TRUE;
+    }
+
+    params = param_eval->pres.inputs.inputs_param;
+    param_count = param_eval->pres.inputs.input_count;
+    for (i = 0; i < param_count; ++i)
+    {
+        if (walk_parameter_dep(params[i], param_func, data))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL walk_state_dep(struct d3dx_state *state, walk_parameter_dep_func param_func,
+        void *data)
+{
+    if (state->type == ST_CONSTANT && is_param_type_sampler(state->parameter.type))
+    {
+        if (walk_parameter_dep(&state->parameter, param_func, data))
+            return TRUE;
+    }
+    else if (state->type == ST_ARRAY_SELECTOR || state->type == ST_PARAMETER)
+    {
+        if (walk_parameter_dep(state->parameter.referenced_param, param_func, data))
+            return TRUE;
+    }
+    return walk_param_eval_dep(state->parameter.param_eval, param_func, data);
+}
+
+static BOOL walk_parameter_dep(struct d3dx_parameter *param, walk_parameter_dep_func param_func,
+        void *data)
+{
+    unsigned int i;
+    unsigned int member_count;
+
+    if (param_func(data, param))
+        return TRUE;
+
+    if (walk_param_eval_dep(param->param_eval, param_func, data))
+        return TRUE;
+
+    if (param->class == D3DXPC_OBJECT && is_param_type_sampler(param->type))
+    {
+        struct d3dx_sampler *sampler;
+
+        sampler = (struct d3dx_sampler *)param->data;
+        for (i = 0; i < sampler->state_count; ++i)
+        {
+            if (walk_state_dep(&sampler->states[i], param_func, data))
+                return TRUE;
+        }
+        return FALSE;
+    }
+
+    member_count = param->element_count ? param->element_count : param->member_count;
+    for (i = 0; i < member_count; ++i)
+    {
+        if (walk_param_eval_dep(param->members[i].param_eval, param_func, data))
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+static BOOL compare_param_ptr(void *param_comp, struct d3dx_parameter *param)
+{
+    return param_comp == param;
+}
+
 static BOOL WINAPI ID3DXEffectImpl_IsParameterUsed(ID3DXEffect* iface, D3DXHANDLE parameter, D3DXHANDLE technique)
 {
     struct ID3DXEffectImpl *effect = impl_from_ID3DXEffect(iface);
+    unsigned int i, j;
     struct d3dx_parameter *param = get_valid_parameter(&effect->base_effect, parameter);
+    struct d3dx_technique *tech = get_valid_technique(&effect->base_effect, technique);
+    struct d3dx_pass *pass;
 
-    FIXME("iface %p, parameter %p, technique %p stub.\n", iface, parameter, technique);
-    TRACE("param %p (%s).\n", param, param ? debugstr_a(param->name) : "");
+    TRACE("iface %p, parameter %p, technique %p.\n", iface, parameter, technique);
+    TRACE("param %p, name %s, tech %p.\n", param, param ? debugstr_a(param->name) : "", tech);
+    if (!tech || !param)
+        return FALSE;
 
-    return TRUE;
+    for (i = 0; i < tech->pass_count; ++i)
+    {
+        pass = &tech->passes[i];
+        for (j = 0; j < pass->state_count; ++j)
+        {
+            if (walk_state_dep(&pass->states[j], compare_param_ptr, param))
+            {
+                TRACE("Returning TRUE.\n");
+                return TRUE;
+            }
+        }
+    }
+    TRACE("Returning FALSE.\n");
+    return FALSE;
 }
 
 static HRESULT WINAPI ID3DXEffectImpl_Begin(ID3DXEffect *iface, UINT *passes, DWORD flags)
@@ -5869,7 +5969,22 @@ static HRESULT d3dx9_base_effect_init(struct d3dx9_base_effect *base,
             if (bytecode)
                 ID3D10Blob_Release(bytecode);
             if (temp_errors)
-                TRACE("%s\n", (char *)ID3D10Blob_GetBufferPointer(temp_errors));
+            {
+                const char *error_string = ID3D10Blob_GetBufferPointer(temp_errors);
+                const char *string_ptr;
+
+                while (*error_string)
+                {
+                    string_ptr = error_string;
+                    while (*string_ptr && *string_ptr != '\n' && *string_ptr != '\r'
+                           && string_ptr - error_string < 80)
+                        ++string_ptr;
+                    TRACE("%s\n", debugstr_an(error_string, string_ptr - error_string));
+                    error_string = string_ptr;
+                    while (*error_string == '\n' || *error_string == '\r')
+                        ++error_string;
+                }
+            }
             if (errors)
                 *errors = temp_errors;
             else if (temp_errors)

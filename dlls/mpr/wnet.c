@@ -58,6 +58,7 @@ typedef struct _WNetProvider
     PF_NPGetResourceInformation getResourceInformation;
     PF_NPAddConnection addConnection;
     PF_NPAddConnection3 addConnection3;
+    PF_NPCancelConnection cancelConnection;
 } WNetProvider, *PWNetProvider;
 
 typedef struct _WNetProviderTable
@@ -206,8 +207,10 @@ static void _tryLoadProvider(PCWSTR provider)
                         }
                         provider->addConnection = MPR_GETPROC(NPAddConnection);
                         provider->addConnection3 = MPR_GETPROC(NPAddConnection3);
+                        provider->cancelConnection = MPR_GETPROC(NPCancelConnection);
                         TRACE("NPAddConnection %p\n", provider->addConnection);
                         TRACE("NPAddConnection3 %p\n", provider->addConnection3);
+                        TRACE("NPCancelConnection %p\n", provider->cancelConnection);
                         providerTable->numProviders++;
                     }
                     else
@@ -1581,18 +1584,18 @@ struct use_connection_context
     void *accessname;
     DWORD *buffer_size;
     DWORD *result;
-    DWORD (*pre_set_accessname)(struct use_connection_context*);
-    void  (*set_accessname)(struct use_connection_context*);
+    DWORD (*pre_set_accessname)(struct use_connection_context*, WCHAR *);
+    void  (*set_accessname)(struct use_connection_context*, WCHAR *);
 };
 
-static DWORD use_connection_pre_set_accessnameW(struct use_connection_context *ctxt)
+static DWORD use_connection_pre_set_accessnameW(struct use_connection_context *ctxt, WCHAR *local_name)
 {
     if (ctxt->accessname && ctxt->buffer_size && *ctxt->buffer_size)
     {
         DWORD len;
 
-        if (ctxt->resource->lpLocalName)
-            len = strlenW(ctxt->resource->lpLocalName);
+        if (local_name)
+            len = strlenW(local_name);
         else
             len = strlenW(ctxt->resource->lpRemoteName);
 
@@ -1608,61 +1611,100 @@ static DWORD use_connection_pre_set_accessnameW(struct use_connection_context *c
     return ERROR_SUCCESS;
 }
 
-static void use_connection_set_accessnameW(struct use_connection_context *ctxt)
+static void use_connection_set_accessnameW(struct use_connection_context *ctxt, WCHAR *local_name)
 {
     WCHAR *accessname = ctxt->accessname;
-    if (ctxt->resource->lpLocalName)
-        strcpyW(accessname, ctxt->resource->lpLocalName);
+    if (local_name)
+    {
+        strcpyW(accessname, local_name);
+        if (ctxt->result)
+            *ctxt->result = CONNECT_LOCALDRIVE;
+    }
     else
         strcpyW(accessname, ctxt->resource->lpRemoteName);
+}
+
+static DWORD wnet_use_provider( struct use_connection_context *ctxt, NETRESOURCEW * netres, WNetProvider *provider, BOOLEAN redirect )
+{
+    DWORD caps, ret;
+
+    caps = provider->getCaps(WNNC_CONNECTION);
+    if (!(caps & (WNNC_CON_ADDCONNECTION | WNNC_CON_ADDCONNECTION3)))
+        return ERROR_BAD_PROVIDER;
+
+    ret = WN_ACCESS_DENIED;
+    do
+    {
+        if ((caps & WNNC_CON_ADDCONNECTION3) && provider->addConnection3)
+            ret = provider->addConnection3(ctxt->hwndOwner, netres, ctxt->password, ctxt->userid, ctxt->flags);
+        else if ((caps & WNNC_CON_ADDCONNECTION) && provider->addConnection)
+            ret = provider->addConnection(netres, ctxt->password, ctxt->userid);
+
+        if (ret == WN_ALREADY_CONNECTED && redirect)
+            netres->lpLocalName[0] -= 1;
+    } while (redirect && ret == WN_ALREADY_CONNECTED && netres->lpLocalName[0] >= 'C');
+
+    if (ret == WN_SUCCESS && ctxt->accessname)
+        ctxt->set_accessname(ctxt, netres->lpLocalName);
+
+    return ret;
 }
 
 static DWORD wnet_use_connection( struct use_connection_context *ctxt )
 {
     WNetProvider *provider;
-    DWORD index, ret, caps;
+    DWORD index, ret = WN_NO_NETWORK;
+    BOOL redirect = FALSE;
+    WCHAR letter[3] = {'Z', ':', 0};
+    NETRESOURCEW netres;
 
     if (!providerTable || providerTable->numProviders == 0)
         return WN_NO_NETWORK;
 
     if (!ctxt->resource)
         return ERROR_INVALID_PARAMETER;
+    netres = *ctxt->resource;
 
-    if (!ctxt->resource->lpProvider)
+    if (!netres.lpLocalName && (ctxt->flags & CONNECT_REDIRECT))
     {
-        FIXME("Networking provider selection is not implemented.\n");
-        return WN_NO_NETWORK;
-    }
+        if (netres.dwType != RESOURCETYPE_DISK && netres.dwType != RESOURCETYPE_PRINT)
+            return ERROR_BAD_DEV_TYPE;
 
-    if (!ctxt->resource->lpLocalName && (ctxt->flags & CONNECT_REDIRECT))
-    {
-        FIXME("Locale device selection is not implemented.\n");
-        return WN_NO_NETWORK;
+        if (netres.dwType == RESOURCETYPE_PRINT)
+        {
+            FIXME("Local device selection is not implemented for printers.\n");
+            return WN_NO_NETWORK;
+        }
+
+        redirect = TRUE;
+        netres.lpLocalName = letter;
     }
 
     if (ctxt->flags & CONNECT_INTERACTIVE)
         return ERROR_BAD_NET_NAME;
 
-    index = _findProviderIndexW(ctxt->resource->lpProvider);
-    if (index == BAD_PROVIDER_INDEX)
-        return ERROR_BAD_PROVIDER;
-
-    provider = &providerTable->table[index];
-    caps = provider->getCaps(WNNC_CONNECTION);
-    if (!(caps & (WNNC_CON_ADDCONNECTION | WNNC_CON_ADDCONNECTION3)))
-        return ERROR_BAD_PROVIDER;
-
-    if ((ret = ctxt->pre_set_accessname(ctxt)))
+    if ((ret = ctxt->pre_set_accessname(ctxt, netres.lpLocalName)))
         return ret;
 
-    ret = WN_ACCESS_DENIED;
-    if ((caps & WNNC_CON_ADDCONNECTION3) && provider->addConnection3)
-        ret = provider->addConnection3(ctxt->hwndOwner, ctxt->resource, ctxt->password, ctxt->userid, ctxt->flags);
-    else if ((caps & WNNC_CON_ADDCONNECTION) && provider->addConnection)
-        ret = provider->addConnection(ctxt->resource, ctxt->password, ctxt->userid);
+    if (netres.lpProvider)
+    {
+        index = _findProviderIndexW(netres.lpProvider);
+        if (index == BAD_PROVIDER_INDEX)
+            return ERROR_BAD_PROVIDER;
 
-    if (ret == WN_SUCCESS && ctxt->accessname)
-        ctxt->set_accessname(ctxt);
+        provider = &providerTable->table[index];
+        ret = wnet_use_provider(ctxt, &netres, provider, redirect);
+    }
+    else
+    {
+        for (index = 0; index < providerTable->numProviders; index++)
+        {
+            provider = &providerTable->table[index];
+            ret = wnet_use_provider(ctxt, &netres, provider, redirect);
+            if (ret == WN_SUCCESS || ret == WN_ALREADY_CONNECTED)
+                break;
+        }
+    }
 
     return ret;
 }
@@ -1694,14 +1736,14 @@ DWORD WINAPI WNetUseConnectionW( HWND hwndOwner, NETRESOURCEW *resource, LPCWSTR
     return wnet_use_connection(&ctxt);
 }
 
-static DWORD use_connection_pre_set_accessnameA(struct use_connection_context *ctxt)
+static DWORD use_connection_pre_set_accessnameA(struct use_connection_context *ctxt, WCHAR *local_name)
 {
     if (ctxt->accessname && ctxt->buffer_size && *ctxt->buffer_size)
     {
         DWORD len;
 
-        if (ctxt->resourceA->lpLocalName)
-            len = strlen(ctxt->resourceA->lpLocalName);
+        if (local_name)
+            len = WideCharToMultiByte(CP_ACP, 0, local_name, -1, NULL, 0, NULL, NULL) - 1;
         else
             len = strlen(ctxt->resourceA->lpRemoteName);
 
@@ -1717,11 +1759,15 @@ static DWORD use_connection_pre_set_accessnameA(struct use_connection_context *c
     return ERROR_SUCCESS;
 }
 
-static void use_connection_set_accessnameA(struct use_connection_context *ctxt)
+static void use_connection_set_accessnameA(struct use_connection_context *ctxt, WCHAR *local_name)
 {
     char *accessname = ctxt->accessname;
-    if (ctxt->resourceA->lpLocalName)
-        strcpy(accessname, ctxt->resourceA->lpLocalName);
+    if (local_name)
+    {
+        WideCharToMultiByte(CP_ACP, 0, local_name, -1, accessname, *ctxt->buffer_size, NULL, NULL);
+        if (ctxt->result)
+            *ctxt->result = CONNECT_LOCALDRIVE;
+    }
     else
         strcpy(accessname, ctxt->resourceA->lpRemoteName);
 }
@@ -1800,9 +1846,7 @@ DWORD WINAPI WNetUseConnectionA( HWND hwndOwner, NETRESOURCEA *resource,
  */
 DWORD WINAPI WNetCancelConnectionA( LPCSTR lpName, BOOL fForce )
 {
-    FIXME( "(%s, %d), stub\n", debugstr_a(lpName), fForce );
-
-    return WN_SUCCESS;
+    return WNetCancelConnection2A(lpName, 0, fForce);
 }
 
 /*********************************************************************
@@ -1810,9 +1854,7 @@ DWORD WINAPI WNetCancelConnectionA( LPCSTR lpName, BOOL fForce )
  */
 DWORD WINAPI WNetCancelConnectionW( LPCWSTR lpName, BOOL fForce )
 {
-    FIXME( "(%s, %d), stub\n", debugstr_w(lpName), fForce );
-
-    return WN_SUCCESS;
+    return WNetCancelConnection2W(lpName, 0, fForce);
 }
 
 /*********************************************************************
@@ -1820,9 +1862,15 @@ DWORD WINAPI WNetCancelConnectionW( LPCWSTR lpName, BOOL fForce )
  */
 DWORD WINAPI WNetCancelConnection2A( LPCSTR lpName, DWORD dwFlags, BOOL fForce )
 {
-    FIXME( "(%s, %08X, %d), stub\n", debugstr_a(lpName), dwFlags, fForce );
+    DWORD ret;
+    WCHAR * name = strdupAtoW(lpName);
+    if (!name)
+        return ERROR_NOT_CONNECTED;
 
-    return WN_SUCCESS;
+    ret = WNetCancelConnection2W(name, dwFlags, fForce);
+    HeapFree(GetProcessHeap(), 0, name);
+
+    return ret;
 }
 
 /*********************************************************************
@@ -1830,9 +1878,26 @@ DWORD WINAPI WNetCancelConnection2A( LPCSTR lpName, DWORD dwFlags, BOOL fForce )
  */
 DWORD WINAPI WNetCancelConnection2W( LPCWSTR lpName, DWORD dwFlags, BOOL fForce )
 {
-    FIXME( "(%s, %08X, %d), stub\n", debugstr_w(lpName), dwFlags, fForce );
+    DWORD ret = WN_NO_NETWORK;
+    DWORD index;
 
-    return WN_SUCCESS;
+    if (providerTable != NULL)
+    {
+        for (index = 0; index < providerTable->numProviders; index++)
+        {
+            if(providerTable->table[index].getCaps(WNNC_CONNECTION) &
+                WNNC_CON_CANCELCONNECTION)
+            {
+                if (providerTable->table[index].cancelConnection)
+                    ret = providerTable->table[index].cancelConnection((LPWSTR)lpName, fForce);
+                else
+                    ret = WN_NO_NETWORK;
+                if (ret == WN_SUCCESS || ret == WN_OPEN_FILES)
+                    break;
+            }
+        }
+    }
+    return ret;
 }
 
 /*****************************************************************

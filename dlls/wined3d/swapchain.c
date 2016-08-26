@@ -77,6 +77,13 @@ static void swapchain_cleanup(struct wined3d_swapchain *swapchain)
         if (FAILED(hr = wined3d_set_adapter_display_mode(swapchain->device->wined3d,
                 swapchain->device->adapter->ordinal, &swapchain->original_mode)))
             ERR("Failed to restore display mode, hr %#x.\n", hr);
+
+        if (swapchain->desc.flags & WINED3D_SWAPCHAIN_RESTORE_WINDOW_RECT)
+        {
+            wined3d_device_restore_fullscreen_window(swapchain->device, swapchain->device_window,
+                    &swapchain->original_window_rect);
+            wined3d_device_release_focus_window(swapchain->device);
+        }
     }
 
     if (swapchain->backup_dc)
@@ -323,7 +330,7 @@ static void swapchain_blit(const struct wined3d_swapchain *swapchain,
         if (texture->resource.multisample_type)
         {
             location = WINED3D_LOCATION_RB_RESOLVED;
-            surface_load_location(back_buffer, context, location);
+            wined3d_texture_load_location(texture, 0, context, location);
         }
 
         context_apply_fbo_state_blit(context, GL_READ_FRAMEBUFFER, back_buffer, NULL, location);
@@ -453,7 +460,7 @@ static void wined3d_swapchain_rotate(struct wined3d_swapchain *swapchain, struct
         sub_resource = &texture->sub_resources[0];
 
         if (!(sub_resource->locations & supported_locations))
-            surface_load_location(sub_resource->u.surface, context, texture->resource.draw_binding);
+            wined3d_texture_load_location(texture, 0, context, texture->resource.draw_binding);
 
         texture_prev->texture_rgb = texture->texture_rgb;
         texture_prev->rb_multisample = texture->rb_multisample;
@@ -476,14 +483,14 @@ static void wined3d_swapchain_rotate(struct wined3d_swapchain *swapchain, struct
 static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
         const RECT *src_rect, const RECT *dst_rect, DWORD flags)
 {
-    struct wined3d_surface *back_buffer = swapchain->back_buffers[0]->sub_resources[0].u.surface;
+    struct wined3d_texture *back_buffer = swapchain->back_buffers[0];
     const struct wined3d_fb_state *fb = &swapchain->device->fb;
     const struct wined3d_gl_info *gl_info;
     struct wined3d_texture *logo_texture;
     struct wined3d_context *context;
     BOOL render_to_fbo;
 
-    context = context_acquire(swapchain->device, back_buffer);
+    context = context_acquire(swapchain->device, back_buffer->sub_resources[0].u.surface);
     if (!context->valid)
     {
         context_release(context);
@@ -498,7 +505,7 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
         RECT rect = {0, 0, logo_texture->resource.width, logo_texture->resource.height};
 
         /* Blit the logo into the upper left corner of the drawable. */
-        wined3d_texture_blt(swapchain->back_buffers[0], 0, &rect, logo_texture, 0, &rect,
+        wined3d_texture_blt(back_buffer, 0, &rect, logo_texture, 0, &rect,
                 WINED3D_BLT_ALPHA_TEST, NULL, WINED3D_TEXF_POINT);
     }
 
@@ -518,16 +525,14 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
             swapchain->device->cursor_texture->resource.width,
             swapchain->device->cursor_texture->resource.height
         };
-        const RECT clip_rect = {0, 0,
-                swapchain->back_buffers[0]->resource.width,
-                swapchain->back_buffers[0]->resource.height};
+        const RECT clip_rect = {0, 0, back_buffer->resource.width, back_buffer->resource.height};
 
         TRACE("Rendering the software cursor.\n");
 
         if (swapchain->desc.windowed)
             MapWindowPoints(NULL, swapchain->win_handle, (POINT *)&dst_rect, 2);
         if (wined3d_clip_blit(&clip_rect, &dst_rect, &src_rect))
-            wined3d_texture_blt(swapchain->back_buffers[0], 0, &dst_rect,
+            wined3d_texture_blt(back_buffer, 0, &dst_rect,
                     swapchain->device->cursor_texture, 0, &src_rect,
                     WINED3D_BLT_ALPHA_TEST, NULL, WINED3D_TEXF_POINT);
     }
@@ -552,14 +557,14 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
      */
     if (!swapchain->render_to_fbo && render_to_fbo && wined3d_settings.offscreen_rendering_mode == ORM_FBO)
     {
-        surface_load_location(back_buffer, context, WINED3D_LOCATION_TEXTURE_RGB);
-        wined3d_texture_invalidate_location(back_buffer->container, 0, WINED3D_LOCATION_DRAWABLE);
+        wined3d_texture_load_location(back_buffer, 0, context, WINED3D_LOCATION_TEXTURE_RGB);
+        wined3d_texture_invalidate_location(back_buffer, 0, WINED3D_LOCATION_DRAWABLE);
         swapchain->render_to_fbo = TRUE;
         swapchain_update_draw_bindings(swapchain);
     }
     else
     {
-        surface_load_location(back_buffer, context, back_buffer->container->resource.draw_binding);
+        wined3d_texture_load_location(back_buffer, 0, context, back_buffer->resource.draw_binding);
     }
 
     if (swapchain->render_to_fbo)
@@ -614,7 +619,7 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
     {
         struct wined3d_surface *ds = wined3d_rendertarget_view_get_surface(fb->depth_stencil);
 
-        if (ds && (swapchain->desc.flags & WINED3DPRESENTFLAG_DISCARD_DEPTHSTENCIL
+        if (ds && (swapchain->desc.flags & WINED3D_SWAPCHAIN_DISCARD_DEPTHSTENCIL
                 || ds->container->flags & WINED3D_TEXTURE_DISCARD))
         {
             surface_modify_ds_location(ds, WINED3D_LOCATION_DISCARDED,
@@ -632,12 +637,11 @@ static void swapchain_gl_present(struct wined3d_swapchain *swapchain,
 
 static void swapchain_gl_frontbuffer_updated(struct wined3d_swapchain *swapchain)
 {
-    struct wined3d_surface *surface;
+    struct wined3d_texture *front_buffer = swapchain->front_buffer;
     struct wined3d_context *context;
 
-    surface = swapchain->front_buffer->sub_resources[0].u.surface;
-    context = context_acquire(swapchain->device, surface);
-    surface_load_location(surface, context, surface->container->resource.draw_binding);
+    context = context_acquire(swapchain->device, front_buffer->sub_resources[0].u.surface);
+    wined3d_texture_load_location(front_buffer, 0, context, front_buffer->resource.draw_binding);
     context_release(context);
     SetRectEmpty(&swapchain->front_buffer_update);
 }
@@ -678,10 +682,8 @@ static void swapchain_gdi_frontbuffer_updated(struct wined3d_swapchain *swapchai
 
     TRACE("offset %s.\n", wine_dbgstr_point(&offset));
 
-    draw_rect.left = 0;
-    draw_rect.right = swapchain->front_buffer->resource.width;
-    draw_rect.top = 0;
-    draw_rect.bottom = swapchain->front_buffer->resource.height;
+    SetRect(&draw_rect, 0, 0, swapchain->front_buffer->resource.width,
+            swapchain->front_buffer->resource.height);
     IntersectRect(&draw_rect, &draw_rect, &swapchain->front_buffer_update);
 
     BitBlt(dst_dc, draw_rect.left - offset.x, draw_rect.top - offset.y,
@@ -841,13 +843,11 @@ static HRESULT swapchain_init(struct wined3d_swapchain *swapchain, struct wined3
         ERR("Failed to get current display mode, hr %#x.\n", hr);
         goto err;
     }
+    GetWindowRect(window, &swapchain->original_window_rect);
 
     GetClientRect(window, &client_rect);
-    if (desc->windowed
-            && (!desc->backbuffer_width || !desc->backbuffer_height
-            || desc->backbuffer_format == WINED3DFMT_UNKNOWN))
+    if (desc->windowed)
     {
-
         if (!desc->backbuffer_width)
         {
             desc->backbuffer_width = client_rect.right;
@@ -901,22 +901,29 @@ static HRESULT swapchain_init(struct wined3d_swapchain *swapchain, struct wined3
     /* MSDN says we're only allowed a single fullscreen swapchain per device,
      * so we should really check to see if there is a fullscreen swapchain
      * already. Does a single head count as full screen? */
-
     if (!desc->windowed)
     {
-        /* Change the display settings */
-        swapchain->d3d_mode.width = desc->backbuffer_width;
-        swapchain->d3d_mode.height = desc->backbuffer_height;
-        swapchain->d3d_mode.format_id = desc->backbuffer_format;
-        swapchain->d3d_mode.refresh_rate = desc->refresh_rate;
-        swapchain->d3d_mode.scanline_ordering = WINED3D_SCANLINE_ORDERING_UNKNOWN;
-
-        if (FAILED(hr = wined3d_set_adapter_display_mode(device->wined3d, adapter->ordinal, &swapchain->d3d_mode)))
+        if (desc->flags & WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH)
         {
-            WARN("Failed to set display mode, hr %#x.\n", hr);
-            goto err;
+            /* Change the display settings */
+            swapchain->d3d_mode.width = desc->backbuffer_width;
+            swapchain->d3d_mode.height = desc->backbuffer_height;
+            swapchain->d3d_mode.format_id = desc->backbuffer_format;
+            swapchain->d3d_mode.refresh_rate = desc->refresh_rate;
+            swapchain->d3d_mode.scanline_ordering = WINED3D_SCANLINE_ORDERING_UNKNOWN;
+
+            if (FAILED(hr = wined3d_set_adapter_display_mode(device->wined3d,
+                    adapter->ordinal, &swapchain->d3d_mode)))
+            {
+                WARN("Failed to set display mode, hr %#x.\n", hr);
+                goto err;
+            }
+            displaymode_set = TRUE;
         }
-        displaymode_set = TRUE;
+        else
+        {
+            swapchain->d3d_mode = swapchain->original_mode;
+        }
     }
 
     if (!(device->wined3d->flags & WINED3D_NO3D))
@@ -980,9 +987,8 @@ static HRESULT swapchain_init(struct wined3d_swapchain *swapchain, struct wined3
 
     if (swapchain->desc.backbuffer_count > 0)
     {
-        swapchain->back_buffers = HeapAlloc(GetProcessHeap(), 0,
-                sizeof(*swapchain->back_buffers) * swapchain->desc.backbuffer_count);
-        if (!swapchain->back_buffers)
+        if (!(swapchain->back_buffers = wined3d_calloc(swapchain->desc.backbuffer_count,
+                sizeof(*swapchain->back_buffers))))
         {
             ERR("Failed to allocate backbuffer array memory.\n");
             hr = E_OUTOFMEMORY;
@@ -1113,7 +1119,7 @@ HRESULT CDECL wined3d_swapchain_create(struct wined3d_device *device, struct win
 
 static struct wined3d_context *swapchain_create_context(struct wined3d_swapchain *swapchain)
 {
-    struct wined3d_context **newArray;
+    struct wined3d_context **ctx_array;
     struct wined3d_context *ctx;
 
     TRACE("Creating a new context for swapchain %p, thread %u.\n", swapchain, GetCurrentThreadId());
@@ -1125,16 +1131,16 @@ static struct wined3d_context *swapchain_create_context(struct wined3d_swapchain
     }
     context_release(ctx);
 
-    newArray = HeapAlloc(GetProcessHeap(), 0, sizeof(*newArray) * (swapchain->num_contexts + 1));
-    if(!newArray) {
+    if (!(ctx_array = wined3d_calloc(swapchain->num_contexts + 1, sizeof(*ctx_array))))
+    {
         ERR("Out of memory when trying to allocate a new context array\n");
         context_destroy(swapchain->device, ctx);
         return NULL;
     }
-    memcpy(newArray, swapchain->context, sizeof(*newArray) * swapchain->num_contexts);
+    memcpy(ctx_array, swapchain->context, sizeof(*ctx_array) * swapchain->num_contexts);
     HeapFree(GetProcessHeap(), 0, swapchain->context);
-    newArray[swapchain->num_contexts] = ctx;
-    swapchain->context = newArray;
+    ctx_array[swapchain->num_contexts] = ctx;
+    swapchain->context = ctx_array;
     swapchain->num_contexts++;
 
     TRACE("Returning context %p\n", ctx);
@@ -1387,6 +1393,148 @@ HRESULT CDECL wined3d_swapchain_resize_buffers(struct wined3d_swapchain *swapcha
 
     swapchain_update_render_to_fbo(swapchain);
     swapchain_update_draw_bindings(swapchain);
+
+    return WINED3D_OK;
+}
+
+HRESULT CDECL wined3d_swapchain_resize_target(struct wined3d_swapchain *swapchain,
+        const struct wined3d_display_mode *mode)
+{
+    struct wined3d_device *device = swapchain->device;
+    struct wined3d_display_mode current_mode;
+    RECT original_window_rect, window_rect;
+    HRESULT hr;
+
+    TRACE("swapchain %p, mode %p.\n", swapchain, mode);
+
+    SetRect(&window_rect, 0, 0, mode->width, mode->height);
+
+    if (swapchain->desc.windowed)
+    {
+        AdjustWindowRectEx(&window_rect,
+                GetWindowLongW(swapchain->device_window, GWL_STYLE), FALSE,
+                GetWindowLongW(swapchain->device_window, GWL_EXSTYLE));
+        SetRect(&window_rect, 0, 0,
+                window_rect.right - window_rect.left, window_rect.bottom - window_rect.top);
+        GetWindowRect(swapchain->device_window, &original_window_rect);
+        OffsetRect(&window_rect, original_window_rect.left, original_window_rect.top);
+    }
+    else if (swapchain->desc.flags & WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH)
+    {
+        if (FAILED(hr = wined3d_set_adapter_display_mode(device->wined3d, device->adapter->ordinal, mode)))
+        {
+            WARN("Failed to set display mode, hr %#x.\n", hr);
+            return WINED3DERR_INVALIDCALL;
+        }
+    }
+    else
+    {
+        if (FAILED(hr = wined3d_get_adapter_display_mode(device->wined3d, device->adapter->ordinal,
+                &current_mode, NULL)))
+        {
+            ERR("Failed to get display mode, hr %#x.\n", hr);
+            return WINED3DERR_INVALIDCALL;
+        }
+
+        SetRect(&window_rect, 0, 0, current_mode.width, current_mode.height);
+    }
+
+    MoveWindow(swapchain->device_window, window_rect.left, window_rect.top,
+            window_rect.right - window_rect.left,
+            window_rect.bottom - window_rect.top, TRUE);
+
+    return WINED3D_OK;
+}
+
+HRESULT CDECL wined3d_swapchain_set_fullscreen(struct wined3d_swapchain *swapchain,
+        const struct wined3d_swapchain_desc *swapchain_desc, const struct wined3d_display_mode *mode)
+{
+    struct wined3d_device *device = swapchain->device;
+    struct wined3d_display_mode default_mode;
+    unsigned int width, height;
+    HRESULT hr;
+
+    TRACE("swapchain %p, desc %p, mode %p.\n", swapchain, swapchain_desc, mode);
+
+    if (swapchain->desc.flags & WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH)
+    {
+        width = swapchain_desc->backbuffer_width;
+        height = swapchain_desc->backbuffer_height;
+
+        if (!mode)
+        {
+            if (!swapchain_desc->windowed)
+            {
+                default_mode.width = swapchain_desc->backbuffer_width;
+                default_mode.height = swapchain_desc->backbuffer_height;
+                default_mode.refresh_rate = swapchain_desc->refresh_rate;
+                default_mode.format_id = swapchain_desc->backbuffer_format;
+                default_mode.scanline_ordering = WINED3D_SCANLINE_ORDERING_UNKNOWN;
+            }
+            else
+            {
+                default_mode = swapchain->original_mode;
+            }
+            mode = &default_mode;
+        }
+
+        if (FAILED(hr = wined3d_set_adapter_display_mode(device->wined3d, device->adapter->ordinal, mode)))
+        {
+            WARN("Failed to set display mode, hr %#x.\n", hr);
+            return WINED3DERR_INVALIDCALL;
+        }
+    }
+    else
+    {
+        if (mode)
+            WARN("WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH is not set, ignoring mode.\n");
+
+        if (FAILED(hr = wined3d_get_adapter_display_mode(device->wined3d, device->adapter->ordinal,
+                &default_mode, NULL)))
+        {
+            ERR("Failed to get display mode, hr %#x.\n", hr);
+            return WINED3DERR_INVALIDCALL;
+        }
+        mode = &default_mode;
+
+        width = mode->width;
+        height = mode->height;
+    }
+
+    if (!swapchain_desc->windowed)
+    {
+        if (swapchain->desc.windowed)
+        {
+            HWND focus_window = device->create_parms.focus_window;
+            if (!focus_window)
+                focus_window = swapchain->device_window;
+            if (FAILED(hr = wined3d_device_acquire_focus_window(device, focus_window)))
+            {
+                ERR("Failed to acquire focus window, hr %#x.\n", hr);
+                return hr;
+            }
+
+            /* switch from windowed to fs */
+            wined3d_device_setup_fullscreen_window(device, swapchain->device_window, width, height);
+        }
+        else
+        {
+            /* Fullscreen -> fullscreen mode change */
+            MoveWindow(swapchain->device_window, 0, 0, width, height, TRUE);
+        }
+        swapchain->d3d_mode = *mode;
+    }
+    else if (!swapchain->desc.windowed)
+    {
+        RECT *window_rect = NULL;
+        /* Fullscreen -> windowed switch */
+        if (swapchain->desc.flags & WINED3D_SWAPCHAIN_RESTORE_WINDOW_RECT)
+            window_rect = &swapchain->original_window_rect;
+        wined3d_device_restore_fullscreen_window(device, swapchain->device_window, window_rect);
+        wined3d_device_release_focus_window(device);
+    }
+
+    swapchain->desc.windowed = swapchain_desc->windowed;
 
     return WINED3D_OK;
 }

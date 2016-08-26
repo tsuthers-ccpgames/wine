@@ -474,7 +474,7 @@
 @ extern _fmode MSVCRT__fmode
 @ cdecl _fpclass(double) MSVCRT__fpclass
 # stub -arch=win64 _fpclassf(float)
-@ stub _fpieee_flt(long ptr ptr)
+@ cdecl -arch=i386,x86_64,arm _fpieee_flt(long ptr ptr)
 @ cdecl _fpreset()
 @ stub _fprintf_l
 @ stub _fprintf_p
@@ -497,7 +497,7 @@
 @ cdecl _fseeki64_nolock(ptr int64 long) MSVCRT__fseeki64_nolock
 @ cdecl _fsopen(str str long) MSVCRT__fsopen
 @ cdecl _fstat32(long ptr) MSVCRT__fstat32
-@ stub _fstat32i64
+@ cdecl _fstat32i64(long ptr) MSVCRT__fstat32i64
 @ cdecl _fstat64(long ptr) MSVCRT__fstat64
 @ cdecl _fstat64i32(long ptr) MSVCRT__fstat64i32
 @ cdecl _ftell_nolock(ptr) MSVCRT__ftell_nolock
@@ -995,7 +995,7 @@
 @ cdecl _strdup(str) MSVCRT__strdup
 @ cdecl _strerror(long) MSVCRT__strerror
 @ stub _strerror_s
-@ stub _strftime_l
+@ cdecl _strftime_l(str long str ptr ptr) MSVCRT__strftime_l
 @ cdecl _stricmp(str str) MSVCRT__stricmp
 @ cdecl _stricmp_l(str str ptr) MSVCRT__stricmp_l
 @ cdecl _stricoll(str str) MSVCRT__stricoll
@@ -1146,7 +1146,7 @@
 @ cdecl _wcsdup(wstr) MSVCRT__wcsdup
 @ cdecl _wcserror(long) MSVCRT__wcserror
 @ cdecl _wcserror_s(ptr long long) MSVCRT__wcserror_s
-@ stub _wcsftime_l
+@ cdecl _wcsftime_l(ptr long wstr ptr ptr) MSVCRT__wcsftime_l
 @ cdecl _wcsicmp(wstr wstr) MSVCRT__wcsicmp
 @ cdecl _wcsicmp_l(wstr wstr ptr) MSVCRT__wcsicmp_l
 @ cdecl _wcsicoll(wstr wstr) MSVCRT__wcsicoll
@@ -1223,7 +1223,7 @@
 @ cdecl _wmktemp(wstr) MSVCRT__wmktemp
 @ cdecl _wmktemp_s(wstr long) MSVCRT__wmktemp_s
 @ varargs _wopen(wstr long) MSVCRT__wopen
-@ stub _wperror(wstr)
+@ cdecl _wperror(wstr) MSVCRT__wperror
 @ extern _wpgmptr MSVCRT__wpgmptr
 @ cdecl _wpopen(wstr wstr) MSVCRT__wpopen
 @ stub _wprintf_l

@@ -34,7 +34,7 @@
 #include "objbase.h"
 
 #include "d3d10_1.h"
-#include "d3dx10core.h"
+#include "d3dx10.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3dx);
 
@@ -187,9 +187,60 @@ HRESULT WINAPI D3DX10CreateDevice(IDXGIAdapter *adapter, D3D10_DRIVER_TYPE drive
     return hr;
 }
 
+HRESULT WINAPI D3DX10CreateDeviceAndSwapChain(IDXGIAdapter *adapter, D3D10_DRIVER_TYPE driver_type,
+        HMODULE swrast, unsigned int flags, DXGI_SWAP_CHAIN_DESC *desc, IDXGISwapChain **swapchain,
+        ID3D10Device **device)
+{
+    HRESULT hr;
+
+    TRACE("adapter %p, driver_type %d, swrast %p, flags %#x, desc %p, swapchain %p, device %p.\n",
+            adapter, driver_type, swrast, flags, desc, swapchain, device);
+
+    if (SUCCEEDED(hr = D3D10CreateDeviceAndSwapChain1(adapter, driver_type, swrast, flags, D3D10_FEATURE_LEVEL_10_1,
+            D3D10_1_SDK_VERSION, desc, swapchain, (ID3D10Device1 **)device)))
+        return hr;
+
+    return D3D10CreateDeviceAndSwapChain1(adapter, driver_type, swrast, flags, D3D10_FEATURE_LEVEL_10_0,
+            D3D10_1_SDK_VERSION, desc, swapchain, (ID3D10Device1 **)device);
+}
+
+HRESULT WINAPI D3DX10CreateTextureFromMemory(ID3D10Device *device, const void *src_data,
+        SIZE_T src_data_size, D3DX10_IMAGE_LOAD_INFO *loadinfo, ID3DX10ThreadPump *pump,
+        ID3D10Resource **texture, HRESULT *hresult)
+{
+    FIXME("device %p, src_data %p, src_data_size %lu, loadinfo %p, pump %p, texture %p, "
+            "hresult %p, stub!\n",
+            device, src_data, src_data_size, loadinfo, pump, texture, hresult);
+
+    return E_NOTIMPL;
+}
+
+HRESULT WINAPI D3DX10FilterTexture(ID3D10Resource *texture, UINT src_level, UINT filter)
+{
+    FIXME("texture %p, src_level %u, filter %#x stub!\n", texture, src_level, filter);
+
+    return E_NOTIMPL;
+}
+
 HRESULT WINAPI D3DX10GetFeatureLevel1(ID3D10Device *device, ID3D10Device1 **device1)
 {
     TRACE("device %p, device1 %p.\n", device, device1);
 
     return ID3D10Device_QueryInterface(device, &IID_ID3D10Device1, (void **)device1);
+}
+
+HRESULT WINAPI D3DX10GetImageInfoFromMemory(const void *src_data, SIZE_T src_data_size, ID3DX10ThreadPump *pump,
+        D3DX10_IMAGE_INFO *img_info, HRESULT *hresult)
+{
+    FIXME("src_data %p, src_data_size %lu, pump %p, img_info %p, hresult %p.\n",
+            src_data, src_data_size, pump, img_info, hresult);
+
+    return E_NOTIMPL;
+}
+
+D3DX_CPU_OPTIMIZATION WINAPI D3DXCpuOptimizations(BOOL enable)
+{
+    FIXME("enable %#x stub.\n", enable);
+
+    return D3DX_NOT_OPTIMIZED;
 }

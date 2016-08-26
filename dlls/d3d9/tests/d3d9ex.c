@@ -542,7 +542,7 @@ static void test_get_adapter_displaymode_ex(void)
     D3DDISPLAYMODE mode;
     D3DDISPLAYMODEEX mode_ex;
     D3DDISPLAYROTATION rotation;
-    DEVMODEW startmode;
+    DEVMODEW startmode, devmode;
     LONG retval;
 
     hr = pDirect3DCreate9Ex(D3D_SDK_VERSION, &d3d9ex);
@@ -575,21 +575,22 @@ static void test_get_adapter_displaymode_ex(void)
     ok(retval, "Failed to retrieve current display mode, retval %d.\n", retval);
     if (!retval) goto out;
 
-    startmode.dmFields = DM_DISPLAYORIENTATION | DM_PELSWIDTH | DM_PELSHEIGHT;
-    S2(U1(startmode)).dmDisplayOrientation = DMDO_180;
-    retval = ChangeDisplaySettingsExW(NULL, &startmode, NULL, 0, NULL);
-
-    if(retval == DISP_CHANGE_BADMODE)
+    devmode = startmode;
+    devmode.dmFields = DM_DISPLAYORIENTATION | DM_PELSWIDTH | DM_PELSHEIGHT;
+    S2(U1(devmode)).dmDisplayOrientation = DMDO_180;
+    retval = ChangeDisplaySettingsExW(NULL, &devmode, NULL, 0, NULL);
+    if (retval == DISP_CHANGE_BADMODE)
     {
-        trace(" Test skipped: graphics mode is not supported\n");
+        skip("Graphics mode is not supported.\n");
         goto out;
     }
 
-    ok(retval == DISP_CHANGE_SUCCESSFUL,"ChangeDisplaySettingsEx failed with %d\n", retval);
+    ok(retval == DISP_CHANGE_SUCCESSFUL, "ChangeDisplaySettingsEx failed with %d.\n", retval);
     /* try retrieve orientation info with EnumDisplaySettingsEx*/
-    startmode.dmFields = 0;
-    S2(U1(startmode)).dmDisplayOrientation = 0;
-    ok(EnumDisplaySettingsExW(NULL, ENUM_CURRENT_SETTINGS, &startmode, EDS_ROTATEDMODE), "EnumDisplaySettingsEx failed\n");
+    devmode.dmFields = 0;
+    S2(U1(devmode)).dmDisplayOrientation = 0;
+    ok(EnumDisplaySettingsExW(NULL, ENUM_CURRENT_SETTINGS, &devmode, EDS_ROTATEDMODE),
+            "EnumDisplaySettingsEx failed.\n");
 
     /*now that orientation has changed start tests for GetAdapterDisplayModeEx: invalid Size*/
     memset(&mode_ex, 0, sizeof(mode_ex));
@@ -619,8 +620,8 @@ static void test_get_adapter_displaymode_ex(void)
     ok(mode_ex.ScanLineOrdering != 0, "ScanLineOrdering returned 0\n");
     /* Check that orientation is returned correctly by GetAdapterDisplayModeEx
      * and EnumDisplaySettingsEx(). */
-    todo_wine ok(S2(U1(startmode)).dmDisplayOrientation == DMDO_180 && rotation == D3DDISPLAYROTATION_180,
-            "rotation is %d instead of %d\n", rotation, S2(U1(startmode)).dmDisplayOrientation);
+    todo_wine ok(S2(U1(devmode)).dmDisplayOrientation == DMDO_180 && rotation == D3DDISPLAYROTATION_180,
+            "rotation is %d instead of %d\n", rotation, S2(U1(devmode)).dmDisplayOrientation);
 
     trace("GetAdapterDisplayModeEx returned Width = %d, Height = %d, RefreshRate = %d, Format = %x, ScanLineOrdering = %x, rotation = %d\n",
           mode_ex.Width, mode_ex.Height, mode_ex.RefreshRate, mode_ex.Format, mode_ex.ScanLineOrdering, rotation);
@@ -643,10 +644,12 @@ static void test_get_adapter_displaymode_ex(void)
     ok(mode_ex.ScanLineOrdering != 0, "ScanLineOrdering returned 0\n");
 
     /* return to the default mode */
-    ChangeDisplaySettingsExW(NULL, NULL, NULL, 0, NULL);
+    retval = ChangeDisplaySettingsExW(NULL, &startmode, NULL, 0, NULL);
+    ok(retval == DISP_CHANGE_SUCCESSFUL, "ChangeDisplaySettingsEx failed with %d.\n", retval);
 out:
     IDirect3D9_Release(d3d9);
     IDirect3D9Ex_Release(d3d9ex);
+    DestroyWindow(window);
 }
 
 static void test_create_depth_stencil_surface_ex(void)
@@ -920,6 +923,7 @@ static void test_reset(void)
     IDirect3DDevice9Ex *device;
     IDirect3DSurface9 *surface;
     UINT i, adapter_mode_count;
+    DEVMODEW devmode;
     IDirect3D9 *d3d9;
     D3DVIEWPORT9 vp;
     D3DCAPS9 caps;
@@ -928,6 +932,7 @@ static void test_reset(void)
     HWND window;
     HRESULT hr;
     RECT rect;
+    LONG ret;
     struct
     {
         UINT w;
@@ -1011,8 +1016,7 @@ static void test_reset(void)
     hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
     ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
     ok(rect.left == 0 && rect.top == 0 && rect.right == modes[i].w && rect.bottom == modes[i].h,
-            "Got unexpected scissor rect {%d, %d, %d, %d}.\n",
-            rect.left, rect.top, rect.right, rect.bottom);
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
 
     hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
     ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
@@ -1021,7 +1025,7 @@ static void test_reset(void)
     ok(vp.Width == modes[i].w, "Got vp.Width %u, expected %u.\n", vp.Width, modes[i].w);
     ok(vp.Height == modes[i].h, "Got vp.Height %u, expected %u.\n", vp.Height, modes[i].h);
     ok(vp.MinZ == 0.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
-    ok(vp.MaxZ == 1.0f, "Got unexpected vp,MaxZ %.8e.\n", vp.MaxZ);
+    ok(vp.MaxZ == 1.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
 
     i = 1;
     vp.X = 10;
@@ -1060,8 +1064,7 @@ static void test_reset(void)
     hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
     ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
     ok(rect.left == 0 && rect.top == 0 && rect.right == modes[i].w && rect.bottom == modes[i].h,
-            "Got unexpected scissor rect {%d, %d, %d, %d}.\n",
-            rect.left, rect.top, rect.right, rect.bottom);
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
 
     hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
     ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
@@ -1070,7 +1073,7 @@ static void test_reset(void)
     ok(vp.Width == modes[i].w, "Got vp.Width %u, expected %u.\n", vp.Width, modes[i].w);
     ok(vp.Height == modes[i].h, "Got vp.Height %u, expected %u.\n", vp.Height, modes[i].h);
     ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
-    ok(vp.MaxZ == 3.0f, "Got unexpected vp,MaxZ %.8e.\n", vp.MaxZ);
+    ok(vp.MaxZ == 3.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
 
     width = GetSystemMetrics(SM_CXSCREEN);
     height = GetSystemMetrics(SM_CYSCREEN);
@@ -1106,8 +1109,7 @@ static void test_reset(void)
     hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
     ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
     ok(rect.left == 0 && rect.top == 0 && rect.right == 400 && rect.bottom == 300,
-            "Got unexpected scissor rect {%d, %d, %d, %d}.\n",
-            rect.left, rect.top, rect.right, rect.bottom);
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
 
     hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
     ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
@@ -1116,7 +1118,7 @@ static void test_reset(void)
     ok(vp.Width == 400, "Got unexpected vp.Width %u.\n", vp.Width);
     ok(vp.Height == 300, "Got unexpected vp.Height %u.\n", vp.Height);
     ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
-    ok(vp.MaxZ == 3.0f, "Got unexpected vp,MaxZ %.8e.\n", vp.MaxZ);
+    ok(vp.MaxZ == 3.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
 
     hr = IDirect3DDevice9Ex_GetSwapChain(device, 0, &swapchain);
     ok(SUCCEEDED(hr), "Failed to get swapchain, hr %#x.\n", hr);
@@ -1125,6 +1127,64 @@ static void test_reset(void)
     ok(d3dpp.BackBufferWidth == 400, "Got unexpected backbuffer width %u.\n", d3dpp.BackBufferWidth);
     ok(d3dpp.BackBufferHeight == 300, "Got unexpected backbuffer height %u.\n", d3dpp.BackBufferHeight);
     IDirect3DSwapChain9_Release(swapchain);
+
+    memset(&devmode, 0, sizeof(devmode));
+    devmode.dmSize = sizeof(devmode);
+    devmode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
+    devmode.dmPelsWidth = modes[1].w;
+    devmode.dmPelsHeight = modes[1].h;
+    ret = ChangeDisplaySettingsW(&devmode, CDS_FULLSCREEN);
+    ok(ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x.\n", ret);
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == modes[1].w, "Screen width is %u, expected %u.\n", width, modes[1].w);
+    ok(height == modes[1].h, "Screen height is %u, expected %u.\n", height, modes[1].h);
+
+    d3dpp.BackBufferWidth  = 500;
+    d3dpp.BackBufferHeight = 400;
+    d3dpp.BackBufferFormat = D3DFMT_A8R8G8B8;
+    hr = IDirect3DDevice9Ex_Reset(device, &d3dpp);
+    ok(SUCCEEDED(hr), "Failed to reset device, hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_TestCooperativeLevel(device);
+    ok(hr == D3D_OK, "Got unexpected cooperative level %#x.\n", hr);
+
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == modes[1].w, "Screen width is %u, expected %u.\n", width, modes[1].w);
+    ok(height == modes[1].h, "Screen height is %u, expected %u.\n", height, modes[1].h);
+
+    hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
+    ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
+    ok(rect.left == 0 && rect.top == 0 && rect.right == 500 && rect.bottom == 400,
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
+
+    hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
+    ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
+    ok(vp.X == 0, "Got unexpected vp.X %u.\n", vp.X);
+    ok(vp.Y == 0, "Got unexpected vp.Y %u.\n", vp.Y);
+    ok(vp.Width == 500, "Got unexpected vp.Width %u.\n", vp.Width);
+    ok(vp.Height == 400, "Got unexpected vp.Height %u.\n", vp.Height);
+    ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
+    ok(vp.MaxZ == 3.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
+
+    hr = IDirect3DDevice9Ex_GetSwapChain(device, 0, &swapchain);
+    ok(SUCCEEDED(hr), "Failed to get swapchain, hr %#x.\n", hr);
+    memset(&d3dpp, 0, sizeof(d3dpp));
+    hr = IDirect3DSwapChain9_GetPresentParameters(swapchain, &d3dpp);
+    ok(SUCCEEDED(hr), "Failed to get present parameters, hr %#x.\n", hr);
+    ok(d3dpp.BackBufferWidth == 500, "Got unexpected BackBufferWidth %u.\n", d3dpp.BackBufferWidth);
+    ok(d3dpp.BackBufferHeight == 400, "Got unexpected BackBufferHeight %u.\n", d3dpp.BackBufferHeight);
+    IDirect3DSwapChain9_Release(swapchain);
+
+    devmode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
+    devmode.dmPelsWidth = orig_width;
+    devmode.dmPelsHeight = orig_height;
+    ret = ChangeDisplaySettingsW(&devmode, CDS_FULLSCREEN);
+    ok(ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x.\n", ret);
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == orig_width, "Got screen width %u, expected %u.\n", width, orig_width);
+    ok(height == orig_height, "Got screen height %u, expected %u.\n", height, orig_height);
 
     SetRect(&rect, 0, 0, 200, 150);
     ok(AdjustWindowRect(&rect, GetWindowLongW(window, GWL_STYLE), FALSE), "Failed to adjust window rect.\n");
@@ -1162,8 +1222,7 @@ static void test_reset(void)
     hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
     ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
     ok(rect.left == 0 && rect.top == 0 && rect.right == 200 && rect.bottom == 150,
-            "Got unexpected scissor rect {%d, %d, %d, %d}.\n",
-            rect.left, rect.top, rect.right, rect.bottom);
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
 
     hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
     ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
@@ -1172,7 +1231,7 @@ static void test_reset(void)
     ok(vp.Width == 200, "Got unexpected vp.Width %u.\n", vp.Width);
     ok(vp.Height == 150, "Got unexpected vp.Height %u.\n", vp.Height);
     ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
-    ok(vp.MaxZ == 3.0f, "Got unexpected vp,MaxZ %.8e.\n", vp.MaxZ);
+    ok(vp.MaxZ == 3.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
 
     hr = IDirect3DDevice9Ex_GetSwapChain(device, 0, &swapchain);
     ok(SUCCEEDED(hr), "Failed to get swapchain, hr %#x.\n", hr);
@@ -1319,6 +1378,420 @@ static void test_reset(void)
 cleanup:
     HeapFree(GetProcessHeap(), 0, modes);
     IDirect3D9_Release(d3d9);
+    refcount = IDirect3DDevice9Ex_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    DestroyWindow(window);
+}
+
+static void test_reset_ex(void)
+{
+    unsigned int height, orig_height = GetSystemMetrics(SM_CYSCREEN);
+    unsigned int width, orig_width = GetSystemMetrics(SM_CXSCREEN);
+    unsigned int i, adapter_mode_count, mode_count = 0;
+    D3DDISPLAYMODEEX mode, mode2, *modes;
+    D3DDISPLAYMODEFILTER mode_filter;
+    IDirect3DSwapChain9 *swapchain;
+    D3DPRESENT_PARAMETERS d3dpp;
+    IDirect3DDevice9Ex *device;
+    IDirect3D9Ex *d3d9;
+    DEVMODEW devmode;
+    D3DVIEWPORT9 vp;
+    ULONG refcount;
+    DWORD value;
+    HWND window;
+    HRESULT hr;
+    RECT rect;
+    LONG ret;
+
+    window = create_window();
+    if (!(device = create_device(window, NULL)))
+    {
+        skip("Failed to create a D3D device.\n");
+        DestroyWindow(window);
+        return;
+    }
+
+    hr = IDirect3DDevice9Ex_GetDirect3D(device, (IDirect3D9 **)&d3d9);
+    ok(SUCCEEDED(hr), "Failed to get d3d9, hr %#x.\n", hr);
+
+    memset(&mode, 0, sizeof(mode));
+    mode.Size = sizeof(mode);
+    hr = IDirect3D9Ex_GetAdapterDisplayModeEx(d3d9, D3DADAPTER_DEFAULT, &mode, NULL);
+    ok(SUCCEEDED(hr), "GetAdapterDisplayModeEx failed, hr %#x.\n", hr);
+    memset(&mode_filter, 0, sizeof(mode_filter));
+    mode_filter.Size = sizeof(mode_filter);
+    mode_filter.Format = mode.Format;
+    adapter_mode_count = IDirect3D9Ex_GetAdapterModeCountEx(d3d9, D3DADAPTER_DEFAULT, &mode_filter);
+    modes = HeapAlloc(GetProcessHeap(), 0, sizeof(*modes) * adapter_mode_count);
+    for (i = 0; i < adapter_mode_count; ++i)
+    {
+        unsigned int j;
+
+        memset(&mode2, 0, sizeof(mode));
+        mode2.Size = sizeof(mode2);
+        hr = IDirect3D9Ex_EnumAdapterModesEx(d3d9, D3DADAPTER_DEFAULT, &mode_filter, i, &mode2);
+        ok(SUCCEEDED(hr), "Failed to enumerate display mode, hr %#x.\n", hr);
+
+        for (j = 0; j < mode_count; ++j)
+        {
+            if (modes[j].Width == mode2.Width && modes[j].Height == mode2.Height)
+                break;
+        }
+        if (j == mode_count)
+        {
+            modes[j] = mode2;
+            ++mode_count;
+        }
+    }
+
+    if (mode_count < 2)
+    {
+        skip("Less than 2 modes supported.\n");
+        goto cleanup;
+    }
+
+    i = 0;
+    if (modes[i].Width == orig_width && modes[i].Height == orig_height)
+        ++i;
+
+    memset(&d3dpp, 0, sizeof(d3dpp));
+    d3dpp.Windowed = FALSE;
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    d3dpp.BackBufferWidth = modes[i].Width;
+    d3dpp.BackBufferHeight = modes[i].Height;
+    d3dpp.BackBufferFormat = modes[i].Format;
+    d3dpp.EnableAutoDepthStencil = TRUE;
+    d3dpp.AutoDepthStencilFormat = D3DFMT_D24S8;
+    modes[i].RefreshRate = 0;
+    modes[i].ScanLineOrdering = 0;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, &modes[i]);
+    ok(SUCCEEDED(hr), "Failed to reset device, hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_TestCooperativeLevel(device);
+    ok(hr == D3D_OK, "Got unexpected cooperative level %#x.\n", hr);
+
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == modes[i].Width, "Got screen width %u, expected %u.\n", width, modes[i].Width);
+    ok(height == modes[i].Height, "Got screen height %u, expected %u.\n", height, modes[i].Height);
+
+    hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
+    ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
+    ok(rect.left == 0 && rect.top == 0 && rect.right == modes[i].Width && rect.bottom == modes[i].Height,
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
+
+    hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
+    ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
+    ok(vp.X == 0, "Got unexpected vp.X %u.\n", vp.X);
+    ok(vp.Y == 0, "Got unexpected vp.Y %u.\n", vp.Y);
+    ok(vp.Width == modes[i].Width, "Got vp.Width %u, expected %u.\n", vp.Width, modes[i].Width);
+    ok(vp.Height == modes[i].Height, "Got vp.Height %u, expected %u.\n", vp.Height, modes[i].Height);
+    ok(vp.MinZ == 0.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
+    ok(vp.MaxZ == 1.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
+
+    i = 1;
+    vp.X = 10;
+    vp.Y = 20;
+    vp.MinZ = 2.0f;
+    vp.MaxZ = 3.0f;
+    hr = IDirect3DDevice9Ex_SetViewport(device, &vp);
+    ok(SUCCEEDED(hr), "Failed to set viewport, hr %#x.\n", hr);
+
+    SetRect(&rect, 10, 20, 30, 40);
+    hr = IDirect3DDevice9Ex_SetScissorRect(device, &rect);
+    ok(SUCCEEDED(hr), "Failed to set scissor rect, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice9_GetRenderState(device, D3DRS_LIGHTING, &value);
+    ok(SUCCEEDED(hr), "Failed to get render state, hr %#x.\n", hr);
+    ok(!!value, "Got unexpected value %#x for D3DRS_LIGHTING.\n", value);
+    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_LIGHTING, FALSE);
+    ok(SUCCEEDED(hr), "Failed to set render state, hr %#x.\n", hr);
+
+    memset(&d3dpp, 0, sizeof(d3dpp));
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    d3dpp.Windowed = FALSE;
+    d3dpp.BackBufferWidth = modes[i].Width;
+    d3dpp.BackBufferHeight = modes[i].Height;
+    d3dpp.BackBufferFormat = modes[i].Format;
+    modes[i].RefreshRate = 0;
+    modes[i].ScanLineOrdering = 0;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, &modes[i]);
+    ok(SUCCEEDED(hr), "Failed to reset device, hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_TestCooperativeLevel(device);
+    ok(hr == D3D_OK, "Got unexpected cooperative level %#x.\n", hr);
+
+    /* Render states are preserved in d3d9ex. */
+    hr = IDirect3DDevice9_GetRenderState(device, D3DRS_LIGHTING, &value);
+    ok(SUCCEEDED(hr), "Failed to get render state, hr %#x.\n", hr);
+    ok(!value, "Got unexpected value %#x for D3DRS_LIGHTING.\n", value);
+
+    hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
+    ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
+    ok(rect.left == 0 && rect.top == 0 && rect.right == modes[i].Width && rect.bottom == modes[i].Height,
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
+
+    hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
+    ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
+    ok(vp.X == 0, "Got unexpected vp.X %u.\n", vp.X);
+    ok(vp.Y == 0, "Got unexpected vp.Y %u.\n", vp.Y);
+    ok(vp.Width == modes[i].Width, "Got vp.Width %u, expected %u.\n", vp.Width, modes[i].Width);
+    ok(vp.Height == modes[i].Height, "Got vp.Height %u, expected %u.\n", vp.Height, modes[i].Height);
+    ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
+    ok(vp.MaxZ == 3.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
+
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == modes[i].Width, "Got screen width %u, expected %u.\n", width, modes[i].Width);
+    ok(height == modes[i].Height, "Got screen height %u, expected %u.\n", height, modes[i].Height);
+
+    hr = IDirect3DDevice9Ex_GetSwapChain(device, 0, &swapchain);
+    ok(SUCCEEDED(hr), "Failed to get swapchain, hr %#x.\n", hr);
+    hr = IDirect3DSwapChain9_GetPresentParameters(swapchain, &d3dpp);
+    ok(SUCCEEDED(hr), "Failed to get present parameters, hr %#x.\n", hr);
+    ok(d3dpp.BackBufferWidth == modes[i].Width, "Got backbuffer width %u, expected %u.\n",
+            d3dpp.BackBufferWidth, modes[i].Width);
+    ok(d3dpp.BackBufferHeight == modes[i].Height, "Got backbuffer height %u, expected %u.\n",
+            d3dpp.BackBufferHeight, modes[i].Height);
+    IDirect3DSwapChain9_Release(swapchain);
+
+    /* BackBufferWidth and BackBufferHeight have to match display mode. */
+    memset(&d3dpp, 0, sizeof(d3dpp));
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    d3dpp.Windowed = FALSE;
+    d3dpp.BackBufferFormat = modes[i].Format;
+    d3dpp.BackBufferWidth = modes[i].Width - 10;
+    d3dpp.BackBufferHeight = modes[i].Height - 10;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, &modes[i]);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    d3dpp.BackBufferWidth = modes[i].Width - 1;
+    d3dpp.BackBufferHeight = modes[i].Height;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, &modes[i]);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    d3dpp.BackBufferWidth = modes[i].Width;
+    d3dpp.BackBufferHeight = modes[i].Height - 1;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, &modes[i]);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    d3dpp.BackBufferWidth = 0;
+    d3dpp.BackBufferHeight = 0;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, &modes[i]);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    d3dpp.BackBufferWidth = modes[i].Width;
+    d3dpp.BackBufferHeight = modes[i].Height;
+    mode2 = modes[i];
+    mode2.Width = 0;
+    mode2.Height = 0;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, &mode2);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_TestCooperativeLevel(device);
+    ok(hr == D3D_OK, "Got unexpected cooperative level %#x.\n", hr);
+
+    d3dpp.BackBufferWidth = modes[i].Width;
+    d3dpp.BackBufferHeight = modes[i].Height;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, &modes[i]);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_TestCooperativeLevel(device);
+    ok(hr == D3D_OK, "Got unexpected cooperative level %#x.\n", hr);
+
+    hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
+    ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
+    ok(rect.left == 0 && rect.top == 0 && rect.right == modes[i].Width && rect.bottom == modes[i].Height,
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
+
+    hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
+    ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
+    ok(vp.X == 0, "Got unexpected vp.X %u.\n", vp.X);
+    ok(vp.Y == 0, "Got unexpected vp.Y %u.\n", vp.Y);
+    ok(vp.Width == modes[i].Width, "Got vp.Width %u, expected %u.\n", vp.Width, modes[i].Width);
+    ok(vp.Height == modes[i].Height, "Got vp.Height %u, expected %u.\n", vp.Height, modes[i].Height);
+    ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
+    ok(vp.MaxZ == 3.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
+
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == modes[i].Width, "Got screen width %u, expected %u.\n", width, modes[i].Width);
+    ok(height == modes[i].Height, "Got screen height %u, expected %u.\n", height, modes[i].Height);
+
+    hr = IDirect3DDevice9Ex_GetSwapChain(device, 0, &swapchain);
+    ok(SUCCEEDED(hr), "Failed to get swapchain, hr %#x.\n", hr);
+    hr = IDirect3DSwapChain9_GetPresentParameters(swapchain, &d3dpp);
+    ok(SUCCEEDED(hr), "Failed to get present parameters, hr %#x.\n", hr);
+    ok(d3dpp.BackBufferWidth == modes[i].Width, "Got backbuffer width %u, expected %u.\n",
+            d3dpp.BackBufferWidth, modes[i].Width);
+    ok(d3dpp.BackBufferHeight == modes[i].Height, "Got backbuffer height %u, expected %u.\n",
+            d3dpp.BackBufferHeight, modes[i].Height);
+    IDirect3DSwapChain9_Release(swapchain);
+
+    memset(&d3dpp, 0, sizeof(d3dpp));
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    d3dpp.Windowed = TRUE;
+    d3dpp.BackBufferWidth = 400;
+    d3dpp.BackBufferHeight = 300;
+    d3dpp.BackBufferFormat = D3DFMT_A8R8G8B8;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, NULL);
+    ok(SUCCEEDED(hr), "Failed to reset device, hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_TestCooperativeLevel(device);
+    ok(hr == D3D_OK, "Got unexpected cooperative level %#x.\n", hr);
+
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == orig_width, "Got screen width %u, expected %u.\n", width, orig_width);
+    ok(height == orig_height, "Got screen height %u, expected %u.\n", height, orig_height);
+
+    hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
+    ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
+    ok(rect.left == 0 && rect.top == 0 && rect.right == 400 && rect.bottom == 300,
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
+
+    hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
+    ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
+    ok(vp.X == 0, "Got unexpected vp.X %u.\n", vp.X);
+    ok(vp.Y == 0, "Got unexpected vp.Y %u.\n", vp.Y);
+    ok(vp.Width == 400, "Got unexpected vp.Width %u.\n", vp.Width);
+    ok(vp.Height == 300, "Got unexpected vp.Height %u.\n", vp.Height);
+    ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
+    ok(vp.MaxZ == 3.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
+
+    hr = IDirect3DDevice9Ex_GetSwapChain(device, 0, &swapchain);
+    ok(SUCCEEDED(hr), "Failed to get swapchain, hr %#x.\n", hr);
+    hr = IDirect3DSwapChain9_GetPresentParameters(swapchain, &d3dpp);
+    ok(SUCCEEDED(hr), "Failed to get present parameters, hr %#x.\n", hr);
+    ok(d3dpp.BackBufferWidth == 400, "Got unexpected backbuffer width %u.\n", d3dpp.BackBufferWidth);
+    ok(d3dpp.BackBufferHeight == 300, "Got unexpected backbuffer height %u.\n", d3dpp.BackBufferHeight);
+    IDirect3DSwapChain9_Release(swapchain);
+
+    memset(&devmode, 0, sizeof(devmode));
+    devmode.dmSize = sizeof(devmode);
+    devmode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
+    devmode.dmPelsWidth = modes[1].Width;
+    devmode.dmPelsHeight = modes[1].Height;
+    ret = ChangeDisplaySettingsW(&devmode, CDS_FULLSCREEN);
+    ok(ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x.\n", ret);
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == modes[1].Width, "Screen width is %u, expected %u.\n", width, modes[1].Width);
+    ok(height == modes[1].Height, "Screen height is %u, expected %u.\n", height, modes[1].Height);
+
+    d3dpp.BackBufferWidth  = 500;
+    d3dpp.BackBufferHeight = 400;
+    d3dpp.BackBufferFormat = D3DFMT_A8R8G8B8;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, &mode);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, NULL);
+    ok(SUCCEEDED(hr), "Failed to reset device, hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_TestCooperativeLevel(device);
+    ok(hr == D3D_OK, "Got unexpected cooperative level %#x.\n", hr);
+
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == modes[1].Width, "Screen width is %u, expected %u.\n", width, modes[1].Width);
+    ok(height == modes[1].Height, "Screen height is %u, expected %u.\n", height, modes[1].Height);
+
+    hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
+    ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
+    ok(rect.left == 0 && rect.top == 0 && rect.right == 500 && rect.bottom == 400,
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
+
+    hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
+    ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
+    ok(vp.X == 0, "Got unexpected vp.X %u.\n", vp.X);
+    ok(vp.Y == 0, "Got unexpected vp.Y %u.\n", vp.Y);
+    ok(vp.Width == 500, "Got unexpected vp.Width %u.\n", vp.Width);
+    ok(vp.Height == 400, "Got unexpected vp.Height %u.\n", vp.Height);
+    ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
+    ok(vp.MaxZ == 3.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
+
+    hr = IDirect3DDevice9Ex_GetSwapChain(device, 0, &swapchain);
+    ok(SUCCEEDED(hr), "Failed to get swapchain, hr %#x.\n", hr);
+    memset(&d3dpp, 0, sizeof(d3dpp));
+    hr = IDirect3DSwapChain9_GetPresentParameters(swapchain, &d3dpp);
+    ok(SUCCEEDED(hr), "Failed to get present parameters, hr %#x.\n", hr);
+    ok(d3dpp.BackBufferWidth == 500, "Got unexpected BackBufferWidth %u.\n", d3dpp.BackBufferWidth);
+    ok(d3dpp.BackBufferHeight == 400, "Got unexpected BackBufferHeight %u.\n", d3dpp.BackBufferHeight);
+    IDirect3DSwapChain9_Release(swapchain);
+
+    devmode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT;
+    devmode.dmPelsWidth = orig_width;
+    devmode.dmPelsHeight = orig_height;
+    ret = ChangeDisplaySettingsW(&devmode, CDS_FULLSCREEN);
+    ok(ret == DISP_CHANGE_SUCCESSFUL, "Failed to change display mode, ret %#x.\n", ret);
+    width = GetSystemMetrics(SM_CXSCREEN);
+    height = GetSystemMetrics(SM_CYSCREEN);
+    ok(width == orig_width, "Got screen width %u, expected %u.\n", width, orig_width);
+    ok(height == orig_height, "Got screen height %u, expected %u.\n", height, orig_height);
+
+    SetRect(&rect, 0, 0, 200, 150);
+    ok(AdjustWindowRect(&rect, GetWindowLongW(window, GWL_STYLE), FALSE), "Failed to adjust window rect.\n");
+    ok(SetWindowPos(window, NULL, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
+            SWP_NOMOVE | SWP_NOZORDER), "Failed to set window position.\n");
+
+    memset(&d3dpp, 0, sizeof(d3dpp));
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    d3dpp.Windowed = TRUE;
+    d3dpp.BackBufferWidth = 0;
+    d3dpp.BackBufferHeight = 0;
+    d3dpp.BackBufferFormat = D3DFMT_UNKNOWN;
+    hr = IDirect3DDevice9Ex_ResetEx(device, &d3dpp, NULL);
+    ok(SUCCEEDED(hr), "Failed to reset device, hr %#x.\n", hr);
+    hr = IDirect3DDevice9Ex_TestCooperativeLevel(device);
+    ok(hr == D3D_OK, "Got unexpected cooperative level %#x.\n", hr);
+
+    ok(d3dpp.BackBufferWidth == 200, "Got unexpected BackBufferWidth %u.\n", d3dpp.BackBufferWidth);
+    ok(d3dpp.BackBufferHeight == 150, "Got unexpected BackBufferHeight %u.\n", d3dpp.BackBufferHeight);
+    ok(d3dpp.BackBufferFormat == mode.Format, "Got unexpected BackBufferFormat %#x, expected %#x.\n",
+            d3dpp.BackBufferFormat, mode.Format);
+    ok(d3dpp.BackBufferCount == 1, "Got unexpected BackBufferCount %u.\n", d3dpp.BackBufferCount);
+    ok(!d3dpp.MultiSampleType, "Got unexpected MultiSampleType %u.\n", d3dpp.MultiSampleType);
+    ok(!d3dpp.MultiSampleQuality, "Got unexpected MultiSampleQuality %u.\n", d3dpp.MultiSampleQuality);
+    ok(d3dpp.SwapEffect == D3DSWAPEFFECT_DISCARD, "Got unexpected SwapEffect %#x.\n", d3dpp.SwapEffect);
+    ok(!d3dpp.hDeviceWindow, "Got unexpected hDeviceWindow %p.\n", d3dpp.hDeviceWindow);
+    ok(d3dpp.Windowed, "Got unexpected Windowed %#x.\n", d3dpp.Windowed);
+    ok(!d3dpp.EnableAutoDepthStencil, "Got unexpected EnableAutoDepthStencil %#x.\n", d3dpp.EnableAutoDepthStencil);
+    ok(!d3dpp.AutoDepthStencilFormat, "Got unexpected AutoDepthStencilFormat %#x.\n", d3dpp.AutoDepthStencilFormat);
+    ok(!d3dpp.Flags, "Got unexpected Flags %#x.\n", d3dpp.Flags);
+    ok(!d3dpp.FullScreen_RefreshRateInHz, "Got unexpected FullScreen_RefreshRateInHz %u.\n",
+            d3dpp.FullScreen_RefreshRateInHz);
+    ok(!d3dpp.PresentationInterval, "Got unexpected PresentationInterval %#x.\n", d3dpp.PresentationInterval);
+
+    hr = IDirect3DDevice9Ex_GetScissorRect(device, &rect);
+    ok(SUCCEEDED(hr), "Failed to get scissor rect, hr %#x.\n", hr);
+    ok(rect.left == 0 && rect.top == 0 && rect.right == 200 && rect.bottom == 150,
+            "Got unexpected scissor rect %s.\n", wine_dbgstr_rect(&rect));
+
+    hr = IDirect3DDevice9Ex_GetViewport(device, &vp);
+    ok(SUCCEEDED(hr), "Failed to get viewport, hr %#x.\n", hr);
+    ok(vp.X == 0, "Got unexpected vp.X %u.\n", vp.X);
+    ok(vp.Y == 0, "Got unexpected vp.Y %u.\n", vp.Y);
+    ok(vp.Width == 200, "Got unexpected vp.Width %u.\n", vp.Width);
+    ok(vp.Height == 150, "Got unexpected vp.Height %u.\n", vp.Height);
+    ok(vp.MinZ == 2.0f, "Got unexpected vp.MinZ %.8e.\n", vp.MinZ);
+    ok(vp.MaxZ == 3.0f, "Got unexpected vp.MaxZ %.8e.\n", vp.MaxZ);
+
+    hr = IDirect3DDevice9Ex_GetSwapChain(device, 0, &swapchain);
+    ok(SUCCEEDED(hr), "Failed to get swapchain, hr %#x.\n", hr);
+    hr = IDirect3DSwapChain9_GetPresentParameters(swapchain, &d3dpp);
+    ok(SUCCEEDED(hr), "Failed to get present parameters, hr %#x.\n", hr);
+    ok(d3dpp.BackBufferWidth == 200, "Got unexpected backbuffer width %u.\n", d3dpp.BackBufferWidth);
+    ok(d3dpp.BackBufferHeight == 150, "Got unexpected backbuffer height %u.\n", d3dpp.BackBufferHeight);
+    ok(d3dpp.BackBufferFormat == mode.Format, "Got unexpected BackBufferFormat %#x, expected %#x.\n",
+            d3dpp.BackBufferFormat, mode.Format);
+    ok(d3dpp.BackBufferCount == 1, "Got unexpected BackBufferCount %u.\n", d3dpp.BackBufferCount);
+    ok(!d3dpp.MultiSampleType, "Got unexpected MultiSampleType %u.\n", d3dpp.MultiSampleType);
+    ok(!d3dpp.MultiSampleQuality, "Got unexpected MultiSampleQuality %u.\n", d3dpp.MultiSampleQuality);
+    ok(d3dpp.SwapEffect == D3DSWAPEFFECT_DISCARD, "Got unexpected SwapEffect %#x.\n", d3dpp.SwapEffect);
+    ok(d3dpp.hDeviceWindow == window, "Got unexpected hDeviceWindow %p, expected %p.\n", d3dpp.hDeviceWindow, window);
+    ok(d3dpp.Windowed, "Got unexpected Windowed %#x.\n", d3dpp.Windowed);
+    ok(!d3dpp.EnableAutoDepthStencil, "Got unexpected EnableAutoDepthStencil %#x.\n", d3dpp.EnableAutoDepthStencil);
+    ok(!d3dpp.AutoDepthStencilFormat, "Got unexpected AutoDepthStencilFormat %#x.\n", d3dpp.AutoDepthStencilFormat);
+    ok(!d3dpp.Flags, "Got unexpected Flags %#x.\n", d3dpp.Flags);
+    ok(!d3dpp.FullScreen_RefreshRateInHz, "Got unexpected FullScreen_RefreshRateInHz %u.\n",
+            d3dpp.FullScreen_RefreshRateInHz);
+    ok(!d3dpp.PresentationInterval, "Got unexpected PresentationInterval %#x.\n", d3dpp.PresentationInterval);
+    IDirect3DSwapChain9_Release(swapchain);
+
+cleanup:
+    HeapFree(GetProcessHeap(), 0, modes);
+    IDirect3D9Ex_Release(d3d9);
     refcount = IDirect3DDevice9Ex_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
     DestroyWindow(window);
@@ -2858,19 +3331,16 @@ static void test_window_style(void)
 
         GetWindowRect(device_window, &r);
         if (tests[i].device_flags & CREATE_DEVICE_NOWINDOWCHANGES)
-            todo_wine ok(EqualRect(&r, &device_rect), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}, i=%u.\n",
-                    device_rect.left, device_rect.top, device_rect.right, device_rect.bottom,
-                    r.left, r.top, r.right, r.bottom, i);
+            todo_wine ok(EqualRect(&r, &device_rect), "Expected %s, got %s, i=%u.\n",
+                    wine_dbgstr_rect(&device_rect), wine_dbgstr_rect(&r), i);
         else
-            ok(EqualRect(&r, &fullscreen_rect), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}, i=%u.\n",
-                    fullscreen_rect.left, fullscreen_rect.top, fullscreen_rect.right, fullscreen_rect.bottom,
-                    r.left, r.top, r.right, r.bottom, i);
+            ok(EqualRect(&r, &fullscreen_rect), "Expected %s, got %s, i=%u.\n",
+                    wine_dbgstr_rect(&fullscreen_rect), wine_dbgstr_rect(&r), i);
         GetClientRect(device_window, &r2);
         todo_wine ok(!EqualRect(&r, &r2), "Client rect and window rect are equal, i=%u.\n", i);
         GetWindowRect(focus_window, &r);
-        ok(EqualRect(&r, &focus_rect), "Expected {%d, %d, %d, %d}, got {%d, %d, %d, %d}, i=%u.\n",
-                focus_rect.left, focus_rect.top, focus_rect.right, focus_rect.bottom,
-                r.left, r.top, r.right, r.bottom, i);
+        ok(EqualRect(&r, &focus_rect), "Expected %s, got %s, i=%u.\n",
+                wine_dbgstr_rect(&focus_rect), wine_dbgstr_rect(&r), i);
 
         device_desc.flags = 0;
         hr = reset_device(device, &device_desc);
@@ -3126,6 +3596,7 @@ static void test_swapchain_parameters(void)
     IDirect3D9Ex_Release(d3d9ex);
     DestroyWindow(window);
 }
+
 START_TEST(d3d9ex)
 {
     DEVMODEW current_mode;
@@ -3163,6 +3634,7 @@ START_TEST(d3d9ex)
     test_create_depth_stencil_surface_ex();
     test_user_memory();
     test_reset();
+    test_reset_ex();
     test_reset_resources();
     test_vidmem_accounting();
     test_user_memory_getdc();

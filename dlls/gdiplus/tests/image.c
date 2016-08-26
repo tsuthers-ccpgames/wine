@@ -1446,19 +1446,19 @@ static void test_loadwmf(void)
 
     stat = GdipGetImageBounds(img, &bounds, &unit);
     expect(Ok, stat);
-    todo_wine expect(UnitPixel, unit);
+    expect(UnitPixel, unit);
     expectf(0.0, bounds.X);
     expectf(0.0, bounds.Y);
-    todo_wine expectf(320.0, bounds.Width);
-    todo_wine expectf(320.0, bounds.Height);
+    expectf(320.0, bounds.Width);
+    expectf(320.0, bounds.Height);
 
     stat = GdipGetImageHorizontalResolution(img, &res);
     expect(Ok, stat);
-    todo_wine expectf(1440.0, res);
+    expectf(1440.0, res);
 
     stat = GdipGetImageVerticalResolution(img, &res);
     expect(Ok, stat);
-    todo_wine expectf(1440.0, res);
+    expectf(1440.0, res);
 
     memset(&header, 0, sizeof(header));
     stat = GdipGetMetafileHeaderFromMetafile((GpMetafile*)img, &header);
@@ -3167,12 +3167,7 @@ static void test_image_properties(void)
 
         status = GdipGetPropertyCount(image, &prop_count);
         ok(status == Ok, "%u: GdipGetPropertyCount error %d\n", i, status);
-        if (td[i].image_data == pngimage || td[i].image_data == jpgimage)
-        todo_wine
-        ok(td[i].prop_count == prop_count || td[i].prop_count2 == prop_count,
-           " %u: expected property count %u or %u, got %u\n",
-           i, td[i].prop_count, td[i].prop_count2, prop_count);
-        else
+        todo_wine_if(td[i].image_data == pngimage || td[i].image_data == jpgimage)
         ok(td[i].prop_count == prop_count || td[i].prop_count2 == prop_count,
            " %u: expected property count %u or %u, got %u\n",
            i, td[i].prop_count, td[i].prop_count2, prop_count);
@@ -4725,6 +4720,71 @@ static void test_createeffect(void)
     }
 }
 
+static void test_getadjustedpalette(void)
+{
+    ColorMap colormap;
+    GpImageAttributes *imageattributes;
+    ColorPalette *palette;
+    GpStatus stat;
+
+    stat = GdipCreateImageAttributes(&imageattributes);
+    expect(Ok, stat);
+
+    colormap.oldColor.Argb = 0xffffff00;
+    colormap.newColor.Argb = 0xffff00ff;
+    stat = GdipSetImageAttributesRemapTable(imageattributes, ColorAdjustTypeBitmap,
+        TRUE, 1, &colormap);
+    expect(Ok, stat);
+
+    colormap.oldColor.Argb = 0xffffff80;
+    colormap.newColor.Argb = 0xffff80ff;
+    stat = GdipSetImageAttributesRemapTable(imageattributes, ColorAdjustTypeDefault,
+        TRUE, 1, &colormap);
+    expect(Ok, stat);
+
+    palette = GdipAlloc(sizeof(*palette) + sizeof(ARGB) * 2);
+    palette->Count = 0;
+
+    stat = GdipGetImageAttributesAdjustedPalette(imageattributes, palette, ColorAdjustTypeBitmap);
+    expect(InvalidParameter, stat);
+
+    palette->Count = 3;
+    palette->Entries[0] = 0xffffff00;
+    palette->Entries[1] = 0xffffff80;
+    palette->Entries[2] = 0xffffffff;
+
+    stat = GdipGetImageAttributesAdjustedPalette(imageattributes, palette, ColorAdjustTypeBitmap);
+    expect(Ok, stat);
+    expect(0xffff00ff, palette->Entries[0]);
+    expect(0xffffff80, palette->Entries[1]);
+    expect(0xffffffff, palette->Entries[2]);
+
+    palette->Entries[0] = 0xffffff00;
+    palette->Entries[1] = 0xffffff80;
+    palette->Entries[2] = 0xffffffff;
+
+    stat = GdipGetImageAttributesAdjustedPalette(imageattributes, palette, ColorAdjustTypeBrush);
+    expect(Ok, stat);
+    expect(0xffffff00, palette->Entries[0]);
+    expect(0xffff80ff, palette->Entries[1]);
+    expect(0xffffffff, palette->Entries[2]);
+
+    stat = GdipGetImageAttributesAdjustedPalette(NULL, palette, ColorAdjustTypeBitmap);
+    expect(InvalidParameter, stat);
+
+    stat = GdipGetImageAttributesAdjustedPalette(imageattributes, NULL, ColorAdjustTypeBitmap);
+    expect(InvalidParameter, stat);
+
+    stat = GdipGetImageAttributesAdjustedPalette(imageattributes, palette, -1);
+    expect(InvalidParameter, stat);
+
+    stat = GdipGetImageAttributesAdjustedPalette(imageattributes, palette, ColorAdjustTypeDefault);
+    expect(InvalidParameter, stat);
+
+    GdipFree(palette);
+    GdipDisposeImageAttributes(imageattributes);
+}
+
 START_TEST(image)
 {
     struct GdiplusStartupInput gdiplusStartupInput;
@@ -4782,6 +4842,7 @@ START_TEST(image)
     test_colorkey();
     test_dispose();
     test_createeffect();
+    test_getadjustedpalette();
 
     GdiplusShutdown(gdiplusToken);
 }

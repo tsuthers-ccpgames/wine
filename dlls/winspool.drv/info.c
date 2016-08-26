@@ -44,6 +44,9 @@
 #ifdef HAVE_CUPS_CUPS_H
 # include <cups/cups.h>
 #endif
+#ifdef HAVE_CUPS_PPD_H
+# include <cups/ppd.h>
+#endif
 
 #ifdef HAVE_APPLICATIONSERVICES_APPLICATIONSERVICES_H
 #define GetCurrentProcess GetCurrentProcess_Mac
@@ -3487,6 +3490,10 @@ BOOL WINAPI SetPrinterW( HANDLE printer, DWORD level, LPBYTE data, DWORD command
         break;
     }
 
+    case 8:
+        /* 8 is the global default printer info and 9 already sets it instead of the per-user one */
+        /* still, PRINTER_INFO_8W is the same as PRINTER_INFO_9W */
+        /* fall through */
     case 9:
     {
         PRINTER_INFO_9W *pi = (PRINTER_INFO_9W *)data;

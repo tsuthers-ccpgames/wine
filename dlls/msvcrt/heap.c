@@ -406,9 +406,25 @@ void* CDECL MSVCRT_calloc(MSVCRT_size_t count, MSVCRT_size_t size)
 }
 
 /*********************************************************************
+ *		_calloc_base (UCRTBASE.@)
+ */
+void* CDECL _calloc_base(MSVCRT_size_t count, MSVCRT_size_t size)
+{
+  return MSVCRT_calloc(count, size);
+}
+
+/*********************************************************************
  *		free (MSVCRT.@)
  */
 void CDECL MSVCRT_free(void* ptr)
+{
+  msvcrt_heap_free(ptr);
+}
+
+/*********************************************************************
+ *		_free_base (UCRTBASE.@)
+ */
+void CDECL _free_base(void* ptr)
 {
   msvcrt_heap_free(ptr);
 }
@@ -425,6 +441,14 @@ void* CDECL MSVCRT_malloc(MSVCRT_size_t size)
 }
 
 /*********************************************************************
+ *                  _malloc_base (UCRTBASE.@)
+ */
+void* CDECL _malloc_base(MSVCRT_size_t size)
+{
+  return MSVCRT_malloc(size);
+}
+
+/*********************************************************************
  *		realloc (MSVCRT.@)
  */
 void* CDECL MSVCRT_realloc(void* ptr, MSVCRT_size_t size)
@@ -433,6 +457,14 @@ void* CDECL MSVCRT_realloc(void* ptr, MSVCRT_size_t size)
   if (size) return msvcrt_heap_realloc(0, ptr, size);
   MSVCRT_free(ptr);
   return NULL;
+}
+
+/*********************************************************************
+ *		_realloc_base (UCRTBASE.@)
+ */
+void* CDECL _realloc_base(void* ptr, MSVCRT_size_t size)
+{
+  return MSVCRT_realloc(ptr, size);
 }
 
 /*********************************************************************

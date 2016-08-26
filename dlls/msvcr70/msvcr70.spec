@@ -313,7 +313,7 @@
 @ cdecl _flushall() MSVCRT__flushall
 @ extern _fmode MSVCRT__fmode
 @ cdecl _fpclass(double) MSVCRT__fpclass
-@ stub _fpieee_flt(long ptr ptr)
+@ cdecl -arch=i386,x86_64,arm _fpieee_flt(long ptr ptr)
 @ cdecl _fpreset()
 @ cdecl _fputchar(long) MSVCRT__fputchar
 @ cdecl _fputwchar(long) MSVCRT__fputwchar
@@ -641,7 +641,7 @@
 @ cdecl _wmkdir(wstr) MSVCRT__wmkdir
 @ cdecl _wmktemp(wstr) MSVCRT__wmktemp
 @ varargs _wopen(wstr long) MSVCRT__wopen
-@ stub _wperror(wstr)
+@ cdecl _wperror(wstr) MSVCRT__wperror
 @ extern _wpgmptr MSVCRT__wpgmptr
 @ cdecl _wpopen(wstr wstr) MSVCRT__wpopen
 @ cdecl _wputenv(wstr)

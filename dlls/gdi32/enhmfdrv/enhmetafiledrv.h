@@ -33,6 +33,7 @@
 typedef struct
 {
     struct gdi_physdev dev;
+    struct gdi_physdev pathdev;
     ENHMETAHEADER  *emh;           /* Pointer to enhanced metafile header */
     UINT       handles_size, cur_handles;
     HGDIOBJ   *handles;
@@ -45,6 +46,10 @@ typedef struct
     BOOL       path;
 } EMFDRV_PDEVICE;
 
+static inline EMFDRV_PDEVICE *get_emf_physdev( PHYSDEV dev )
+{
+    return CONTAINING_RECORD( dev, EMFDRV_PDEVICE, dev );
+}
 
 extern BOOL EMFDRV_WriteRecord( PHYSDEV dev, EMR *emr ) DECLSPEC_HIDDEN;
 extern void EMFDRV_UpdateBBox( PHYSDEV dev, RECTL *rect ) DECLSPEC_HIDDEN;
@@ -54,8 +59,11 @@ extern DWORD EMFDRV_CreateBrushIndirect( PHYSDEV dev, HBRUSH hBrush ) DECLSPEC_H
 
 /* Metafile driver functions */
 extern BOOL     EMFDRV_AbortPath( PHYSDEV dev ) DECLSPEC_HIDDEN;
+extern BOOL     EMFDRV_AngleArc( PHYSDEV dev, INT x, INT y, DWORD radius, FLOAT start, FLOAT sweep ) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_Arc( PHYSDEV dev, INT left, INT top, INT right,
                             INT bottom, INT xstart, INT ystart, INT xend, INT yend ) DECLSPEC_HIDDEN;
+extern BOOL     EMFDRV_ArcTo( PHYSDEV dev, INT left, INT top, INT right,
+                              INT bottom, INT xstart, INT ystart, INT xend, INT yend ) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_BeginPath( PHYSDEV dev ) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_BitBlt( PHYSDEV devDst, INT xDst, INT yDst, INT width, INT height,
                                PHYSDEV devSrc, INT xSrc, INT ySrc, DWORD rop ) DECLSPEC_HIDDEN;
@@ -92,10 +100,12 @@ extern BOOL     EMFDRV_Pie( PHYSDEV dev, INT left, INT top, INT right, INT botto
                             INT xstart, INT ystart, INT xend, INT yend ) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_PolyBezier( PHYSDEV dev, const POINT *pts, DWORD count ) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_PolyBezierTo( PHYSDEV dev, const POINT *pts, DWORD count ) DECLSPEC_HIDDEN;
+extern BOOL     EMFDRV_PolyDraw( PHYSDEV dev, const POINT *pts, const BYTE *types, DWORD count ) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_PolyPolygon( PHYSDEV dev, const POINT* pt, const INT* counts, UINT polys) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_PolyPolyline( PHYSDEV dev, const POINT* pt, const DWORD* counts, DWORD polys) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_Polygon( PHYSDEV dev, const POINT* pt, INT count ) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_Polyline( PHYSDEV dev, const POINT* pt,INT count) DECLSPEC_HIDDEN;
+extern BOOL     EMFDRV_PolylineTo( PHYSDEV dev, const POINT* pt,INT count) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_Rectangle( PHYSDEV dev, INT left, INT top, INT right, INT bottom) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_RestoreDC( PHYSDEV dev, INT level ) DECLSPEC_HIDDEN;
 extern BOOL     EMFDRV_RoundRect( PHYSDEV dev, INT left, INT top, INT right, INT bottom,

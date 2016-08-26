@@ -339,6 +339,7 @@ static inline void find_catch_block(EXCEPTION_RECORD *rec, ULONG64 frame,
     ULONG64 exc_base = (rec->NumberParameters == 4 ? rec->ExceptionInformation[3] : 0);
     int trylevel = ip_to_state(rva_to_ptr(descr->ipmap, dispatch->ImageBase),
             descr->ipmap_count, dispatch->ControlPc-dispatch->ImageBase);
+    const tryblock_info *in_catch;
     EXCEPTION_RECORD catch_record;
     CONTEXT context;
     UINT i, j;
@@ -374,23 +375,37 @@ static inline void find_catch_block(EXCEPTION_RECORD *rec, ULONG64 frame,
         }
     }
 
+    for (i=descr->tryblock_count; i>0; i--)
+    {
+        in_catch = rva_to_ptr(descr->tryblock, dispatch->ImageBase);
+        in_catch = &in_catch[i-1];
+
+        if (trylevel>in_catch->end_level && trylevel<=in_catch->catch_level)
+            break;
+    }
+    if (!i)
+        in_catch = NULL;
+
     unwind_help = rva_to_ptr(descr->unwind_help, orig_frame);
-    unwind_help[0] = trylevel;
-    TRACE("current trylevel: %d, last catch block: %d\n", trylevel, unwind_help[1]);
+    if (trylevel > unwind_help[1])
+        unwind_help[0] = unwind_help[1] = trylevel;
+    else
+        trylevel = unwind_help[1];
+    TRACE("current trylevel: %d\n", trylevel);
 
     for (i=0; i<descr->tryblock_count; i++)
     {
         const tryblock_info *tryblock = rva_to_ptr(descr->tryblock, dispatch->ImageBase);
         tryblock = &tryblock[i];
 
-        if (unwind_help[1] != -1)
-        {
-            if (unwind_help[1] < tryblock->start_level) continue;
-            if (unwind_help[1] > tryblock->end_level) continue;
-        }
-
         if (trylevel < tryblock->start_level) continue;
         if (trylevel > tryblock->end_level) continue;
+
+        if (in_catch)
+        {
+            if(tryblock->start_level <= in_catch->end_level) continue;
+            if(tryblock->end_level > in_catch->catch_level) continue;
+        }
 
         /* got a try block */
         for (j=0; j<tryblock->catchblock_count; j++)
@@ -419,8 +434,6 @@ static inline void find_catch_block(EXCEPTION_RECORD *rec, ULONG64 frame,
                 TRACE("found catch(...) block\n");
             }
 
-            unwind_help[1] = tryblock->end_level+1;
-
             /* unwind stack and call catch */
             memset(&catch_record, 0, sizeof(catch_record));
             catch_record.ExceptionCode = STATUS_UNWIND_CONSOLIDATE;
@@ -433,7 +446,7 @@ static inline void find_catch_block(EXCEPTION_RECORD *rec, ULONG64 frame,
             catch_record.ExceptionInformation[4] = (ULONG_PTR)rec;
             catch_record.ExceptionInformation[5] =
                 (ULONG_PTR)rva_to_ptr(catchblock->handler, dispatch->ImageBase);
-            RtlUnwindEx((void*)orig_frame, 0, &catch_record, NULL, &context, NULL);
+            RtlUnwindEx((void*)frame, (void*)dispatch->ControlPc, &catch_record, NULL, &context, NULL);
         }
     }
 
@@ -460,15 +473,22 @@ static DWORD cxx_frame_handler(EXCEPTION_RECORD *rec, ULONG64 frame,
             ULONG64 orig_frame = rec->ExceptionInformation[1];
             const cxx_function_descr *descr = (void*)rec->ExceptionInformation[2];
             int end_level = rec->ExceptionInformation[3];
+            EXCEPTION_RECORD *new_rec = (void*)rec->ExceptionInformation[4];
+            thread_data_t *data = msvcrt_get_thread_data();
             frame_info *cur;
 
             cxx_local_unwind(orig_frame, dispatch, descr, end_level);
 
             /* FIXME: we should only unregister frames registered by call_catch_block here */
-            for (cur = msvcrt_get_thread_data()->frame_info_head; cur; cur = cur->next)
+            for (cur = data->frame_info_head; cur; cur = cur->next)
             {
-                if ((ULONG64)cur > frame)
-                    __CxxUnregisterExceptionObject((cxx_frame_info*)cur, FALSE);
+                if ((ULONG64)cur <= frame)
+                {
+                    __CxxUnregisterExceptionObject((cxx_frame_info*)cur,
+                            new_rec->ExceptionCode == CXX_EXCEPTION &&
+                            data->exc_record->ExceptionCode == CXX_EXCEPTION &&
+                            new_rec->ExceptionInformation[1] == data->exc_record->ExceptionInformation[1]);
+                }
             }
             return ExceptionContinueSearch;
         }
@@ -593,7 +613,6 @@ unsigned int CDECL __CxxQueryExceptionSize(void)
  *		_setjmp (MSVCRT.@)
  */
 __ASM_GLOBAL_FUNC( MSVCRT__setjmp,
-                   "xorq %rdx,%rdx\n\t"  /* frame */
                    "jmp " __ASM_NAME("MSVCRT__setjmpex") );
 
 /*******************************************************************
@@ -679,6 +698,17 @@ void __cdecl MSVCRT_longjmp( struct MSVCRT___JUMP_BUFFER *jmp, int retval )
 void __cdecl _local_unwind( void *frame, void *target )
 {
     RtlUnwind( frame, target, NULL, 0 );
+}
+
+/*********************************************************************
+ *              _fpieee_flt (MSVCRT.@)
+ */
+int __cdecl _fpieee_flt(ULONG exception_code, EXCEPTION_POINTERS *ep,
+        int (__cdecl *handler)(_FPIEEE_RECORD*))
+{
+    FIXME("(%x %p %p) opcode: %s\n", exception_code, ep, handler,
+            wine_dbgstr_longlong(*(ULONG64*)ep->ContextRecord->Rip));
+    return EXCEPTION_CONTINUE_SEARCH;
 }
 
 #endif  /* __x86_64__ */

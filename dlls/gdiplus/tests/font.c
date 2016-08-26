@@ -74,7 +74,7 @@ static void test_createfont(void)
     stat = GdipDeleteFontFamily(fontfamily2);
     expect(Ok, stat);
 
-    /* Test to see if returned size is based on unit (its not) */
+    /* Test to see if returned size is based on unit (it's not) */
     GdipGetFontSize(font, &size);
     ok (size == 12, "Expected 12, got %f\n", size);
     GdipDeleteFont(font);
@@ -781,6 +781,7 @@ static void test_font_substitution(void)
     expect(Ok, status);
     strcpy(fallback_font,lf.lfFaceName);
     trace("fallback font %s\n", fallback_font);
+    GdipDeleteFont(font);
 
     lstrcpyA(lf.lfFaceName, "ThisFontShouldNotExist");
     status = GdipCreateFontFromLogfontA(hdc, &lf, &font);

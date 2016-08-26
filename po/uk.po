@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2016-05-05 21:44+0200\n"
+"PO-Revision-Date: 2016-07-16 20:50+0200\n"
 "Last-Translator: Andrey Gusev <andrey.goosev@gmail.com>\n"
 "Language-Team: Ukrainian\n"
 "Language: uk\n"
@@ -2991,11 +2991,11 @@ msgstr "%1!u!МБ використано, %2!u!МБ доступно"
 
 #: gdi32.rc:28
 msgid "Western"
-msgstr "Західне"
+msgstr "Західноєвропейський"
 
 #: gdi32.rc:29
 msgid "Central European"
-msgstr "Центральна Європа"
+msgstr "Центральноєвропейський"
 
 #: gdi32.rc:30
 msgid "Cyrillic"
@@ -3003,11 +3003,11 @@ msgstr "Кирилиця"
 
 #: gdi32.rc:31
 msgid "Greek"
-msgstr "Грецьке"
+msgstr "Грецький"
 
 #: gdi32.rc:32
 msgid "Turkish"
-msgstr "Турецьке"
+msgstr "Турецький"
 
 #: gdi32.rc:33
 msgid "Hebrew"
@@ -3015,27 +3015,27 @@ msgstr "Іврит"
 
 #: gdi32.rc:34
 msgid "Arabic"
-msgstr "Арабське"
+msgstr "Арабський"
 
 #: gdi32.rc:35
 msgid "Baltic"
-msgstr "Балтійське"
+msgstr "Балтійський"
 
 #: gdi32.rc:36
 msgid "Vietnamese"
-msgstr "В'єтнамське"
+msgstr "В'єтнамський"
 
 #: gdi32.rc:37
 msgid "Thai"
-msgstr "Тайське"
+msgstr "Тайський"
 
 #: gdi32.rc:38
 msgid "Japanese"
-msgstr "Японське"
+msgstr "Японський"
 
 #: gdi32.rc:39
 msgid "CHINESE_GB2312"
-msgstr ""
+msgstr "Китайський GB2312"
 
 #: gdi32.rc:40
 msgid "Hangul"
@@ -3043,7 +3043,7 @@ msgstr "Хангул"
 
 #: gdi32.rc:41
 msgid "CHINESE_BIG5"
-msgstr ""
+msgstr "Китайський BIG5"
 
 #: gdi32.rc:42
 msgid "Hangul(Johab)"
@@ -10298,12 +10298,12 @@ msgstr ""
 msgid "Are you sure?"
 msgstr "Ви впевнені?"
 
-#: cmd.rc:354 reg.rc:45 xcopy.rc:43
+#: cmd.rc:354 reg.rc:50 xcopy.rc:43
 msgctxt "Yes key"
 msgid "Y"
 msgstr "Т"
 
-#: cmd.rc:355 reg.rc:46 xcopy.rc:44
+#: cmd.rc:355 reg.rc:51 xcopy.rc:44
 msgctxt "No key"
 msgid "N"
 msgstr "Н"
@@ -10441,7 +10441,7 @@ msgstr "Том в приводі %1!c! : %2\n"
 msgid "Volume in drive %1!c! has no label.\n"
 msgstr "Том в приводі %1!c! не має мітки.\n"
 
-#: cmd.rc:390 reg.rc:44
+#: cmd.rc:390 reg.rc:49
 msgid " (Yes|No)"
 msgstr " (Так|Ні)"
 
@@ -11623,19 +11623,29 @@ msgstr "Файли значків"
 msgid "Icons (*.ico)"
 msgstr "Значки (*.ico)"
 
-#: reg.rc:30
+#: reg.rc:35
 msgid ""
-"The syntax of this command is:\n"
+"Usage:\n"
+"  REG [operation] [parameters]\n"
 "\n"
-"REG [ ADD | DELETE | QUERY ]\n"
-"REG command /?\n"
+"Supported operations:\n"
+"  ADD | DELETE | QUERY\n"
+"\n"
+"For help on a specific operation, type:\n"
+"  REG [operation] /?\n"
+"\n"
 msgstr ""
-"Синтаксис цієї команди наступний:\n"
+"Використання:\n"
+"  REG [операція] [параметри]\n"
 "\n"
-"REG [ ADD | DELETE | QUERY ]\n"
-"REG <команда> /?\n"
+"Підтримувані операції:\n"
+"  ADD | DELETE | QUERY\n"
+"\n"
+"Для довідки по конкретній операції, введіть:\n"
+"  REG [операція] /?\n"
+"\n"
 
-#: reg.rc:31
+#: reg.rc:36
 msgid ""
 "REG ADD key_name [/v value_name | /ve] [/t type] [/s separator] [/d data] [/"
 "f]\n"
@@ -11643,82 +11653,82 @@ msgstr ""
 "REG ADD <ключ> [/v <параметр> | /ve] [/t <тип>] [/s <розділювач>] [/d дані] "
 "[/f]\n"
 
-#: reg.rc:32
+#: reg.rc:37
 msgid "REG DELETE key_name [/v value_name | /ve | /va] [/f]\n"
 msgstr "REG DELETE <ключ> [/v <параметр> | /ve | /va] [/f]\n"
 
-#: reg.rc:33
+#: reg.rc:38
 msgid "REG QUERY key_name [/v value_name | /ve] [/s]\n"
 msgstr "REG QUERY <ключ> [/v <параметр> | /ve] [/s]\n"
 
-#: reg.rc:34
+#: reg.rc:39
 msgid "The operation completed successfully\n"
 msgstr "Операція успішно завершена\n"
 
-#: reg.rc:35
+#: reg.rc:40
 msgid "reg: Invalid key name\n"
 msgstr "reg: невірне ім'я ключа\n"
 
-#: reg.rc:36
+#: reg.rc:41
 msgid "reg: Invalid command line parameters\n"
 msgstr "reg: невірні параметри командного рядка\n"
 
-#: reg.rc:37
+#: reg.rc:42
 msgid "reg: Unable to access remote machine\n"
 msgstr "reg: неможливо отримати доступ до віддаленої машини\n"
 
-#: reg.rc:38
+#: reg.rc:43
 msgid ""
 "reg: The system was unable to find the specified registry key or value\n"
 msgstr "reg: не вдалось знайти вказаний ключ реєстру чи значення\n"
 
-#: reg.rc:39
+#: reg.rc:44
 msgid "reg: Unsupported registry data type [%1]\n"
 msgstr "reg: непідтримуваний тип даних [%1]\n"
 
-#: reg.rc:40
+#: reg.rc:45
 msgid "reg: The option [/d] must be followed by a valid integer\n"
 msgstr "reg: після параметра [/d] повинно бути вказано ціле число\n"
 
-#: reg.rc:41
+#: reg.rc:46
 msgid "reg: The option [/d] must be followed by a valid hexadecimal value\n"
 msgstr ""
 "reg: після параметра [/d] повинно бути вказано число в шістнадцятковому "
 "форматі\n"
 
-#: reg.rc:42
+#: reg.rc:47
 msgid "reg: Unhandled registry data type [/t 0x%1!x!, /d %2]\n"
 msgstr "reg: невідомий тип даних [/t 0x%1!x!, /d %2]\n"
 
-#: reg.rc:43
+#: reg.rc:48
 msgid "The registry value '%1' already exists. Do you want to overwrite it?"
 msgstr "Значення реєстру '%1' вже існує. Ви хочете його замінити?"
 
-#: reg.rc:47
+#: reg.rc:52
 msgid "The registry operation was cancelled\n"
 msgstr "Операцію з реєстром було скасовано\n"
 
-#: reg.rc:48 regedit.rc:204
+#: reg.rc:53 regedit.rc:204
 msgid "(Default)"
 msgstr "(За замовчуванням)"
 
-#: reg.rc:49
+#: reg.rc:54
 msgid "Are you sure you want to delete the registry value '%1'?"
 msgstr "Ви впевнені, що хочете видалити значення реєстру '%1'?"
 
-#: reg.rc:50
+#: reg.rc:55
 msgid "Are you sure you want to delete all registry values in '%1'?"
 msgstr "Ви впевнені, що хочете видалити всі значення реєстру в '%1'?"
 
-#: reg.rc:51
+#: reg.rc:56
 msgid "Are you sure you want to delete the registry key '%1'?"
 msgstr "Ви впевнені, що хочете видалити ключ реєстру '%1'?"
 
-#: reg.rc:52
+#: reg.rc:57
 msgid "reg: The option [/d] must be followed by a valid string\n"
 msgstr "reg: після параметра [/d] повинно бути вказано рядок\n"
 
-#: reg.rc:53
+#: reg.rc:58
 msgid ""
 "reg: Unable to delete all registry values in '%1'. An unexpected error "
 "occurred.\n"
@@ -11726,16 +11736,36 @@ msgstr ""
 "reg: неможливо видалити всі значення реєстру в '%1'. Сталася неочікувана "
 "помилка.\n"
 
-#: reg.rc:54
+#: reg.rc:59
 msgid ""
 "reg: Unable to complete the specified operation. An unexpected error "
 "occurred.\n"
 msgstr ""
 "reg: неможливо завершити зазначену операцію. Сталася неочікувана помилка.\n"
 
-#: reg.rc:55
+#: reg.rc:60
 msgid "Search complete. Number of matches found: %1!d!\n"
 msgstr "Пошук завершено. Знайдено збігів: %1!d!\n"
+
+#: reg.rc:61
+msgid "reg: Invalid syntax. "
+msgstr "reg: Невірний синтаксис. "
+
+#: reg.rc:62
+msgid "reg: Invalid option [%1]. "
+msgstr "reg: Невірна опція [%1]. "
+
+#: reg.rc:63
+msgid "Type \"REG /?\" for help.\n"
+msgstr "Введіть \"REG /?\" для довідки.\n"
+
+#: reg.rc:64
+msgid "Type \"REG %1 /?\" for help.\n"
+msgstr "Введіть \"REG %1 /?\" для довідки.\n"
+
+#: reg.rc:65 regedit.rc:205
+msgid "(value not set)"
+msgstr "(значення не задане)"
 
 #: regedit.rc:34
 msgid "&Registry"
@@ -11939,10 +11969,6 @@ msgstr "Файли реєстру (*.reg)"
 msgid "Win9x/NT4 Registry files (REGEDIT4)"
 msgstr "Файли реєстру Win9x/NT4 (REGEDIT4)"
 
-#: regedit.rc:205
-msgid "(value not set)"
-msgstr "(значення не задане)"
-
 #: regedit.rc:206
 msgid "(cannot display value)"
 msgstr "(неможливо відобразити значення)"
@@ -11950,6 +11976,154 @@ msgstr "(неможливо відобразити значення)"
 #: regedit.rc:207
 msgid "(unknown %d)"
 msgstr "(невідомо %d)"
+
+#: regedit.rc:359
+msgid ""
+"Usage:\n"
+"  regedit [options] [filename] [reg_key]\n"
+"\n"
+"Options:\n"
+"  [no option]    Launch the graphical version of this program.\n"
+"  /L:system.dat  The location of the system.dat file to be modified.\n"
+"                 Compatible with any other switch. Ignored.\n"
+"  /R:user.dat    The location of the user.dat file to be modified.\n"
+"                 Compatible with any other switch. Ignored.\n"
+"  /C             Import the contents of a registry file.\n"
+"  /D             Delete a specified registry key.\n"
+"  /E             Export the contents of a specified registry key to a file.\n"
+"                 If no key is specified, the entire registry is exported.\n"
+"  /S             Silent mode. No messages will be displayed.\n"
+"  /V             Launch the GUI in advanced mode. Ignored.\n"
+"  /?             Display this information and exit.\n"
+"  [filename]     The location of the file containing registry information "
+"to\n"
+"                 be imported. When used with [/E], this option specifies "
+"the\n"
+"                 file location where registry information will be exported.\n"
+"  [reg_key]      The registry key to be modified.\n"
+"\n"
+"Usage examples:\n"
+"  regedit \"import.reg\"\n"
+"  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
+"  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
+msgstr ""
+"Використання:\n"
+"  regedit [опції] [ім'я файлу] [ключ реєстру]\n"
+"\n"
+"Опції:\n"
+"  [без опцій]    Запуск програми з графічним інтерфейсом.\n"
+"  /L:system.dat  Шлях до файла system.dat для редагування.\n"
+"                 Сумісна з будь-якими іншими опціями. Ігнорується.\n"
+"  /R:user.dat    Шлях до файла user.dat для редагування.\n"
+"                 Сумісна з будь-якими іншими опціями. Ігнорується.\n"
+"  /C             Імпортувати вміст файлу реєстру.\n"
+"  /D             Видалення зазначеного ключа реєстру.\n"
+"  /E             Експортувати вміст зазначеного ключа реєстру у файл.\n"
+"                 Якщо параметр не заданий, експортується весь реєстр.\n"
+"  /S             Тихий режим. Повідомлення не відображатимуться.\n"
+"  /V             Запуск графічного інтерфейсу в розширеному режимі. "
+"Ігнорується.\n"
+"  /?             Показати цю інформацію і вийти.\n"
+"  [ім'я файлу]   Шлях до файлу, який містить дані реєстру для імпорту.\n"
+"                 Опція [/Е] вказує на шлях до файлу куди будуть експортовані "
+"дані реєстру.\n"
+"  [ключ реєстру] Ключ реєстру для редагування.\n"
+"\n"
+"Приклади використання:\n"
+"  regedit \"import.reg\"\n"
+"  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
+"  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
+
+#: regedit.rc:360
+msgid "regedit: Invalid or unrecognized switch [%1]\n"
+msgstr "regedit: Невірний або нерозпізнаний параметр [%1]\n"
+
+#: regedit.rc:361
+msgid "Type \"regedit /?\" for help.\n"
+msgstr "Введіть \"regedit /?\" для довідки.\n"
+
+#: regedit.rc:362
+msgid "regedit: No filename was specified.\n"
+msgstr "regedit: Ім'я файлу не вказано.\n"
+
+#: regedit.rc:363
+msgid "regedit: No registry key was specified for removal.\n"
+msgstr "regedit: Не вказано ключ реєстру для видалення.\n"
+
+#: regedit.rc:364
+msgid "regedit: The file '%1' was not found.\n"
+msgstr "regedit: Файл '%1' не знайдено.\n"
+
+#: regedit.rc:365
+msgid "regedit: Unable to open the file '%1'.\n"
+msgstr "regedit: Неможливо відкрити файл '%1'.\n"
+
+#: regedit.rc:366
+msgid "regedit: Unhandled action.\n"
+msgstr "regedit: Непідтримувана операція.\n"
+
+#: regedit.rc:367
+msgid "regedit: Out of memory! (%1!S!, line %2!u!)\n"
+msgstr "regedit: Недостатньо пам'яті! (%1!S!, рядок %2!u!)\n"
+
+#: regedit.rc:368
+msgid "regedit: Invalid hexadecimal value.\n"
+msgstr "regedit: Невірне шістнадцяткове значення.\n"
+
+#: regedit.rc:369
+msgid ""
+"regedit: Unable to convert hexadecimal data. An invalid value was "
+"encountered at '%1'.\n"
+msgstr ""
+"regedit: Неможливо конвертувати дані у шістнадцятковому форматі. Невірне "
+"значення '%1'.\n"
+
+#: regedit.rc:370
+msgid "regedit: Unrecognized escape sequence [\\%1!c!]\n"
+msgstr "regedit: Нерозпізнана послідовність [\\%1!c!]\n"
+
+#: regedit.rc:371
+msgid "regedit: Unsupported registry data type [%1]\n"
+msgstr "regedit: Непідтримуваний тип даних [%1]\n"
+
+#: regedit.rc:372
+msgid "regedit: Unexpected end of line in '%1'.\n"
+msgstr "regedit: Неочікуваний кінець рядка у '%1'.\n"
+
+#: regedit.rc:373
+msgid "regedit: The line '%1' was not recognized.\n"
+msgstr "regedit: Рядок '%1' не був розпізнаний.\n"
+
+#: regedit.rc:374
+msgid "regedit: Unable to add the registry value '%1' to '%2'.\n"
+msgstr "regedit: Неможливо додати значення '%1' у '%2'.\n"
+
+#: regedit.rc:375
+msgid "regedit: Unable to open the registry key '%1'.\n"
+msgstr "regedit: Неможливо відкрити ключ '%1'.\n"
+
+#: regedit.rc:376
+msgid "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
+msgstr "regedit: '%2' містить непідтримуваний тип даних [%1].\n"
+
+#: regedit.rc:377
+msgid "regedit: The registry value '%1' will be exported as binary data.\n"
+msgstr ""
+"regedit: Значення реєстру '%1' буде експортоване у двійковому вигляді.\n"
+
+#: regedit.rc:378
+msgid "regedit: Incorrect registry class specification in '%1'.\n"
+msgstr "regedit: Невірний формат ключа реєстру у '%1'.\n"
+
+#: regedit.rc:379
+msgid ""
+"regedit: Unable to export '%1'. The specified registry key was not found.\n"
+msgstr ""
+"regedit: Неможливо експортувати '%1'. Вказаний ключ не був знайдений.\n"
+
+#: regedit.rc:380
+msgid "regedit: Unable to delete the registry class '%1'.\n"
+msgstr "regedit: Неможливо видалити клас реєстру '%1'.\n"
 
 #: regedit.rc:163
 msgid "Quits the registry editor"

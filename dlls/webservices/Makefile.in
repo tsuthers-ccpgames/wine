@@ -1,10 +1,12 @@
 MODULE    = webservices.dll
 IMPORTLIB = webservices
-IMPORTS   = user32
+IMPORTS   = rpcrt4 user32
 
 C_SRCS = \
 	channel.c \
 	main.c \
+	msg.c \
 	proxy.c \
 	reader.c \
+	url.c \
 	writer.c

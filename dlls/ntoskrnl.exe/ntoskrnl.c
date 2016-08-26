@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2007 Alexandre Julliard
  * Copyright (C) 2010 Damjan Jovanovic
+ * Copyright (C) 2016 Sebastian Lackner
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -30,6 +31,7 @@
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
+#include "winsvc.h"
 #include "winternl.h"
 #include "excpt.h"
 #include "winioctl.h"
@@ -39,8 +41,9 @@
 #include "ddk/wdm.h"
 #include "wine/unicode.h"
 #include "wine/server.h"
-#include "wine/list.h"
 #include "wine/debug.h"
+
+#include "wine/rbtree.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ntoskrnl);
 WINE_DECLARE_DEBUG_CHANNEL(relay);
@@ -65,12 +68,69 @@ KSERVICE_TABLE_DESCRIPTOR KeServiceDescriptorTable[4] = { { 0 } };
 typedef void (WINAPI *PCREATE_PROCESS_NOTIFY_ROUTINE)(HANDLE,HANDLE,BOOLEAN);
 typedef void (WINAPI *PCREATE_THREAD_NOTIFY_ROUTINE)(HANDLE,HANDLE,BOOLEAN);
 
+static const WCHAR servicesW[] = {'\\','R','e','g','i','s','t','r','y',
+                                  '\\','M','a','c','h','i','n','e',
+                                  '\\','S','y','s','t','e','m',
+                                  '\\','C','u','r','r','e','n','t','C','o','n','t','r','o','l','S','e','t',
+                                  '\\','S','e','r','v','i','c','e','s',
+                                  '\\',0};
+
 /* tid of the thread running client request */
 static DWORD request_thread;
 
 /* pid/tid of the client thread */
 static DWORD client_tid;
 static DWORD client_pid;
+
+struct wine_driver
+{
+    struct wine_rb_entry entry;
+
+    DRIVER_OBJECT driver_obj;
+    DRIVER_EXTENSION driver_extension;
+};
+
+static struct wine_rb_tree wine_drivers;
+
+static CRITICAL_SECTION drivers_cs;
+static CRITICAL_SECTION_DEBUG critsect_debug =
+{
+    0, 0, &drivers_cs,
+    { &critsect_debug.ProcessLocksList, &critsect_debug.ProcessLocksList },
+      0, 0, { (DWORD_PTR)(__FILE__ ": drivers_cs") }
+};
+static CRITICAL_SECTION drivers_cs = { &critsect_debug, -1, 0, 0, 0, 0 };
+
+static void *wine_drivers_rb_alloc( size_t size )
+{
+    return HeapAlloc( GetProcessHeap(), 0, size );
+}
+
+static void *wine_drivers_rb_realloc( void *ptr, size_t size )
+{
+    return HeapReAlloc( GetProcessHeap(), 0, ptr, size );
+}
+
+static void wine_drivers_rb_free( void *ptr )
+{
+    HeapFree( GetProcessHeap(), 0, ptr );
+}
+
+static int wine_drivers_rb_compare( const void *key, const struct wine_rb_entry *entry )
+{
+    const struct wine_driver *driver = WINE_RB_ENTRY_VALUE( entry, const struct wine_driver, entry );
+    const UNICODE_STRING *k = key;
+
+    return RtlCompareUnicodeString( k, &driver->driver_obj.DriverName, FALSE );
+}
+
+static const struct wine_rb_functions wine_drivers_rb_functions =
+{
+    wine_drivers_rb_alloc,
+    wine_drivers_rb_realloc,
+    wine_drivers_rb_free,
+    wine_drivers_rb_compare,
+};
 
 #ifdef __i386__
 #define DEFINE_FASTCALL1_ENTRYPOINT( name ) \
@@ -817,42 +877,72 @@ PIRP WINAPI IoBuildSynchronousFsdRequest(ULONG majorfunc, PDEVICE_OBJECT device,
     return irp;
 }
 
+static void build_driver_keypath( const WCHAR *name, UNICODE_STRING *keypath )
+{
+    static const WCHAR driverW[] = {'\\','D','r','i','v','e','r','\\',0};
+    WCHAR *str;
+
+    /* Check what prefix is present */
+    if (strncmpW( name, servicesW, strlenW(servicesW) ) == 0)
+    {
+        FIXME( "Driver name %s is malformed as the keypath\n", debugstr_w(name) );
+        RtlCreateUnicodeString( keypath, name );
+        return;
+    }
+    if (strncmpW( name, driverW, strlenW(driverW) ) == 0)
+        name += strlenW(driverW);
+    else
+        FIXME( "Driver name %s does not properly begin with \\Driver\\\n", debugstr_w(name) );
+
+    str = HeapAlloc( GetProcessHeap(), 0, sizeof(servicesW) + strlenW(name)*sizeof(WCHAR));
+    lstrcpyW( str, servicesW );
+    lstrcatW( str, name );
+    RtlInitUnicodeString( keypath, str );
+}
+
 
 /***********************************************************************
  *           IoCreateDriver   (NTOSKRNL.EXE.@)
  */
 NTSTATUS WINAPI IoCreateDriver( UNICODE_STRING *name, PDRIVER_INITIALIZE init )
 {
-    DRIVER_OBJECT *driver;
-    DRIVER_EXTENSION *extension;
+    struct wine_driver *driver;
     NTSTATUS status;
 
     TRACE("(%s, %p)\n", debugstr_us(name), init);
 
     if (!(driver = RtlAllocateHeap( GetProcessHeap(), HEAP_ZERO_MEMORY,
-                                    sizeof(*driver) + sizeof(*extension) )))
+                                    sizeof(*driver) )))
         return STATUS_NO_MEMORY;
 
-    if ((status = RtlDuplicateUnicodeString( 1, name, &driver->DriverName )))
+    if ((status = RtlDuplicateUnicodeString( 1, name, &driver->driver_obj.DriverName )))
     {
         RtlFreeHeap( GetProcessHeap(), 0, driver );
         return status;
     }
 
-    extension = (DRIVER_EXTENSION *)(driver + 1);
-    driver->Size            = sizeof(*driver);
-    driver->DriverInit      = init;
-    driver->DriverExtension = extension;
-    extension->DriverObject   = driver;
-    extension->ServiceKeyName = driver->DriverName;
+    driver->driver_obj.Size            = sizeof(driver->driver_obj);
+    driver->driver_obj.DriverInit      = init;
+    driver->driver_obj.DriverExtension = &driver->driver_extension;
+    driver->driver_extension.DriverObject   = &driver->driver_obj;
+    build_driver_keypath( driver->driver_obj.DriverName.Buffer, &driver->driver_extension.ServiceKeyName );
 
-    status = driver->DriverInit( driver, name );
+    status = driver->driver_obj.DriverInit( &driver->driver_obj, &driver->driver_extension.ServiceKeyName );
 
     if (status)
     {
-        RtlFreeUnicodeString( &driver->DriverName );
+        RtlFreeUnicodeString( &driver->driver_obj.DriverName );
+        RtlFreeUnicodeString( &driver->driver_extension.ServiceKeyName );
         RtlFreeHeap( GetProcessHeap(), 0, driver );
     }
+    else
+    {
+        EnterCriticalSection( &drivers_cs );
+        if (wine_rb_put( &wine_drivers, &driver->driver_obj.DriverName, &driver->entry ))
+            ERR( "failed to insert driver %s in tree\n", debugstr_us(name) );
+        LeaveCriticalSection( &drivers_cs );
+    }
+
     return status;
 }
 
@@ -860,12 +950,17 @@ NTSTATUS WINAPI IoCreateDriver( UNICODE_STRING *name, PDRIVER_INITIALIZE init )
 /***********************************************************************
  *           IoDeleteDriver   (NTOSKRNL.EXE.@)
  */
-void WINAPI IoDeleteDriver( DRIVER_OBJECT *driver )
+void WINAPI IoDeleteDriver( DRIVER_OBJECT *driver_object )
 {
-    TRACE("(%p)\n", driver);
+    TRACE( "(%p)\n", driver_object );
 
-    RtlFreeUnicodeString( &driver->DriverName );
-    RtlFreeHeap( GetProcessHeap(), 0, driver );
+    EnterCriticalSection( &drivers_cs );
+    wine_rb_remove( &wine_drivers, &driver_object->DriverName );
+    LeaveCriticalSection( &drivers_cs );
+
+    RtlFreeUnicodeString( &driver_object->DriverName );
+    RtlFreeUnicodeString( &driver_object->DriverExtension->ServiceKeyName );
+    RtlFreeHeap( GetProcessHeap(), 0, CONTAINING_RECORD( driver_object, struct wine_driver, driver_obj ) );
 }
 
 
@@ -2015,8 +2110,45 @@ NTSTATUS WINAPI ObReferenceObjectByName( UNICODE_STRING *ObjectName,
                                          void *ParseContext,
                                          void **Object)
 {
-    FIXME("stub\n");
-    return STATUS_NOT_IMPLEMENTED;
+    struct wine_driver *driver;
+    struct wine_rb_entry *entry;
+
+    TRACE("mostly-stub:%s %i %p %i %p %i %p %p\n", debugstr_us(ObjectName),
+        Attributes, AccessState, DesiredAccess, ObjectType, AccessMode,
+        ParseContext, Object);
+
+    if (AccessState) FIXME("Unhandled AccessState\n");
+    if (DesiredAccess) FIXME("Unhandled DesiredAccess\n");
+    if (ParseContext) FIXME("Unhandled ParseContext\n");
+    if (ObjectType) FIXME("Unhandled ObjectType\n");
+
+    if (AccessMode != KernelMode)
+    {
+        FIXME("UserMode access not implemented\n");
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    EnterCriticalSection(&drivers_cs);
+    entry = wine_rb_get(&wine_drivers, ObjectName);
+    LeaveCriticalSection(&drivers_cs);
+    if (!entry)
+    {
+        FIXME("Object (%s) not found, may not be tracked.\n", debugstr_us(ObjectName));
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    driver = WINE_RB_ENTRY_VALUE(entry, struct wine_driver, entry);
+    *Object = &driver->driver_obj;
+    return STATUS_SUCCESS;
+}
+
+
+/***********************************************************************
+ *           ObDereferenceObject   (NTOSKRNL.EXE.@)
+ */
+void WINAPI ObDereferenceObject( void *obj )
+{
+    TRACE( "(%p): stub\n", obj );
 }
 
 
@@ -2044,7 +2176,7 @@ void WINAPI __regs_ObfDereferenceObject( void *obj )
 void WINAPI ObfDereferenceObject( void *obj )
 #endif
 {
-    FIXME( "(%p): stub\n", obj );
+    ObDereferenceObject( obj );
 }
 
 
@@ -2315,6 +2447,7 @@ BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved )
     {
     case DLL_PROCESS_ATTACH:
         DisableThreadLibraryCalls( inst );
+        if (wine_rb_init( &wine_drivers, &wine_drivers_rb_functions )) return FALSE;
 #if defined(__i386__) || defined(__x86_64__)
         handler = RtlAddVectoredExceptionHandler( TRUE, vectored_handler );
 #endif
@@ -2501,4 +2634,181 @@ NTSTATUS WINAPI KeDelayExecutionThread(KPROCESSOR_MODE waitmode, BOOLEAN alertab
 {
     FIXME("(%u, %u, %p): stub\n", waitmode, alertable, interval);
     return STATUS_NOT_IMPLEMENTED;
+}
+
+/***********************************************************************
+ *           IoAttachDevice  (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI IoAttachDevice(DEVICE_OBJECT *source, UNICODE_STRING *target, DEVICE_OBJECT *attached)
+{
+    FIXME("(%p, %s, %p): stub\n", source, debugstr_us(target), attached);
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+
+static NTSTATUS open_driver( const UNICODE_STRING *service_name, SC_HANDLE *service )
+{
+    QUERY_SERVICE_CONFIGW *service_config = NULL;
+    SC_HANDLE manager_handle;
+    DWORD config_size = 0;
+    WCHAR *name;
+
+    if (!(name = RtlAllocateHeap( GetProcessHeap(), 0, service_name->Length + sizeof(WCHAR) )))
+        return STATUS_NO_MEMORY;
+
+    memcpy( name, service_name->Buffer, service_name->Length );
+    name[ service_name->Length / sizeof(WCHAR) ] = 0;
+
+    if (strncmpW( name, servicesW, strlenW(servicesW) ))
+    {
+        FIXME( "service name %s is not a keypath\n", debugstr_us(service_name) );
+        RtlFreeHeap( GetProcessHeap(), 0, name );
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    if (!(manager_handle = OpenSCManagerW( NULL, NULL, SC_MANAGER_CONNECT )))
+    {
+        WARN( "failed to connect to service manager\n" );
+        RtlFreeHeap( GetProcessHeap(), 0, name );
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    *service = OpenServiceW( manager_handle, name + strlenW(servicesW), SERVICE_ALL_ACCESS );
+    RtlFreeHeap( GetProcessHeap(), 0, name );
+    CloseServiceHandle( manager_handle );
+
+    if (!*service)
+    {
+        WARN( "failed to open service %s\n", debugstr_us(service_name) );
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    QueryServiceConfigW( *service, NULL, 0, &config_size );
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+    {
+        WARN( "failed to query service config\n" );
+        goto error;
+    }
+
+    if (!(service_config = RtlAllocateHeap( GetProcessHeap(), 0, config_size )))
+        goto error;
+
+    if (!QueryServiceConfigW( *service, service_config, config_size, &config_size ))
+    {
+        WARN( "failed to query service config\n" );
+        goto error;
+    }
+
+    if (service_config->dwServiceType != SERVICE_KERNEL_DRIVER &&
+        service_config->dwServiceType != SERVICE_FILE_SYSTEM_DRIVER)
+    {
+        WARN( "service %s is not a kernel driver\n", debugstr_us(service_name) );
+        goto error;
+    }
+
+    TRACE( "opened service for driver %s\n", debugstr_us(service_name) );
+    RtlFreeHeap( GetProcessHeap(), 0, service_config );
+    return STATUS_SUCCESS;
+
+error:
+    CloseServiceHandle( *service );
+    RtlFreeHeap( GetProcessHeap(), 0, service_config );
+    return STATUS_UNSUCCESSFUL;
+}
+
+
+/***********************************************************************
+ *           ZwLoadDriver (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI ZwLoadDriver( const UNICODE_STRING *service_name )
+{
+    SERVICE_STATUS_PROCESS service_status;
+    SC_HANDLE service_handle;
+    NTSTATUS status;
+    DWORD bytes;
+    int i;
+
+    TRACE( "(%s)\n", debugstr_us(service_name) );
+
+    if ((status = open_driver( service_name, &service_handle )) != STATUS_SUCCESS)
+        return status;
+
+    TRACE( "trying to start %s\n", debugstr_us(service_name) );
+
+    for (i = 0; i < 100; i++)  /* 10 sec timeout */
+    {
+        if (StartServiceW( service_handle, 0, NULL )) break;
+        if (GetLastError() == ERROR_SERVICE_ALREADY_RUNNING) break;
+        if (GetLastError() != ERROR_SERVICE_DATABASE_LOCKED) goto error;
+        Sleep(100);
+    }
+    if (i == 100) goto error;
+
+    for (i = 0; i < 100; i++)  /* 10 sec timeout */
+    {
+        if (!QueryServiceStatusEx( service_handle, SC_STATUS_PROCESS_INFO,
+                                   (BYTE *)&service_status, sizeof(service_status), &bytes )) goto error;
+        if (service_status.dwCurrentState != SERVICE_START_PENDING) break;
+        Sleep(100);
+    }
+
+    if (service_status.dwCurrentState == SERVICE_RUNNING)
+    {
+        if (service_status.dwProcessId != GetCurrentProcessId())
+            FIXME( "driver %s was loaded into a different process\n", debugstr_us(service_name) );
+
+        status = STATUS_SUCCESS;
+        goto done;
+    }
+
+error:
+    WARN( "failed to start service %s\n", debugstr_us(service_name) );
+    status = STATUS_UNSUCCESSFUL;
+
+done:
+    TRACE( "returning status %08x\n", status );
+    CloseServiceHandle( service_handle );
+    return status;
+}
+
+
+/***********************************************************************
+ *           ZwUnloadDriver (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI ZwUnloadDriver( const UNICODE_STRING *service_name )
+{
+    SERVICE_STATUS service_status;
+    SC_HANDLE service_handle;
+    NTSTATUS status;
+    int i;
+
+    TRACE( "(%s)\n", debugstr_us(service_name) );
+
+    if ((status = open_driver( service_name, &service_handle )) != STATUS_SUCCESS)
+        return status;
+
+    if (!ControlService( service_handle, SERVICE_CONTROL_STOP, &service_status ))
+        goto error;
+
+    for (i = 0; i < 100; i++)  /* 10 sec timeout */
+    {
+        if (!QueryServiceStatus( service_handle, &service_status )) goto error;
+        if (service_status.dwCurrentState != SERVICE_STOP_PENDING) break;
+        Sleep(100);
+    }
+
+    if (service_status.dwCurrentState == SERVICE_STOPPED)
+    {
+        status = STATUS_SUCCESS;
+        goto done;
+    }
+
+error:
+    WARN( "failed to stop service %s\n", debugstr_us(service_name) );
+    status = STATUS_UNSUCCESSFUL;
+
+done:
+    TRACE( "returning status %08x\n", status );
+    CloseServiceHandle( service_handle );
+    return status;
 }

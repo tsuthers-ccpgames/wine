@@ -65,7 +65,6 @@ typedef struct GSTImpl {
 
     BOOL discont, initial, ignore_flush;
     GstElement *container;
-    GstElement *gstfilter;
     GstPad *my_src, *their_sink;
     GstBus *bus;
     guint64 start, nextofs, nextpullofs, stop;
@@ -84,7 +83,7 @@ struct GSTOutPin {
     GstPad *their_src;
     GstPad *my_sink;
     GstBufferPool *gstpool;
-    int isaud, isvid;
+    BOOL isaud, isvid;
     AM_MEDIA_TYPE * pmt;
     HANDLE caps_event;
     GstSegment *segment;
@@ -783,7 +782,7 @@ static void init_new_decoded_pad(GstElement *bin, GstPad *pad, GSTImpl *This)
     GstPad *mypad;
     GSTOutPin *pin;
     int ret;
-    int isvid = 0, isaud = 0;
+    BOOL isvid = FALSE, isaud = FALSE;
     gchar my_name[1024];
 
     TRACE("%p %p %p\n", This, bin, pad);
@@ -809,9 +808,9 @@ static void init_new_decoded_pad(GstElement *bin, GstPad *pad, GSTImpl *This)
     gst_pad_set_query_function(mypad, query_sink_wrapper);
 
     if (!strcmp(typename, "audio/x-raw")) {
-        isaud = 1;
+        isaud = TRUE;
     } else if (!strcmp(typename, "video/x-raw")) {
-        isvid = 1;
+        isvid = TRUE;
     } else {
         FIXME("Unknown type \'%s\'\n", typename);
         return;
@@ -832,11 +831,20 @@ static void init_new_decoded_pad(GstElement *bin, GstPad *pad, GSTImpl *This)
     gst_segment_init(pin->segment, GST_FORMAT_TIME);
 
     if (isvid) {
+        GstElement *vconv;
+
         TRACE("setting up videoflip filter for pin %p, my_sink: %p, their_src: %p\n",
                 pin, pin->my_sink, pad);
 
         /* gstreamer outputs video top-down, but dshow expects bottom-up, so
          * make new transform filter to invert video */
+        vconv = gst_element_factory_make("videoconvert", NULL);
+        if(!vconv){
+            ERR("Missing videoconvert filter?\n");
+            ret = -1;
+            goto exit;
+        }
+
         pin->flipfilter = gst_element_factory_make("videoflip", NULL);
         if(!pin->flipfilter){
             ERR("Missing videoflip filter?\n");
@@ -846,13 +854,16 @@ static void init_new_decoded_pad(GstElement *bin, GstPad *pad, GSTImpl *This)
 
         gst_util_set_object_arg(G_OBJECT(pin->flipfilter), "method", "vertical-flip");
 
-        gst_bin_add(GST_BIN(This->container), pin->flipfilter);
+        gst_bin_add(GST_BIN(This->container), vconv); /* bin takes ownership */
+        gst_element_sync_state_with_parent(vconv);
+        gst_bin_add(GST_BIN(This->container), pin->flipfilter); /* bin takes ownership */
         gst_element_sync_state_with_parent(pin->flipfilter);
 
-        pin->flip_sink = gst_element_get_static_pad(pin->flipfilter, "sink");
+        gst_element_link (vconv, pin->flipfilter);
+
+        pin->flip_sink = gst_element_get_static_pad(vconv, "sink");
         if(!pin->flip_sink){
             WARN("Couldn't find sink on flip filter\n");
-            gst_object_unref(pin->flipfilter);
             pin->flipfilter = NULL;
             ret = -1;
             goto exit;
@@ -863,7 +874,6 @@ static void init_new_decoded_pad(GstElement *bin, GstPad *pad, GSTImpl *This)
             WARN("gst_pad_link failed: %d\n", ret);
             gst_object_unref(pin->flip_sink);
             pin->flip_sink = NULL;
-            gst_object_unref(pin->flipfilter);
             pin->flipfilter = NULL;
             goto exit;
         }
@@ -873,7 +883,6 @@ static void init_new_decoded_pad(GstElement *bin, GstPad *pad, GSTImpl *This)
             WARN("Couldn't find src on flip filter\n");
             gst_object_unref(pin->flip_sink);
             pin->flip_sink = NULL;
-            gst_object_unref(pin->flipfilter);
             pin->flipfilter = NULL;
             ret = -1;
             goto exit;
@@ -886,7 +895,6 @@ static void init_new_decoded_pad(GstElement *bin, GstPad *pad, GSTImpl *This)
             pin->flip_src = NULL;
             gst_object_unref(pin->flip_sink);
             pin->flip_sink = NULL;
-            gst_object_unref(pin->flipfilter);
             pin->flipfilter = NULL;
             goto exit;
         }
@@ -1091,6 +1099,7 @@ static HRESULT GST_Connect(GSTInPin *pPin, IPin *pConnectPin, ALLOCATOR_PROPERTI
         GST_PAD_SRC,
         GST_PAD_ALWAYS,
         GST_STATIC_CAPS_ANY);
+    GstElement *gstfilter;
 
     TRACE("%p %p %p\n", pPin, pConnectPin, props);
 
@@ -1103,21 +1112,21 @@ static HRESULT GST_Connect(GSTInPin *pPin, IPin *pConnectPin, ALLOCATOR_PROPERTI
     }
 
     This->container = gst_bin_new(NULL);
+    gst_element_set_bus(This->container, This->bus);
 
-    This->gstfilter = gst_element_factory_make("decodebin", NULL);
-    if (!This->gstfilter) {
+    gstfilter = gst_element_factory_make("decodebin", NULL);
+    if (!gstfilter) {
         FIXME("Could not make source filter, are gstreamer-plugins-* installed for %u bits?\n",
               8 * (int)sizeof(void*));
         return E_FAIL;
     }
 
-    gst_bin_add(GST_BIN(This->container), This->gstfilter);
+    gst_bin_add(GST_BIN(This->container), gstfilter);
 
-    gst_element_set_bus(This->gstfilter, This->bus);
-    g_signal_connect(This->gstfilter, "pad-added", G_CALLBACK(existing_new_pad_wrapper), This);
-    g_signal_connect(This->gstfilter, "pad-removed", G_CALLBACK(removed_decoded_pad_wrapper), This);
-    g_signal_connect(This->gstfilter, "autoplug-select", G_CALLBACK(autoplug_blacklist_wrapper), This);
-    g_signal_connect(This->gstfilter, "unknown-type", G_CALLBACK(unknown_type_wrapper), This);
+    g_signal_connect(gstfilter, "pad-added", G_CALLBACK(existing_new_pad_wrapper), This);
+    g_signal_connect(gstfilter, "pad-removed", G_CALLBACK(removed_decoded_pad_wrapper), This);
+    g_signal_connect(gstfilter, "autoplug-select", G_CALLBACK(autoplug_blacklist_wrapper), This);
+    g_signal_connect(gstfilter, "unknown-type", G_CALLBACK(unknown_type_wrapper), This);
 
     This->my_src = gst_pad_new_from_static_template(&src_template, "quartz-src");
     gst_pad_set_getrange_function(This->my_src, request_buffer_src_wrapper);
@@ -1125,9 +1134,9 @@ static HRESULT GST_Connect(GSTInPin *pPin, IPin *pConnectPin, ALLOCATOR_PROPERTI
     gst_pad_set_activatemode_function(This->my_src, activate_mode_wrapper);
     gst_pad_set_event_function(This->my_src, event_src_wrapper);
     gst_pad_set_element_private (This->my_src, This);
-    This->their_sink = gst_element_get_static_pad(This->gstfilter, "sink");
+    This->their_sink = gst_element_get_static_pad(gstfilter, "sink");
 
-    g_signal_connect(This->gstfilter, "no-more-pads", G_CALLBACK(no_more_pads_wrapper), This);
+    g_signal_connect(gstfilter, "no-more-pads", G_CALLBACK(no_more_pads_wrapper), This);
     ret = gst_pad_link(This->my_src, This->their_sink);
     if (ret < 0) {
         ERR("Returns: %i\n", ret);
@@ -1747,7 +1756,8 @@ static ULONG WINAPI GSTOutPin_Release(IPin *iface)
                 gst_pad_unlink(This->flip_src, This->my_sink);
                 gst_object_unref(This->flip_src);
                 gst_object_unref(This->flip_sink);
-                gst_object_unref(This->flipfilter);
+                This->flipfilter = NULL;
+                This->flip_src = This->flip_sink = NULL;
             } else
                 gst_pad_unlink(This->their_src, This->my_sink);
             gst_object_unref(This->their_src);
@@ -1902,7 +1912,6 @@ static HRESULT GST_RemoveOutputPins(GSTImpl *This)
 
     if (!This->container)
         return S_OK;
-    gst_element_set_bus(This->gstfilter, NULL);
     gst_element_set_state(This->container, GST_STATE_NULL);
     gst_pad_unlink(This->my_src, This->their_sink);
     gst_object_unref(This->my_src);
@@ -1916,8 +1925,7 @@ static HRESULT GST_RemoveOutputPins(GSTImpl *This)
     }
     This->cStreams = 0;
     This->ppPins = NULL;
-    gst_object_unref(This->gstfilter);
-    This->gstfilter = NULL;
+    gst_element_set_bus(This->container, NULL);
     gst_object_unref(This->container);
     This->container = NULL;
     BaseFilterImpl_IncrementPinVersion((BaseFilter*)This);
@@ -1962,8 +1970,9 @@ static HRESULT WINAPI GSTInPin_ReceiveConnection(IPin *iface, IPin *pReceivePin,
         props.cbAlign = 1;
         props.cbPrefix = 0;
 
-        if (SUCCEEDED(hr) && IPin_QueryAccept(iface, pmt) != S_OK)
+        if (IPin_QueryAccept(iface, pmt) != S_OK)
             hr = VFW_E_TYPE_NOT_ACCEPTED;
+
         if (SUCCEEDED(hr)) {
             IPin_QueryDirection(pReceivePin, &pindirReceive);
             if (pindirReceive != PINDIR_OUTPUT) {

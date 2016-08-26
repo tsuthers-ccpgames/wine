@@ -216,10 +216,8 @@ static void surface_get_rect(const struct wined3d_surface *surface, const RECT *
     {
         const struct wined3d_texture *texture = surface->container;
 
-        rect_out->left = 0;
-        rect_out->top = 0;
-        rect_out->right = wined3d_texture_get_level_width(texture, surface->texture_level);
-        rect_out->bottom = wined3d_texture_get_level_height(texture, surface->texture_level);
+        SetRect(rect_out, 0, 0, wined3d_texture_get_level_width(texture, surface->texture_level),
+                wined3d_texture_get_level_height(texture, surface->texture_level));
     }
 }
 
@@ -403,6 +401,7 @@ static void surface_depth_blt_fbo(const struct wined3d_device *device,
         struct wined3d_surface *dst_surface, DWORD dst_location, const RECT *dst_rect)
 {
     unsigned int dst_sub_resource_idx = surface_get_sub_resource_idx(dst_surface);
+    unsigned int src_sub_resource_idx = surface_get_sub_resource_idx(src_surface);
     struct wined3d_texture *dst_texture = dst_surface->container;
     struct wined3d_texture *src_texture = src_surface->container;
     const struct wined3d_gl_info *gl_info;
@@ -450,9 +449,9 @@ static void surface_depth_blt_fbo(const struct wined3d_device *device,
 
     /* Make sure the locations are up-to-date. Loading the destination
      * surface isn't required if the entire surface is overwritten. */
-    surface_load_location(src_surface, context, src_location);
+    wined3d_texture_load_location(src_texture, src_sub_resource_idx, context, src_location);
     if (!surface_is_full_rect(dst_surface, dst_rect))
-        surface_load_location(dst_surface, context, dst_location);
+        wined3d_texture_load_location(dst_texture, dst_sub_resource_idx, context, dst_location);
     else
         wined3d_texture_prepare_location(dst_texture, dst_sub_resource_idx, context, dst_location);
 
@@ -503,6 +502,7 @@ static void surface_blt_fbo(const struct wined3d_device *device,
         struct wined3d_surface *dst_surface, DWORD dst_location, const RECT *dst_rect_in)
 {
     unsigned int dst_sub_resource_idx = surface_get_sub_resource_idx(dst_surface);
+    unsigned int src_sub_resource_idx = surface_get_sub_resource_idx(src_surface);
     struct wined3d_texture *dst_texture = dst_surface->container;
     struct wined3d_texture *src_texture = src_surface->container;
     const struct wined3d_gl_info *gl_info;
@@ -546,9 +546,9 @@ static void surface_blt_fbo(const struct wined3d_device *device,
      * surface isn't required if the entire surface is overwritten. (And is
      * in fact harmful if we're being called by surface_load_location() with
      * the purpose of loading the destination surface.) */
-    surface_load_location(src_surface, old_ctx, src_location);
+    wined3d_texture_load_location(src_texture, src_sub_resource_idx, old_ctx, src_location);
     if (!surface_is_full_rect(dst_surface, &dst_rect))
-        surface_load_location(dst_surface, old_ctx, dst_location);
+        wined3d_texture_load_location(dst_texture, dst_sub_resource_idx, old_ctx, dst_location);
     else
         wined3d_texture_prepare_location(dst_texture, dst_sub_resource_idx, old_ctx, dst_location);
 
@@ -784,17 +784,13 @@ static void surface_download_data(struct wined3d_surface *surface, const struct 
 
     if (surface->texture_target == GL_TEXTURE_2D_ARRAY)
     {
-        /* We don't expect to ever need to emulate NP2 textures when we have EXT_texture_array. */
+        /* NP2 emulation is not allowed on array textures. */
         if (texture->flags & WINED3D_TEXTURE_COND_NP2_EMULATED)
-        {
-            FIXME("Cannot download surface %p, level %u, layer %u.\n",
-                    surface, surface->texture_level, surface->texture_layer);
-            return;
-        }
+            ERR("Array texture %p uses NP2 emulation.\n", texture);
 
         WARN_(d3d_perf)("Downloading all miplevel layers to get the surface data for a single sub-resource.\n");
 
-        if (!(temporary_mem = HeapAlloc(GetProcessHeap(), 0, texture->layer_count * sub_resource->size)))
+        if (!(temporary_mem = wined3d_calloc(texture->layer_count, sub_resource->size)))
         {
             ERR("Out of memory.\n");
             return;
@@ -1192,7 +1188,7 @@ HRESULT surface_upload_from_surface(struct wined3d_surface *dst_surface, const P
     if (update_w == dst_w && update_h == dst_h)
         wined3d_texture_prepare_texture(dst_texture, context, FALSE);
     else
-        surface_load_location(dst_surface, context, WINED3D_LOCATION_TEXTURE_RGB);
+        wined3d_texture_load_location(dst_texture, dst_sub_resource_idx, context, WINED3D_LOCATION_TEXTURE_RGB);
     wined3d_texture_bind_and_dirtify(dst_texture, context, FALSE);
 
     wined3d_texture_get_memory(src_texture, src_sub_resource_idx, &data,
@@ -2796,7 +2792,7 @@ static void surface_load_sysmem(struct wined3d_surface *surface,
     }
 
     if (sub_resource->locations & (WINED3D_LOCATION_RB_MULTISAMPLE | WINED3D_LOCATION_RB_RESOLVED))
-        surface_load_location(surface, context, WINED3D_LOCATION_TEXTURE_RGB);
+        wined3d_texture_load_location(texture, sub_resource_idx, context, WINED3D_LOCATION_TEXTURE_RGB);
 
     /* Download the surface to system memory. */
     if (sub_resource->locations & (WINED3D_LOCATION_TEXTURE_RGB | WINED3D_LOCATION_TEXTURE_SRGB))
@@ -2823,6 +2819,7 @@ static void surface_load_sysmem(struct wined3d_surface *surface,
 static HRESULT surface_load_drawable(struct wined3d_surface *surface,
         struct wined3d_context *context)
 {
+    unsigned int sub_resource_idx = surface_get_sub_resource_idx(surface);
     struct wined3d_texture *texture = surface->container;
     RECT r;
 
@@ -2834,7 +2831,7 @@ static HRESULT surface_load_drawable(struct wined3d_surface *surface,
     }
 
     surface_get_rect(surface, NULL, &r);
-    surface_load_location(surface, context, WINED3D_LOCATION_TEXTURE_RGB);
+    wined3d_texture_load_location(texture, sub_resource_idx, context, WINED3D_LOCATION_TEXTURE_RGB);
     surface_blt_to_drawable(texture->resource.device, context,
             WINED3D_TEXF_POINT, FALSE, surface, &r, surface, &r);
 
@@ -2911,7 +2908,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
                 == WINED3D_LOCATION_TEXTURE_RGB)
         {
             FIXME_(d3d_perf)("Downloading RGB surface %p to reload it as sRGB.\n", surface);
-            surface_load_location(surface, context, texture->resource.map_binding);
+            wined3d_texture_load_location(texture, sub_resource_idx, context, texture->resource.map_binding);
         }
     }
     else
@@ -2920,7 +2917,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
                 == WINED3D_LOCATION_TEXTURE_SRGB)
         {
             FIXME_(d3d_perf)("Downloading sRGB surface %p to reload it as RGB.\n", surface);
-            surface_load_location(surface, context, texture->resource.map_binding);
+            wined3d_texture_load_location(texture, sub_resource_idx, context, texture->resource.map_binding);
         }
     }
 
@@ -2928,7 +2925,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
     {
         WARN("Trying to load a texture from sysmem, but no simple location is valid.\n");
         /* Lets hope we get it from somewhere... */
-        surface_load_location(surface, context, WINED3D_LOCATION_SYSMEM);
+        wined3d_texture_load_location(texture, sub_resource_idx, context, WINED3D_LOCATION_SYSMEM);
     }
 
     wined3d_texture_prepare_texture(texture, context, srgb);
@@ -2946,7 +2943,7 @@ static HRESULT surface_load_texture(struct wined3d_surface *surface,
     {
         TRACE("Removing the pbo attached to surface %p.\n", surface);
 
-        surface_load_location(surface, context, WINED3D_LOCATION_SYSMEM);
+        wined3d_texture_load_location(texture, sub_resource_idx, context, WINED3D_LOCATION_SYSMEM);
         wined3d_texture_set_map_binding(texture, WINED3D_LOCATION_SYSMEM);
     }
 
@@ -4229,7 +4226,8 @@ HRESULT wined3d_surface_blt(struct wined3d_surface *dst_surface, const RECT *dst
                         if (!wined3d_resource_is_offscreen(&dst_texture->resource))
                         {
                             struct wined3d_context *context = context_acquire(device, dst_surface);
-                            surface_load_location(dst_surface, context, dst_texture->resource.draw_binding);
+                            wined3d_texture_load_location(dst_texture, dst_sub_resource_idx,
+                                    context, dst_texture->resource.draw_binding);
                             context_release(context);
                         }
                         return WINED3D_OK;

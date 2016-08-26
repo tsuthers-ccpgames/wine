@@ -1100,7 +1100,7 @@
 @ extern _fmode msvcr120._fmode
 @ cdecl _fpclass(double) msvcr120._fpclass
 # stub -arch=x86_64 _fpclassf
-@ cdecl _fpieee_flt(long ptr ptr) msvcr120._fpieee_flt
+@ cdecl -arch=i386,x86_64,arm _fpieee_flt(long ptr ptr) msvcr120._fpieee_flt
 @ cdecl _fpreset() msvcr120._fpreset
 @ stub _fprintf_l
 @ stub _fprintf_p
@@ -1123,7 +1123,7 @@
 @ cdecl _fseeki64_nolock(ptr int64 long) msvcr120._fseeki64_nolock
 @ cdecl _fsopen(str str long) msvcr120._fsopen
 @ cdecl _fstat32(long ptr) msvcr120._fstat32
-@ stub _fstat32i64
+@ cdecl _fstat32i64(long ptr) msvcr120._fstat32i64
 @ cdecl _fstat64(long ptr) msvcr120._fstat64
 @ cdecl _fstat64i32(long ptr) msvcr120._fstat64i32
 @ cdecl _ftell_nolock(ptr) msvcr120._ftell_nolock
@@ -1419,7 +1419,7 @@
 @ cdecl _strdup(str) msvcr120._strdup
 @ cdecl _strerror(long) msvcr120._strerror
 @ stub _strerror_s
-@ stub _strftime_l
+@ cdecl _strftime_l(str long str ptr ptr) msvcr120._strftime_l
 @ cdecl _stricmp(str str) msvcr120._stricmp
 @ cdecl _stricmp_l(str str ptr) msvcr120._stricmp_l
 @ cdecl _stricoll(str str) msvcr120._stricoll
@@ -1555,12 +1555,12 @@
 @ cdecl _wchmod(wstr long) msvcr120._wchmod
 @ extern _wcmdln msvcr120._wcmdln
 @ cdecl _wcreat(wstr long) msvcr120._wcreat
-@ stub _wcreate_locale
+@ cdecl _wcreate_locale(long wstr) msvcr120._wcreate_locale
 @ cdecl _wcscoll_l(wstr wstr ptr) msvcr120._wcscoll_l
 @ cdecl _wcsdup(wstr) msvcr120._wcsdup
 @ cdecl _wcserror(long) msvcr120._wcserror
 @ cdecl _wcserror_s(ptr long long) msvcr120._wcserror_s
-@ stub _wcsftime_l
+@ cdecl _wcsftime_l(ptr long wstr ptr ptr) msvcr120._wcsftime_l
 @ cdecl _wcsicmp(wstr wstr) msvcr120._wcsicmp
 @ cdecl _wcsicmp_l(wstr wstr ptr) msvcr120._wcsicmp_l
 @ cdecl _wcsicoll(wstr wstr) msvcr120._wcsicoll
@@ -1587,7 +1587,7 @@
 @ stub _wcstoimax_l
 @ cdecl _wcstol_l(wstr ptr long ptr) msvcr120._wcstol_l
 @ stub _wcstold_l
-@ stub _wcstoll_l
+@ cdecl -ret64 _wcstoll_l(wstr ptr long ptr) msvcr120._wcstoll_l
 @ cdecl _wcstombs_l(ptr ptr long ptr) msvcr120._wcstombs_l
 @ cdecl _wcstombs_s_l(ptr ptr long wstr long ptr) msvcr120._wcstombs_s_l
 @ cdecl -ret64 _wcstoui64(wstr ptr long) msvcr120._wcstoui64
@@ -1810,7 +1810,7 @@
 @ stub fdimf
 @ stub fdiml
 @ stub feclearexcept
-@ stub fegetenv
+@ cdecl fegetenv(ptr) msvcr120.fegetenv
 @ stub fegetexceptflag
 @ stub fegetround
 @ stub feholdexcept
@@ -1906,9 +1906,9 @@
 @ cdecl labs(long) msvcr120.labs
 @ cdecl ldexp(double long) msvcr120.ldexp
 @ cdecl ldiv(long long) msvcr120.ldiv
-@ stub lgamma
-@ stub lgammaf
-@ stub lgammal
+@ cdecl lgamma(double) msvcr120.lgamma
+@ cdecl lgammaf(float) msvcr120.lgammaf
+@ cdecl lgammal(double) msvcr120.lgammal
 @ cdecl -ret64 llabs(int64) msvcr120.llabs
 @ stub lldiv
 @ cdecl -ret64 llrint(double) msvcr120.llrint
@@ -2138,7 +2138,7 @@
 @ cdecl wcstok_s(ptr wstr ptr) msvcr120.wcstok_s
 @ cdecl wcstol(wstr ptr long) msvcr120.wcstol
 @ stub wcstold
-@ stub wcstoll
+@ cdecl -ret64 wcstoll(wstr ptr long) msvcr120.wcstoll
 @ cdecl wcstombs(ptr ptr long) msvcr120.wcstombs
 @ cdecl wcstombs_s(ptr ptr long wstr long) msvcr120.wcstombs_s
 @ cdecl wcstoul(wstr ptr long) msvcr120.wcstoul

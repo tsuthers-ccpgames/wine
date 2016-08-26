@@ -31,14 +31,15 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d_draw);
 WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
+WINE_DECLARE_DEBUG_CHANNEL(d3d);
 
 #include <stdio.h>
 #include <math.h>
 
 /* Context activation is done by the caller. */
 static void draw_primitive_arrays(struct wined3d_context *context, const struct wined3d_state *state,
-        unsigned int count, const void *idx_data, unsigned int idx_size, unsigned int start_idx,
-        unsigned int start_instance, unsigned int instance_count)
+        const void *idx_data, unsigned int idx_size, int base_vertex_idx, unsigned int start_idx,
+        unsigned int count, unsigned int start_instance, unsigned int instance_count)
 {
     const struct wined3d_ffp_attrib_ops *ops = &context->d3d_info->ffp_attrib_ops;
     GLenum idx_type = idx_size == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
@@ -60,7 +61,7 @@ static void draw_primitive_arrays(struct wined3d_context *context, const struct 
         if (gl_info->supported[ARB_DRAW_ELEMENTS_BASE_VERTEX])
         {
             GL_EXTCALL(glDrawElementsBaseVertex(state->gl_primitive_type, count, idx_type,
-                    (const char *)idx_data + (idx_size * start_idx), state->base_vertex_index));
+                    (const char *)idx_data + (idx_size * start_idx), base_vertex_idx));
             checkGLcall("glDrawElementsBaseVertex");
             return;
         }
@@ -86,7 +87,7 @@ static void draw_primitive_arrays(struct wined3d_context *context, const struct 
         if (gl_info->supported[ARB_DRAW_ELEMENTS_BASE_VERTEX])
         {
             GL_EXTCALL(glDrawElementsInstancedBaseVertex(state->gl_primitive_type, count, idx_type,
-                        (const char *)idx_data + (idx_size * start_idx), instance_count, state->base_vertex_index));
+                        (const char *)idx_data + (idx_size * start_idx), instance_count, base_vertex_idx));
             checkGLcall("glDrawElementsInstancedBaseVertex");
             return;
         }
@@ -141,7 +142,7 @@ static void draw_primitive_arrays(struct wined3d_context *context, const struct 
         if (gl_info->supported[ARB_DRAW_ELEMENTS_BASE_VERTEX])
         {
             GL_EXTCALL(glDrawElementsBaseVertex(state->gl_primitive_type, count, idx_type,
-                        (const char *)idx_data + (idx_size * start_idx), state->base_vertex_index));
+                        (const char *)idx_data + (idx_size * start_idx), base_vertex_idx));
             checkGLcall("glDrawElementsBaseVertex");
         }
         else
@@ -165,8 +166,8 @@ static unsigned int get_stride_idx(const void *idx_data, unsigned int idx_size,
 
 /* Context activation is done by the caller. */
 static void draw_primitive_immediate_mode(struct wined3d_context *context, const struct wined3d_state *state,
-        const struct wined3d_stream_info *si, unsigned int vertex_count, const void *idx_data,
-        unsigned int idx_size, unsigned int start_idx, unsigned int instance_count)
+        const struct wined3d_stream_info *si, const void *idx_data, unsigned int idx_size,
+        int base_vertex_idx, unsigned int start_idx, unsigned int vertex_count, unsigned int instance_count)
 {
     const BYTE *position = NULL, *normal = NULL, *diffuse = NULL, *specular = NULL;
     const struct wined3d_d3d_info *d3d_info = context->d3d_info;
@@ -213,7 +214,7 @@ static void draw_primitive_immediate_mode(struct wined3d_context *context, const
             unsigned int use_map = si->use_map;
             unsigned int element_idx;
 
-            stride_idx = get_stride_idx(idx_data, idx_size, state->base_vertex_index, start_idx, vertex_idx);
+            stride_idx = get_stride_idx(idx_data, idx_size, base_vertex_idx, start_idx, vertex_idx);
             for (element_idx = MAX_ATTRIBS - 1; use_map; use_map &= ~(1u << element_idx), --element_idx)
             {
                 if (!(use_map & 1u << element_idx))
@@ -327,7 +328,7 @@ static void draw_primitive_immediate_mode(struct wined3d_context *context, const
     {
         unsigned int tmp_tex_mask;
 
-        stride_idx = get_stride_idx(idx_data, idx_size, state->base_vertex_index, start_idx, vertex_idx);
+        stride_idx = get_stride_idx(idx_data, idx_size, base_vertex_idx, start_idx, vertex_idx);
 
         if (normal)
         {
@@ -408,8 +409,8 @@ static void remove_vbos(struct wined3d_context *context,
 
 /* Routine common to the draw primitive and draw indexed primitive routines */
 void draw_primitive(struct wined3d_device *device, const struct wined3d_state *state,
-        unsigned int start_idx, unsigned int index_count, unsigned int start_instance,
-        unsigned int instance_count, BOOL indexed)
+        int base_vertex_idx, unsigned int start_idx, unsigned int index_count,
+        unsigned int start_instance, unsigned int instance_count, BOOL indexed)
 {
     const struct wined3d_fb_state *fb = state->fb;
     const struct wined3d_stream_info *stream_info;
@@ -418,12 +419,12 @@ void draw_primitive(struct wined3d_device *device, const struct wined3d_state *s
     struct wined3d_rendertarget_view *dsv;
     const struct wined3d_gl_info *gl_info;
     struct wined3d_context *context;
-    BOOL emulation = FALSE;
+    unsigned int i, idx_size = 0;
     const void *idx_data = NULL;
-    UINT idx_size = 0;
-    unsigned int i;
+    BOOL emulation = FALSE;
 
-    if (!index_count) return;
+    if (!index_count)
+        return;
 
     context = context_acquire(device, wined3d_rendertarget_view_get_surface(fb->render_targets[0]));
     if (!context->valid)
@@ -437,21 +438,20 @@ void draw_primitive(struct wined3d_device *device, const struct wined3d_state *s
     for (i = 0; i < gl_info->limits.buffers; ++i)
     {
         struct wined3d_rendertarget_view *rtv = fb->render_targets[i];
-        struct wined3d_surface *target = wined3d_rendertarget_view_get_surface(rtv);
+        struct wined3d_texture *rt;
 
-        if (target && rtv->format->id != WINED3DFMT_NULL)
+        if (!rtv || rtv->format->id == WINED3DFMT_NULL)
+            continue;
+
+        rt = wined3d_texture_from_resource(rtv->resource);
+        if (state->render_states[WINED3D_RS_COLORWRITEENABLE])
         {
-            if (state->render_states[WINED3D_RS_COLORWRITEENABLE])
-            {
-                surface_load_location(target, context, rtv->resource->draw_binding);
-                wined3d_texture_invalidate_location(target->container,
-                        rtv->sub_resource_idx, ~rtv->resource->draw_binding);
-            }
-            else
-            {
-                wined3d_texture_prepare_location(target->container, rtv->sub_resource_idx,
-                        context, rtv->resource->draw_binding);
-            }
+            wined3d_texture_load_location(rt, rtv->sub_resource_idx, context, rtv->resource->draw_binding);
+            wined3d_texture_invalidate_location(rt, rtv->sub_resource_idx, ~rtv->resource->draw_binding);
+        }
+        else
+        {
+            wined3d_texture_prepare_location(rt, rtv->sub_resource_idx, context, rtv->resource->draw_binding);
         }
     }
 
@@ -481,7 +481,7 @@ void draw_primitive(struct wined3d_device *device, const struct wined3d_state *s
 
             IntersectRect(&r, &draw_rect, &current_rect);
             if (!EqualRect(&r, &draw_rect))
-                surface_load_location(ds, context, location);
+                wined3d_texture_load_location(ds->container, dsv->sub_resource_idx, context, location);
             else
                 wined3d_texture_prepare_location(ds->container, dsv->sub_resource_idx, context, location);
         }
@@ -521,12 +521,15 @@ void draw_primitive(struct wined3d_device *device, const struct wined3d_state *s
     {
         struct wined3d_buffer *index_buffer = state->index_buffer;
         if (!index_buffer->buffer_object || !stream_info->all_vbo)
+        {
             idx_data = index_buffer->resource.heap_memory;
+        }
         else
         {
             ib_query = index_buffer->query;
             idx_data = NULL;
         }
+        idx_data = (const BYTE *)idx_data + state->index_offset;
 
         if (state->index_format == WINED3DFMT_R16_UINT)
             idx_size = 2;
@@ -570,23 +573,21 @@ void draw_primitive(struct wined3d_device *device, const struct wined3d_state *s
     }
 
     if (context->use_immediate_mode_draw || emulation)
-        draw_primitive_immediate_mode(context, state, stream_info, index_count,
-                idx_data, idx_size, start_idx, instance_count);
+        draw_primitive_immediate_mode(context, state, stream_info, idx_data,
+                idx_size, base_vertex_idx, start_idx, index_count, instance_count);
     else
-        draw_primitive_arrays(context, state, index_count, idx_data,
-                idx_size, start_idx, start_instance, instance_count);
+        draw_primitive_arrays(context, state, idx_data, idx_size, base_vertex_idx,
+                start_idx, index_count, start_instance, instance_count);
 
     if (ib_query)
         wined3d_event_query_issue(ib_query, device);
     for (i = 0; i < context->num_buffer_queries; ++i)
-    {
         wined3d_event_query_issue(context->buffer_queries[i], device);
-    }
 
     if (wined3d_settings.strict_draw_ordering)
         gl_info->gl_ops.gl.p_glFlush(); /* Flush to ensure ordering across contexts. */
 
     context_release(context);
 
-    TRACE("Done all gl drawing\n");
+    TRACE("Done all gl drawing.\n");
 }

@@ -734,8 +734,8 @@ static const tid_t HTMLImgElement_iface_tids[] = {
 static dispex_static_data_t HTMLImgElement_dispex = {
     NULL,
     DispHTMLImg_tid,
-    NULL,
-    HTMLImgElement_iface_tids
+    HTMLImgElement_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
 HRESULT HTMLImgElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
@@ -980,7 +980,6 @@ static const dispex_static_data_vtbl_t HTMLImageElementFactory_dispex_vtbl = {
 static dispex_static_data_t HTMLImageElementFactory_dispex = {
     &HTMLImageElementFactory_dispex_vtbl,
     IHTMLImageElementFactory_tid,
-    NULL,
     HTMLImageElementFactory_iface_tids
 };
 

@@ -42,7 +42,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(secur32);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
 
 /* Not present in gnutls version < 2.9.10. */
-extern int gnutls_cipher_get_block_size(gnutls_cipher_algorithm_t algorithm);
+static int (*pgnutls_cipher_get_block_size)(gnutls_cipher_algorithm_t algorithm);
 
 static void *libgnutls_handle;
 #define MAKE_FUNCPTR(f) static typeof(f) * p##f
@@ -52,7 +52,6 @@ MAKE_FUNCPTR(gnutls_certificate_allocate_credentials);
 MAKE_FUNCPTR(gnutls_certificate_free_credentials);
 MAKE_FUNCPTR(gnutls_certificate_get_peers);
 MAKE_FUNCPTR(gnutls_cipher_get);
-MAKE_FUNCPTR(gnutls_cipher_get_block_size);
 MAKE_FUNCPTR(gnutls_cipher_get_key_size);
 MAKE_FUNCPTR(gnutls_credentials_set);
 MAKE_FUNCPTR(gnutls_deinit);
@@ -83,6 +82,11 @@ MAKE_FUNCPTR(gnutls_transport_set_push_function);
 #define GNUTLS_CIPHER_AES_192_CBC 92
 #define GNUTLS_CIPHER_AES_128_GCM 93
 #define GNUTLS_CIPHER_AES_256_GCM 94
+
+#define GNUTLS_KX_ANON_ECDH     11
+#define GNUTLS_KX_ECDHE_RSA     12
+#define GNUTLS_KX_ECDHE_ECDSA   13
+#define GNUTLS_KX_ECDHE_PSK     14
 #endif
 
 static int compat_cipher_get_block_size(gnutls_cipher_algorithm_t cipher)
@@ -316,24 +320,33 @@ static ALG_ID schannel_get_mac_algid(gnutls_mac_algorithm_t mac)
     {
     case GNUTLS_MAC_UNKNOWN:
     case GNUTLS_MAC_NULL: return 0;
+    case GNUTLS_MAC_MD2: return CALG_MD2;
     case GNUTLS_MAC_MD5: return CALG_MD5;
-    case GNUTLS_MAC_SHA1:
-    case GNUTLS_MAC_SHA256:
-    case GNUTLS_MAC_SHA384:
-    case GNUTLS_MAC_SHA512: return CALG_SHA;
+    case GNUTLS_MAC_SHA1: return CALG_SHA1;
+    case GNUTLS_MAC_SHA256: return CALG_SHA_256;
+    case GNUTLS_MAC_SHA384: return CALG_SHA_384;
+    case GNUTLS_MAC_SHA512: return CALG_SHA_512;
     default:
         FIXME("unknown algorithm %d\n", mac);
         return 0;
     }
 }
 
-static ALG_ID schannel_get_kx_algid(gnutls_kx_algorithm_t kx)
+static ALG_ID schannel_get_kx_algid(int kx)
 {
     switch (kx)
     {
-        case GNUTLS_KX_RSA: return CALG_RSA_KEYX;
-        case GNUTLS_KX_DHE_DSS:
-        case GNUTLS_KX_DHE_RSA: return CALG_DH_EPHEM;
+    case GNUTLS_KX_UNKNOWN: return 0;
+    case GNUTLS_KX_RSA:
+    case GNUTLS_KX_RSA_EXPORT: return CALG_RSA_KEYX;
+    case GNUTLS_KX_DHE_PSK:
+    case GNUTLS_KX_DHE_DSS:
+    case GNUTLS_KX_DHE_RSA: return CALG_DH_EPHEM;
+    case GNUTLS_KX_ANON_ECDH: return CALG_ECDH;
+    /* MSDN mentions CALG_ECDH_EPHEM, but doesn't appear in the Windows SDK. */
+    case GNUTLS_KX_ECDHE_RSA:
+    case GNUTLS_KX_ECDHE_PSK: return CALG_ECDH;
+    case GNUTLS_KX_ECDHE_ECDSA: return CALG_ECDSA;
     default:
         FIXME("unknown algorithm %d\n", kx);
         return 0;

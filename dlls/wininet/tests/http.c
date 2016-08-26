@@ -111,6 +111,7 @@ static const char *status_string[MAX_INTERNET_STATUS];
 
 static HANDLE hCompleteEvent, conn_close_event, conn_wait_event, server_req_rec_event;
 static DWORD req_error;
+static BOOL is_ie7plus = TRUE;
 
 #define TESTF_REDIRECT      0x01
 #define TESTF_COMPRESSED    0x02
@@ -1079,10 +1080,12 @@ static void InternetReadFileExA_test(int flags)
     CLEAR_NOTIFIED(INTERNET_STATUS_CONNECTING_TO_SERVER);
     CLEAR_NOTIFIED(INTERNET_STATUS_CONNECTED_TO_SERVER);
 
-    rc = InternetReadFileExW(hor, NULL, 0, 0xdeadcafe);
-    ok(!rc && (GetLastError() == ERROR_INVALID_PARAMETER),
-        "InternetReadFileEx should have failed with ERROR_INVALID_PARAMETER instead of %s, %u\n",
-        rc ? "TRUE" : "FALSE", GetLastError());
+    if(is_ie7plus) {
+        rc = InternetReadFileExW(hor, NULL, 0, 0xdeadcafe);
+        ok(!rc && (GetLastError() == ERROR_INVALID_PARAMETER),
+           "InternetReadFileEx should have failed with ERROR_INVALID_PARAMETER instead of %s, %u\n",
+           rc ? "TRUE" : "FALSE", GetLastError());
+    }
 
     /* tests invalid dwStructSize */
     inetbuffers.dwStructSize = sizeof(inetbuffers)+1;
@@ -4619,11 +4622,10 @@ static void open_read_test_request(int port, test_request_t *req, const char *re
     CHECK_NOTIFIED(INTERNET_STATUS_REQUEST_COMPLETE);
 }
 
-#define readex_expect_sync_data(a,b,c,d,e) _readex_expect_sync_data(__LINE__,a,b,c,d,e)
-static void _readex_expect_sync_data(unsigned line, HINTERNET req, DWORD flags, INTERNET_BUFFERSW *buf,
-        DWORD buf_size, const char *exdata)
+#define readex_expect_sync_data_len(a,b,c,d,e,f) _readex_expect_sync_data_len(__LINE__,a,b,c,d,e,f)
+static void _readex_expect_sync_data_len(unsigned line, HINTERNET req, DWORD flags, INTERNET_BUFFERSW *buf,
+        DWORD buf_size, const char *exdata, DWORD len)
 {
-    DWORD len = strlen(exdata);
     BOOL ret;
 
     SET_EXPECT(INTERNET_STATUS_REQUEST_COMPLETE);
@@ -4633,10 +4635,17 @@ static void _readex_expect_sync_data(unsigned line, HINTERNET req, DWORD flags, 
     ret = InternetReadFileExW(req, buf, flags, 0xdeadbeef);
     ok_(__FILE__,line)(ret, "InternetReadFileExW failed: %u\n", GetLastError());
     ok_(__FILE__,line)(buf->dwBufferLength == len, "dwBufferLength = %u, expected %u\n", buf->dwBufferLength, len);
-    if(len)
+    if(len && exdata)
         ok_(__FILE__,line)(!memcmp(buf->lpvBuffer, exdata, len), "Unexpected data\n");
 
     CLEAR_NOTIFIED(INTERNET_STATUS_REQUEST_COMPLETE);
+}
+
+#define readex_expect_sync_data(a,b,c,d,e) _readex_expect_sync_data(__LINE__,a,b,c,d,e)
+static void _readex_expect_sync_data(unsigned line, HINTERNET req, DWORD flags, INTERNET_BUFFERSW *buf,
+        DWORD buf_size, const char *exdata)
+{
+    _readex_expect_sync_data_len(line, req, flags, buf, buf_size, exdata, strlen(exdata));
 }
 
 static void send_response_and_wait(const char *response, BOOL close_connection, INTERNET_BUFFERSW *buf)
@@ -4663,6 +4672,17 @@ static void send_response_and_wait(const char *response, BOOL close_connection, 
     ok(!*(int*)buf->lpvBuffer, "buffer data changed\n");
 }
 
+static void send_response_len_and_wait(unsigned len, BOOL close_connection, INTERNET_BUFFERSW *buf)
+{
+    char *response;
+
+    response = HeapAlloc(GetProcessHeap(), 0, len+1);
+    memset(response, 'x', len);
+    response[len] = 0;
+    send_response_and_wait(response, close_connection, buf);
+    HeapFree(GetProcessHeap(), 0, response);
+}
+
 static void readex_expect_async(HINTERNET req, DWORD flags, INTERNET_BUFFERSW *buf, DWORD buf_size)
 {
     BOOL ret;
@@ -4675,11 +4695,29 @@ static void readex_expect_async(HINTERNET req, DWORD flags, INTERNET_BUFFERSW *b
     ok(!*(int*)buf->lpvBuffer, "buffer data changed\n");
 }
 
+#define expect_data_available(a,b) _expect_data_available(__LINE__,a,b)
+static DWORD _expect_data_available(unsigned line, HINTERNET req, int exsize)
+{
+    DWORD size = 0;
+    BOOL res;
+
+    res = InternetQueryDataAvailable(req, &size, 0, 0);
+    ok_(__FILE__,line)(res, "InternetQueryDataAvailable failed: %u\n", GetLastError());
+    if(exsize != -1)
+        ok_(__FILE__,line)(size  == exsize, "size = %u, expected %u\n", size, exsize);
+
+    return size;
+}
+
 static void test_http_read(int port)
 {
     INTERNET_BUFFERSW ib;
     test_request_t req;
-    char buf[4096];
+    char buf[24000];
+    DWORD avail;
+
+    if(!is_ie7plus)
+        return;
 
     hCompleteEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
     conn_wait_event = CreateEventW(NULL, FALSE, FALSE, NULL);
@@ -4712,6 +4750,68 @@ static void test_http_read(int port)
 
     close_async_handle(req.session, hCompleteEvent, 2);
 
+    open_read_test_request(port, &req,
+                           "HTTP/1.1 200 OK\r\n"
+                           "Server: winetest\r\n"
+                           "Transfer-Encoding: chunked\r\n"
+                           "\r\n"
+                           "9\r\n123456789");
+    readex_expect_sync_data(req.request, IRF_NO_WAIT, &ib, sizeof(buf), "123456789");
+    readex_expect_async(req.request, IRF_NO_WAIT, &ib, sizeof(buf));
+
+    send_response_and_wait("\r\n1\r\na\r\n1\r\nb\r", FALSE, &ib);
+    readex_expect_sync_data(req.request, IRF_NO_WAIT, &ib, sizeof(buf), "ab");
+    readex_expect_async(req.request, IRF_NO_WAIT, &ib, sizeof(buf));
+
+    send_response_and_wait("\n3\r\nab", FALSE, &ib);
+    readex_expect_sync_data(req.request, IRF_NO_WAIT, &ib, sizeof(buf), "ab");
+    readex_expect_async(req.request, IRF_NO_WAIT, &ib, sizeof(buf));
+
+    send_response_and_wait("c", FALSE, &ib);
+    readex_expect_sync_data(req.request, IRF_NO_WAIT, &ib, sizeof(buf), "c");
+    readex_expect_async(req.request, IRF_NO_WAIT, &ib, sizeof(buf));
+
+    send_response_and_wait("\r\n1\r\nx\r\n0\r\n\r\n", TRUE, &ib);
+    readex_expect_sync_data(req.request, IRF_NO_WAIT, &ib, sizeof(buf), "x");
+    readex_expect_sync_data(req.request, IRF_NO_WAIT, &ib, sizeof(buf), "");
+
+    close_async_handle(req.session, hCompleteEvent, 2);
+
+    open_read_test_request(port, &req,
+                           "HTTP/1.1 200 OK\r\n"
+                           "Server: winetest\r\n"
+                           "Transfer-Encoding: chunked\r\n"
+                           "\r\n"
+                           "3\r\n123\r\n");
+    readex_expect_sync_data(req.request, IRF_NO_WAIT, &ib, sizeof(buf), "123");
+    readex_expect_async(req.request, IRF_NO_WAIT, &ib, sizeof(buf));
+
+    send_response_and_wait("0\r\n\r\n", TRUE, &ib);
+    readex_expect_sync_data(req.request, IRF_NO_WAIT, &ib, sizeof(buf), "");
+
+    close_async_handle(req.session, hCompleteEvent, 2);
+
+    trace("Testing InternetQueryDataAvailable...\n");
+
+    open_read_test_request(port, &req,
+                           "HTTP/1.1 200 OK\r\n"
+                           "Server: winetest\r\n"
+                           "\r\n"
+                           "123");
+    expect_data_available(req.request, 3);
+    readex_expect_sync_data(req.request, IRF_NO_WAIT, &ib, sizeof(buf), "123");
+    readex_expect_async(req.request, IRF_NO_WAIT, &ib, sizeof(buf));
+
+    send_response_len_and_wait(20000, TRUE, &ib);
+    avail = expect_data_available(req.request, -1);
+    ok(avail < 17000, "avail = %u\n", avail);
+
+    SET_WINE_ALLOW(INTERNET_STATUS_CLOSING_CONNECTION);
+    SET_WINE_ALLOW(INTERNET_STATUS_CONNECTION_CLOSED);
+    close_async_handle(req.session, hCompleteEvent, 2);
+    todo_wine CHECK_NOT_NOTIFIED(INTERNET_STATUS_CLOSING_CONNECTION);
+    todo_wine CHECK_NOT_NOTIFIED(INTERNET_STATUS_CONNECTION_CLOSED);
+
     CloseHandle(hCompleteEvent);
     CloseHandle(conn_wait_event);
     CloseHandle(server_req_rec_event);
@@ -4724,6 +4824,9 @@ static void test_long_url(int port)
     test_request_t req;
     DWORD size, len;
     BOOL ret;
+
+    if(!is_ie7plus)
+        return;
 
     memset(long_path+strlen(long_path), 'x', sizeof(long_path)-strlen(long_path));
     long_path[sizeof(long_path)-1] = 0;
@@ -5567,10 +5670,8 @@ static void test_open_url_async(void)
      * other versions never do. They also hang of following tests. We disable it for everything older
      * than IE7.
      */
-    if(!pInternetGetSecurityInfoByURLA) {
-        win_skip("Skipping async open on too old wininet version.\n");
+    if(!is_ie7plus)
         return;
-    }
 
     ctx.req = NULL;
     ctx.event = CreateEventA(NULL, TRUE, FALSE, "Z:_home_hans_jaman-installer.exe_ev1");
@@ -6055,6 +6156,9 @@ static void test_default_service_port(void)
     char buffer[128];
     BOOL ret;
 
+    if(!is_ie7plus)
+        return;
+
     session = InternetOpenA("winetest", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     ok(session != NULL, "InternetOpen failed\n");
 
@@ -6230,6 +6334,11 @@ START_TEST(http)
     pInternetSetStatusCallbackA = (void*)GetProcAddress(hdll, "InternetSetStatusCallbackA");
     pInternetSetStatusCallbackW = (void*)GetProcAddress(hdll, "InternetSetStatusCallbackW");
     pInternetGetSecurityInfoByURLA = (void*)GetProcAddress(hdll, "InternetGetSecurityInfoByURLA");
+
+    if(!pInternetGetSecurityInfoByURLA) {
+        is_ie7plus = FALSE;
+        win_skip("IE6 found. It's too old for some tests.\n");
+    }
 
     init_status_tests();
     test_InternetCloseHandle();

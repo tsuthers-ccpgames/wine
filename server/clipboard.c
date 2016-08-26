@@ -111,6 +111,25 @@ static struct clipboard *get_process_clipboard(void)
     return clipboard;
 }
 
+/* cleanup clipboard information upon window destruction */
+void cleanup_clipboard_window( struct desktop *desktop, user_handle_t window )
+{
+    struct clipboard *clipboard = desktop->winstation->clipboard;
+
+    if (!clipboard) return;
+
+    if (clipboard->open_win == window)
+    {
+        clipboard->open_win = 0;
+        clipboard->open_thread = NULL;
+    }
+    if (clipboard->owner_win == window)
+    {
+        clipboard->owner_win = 0;
+        clipboard->owner_thread = NULL;
+    }
+    if (clipboard->viewer == window) clipboard->viewer = 0;
+}
 
 /* Called when thread terminates to allow release of clipboard */
 void cleanup_clipboard_thread(struct thread *thread)
@@ -135,31 +154,6 @@ void cleanup_clipboard_thread(struct thread *thread)
         }
     }
     release_object( winstation );
-}
-
-static int open_clipboard( struct clipboard *clipboard, user_handle_t win )
-{
-    win = get_user_full_handle( win );
-    if (clipboard->open_thread && clipboard->open_win != win)
-    {
-        set_error(STATUS_WAS_LOCKED);
-        return 0;
-    }
-    clipboard->open_win = win;
-    clipboard->open_thread = current;
-    return 1;
-}
-
-static int close_clipboard( struct clipboard *clipboard )
-{
-    if (clipboard->open_thread != current)
-    {
-        set_win32_error( ERROR_CLIPBOARD_NOT_OPEN );
-        return 0;
-    }
-    clipboard->open_thread = NULL;
-    clipboard->open_win = 0;
-    return 1;
 }
 
 static int release_clipboard_owner( struct clipboard *clipboard, user_handle_t win )
@@ -187,6 +181,48 @@ static int get_seqno( struct clipboard *clipboard )
 }
 
 
+/* open the clipboard */
+DECL_HANDLER(open_clipboard)
+{
+    struct clipboard *clipboard = get_process_clipboard();
+    user_handle_t win;
+
+    if (!clipboard) return;
+    win = get_user_full_handle( req->window );
+
+    if (clipboard->open_thread && clipboard->open_win != win)
+    {
+        set_error( STATUS_WAS_LOCKED );
+        return;
+    }
+    clipboard->open_win = win;
+    clipboard->open_thread = current;
+
+    reply->owner = (clipboard->owner_thread && clipboard->owner_thread->process == current->process);
+}
+
+
+/* close the clipboard */
+DECL_HANDLER(close_clipboard)
+{
+    struct clipboard *clipboard = get_process_clipboard();
+
+    if (!clipboard) return;
+
+    if (clipboard->open_thread != current)
+    {
+        set_win32_error( ERROR_CLIPBOARD_NOT_OPEN );
+        return;
+    }
+    if (req->changed) clipboard->seqno++;
+    clipboard->open_thread = NULL;
+    clipboard->open_win = 0;
+
+    reply->viewer = clipboard->viewer;
+    reply->owner  = (clipboard->owner_thread && clipboard->owner_thread->process == current->process);
+}
+
+
 DECL_HANDLER(set_clipboard_info)
 {
     struct clipboard *clipboard = get_process_clipboard();
@@ -197,26 +233,16 @@ DECL_HANDLER(set_clipboard_info)
     reply->old_owner     = clipboard->owner_win;
     reply->old_viewer    = clipboard->viewer;
 
-    if (req->flags & SET_CB_OPEN)
-    {
-        if (!open_clipboard( clipboard, req->clipboard )) return;
-    }
-    else if (req->flags & SET_CB_CLOSE)
-    {
-        if (!close_clipboard( clipboard )) return;
-    }
-
     if (req->flags & SET_CB_RELOWNER)
     {
         if (!release_clipboard_owner( clipboard, req->owner )) return;
     }
 
-    if (req->flags & SET_CB_VIEWER) clipboard->viewer = get_user_full_handle( req->viewer );
-
     if (req->flags & SET_CB_SEQNO) clipboard->seqno++;
 
     reply->seqno = get_seqno( clipboard );
 
+    if (clipboard->open_thread) reply->flags |= CB_OPEN_ANY;
     if (clipboard->open_thread == current) reply->flags |= CB_OPEN;
     if (clipboard->owner_thread == current) reply->flags |= CB_OWNER;
     if (clipboard->owner_thread && clipboard->owner_thread->process == current->process)
@@ -239,4 +265,35 @@ DECL_HANDLER(empty_clipboard)
     clipboard->owner_win = clipboard->open_win;
     clipboard->owner_thread = clipboard->open_thread;
     clipboard->seqno++;
+}
+
+
+/* Get clipboard information */
+DECL_HANDLER(get_clipboard_info)
+{
+    struct clipboard *clipboard = get_process_clipboard();
+
+    if (!clipboard) return;
+
+    reply->window = clipboard->open_win;
+    reply->owner  = clipboard->owner_win;
+    reply->viewer = clipboard->viewer;
+    reply->seqno  = get_seqno( clipboard );
+}
+
+
+/* set the clipboard viewer window */
+DECL_HANDLER(set_clipboard_viewer)
+{
+    struct clipboard *clipboard = get_process_clipboard();
+
+    if (!clipboard) return;
+
+    reply->old_viewer = clipboard->viewer;
+    reply->owner      = clipboard->owner_win;
+
+    if (!req->previous || clipboard->viewer == get_user_full_handle( req->previous ))
+        clipboard->viewer = get_user_full_handle( req->viewer );
+    else
+        set_error( STATUS_PENDING );  /* need to send message instead */
 }

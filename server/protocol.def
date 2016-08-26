@@ -693,6 +693,30 @@ typedef union
     } ioctl;
 } irp_params_t;
 
+/* information about a PE image mapping, roughly equivalent to SECTION_IMAGE_INFORMATION */
+typedef struct
+{
+    client_ptr_t   base;
+    client_ptr_t   entry_point;
+    mem_size_t     map_size;
+    mem_size_t     stack_size;
+    mem_size_t     stack_commit;
+    unsigned int   zerobits;
+    unsigned int   subsystem;
+    unsigned short subsystem_low;
+    unsigned short subsystem_high;
+    unsigned int   gp;
+    unsigned short image_charact;
+    unsigned short dll_charact;
+    unsigned short machine;
+    unsigned char  contains_code;
+    unsigned char  image_flags;
+    unsigned int   loader_flags;
+    unsigned int   header_size;
+    unsigned int   file_size;
+    unsigned int   checksum;
+} pe_image_info_t;
+
 struct rawinput_device
 {
     unsigned short usage_page;
@@ -1504,7 +1528,8 @@ struct console_renderer_event
     short int    cursor_y;
     short int    width;         /* width of the screen buffer */
     short int    height;        /* height of the screen buffer */
-    short int    attr;          /* default attribute */
+    short int    attr;          /* default fill attributes (screen colors) */
+    short int    popup_attr;    /* pop-up color attributes */
     short int    win_left;      /* window actually displayed by renderer */
     short int    win_top;       /* the rect area is expressed within the */
     short int    win_right;     /* boundaries of the screen buffer */
@@ -1513,14 +1538,17 @@ struct console_renderer_event
     short int    max_height;
     short int    font_width;    /* font size (width x height) */
     short int    font_height;
+    VARARG(colors,uints);       /* color table */
 @END
-#define SET_CONSOLE_OUTPUT_INFO_CURSOR_GEOM     0x01
-#define SET_CONSOLE_OUTPUT_INFO_CURSOR_POS      0x02
-#define SET_CONSOLE_OUTPUT_INFO_SIZE            0x04
-#define SET_CONSOLE_OUTPUT_INFO_ATTR            0x08
-#define SET_CONSOLE_OUTPUT_INFO_DISPLAY_WINDOW  0x10
-#define SET_CONSOLE_OUTPUT_INFO_MAX_SIZE        0x20
-#define SET_CONSOLE_OUTPUT_INFO_FONT            0x40
+#define SET_CONSOLE_OUTPUT_INFO_CURSOR_GEOM     0x0001
+#define SET_CONSOLE_OUTPUT_INFO_CURSOR_POS      0x0002
+#define SET_CONSOLE_OUTPUT_INFO_SIZE            0x0004
+#define SET_CONSOLE_OUTPUT_INFO_ATTR            0x0008
+#define SET_CONSOLE_OUTPUT_INFO_DISPLAY_WINDOW  0x0010
+#define SET_CONSOLE_OUTPUT_INFO_MAX_SIZE        0x0020
+#define SET_CONSOLE_OUTPUT_INFO_FONT            0x0040
+#define SET_CONSOLE_OUTPUT_INFO_COLORTABLE      0x0080
+#define SET_CONSOLE_OUTPUT_INFO_POPUP_ATTR      0x0100
 
 
 /* Get info about a console (output only) */
@@ -1533,7 +1561,8 @@ struct console_renderer_event
     short int    cursor_y;
     short int    width;         /* width of the screen buffer */
     short int    height;        /* height of the screen buffer */
-    short int    attr;          /* default attribute */
+    short int    attr;          /* default fill attributes (screen colors) */
+    short int    popup_attr;    /* pop-up color attributes */
     short int    win_left;      /* window actually displayed by renderer */
     short int    win_top;       /* the rect area is expressed within the */
     short int    win_right;     /* boundaries of the screen buffer */
@@ -1542,6 +1571,7 @@ struct console_renderer_event
     short int    max_height;
     short int    font_width;    /* font size (width x height) */
     short int    font_height;
+    VARARG(colors,uints);       /* color table */
 @END
 
 /* Add input records to a console input queue */
@@ -1651,6 +1681,7 @@ enum char_info_mode
 /* Create a file mapping */
 @REQ(create_mapping)
     unsigned int access;        /* wanted access rights */
+    unsigned int flags;         /* SEC_* flags */
     unsigned int protect;       /* protection flags (see below) */
     mem_size_t   size;          /* mapping size */
     obj_handle_t file_handle;   /* file handle */
@@ -1691,11 +1722,11 @@ enum char_info_mode
     unsigned int access;        /* wanted access rights */
 @REPLY
     mem_size_t   size;          /* mapping size */
+    unsigned int flags;         /* SEC_* flags */
     int          protect;       /* protection flags */
-    int          header_size;   /* header size (for VPROT_IMAGE mapping) */
-    client_ptr_t base;          /* default base addr (for VPROT_IMAGE mapping) */
     obj_handle_t mapping;       /* duplicate mapping handle unless removable */
     obj_handle_t shared_file;   /* shared mapping file handle */
+    VARARG(image,pe_image_info);/* image info for SEC_IMAGE mappings */
 @END
 
 
@@ -3127,13 +3158,27 @@ enum caret_state
 #define SET_CLASS_EXTRA     0x0010
 
 
+/* Open the clipboard */
+@REQ(open_clipboard)
+    user_handle_t  window;         /* clipboard window */
+@REPLY
+    int            owner;          /* is the process already the owner? */
+@END
+
+
+/* Close the clipboard */
+@REQ(close_clipboard)
+    int            changed;        /* did it change since the open? */
+@REPLY
+    user_handle_t  viewer;         /* first clipboard viewer */
+    int            owner;          /* is the process already the owner? */
+@END
+
+
 /* Set/get clipboard information */
 @REQ(set_clipboard_info)
     unsigned int   flags;       /* flags for fields to set (see below) */
-    user_handle_t  clipboard;   /* clipboard window */
     user_handle_t  owner;       /* clipboard owner */
-    user_handle_t  viewer;      /* first clipboard viewer */
-    unsigned int   seqno;       /* change sequence number */
 @REPLY
     unsigned int   flags;           /* status flags (see below) */
     user_handle_t  old_clipboard;   /* old clipboard window */
@@ -3142,11 +3187,9 @@ enum caret_state
     unsigned int   seqno;           /* current sequence number */
 @END
 
-#define SET_CB_OPEN      0x001
-#define SET_CB_VIEWER    0x004
 #define SET_CB_SEQNO     0x008
 #define SET_CB_RELOWNER  0x010
-#define SET_CB_CLOSE     0x020
+#define CB_OPEN_ANY      0x020
 #define CB_OPEN          0x040
 #define CB_OWNER         0x080
 #define CB_PROCESS       0x100
@@ -3154,6 +3197,26 @@ enum caret_state
 
 /* Empty the clipboard and grab ownership */
 @REQ(empty_clipboard)
+@END
+
+
+/* Get clipboard information */
+@REQ(get_clipboard_info)
+@REPLY
+    user_handle_t  window;         /* clipboard window */
+    user_handle_t  owner;          /* clipboard owner */
+    user_handle_t  viewer;         /* clipboard viewer */
+    unsigned int   seqno;          /* current sequence number */
+@END
+
+
+/* Set the clipboard viewer window */
+@REQ(set_clipboard_viewer)
+    user_handle_t  viewer;         /* clipboard viewer */
+    user_handle_t  previous;       /* if non-zero, check that this was the previous viewer */
+@REPLY
+    user_handle_t  old_viewer;     /* previous clipboard viewer */
+    user_handle_t  owner;          /* clipboard owner */
 @END
 
 

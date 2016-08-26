@@ -255,7 +255,17 @@ static DWORD VMR9_SendSampleData(struct quartz_vmr *This, VMR9PresentationInfo *
         return hr;
     }
 
-    if (lock.Pitch != width * bmiHeader->biBitCount / 8)
+    if (height > 0) {
+        /* Bottom up image needs inverting */
+        lock.pBits = (char *)lock.pBits + (height * lock.Pitch);
+        while (height--)
+        {
+            memcpy(lock.pBits, data, width * bmiHeader->biBitCount / 8);
+            data = data + width * bmiHeader->biBitCount / 8;
+            lock.pBits = (char *)lock.pBits - lock.Pitch;
+        }
+    }
+    else if (lock.Pitch != width * bmiHeader->biBitCount / 8)
     {
         WARN("Slow path! %u/%u\n", lock.Pitch, width * bmiHeader->biBitCount/8);
 
@@ -936,7 +946,7 @@ static HRESULT WINAPI Videowindow_QueryInterface(IVideoWindow *iface, REFIID rii
 {
     struct quartz_vmr *This = impl_from_IVideoWindow(iface);
 
-    TRACE("(%p/%p)->(%s (%p), %p)\n", This, iface, debugstr_guid(riid), riid, ppvObj);
+    TRACE("(%p/%p)->(%s, %p)\n", This, iface, debugstr_guid(riid), ppvObj);
 
     return VMR9_QueryInterface(&This->renderer.filter.IBaseFilter_iface, riid, ppvObj);
 }
@@ -1014,7 +1024,7 @@ static HRESULT WINAPI Basicvideo_QueryInterface(IBasicVideo *iface, REFIID riid,
 {
     struct quartz_vmr *This = impl_from_IBasicVideo(iface);
 
-    TRACE("(%p/%p)->(%s (%p), %p)\n", This, iface, debugstr_guid(riid), riid, ppvObj);
+    TRACE("(%p/%p)->(%s, %p)\n", This, iface, debugstr_guid(riid), ppvObj);
 
     return VMR9_QueryInterface(&This->renderer.filter.IBaseFilter_iface, riid, ppvObj);
 }

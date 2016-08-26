@@ -3,6 +3,8 @@ IMPORTS   = webservices
 
 C_SRCS = \
 	channel.c \
+	msg.c \
 	proxy.c \
 	reader.c \
+	url.c \
 	writer.c

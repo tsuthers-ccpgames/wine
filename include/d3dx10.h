@@ -27,6 +27,7 @@
 #define DXGI_FORMAT_FROM_FILE ((DXGI_FORMAT)0xfffffffdu)
 
 #include "d3d10.h"
+#include "d3dx10math.h"
 #include "d3dx10core.h"
 #include "d3dx10async.h"
 #include "d3dx10tex.h"

@@ -621,7 +621,6 @@ static const tid_t HTMLElementCollection_iface_tids[] = {
 static dispex_static_data_t HTMLElementCollection_dispex = {
     &HTMLElementColection_dispex_vtbl,
     DispHTMLElementCollection_tid,
-    NULL,
     HTMLElementCollection_iface_tids
 };
 
@@ -723,7 +722,8 @@ IHTMLElementCollection *create_collection_from_htmlcol(HTMLDocumentNode *doc, ns
     HTMLDOMNode *node;
     HRESULT hres = S_OK;
 
-    nsIDOMHTMLCollection_GetLength(nscol, &length);
+    if(nscol)
+        nsIDOMHTMLCollection_GetLength(nscol, &length);
 
     buf.len = buf.size = length;
     if(buf.len) {

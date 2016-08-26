@@ -59,6 +59,21 @@ typedef struct _WS_CALL_PROPERTY WS_CALL_PROPERTY;
 typedef struct _WS_DOUBLE_DESCRIPTION WS_DOUBLE_DESCRIPTION;
 typedef struct _WS_DATETIME WS_DATETIME;
 typedef struct _WS_DATETIME_DESCRIPTION WS_DATETIME_DESCRIPTION;
+typedef struct _WS_GUID_DESCRIPTION WS_GUID_DESCRIPTION;
+typedef struct _WS_UNIQUE_ID_DESCRIPTION WS_UNIQUE_ID_DESCRIPTION;
+typedef struct _WS_URL WS_URL;
+typedef struct _WS_HTTP_URL WS_HTTP_URL;
+typedef struct _WS_HTTPS_URL WS_HTTPS_URL;
+typedef struct _WS_NETTCP_URL WS_NETTCP_URL;
+typedef struct _WS_SOAPUDP_URL WS_SOAPUDP_URL;
+typedef struct _WS_NETPIPE_URL WS_NETPIPE_URL;
+typedef struct _WS_CUSTOM_CHANNEL_CALLBACKS WS_CUSTOM_CHANNEL_CALLBACKS;
+typedef struct _WS_CHANNEL_ENCODER WS_CHANNEL_ENCODER;
+typedef struct _WS_CHANNEL_DECODER WS_CHANNEL_DECODER;
+typedef struct _WS_CUSTOM_HTTP_PROXY WS_CUSTOM_HTTP_PROXY;
+typedef struct _WS_HTTP_MESSAGE_MAPPING WS_HTTP_MESSAGE_MAPPING;
+typedef struct _WS_HTTP_HEADER_MAPPING WS_HTTP_HEADER_MAPPING;
+typedef struct _WS_HTTP_REDIRECT_CALLBACK_CONTEXT WS_HTTP_REDIRECT_CALLBACK_CONTEXT;
 
 struct _WS_STRUCT_DESCRIPTION;
 struct _WS_XML_STRING;
@@ -241,6 +256,9 @@ typedef struct _WS_ASYNC_CONTEXT {
 typedef HRESULT (CALLBACK *WS_READ_CALLBACK)
     (void*, void*, ULONG, ULONG*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
 
+typedef HRESULT (CALLBACK *WS_WRITE_CALLBACK)
+    (void*, const WS_BYTES*, ULONG, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
 typedef struct _WS_XML_READER_STREAM_INPUT {
     WS_XML_READER_INPUT input;
     WS_READ_CALLBACK readCallback;
@@ -387,6 +405,15 @@ struct _WS_DOUBLE_DESCRIPTION {
     double maxValue;
 };
 
+struct _WS_GUID_DESCRIPTION {
+    GUID value;
+};
+
+struct _WS_UNIQUE_ID_DESCRIPTION {
+    ULONG minCharCount;
+    ULONG maxCharCount;
+};
+
 typedef enum {
     WS_TYPE_ATTRIBUTE_FIELD_MAPPING,
     WS_ATTRIBUTE_FIELD_MAPPING,
@@ -476,6 +503,11 @@ typedef struct _WS_STRING {
     WCHAR *chars;
 } WS_STRING;
 
+typedef struct _WS_UNIQUE_ID {
+    WS_STRING uri;
+    GUID guid;
+} WS_UNIQUE_ID;
+
 typedef enum {
     WS_XML_NODE_TYPE_ELEMENT     = 1,
     WS_XML_NODE_TYPE_TEXT        = 2,
@@ -533,6 +565,47 @@ typedef struct _WS_XML_UTF8_TEXT {
     WS_XML_TEXT text;
     WS_XML_STRING value;
 } WS_XML_UTF8_TEXT;
+
+typedef struct _WS_XML_UTF16_TEXT {
+    WS_XML_TEXT text;
+    BYTE *bytes;
+    ULONG byteCount;
+} WS_XML_UTF16_TEXT;
+
+typedef struct _WS_XML_BOOL_TEXT {
+    WS_XML_TEXT text;
+    BOOL value;
+} WS_XML_BOOL_TEXT;
+
+typedef struct _WS_XML_INT32_TEXT {
+    WS_XML_TEXT text;
+    __int32 value;
+} WS_XML_INT32_TEXT;
+
+typedef struct _WS_XML_INT64_TEXT {
+    WS_XML_TEXT text;
+    __int64 value;
+} WS_XML_INT64_TEXT;
+
+typedef struct _WS_XML_UINT64_TEXT {
+    WS_XML_TEXT text;
+    unsigned __int64 value;
+} WS_XML_UINT64_TEXT;
+
+typedef struct _WS_XML_DOUBLE_TEXT {
+    WS_XML_TEXT text;
+    double value;
+} WS_XML_DOUBLE_TEXT;
+
+typedef struct _WS_XML_GUID_TEXT {
+    WS_XML_TEXT text;
+    GUID value;
+} WS_XML_GUID_TEXT;
+
+typedef struct _WS_XML_UNIQUE_ID_TEXT {
+    WS_XML_TEXT text;
+    GUID value;
+} WS_XML_UNIQUE_ID_TEXT;
 
 typedef enum {
     WS_BOOL_VALUE_TYPE,
@@ -848,6 +921,11 @@ struct _WS_HTTP_SSL_BINDING_TEMPLATE {
     WS_SSL_TRANSPORT_SECURITY_BINDING_TEMPLATE sslTransportSecurityBinding;
 };
 
+enum {
+    WS_MUST_UNDERSTAND_HEADER_ATTRIBUTE = 0x1,
+    WS_RELAY_HEADER_ATTRIBUTE           = 0x2
+};
+
 typedef enum {
     WS_ADDRESSING_VERSION_0_9       = 1,
     WS_ADDRESSING_VERSION_1_0       = 2,
@@ -911,6 +989,16 @@ typedef enum {
     WS_REPLY_MESSAGE,
     WS_FAULT_MESSAGE
 } WS_MESSAGE_INITIALIZATION;
+
+typedef enum {
+    WS_ACTION_HEADER        = 1,
+    WS_TO_HEADER            = 2,
+    WS_MESSAGE_ID_HEADER    = 3,
+    WS_RELATES_TO_HEADER    = 4,
+    WS_FROM_HEADER          = 5,
+    WS_REPLY_TO_HEADER      = 6,
+    WS_FAULT_TO_HEADER      = 7
+} WS_HEADER_TYPE;
 
 typedef enum {
     WS_DNS_ENDPOINT_IDENTITY_TYPE       = 1,
@@ -1007,12 +1095,268 @@ struct _WS_DATETIME_DESCRIPTION {
     WS_DATETIME maxValue;
 };
 
+typedef enum {
+    WS_URL_HTTP_SCHEME_TYPE,
+    WS_URL_HTTPS_SCHEME_TYPE,
+    WS_URL_NETTCP_SCHEME_TYPE,
+    WS_URL_SOAPUDP_SCHEME_TYPE,
+    WS_URL_NETPIPE_SCHEME_TYPE
+} WS_URL_SCHEME_TYPE;
+
+enum {
+    WS_URL_FLAGS_ALLOW_HOST_WILDCARDS   = 0x1,
+    WS_URL_FLAGS_NO_PATH_COLLAPSE       = 0x2,
+    WS_URL_FLAGS_ZERO_TERMINATE         = 0x4
+};
+
+struct _WS_URL {
+    WS_URL_SCHEME_TYPE scheme;
+};
+
+struct _WS_HTTP_URL {
+    WS_URL url;
+    WS_STRING host;
+    USHORT port;
+    WS_STRING portAsString;
+    WS_STRING path;
+    WS_STRING query;
+    WS_STRING fragment;
+};
+
+struct _WS_HTTPS_URL {
+    WS_URL url;
+    WS_STRING host;
+    USHORT port;
+    WS_STRING portAsString;
+    WS_STRING path;
+    WS_STRING query;
+    WS_STRING fragment;
+};
+
+struct _WS_SOAPUDP_URL {
+    WS_URL url;
+    WS_STRING host;
+    USHORT port;
+    WS_STRING portAsString;
+    WS_STRING path;
+    WS_STRING query;
+    WS_STRING fragment;
+};
+
+struct _WS_NETPIPE_URL {
+    WS_URL url;
+    WS_STRING host;
+    USHORT port;
+    WS_STRING portAsString;
+    WS_STRING path;
+    WS_STRING query;
+    WS_STRING fragment;
+};
+
+typedef enum
+{
+    WS_IP_VERSION_4    = 1,
+    WS_IP_VERSION_6    = 2,
+    WS_IP_VERSION_AUTO = 3
+} WS_IP_VERSION;
+
+typedef enum
+{
+    WS_BUFFERED_TRANSFER_MODE        = 0x0,
+    WS_STREAMED_INPUT_TRANSFER_MODE  = 0x1,
+    WS_STREAMED_OUTPUT_TRANSFER_MODE = 0x2,
+    WS_STREAMED_TRANSFER_MODE        = (WS_STREAMED_INPUT_TRANSFER_MODE|WS_STREAMED_OUTPUT_TRANSFER_MODE)
+} WS_TRANSFER_MODE;
+
+typedef HRESULT (CALLBACK *WS_CREATE_CHANNEL_CALLBACK)
+    (WS_CHANNEL_TYPE, const void*, ULONG, void**, WS_ERROR*);
+
+typedef void (CALLBACK *WS_FREE_CHANNEL_CALLBACK)
+    (void*);
+
+typedef HRESULT (CALLBACK *WS_RESET_CHANNEL_CALLBACK)
+    (void*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_OPEN_CHANNEL_CALLBACK)
+    (void*, const WS_ENDPOINT_ADDRESS*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_CLOSE_CHANNEL_CALLBACK)
+    (void*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_ABORT_CHANNEL_CALLBACK)
+    (void*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_GET_CHANNEL_PROPERTY_CALLBACK)
+    (void*, WS_CHANNEL_PROPERTY_ID, void*, ULONG, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_SET_CHANNEL_PROPERTY_CALLBACK)
+    (void*, WS_CHANNEL_PROPERTY_ID, const void*, ULONG, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_WRITE_MESSAGE_START_CALLBACK)
+    (void*, WS_MESSAGE*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_WRITE_MESSAGE_END_CALLBACK)
+    (void*, WS_MESSAGE*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_READ_MESSAGE_START_CALLBACK)
+    (void*, WS_MESSAGE*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_READ_MESSAGE_END_CALLBACK)
+    (void*, WS_MESSAGE*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_ABANDON_MESSAGE_CALLBACK)
+    (void*, WS_MESSAGE*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_SHUTDOWN_SESSION_CHANNEL_CALLBACK)
+    (void*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+struct _WS_CUSTOM_CHANNEL_CALLBACKS
+{
+    WS_CREATE_CHANNEL_CALLBACK createChannelCallback;
+    WS_FREE_CHANNEL_CALLBACK freeChannelCallback;
+    WS_RESET_CHANNEL_CALLBACK resetChannelCallback;
+    WS_OPEN_CHANNEL_CALLBACK openChannelCallback;
+    WS_CLOSE_CHANNEL_CALLBACK closeChannelCallback;
+    WS_ABORT_CHANNEL_CALLBACK abortChannelCallback;
+    WS_GET_CHANNEL_PROPERTY_CALLBACK getChannelPropertyCallback;
+    WS_SET_CHANNEL_PROPERTY_CALLBACK setChannelPropertyCallback;
+    WS_WRITE_MESSAGE_START_CALLBACK writeMessageStartCallback;
+    WS_WRITE_MESSAGE_END_CALLBACK writeMessageEndCallback;
+    WS_READ_MESSAGE_START_CALLBACK readMessageStartCallback;
+    WS_READ_MESSAGE_END_CALLBACK readMessageEndCallback;
+    WS_ABANDON_MESSAGE_CALLBACK abandonMessageCallback;
+    WS_SHUTDOWN_SESSION_CHANNEL_CALLBACK shutdownSessionChannelCallback;
+};
+
+typedef HRESULT (CALLBACK *WS_CREATE_ENCODER_CALLBACK)
+    (void*, WS_WRITE_CALLBACK, void*, void**, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_ENCODER_GET_CONTENT_TYPE_CALLBACK)
+    (void*, const WS_STRING*, WS_STRING*, WS_STRING*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_ENCODER_START_CALLBACK)
+    (void*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_ENCODER_ENCODE_CALLBACK)
+    (void*, const WS_BYTES*, ULONG, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_ENCODER_END_CALLBACK)
+    (void*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef void (CALLBACK *WS_FREE_ENCODER_CALLBACK)
+    (void*);
+
+struct _WS_CHANNEL_ENCODER
+{
+    void *createContext;
+    WS_CREATE_ENCODER_CALLBACK createEncoderCallback;
+    WS_ENCODER_GET_CONTENT_TYPE_CALLBACK encoderGetContentTypeCallback;
+    WS_ENCODER_START_CALLBACK encoderStartCallback;
+    WS_ENCODER_ENCODE_CALLBACK encoderEncodeCallback;
+    WS_ENCODER_END_CALLBACK encoderEndCallback;
+    WS_FREE_ENCODER_CALLBACK freeEncoderCallback;
+};
+
+typedef HRESULT (CALLBACK *WS_CREATE_DECODER_CALLBACK)
+    (void*, WS_READ_CALLBACK, void*, void**, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_DECODER_GET_CONTENT_TYPE_CALLBACK)
+    (void*, const WS_STRING*, const WS_STRING*, WS_STRING*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_DECODER_START_CALLBACK)
+    (void*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_DECODER_DECODE_CALLBACK)
+    (void*, void*, ULONG, ULONG*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef HRESULT (CALLBACK *WS_DECODER_END_CALLBACK)
+    (void*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+
+typedef void (CALLBACK *WS_FREE_DECODER_CALLBACK)
+    (void*);
+
+struct _WS_CHANNEL_DECODER
+{
+    void *createContext;
+    WS_CREATE_DECODER_CALLBACK createDecoderCallback;
+    WS_DECODER_GET_CONTENT_TYPE_CALLBACK decoderGetContentTypeCallback;
+    WS_DECODER_START_CALLBACK decoderStartCallback;
+    WS_DECODER_DECODE_CALLBACK decoderDecodeCallback;
+    WS_DECODER_END_CALLBACK decoderEndCallback;
+    WS_FREE_DECODER_CALLBACK freeDecoderCallback;
+};
+
+typedef enum
+{
+    WS_PROTECTION_LEVEL_NONE             = 1,
+    WS_PROTECTION_LEVEL_SIGN             = 2,
+    WS_PROTECTION_LEVEL_SIGN_AND_ENCRYPT = 3
+} WS_PROTECTION_LEVEL;
+
+typedef enum
+{
+    WS_MANUAL_COOKIE_MODE = 1,
+    WS_AUTO_COOKIE_MODE   = 2
+} WS_COOKIE_MODE;
+
+typedef enum
+{
+    WS_HTTP_PROXY_SETTING_MODE_AUTO   = 0x1,
+    WS_HTTP_PROXY_SETTING_MODE_NONE   = 0x2,
+    WS_HTTP_PROXY_SETTING_MODE_CUSTOM = 0x3
+} WS_HTTP_PROXY_SETTING_MODE;
+
+struct _WS_CUSTOM_HTTP_PROXY
+{
+    WS_STRING servers;
+    WS_STRING bypass;
+};
+
+struct _WS_HTTP_HEADER_MAPPING
+{
+    WS_XML_STRING headerName;
+    ULONG headerMappingOptions;
+};
+
+struct _WS_HTTP_MESSAGE_MAPPING
+{
+    ULONG requestMappingOptions;
+    ULONG responseMappingOptions;
+    WS_HTTP_HEADER_MAPPING **requestHeaderMappings;
+    ULONG requestHeaderMappingCount;
+    WS_HTTP_HEADER_MAPPING **responseHeaderMappings;
+    ULONG responseHeaderMappingCount;
+};
+
+typedef HRESULT (CALLBACK *WS_HTTP_REDIRECT_CALLBACK)
+    (void*, const WS_STRING*, const WS_STRING*);
+
+struct _WS_HTTP_REDIRECT_CALLBACK_CONTEXT
+{
+    WS_HTTP_REDIRECT_CALLBACK callback;
+    void *state;
+};
+
+typedef enum
+{
+    WS_RECEIVE_REQUIRED_MESSAGE = 1,
+    WS_RECEIVE_OPTIONAL_MESSAGE = 2
+} WS_RECEIVE_OPTION;
+
+typedef void (CALLBACK *WS_MESSAGE_DONE_CALLBACK)
+    (void*);
+
+HRESULT WINAPI WsAddMappedHeader(WS_MESSAGE*, const WS_XML_STRING*, WS_TYPE, WS_WRITE_OPTION,
+                                 const void*, ULONG, WS_ERROR*);
+HRESULT WINAPI WsAddressMessage(WS_MESSAGE*, const WS_ENDPOINT_ADDRESS*, WS_ERROR*);
 HRESULT WINAPI WsAlloc(WS_HEAP*, SIZE_T, void**, WS_ERROR*);
 HRESULT WINAPI WsCall(WS_SERVICE_PROXY*, const WS_OPERATION_DESCRIPTION*, const void**,
                       WS_HEAP*, const WS_CALL_PROPERTY*, const ULONG, const WS_ASYNC_CONTEXT*,
                       WS_ERROR*);
 HRESULT WINAPI WsCloseChannel(WS_CHANNEL*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
 HRESULT WINAPI WsCloseServiceProxy(WS_SERVICE_PROXY*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+HRESULT WINAPI WsCombineUrl(const WS_STRING*, const WS_STRING*, ULONG, WS_HEAP*, WS_STRING*, WS_ERROR*);
+HRESULT WINAPI WsCopyNode(WS_XML_WRITER*, WS_XML_READER*, WS_ERROR*);
 HRESULT WINAPI WsCreateChannel(WS_CHANNEL_TYPE, WS_CHANNEL_BINDING, const WS_CHANNEL_PROPERTY*,
                                ULONG, const WS_SECURITY_DESCRIPTION*, WS_CHANNEL**, WS_ERROR*);
 HRESULT WINAPI WsCreateError(const WS_ERROR_PROPERTY*, ULONG, WS_ERROR**);
@@ -1034,6 +1378,8 @@ HRESULT WINAPI WsCreateWriter(const WS_XML_WRITER_PROPERTY*, ULONG, WS_XML_WRITE
 HRESULT WINAPI WsCreateXmlBuffer(WS_HEAP*, const WS_XML_BUFFER_PROPERTY*, ULONG, WS_XML_BUFFER**,
                                  WS_ERROR*);
 HRESULT WINAPI WsDateTimeToFileTime(const WS_DATETIME*, FILETIME*, WS_ERROR*);
+HRESULT WINAPI WsDecodeUrl(const WS_STRING*, ULONG, WS_HEAP*, WS_URL**, WS_ERROR*);
+HRESULT WINAPI WsEncodeUrl(const WS_URL*, ULONG, WS_HEAP*, WS_STRING*, WS_ERROR*);
 HRESULT WINAPI WsFileTimeToDateTime(const FILETIME*, WS_DATETIME*, WS_ERROR*);
 HRESULT WINAPI WsFillReader(WS_XML_READER*, ULONG, const WS_ASYNC_CONTEXT*, WS_ERROR*);
 HRESULT WINAPI WsFindAttribute(WS_XML_READER*, const WS_XML_STRING*, const WS_XML_STRING*, BOOL,
@@ -1049,6 +1395,7 @@ HRESULT WINAPI WsGetChannelProperty(WS_CHANNEL*, WS_CHANNEL_PROPERTY_ID, void*, 
 HRESULT WINAPI WsGetErrorProperty(WS_ERROR*, WS_ERROR_PROPERTY_ID, void*, ULONG);
 HRESULT WINAPI WsGetErrorString(WS_ERROR*, ULONG, WS_STRING*);
 HRESULT WINAPI WsGetHeapProperty(WS_HEAP*, WS_HEAP_PROPERTY_ID, void*, ULONG, WS_ERROR*);
+HRESULT WINAPI WsGetMessageProperty(WS_MESSAGE*, WS_MESSAGE_PROPERTY_ID, void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsGetNamespaceFromPrefix(WS_XML_READER*, const WS_XML_STRING*, BOOL,
                                         const WS_XML_STRING**, WS_ERROR*);
 HRESULT WINAPI WsGetPrefixFromNamespace(WS_XML_WRITER*, const WS_XML_STRING*, BOOL,
@@ -1058,6 +1405,7 @@ HRESULT WINAPI WsGetReaderPosition(WS_XML_READER*, WS_XML_NODE_POSITION*, WS_ERR
 HRESULT WINAPI WsGetReaderProperty(WS_XML_READER*, WS_XML_READER_PROPERTY_ID, void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsGetServiceProxyProperty(WS_SERVICE_PROXY*, const WS_PROXY_PROPERTY_ID, void*,
                                          ULONG, WS_ERROR*);
+HRESULT WINAPI WsGetWriterPosition(WS_XML_WRITER*, WS_XML_NODE_POSITION*, WS_ERROR*);
 HRESULT WINAPI WsGetWriterProperty(WS_XML_WRITER*, WS_XML_WRITER_PROPERTY_ID, void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsGetXmlAttribute(WS_XML_READER*, const WS_XML_STRING*, WS_HEAP*, WCHAR**,
                                  ULONG*, WS_ERROR*);
@@ -1081,30 +1429,55 @@ HRESULT WINAPI WsReadToStartElement(WS_XML_READER*, const WS_XML_STRING*, const 
 HRESULT WINAPI WsReadType(WS_XML_READER*, WS_TYPE_MAPPING, WS_TYPE, const void*, WS_READ_OPTION,
                           WS_HEAP*, void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsReadValue(WS_XML_READER*, WS_VALUE_TYPE, void*, ULONG, WS_ERROR*);
+HRESULT WINAPI WsReceiveMessage(WS_CHANNEL*, WS_MESSAGE*, const WS_MESSAGE_DESCRIPTION**, ULONG,
+                                WS_RECEIVE_OPTION, WS_READ_OPTION, WS_HEAP*, void*, ULONG, ULONG*,
+                                const WS_ASYNC_CONTEXT*, WS_ERROR*);
+HRESULT WINAPI WsRemoveHeader(WS_MESSAGE*, WS_HEADER_TYPE, WS_ERROR*);
+HRESULT WINAPI WsRemoveMappedHeader(WS_MESSAGE*, const WS_XML_STRING*, WS_ERROR*);
+HRESULT WINAPI WsRemoveNode(const WS_XML_NODE_POSITION*, WS_ERROR*);
+HRESULT WINAPI WsResetChannel(WS_CHANNEL*, WS_ERROR*);
+HRESULT WINAPI WsResetError(WS_ERROR*);
 HRESULT WINAPI WsResetHeap(WS_HEAP*, WS_ERROR*);
+HRESULT WINAPI WsResetMessage(WS_MESSAGE*, WS_ERROR*);
+HRESULT WINAPI WsRequestReply(WS_CHANNEL*, WS_MESSAGE*, const WS_MESSAGE_DESCRIPTION*, WS_WRITE_OPTION,
+                              const void*, ULONG, WS_MESSAGE*, const WS_MESSAGE_DESCRIPTION*,
+                              WS_READ_OPTION, WS_HEAP*, void*, ULONG, const WS_ASYNC_CONTEXT*, WS_ERROR*);
 HRESULT WINAPI WsSendMessage(WS_CHANNEL*, WS_MESSAGE*, const WS_MESSAGE_DESCRIPTION*, WS_WRITE_OPTION,
                              const void*, ULONG, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+HRESULT WINAPI WsSendReplyMessage(WS_CHANNEL*, WS_MESSAGE*, const WS_MESSAGE_DESCRIPTION*,
+                                  WS_WRITE_OPTION, const void*, ULONG, WS_MESSAGE*,
+                                  const WS_ASYNC_CONTEXT*, WS_ERROR*);
 HRESULT WINAPI WsSetChannelProperty(WS_CHANNEL*, WS_CHANNEL_PROPERTY_ID, const void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsSetErrorProperty(WS_ERROR*, WS_ERROR_PROPERTY_ID, const void*, ULONG);
+HRESULT WINAPI WsSetHeader(WS_MESSAGE*, WS_HEADER_TYPE, WS_TYPE, WS_WRITE_OPTION, const void*, ULONG,
+                           WS_ERROR*);
 HRESULT WINAPI WsSetInput(WS_XML_READER*, const WS_XML_READER_ENCODING*, const WS_XML_READER_INPUT*,
                           const WS_XML_READER_PROPERTY*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsSetInputToBuffer(WS_XML_READER*, WS_XML_BUFFER*, const WS_XML_READER_PROPERTY*,
                                   ULONG, WS_ERROR*);
+HRESULT WINAPI WsSetMessageProperty(WS_MESSAGE*, WS_MESSAGE_PROPERTY_ID, const void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsSetOutput(WS_XML_WRITER*, const WS_XML_WRITER_ENCODING*, const WS_XML_WRITER_OUTPUT*,
                            const WS_XML_WRITER_PROPERTY*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsSetOutputToBuffer(WS_XML_WRITER*, WS_XML_BUFFER*, const WS_XML_WRITER_PROPERTY*,
                                    ULONG, WS_ERROR*);
+HRESULT WINAPI WsSetReaderPosition(WS_XML_READER*, const WS_XML_NODE_POSITION*, WS_ERROR*);
+HRESULT WINAPI WsSetWriterPosition(WS_XML_WRITER*, const WS_XML_NODE_POSITION*, WS_ERROR*);
 HRESULT WINAPI WsSkipNode(WS_XML_READER*, WS_ERROR*);
 HRESULT WINAPI WsWriteAttribute(WS_XML_WRITER*, const WS_ATTRIBUTE_DESCRIPTION*, WS_WRITE_OPTION,
                                 const void*, ULONG, WS_ERROR*);
+HRESULT WINAPI WsWriteBody(WS_MESSAGE*, const WS_ELEMENT_DESCRIPTION*, WS_WRITE_OPTION, const void*,
+                           ULONG, WS_ERROR*);
 HRESULT WINAPI WsWriteElement(WS_XML_WRITER*, const WS_ELEMENT_DESCRIPTION*, WS_WRITE_OPTION,
                               const void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsWriteEndAttribute(WS_XML_WRITER*, WS_ERROR*);
 HRESULT WINAPI WsWriteEndCData(WS_XML_WRITER*, WS_ERROR*);
 HRESULT WINAPI WsWriteEndElement(WS_XML_WRITER*, WS_ERROR*);
 HRESULT WINAPI WsWriteEndStartElement(WS_XML_WRITER*, WS_ERROR*);
+HRESULT WINAPI WsWriteEnvelopeEnd(WS_MESSAGE*, WS_ERROR*);
+HRESULT WINAPI WsWriteEnvelopeStart(WS_MESSAGE*, WS_XML_WRITER*, WS_MESSAGE_DONE_CALLBACK, void*, WS_ERROR*);
 HRESULT WINAPI WsWriteMessageStart(WS_CHANNEL*, WS_MESSAGE*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
 HRESULT WINAPI WsWriteMessageEnd(WS_CHANNEL*, WS_MESSAGE*, const WS_ASYNC_CONTEXT*, WS_ERROR*);
+HRESULT WINAPI WsWriteNode(WS_XML_WRITER*, const WS_XML_NODE*, WS_ERROR*);
 HRESULT WINAPI WsWriteStartAttribute(WS_XML_WRITER*, const WS_XML_STRING*, const WS_XML_STRING*,
                                      const WS_XML_STRING*, BOOL, WS_ERROR*);
 HRESULT WINAPI WsWriteStartCData(WS_XML_WRITER*, WS_ERROR*);

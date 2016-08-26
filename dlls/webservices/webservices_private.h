@@ -33,6 +33,8 @@ WS_XML_UTF8_TEXT *alloc_utf8_text( const unsigned char *, ULONG ) DECLSPEC_HIDDE
 HRESULT append_attribute( WS_XML_ELEMENT_NODE *, WS_XML_ATTRIBUTE * ) DECLSPEC_HIDDEN;
 void free_attribute( WS_XML_ATTRIBUTE * ) DECLSPEC_HIDDEN;
 WS_TYPE map_value_type( WS_VALUE_TYPE ) DECLSPEC_HIDDEN;
+BOOL set_fp_rounding( unsigned short * ) DECLSPEC_HIDDEN;
+void restore_fp_rounding( unsigned short ) DECLSPEC_HIDDEN;
 
 struct node
 {
@@ -45,11 +47,27 @@ struct node
 struct node *alloc_node( WS_XML_NODE_TYPE ) DECLSPEC_HIDDEN;
 void free_node( struct node * ) DECLSPEC_HIDDEN;
 void destroy_nodes( struct node * ) DECLSPEC_HIDDEN;
+struct node *find_parent( struct node * ) DECLSPEC_HIDDEN;
+HRESULT copy_node( WS_XML_READER *, struct node ** ) DECLSPEC_HIDDEN;
 
 static inline WS_XML_NODE_TYPE node_type( const struct node *node )
 {
     return node->hdr.node.nodeType;
 }
+
+BOOL move_to_root_element( struct node *, struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_next_element( struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_prev_element( struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_child_element( struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_end_element( struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_parent_element( struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_first_node( struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_next_node( struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_prev_node( struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_bof( struct node *, struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_eof( struct node *, struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_child_node( struct node ** ) DECLSPEC_HIDDEN;
+BOOL move_to_parent_node( struct node ** ) DECLSPEC_HIDDEN;
 
 struct prop_desc
 {
@@ -77,7 +95,7 @@ struct channel
     WS_CHANNEL_BINDING      binding;
     WS_CHANNEL_STATE        state;
     ULONG                   prop_count;
-    struct prop             prop[9];
+    struct prop             prop[50];
 };
 
 HRESULT create_channel( WS_CHANNEL_TYPE, WS_CHANNEL_BINDING, const WS_CHANNEL_PROPERTY *,

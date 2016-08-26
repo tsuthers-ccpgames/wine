@@ -162,7 +162,7 @@ void set_current_mon(HTMLOuterWindow *This, IMoniker *mon, DWORD flags)
         if(SUCCEEDED(hres)) {
             hres = create_uri(url, 0, &uri);
             if(FAILED(hres)) {
-                WARN("CrateUri failed: %08x\n", hres);
+                WARN("CreateUri failed: %08x\n", hres);
                 set_current_uri(This, NULL);
                 This->url = SysAllocString(url);
                 CoTaskMemFree(url);
@@ -876,7 +876,7 @@ static HRESULT WINAPI PersistStreamInit_IsDirty(IPersistStreamInit *iface)
     return S_FALSE;
 }
 
-static HRESULT WINAPI PersistStreamInit_Load(IPersistStreamInit *iface, LPSTREAM pStm)
+static HRESULT WINAPI PersistStreamInit_Load(IPersistStreamInit *iface, IStream *pStm)
 {
     HTMLDocument *This = impl_from_IPersistStreamInit(iface);
     IMoniker *mon;
@@ -900,7 +900,7 @@ static HRESULT WINAPI PersistStreamInit_Load(IPersistStreamInit *iface, LPSTREAM
     return hres;
 }
 
-static HRESULT WINAPI PersistStreamInit_Save(IPersistStreamInit *iface, LPSTREAM pStm,
+static HRESULT WINAPI PersistStreamInit_Save(IPersistStreamInit *iface, IStream *pStm,
                                              BOOL fClearDirty)
 {
     HTMLDocument *This = impl_from_IPersistStreamInit(iface);

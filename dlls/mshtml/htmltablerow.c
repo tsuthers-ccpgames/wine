@@ -451,8 +451,8 @@ static const tid_t HTMLTableRow_iface_tids[] = {
 static dispex_static_data_t HTMLTableRow_dispex = {
     NULL,
     DispHTMLTableRow_tid,
-    NULL,
-    HTMLTableRow_iface_tids
+    HTMLTableRow_iface_tids,
+    HTMLElement_init_dispex_info
 };
 
 HRESULT HTMLTableRow_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)

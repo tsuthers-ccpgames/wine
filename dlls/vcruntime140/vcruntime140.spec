@@ -40,9 +40,9 @@
 @ cdecl __std_exception_destroy(ptr) ucrtbase.__std_exception_destroy
 @ stub __std_terminate
 @ cdecl __std_type_info_compare(ptr ptr) ucrtbase.__std_type_info_compare
-@ stub __std_type_info_destroy_list
+@ cdecl __std_type_info_destroy_list(ptr) ucrtbase.__std_type_info_destroy_list
 @ stub __std_type_info_hash
-@ stub __std_type_info_name
+@ cdecl __std_type_info_name(ptr ptr) ucrtbase.__std_type_info_name
 @ cdecl __telemetry_main_invoke_trigger(ptr)
 @ cdecl __telemetry_main_return_trigger(ptr)
 @ cdecl __unDName(ptr str long ptr ptr long) ucrtbase.__unDName
@@ -69,7 +69,7 @@
 @ stdcall -arch=i386 _seh_longjmp_unwind4(ptr) ucrtbase._seh_longjmp_unwind4
 @ stdcall -arch=i386 _seh_longjmp_unwind(ptr) ucrtbase._seh_longjmp_unwind
 @ cdecl _set_purecall_handler(ptr) ucrtbase._set_purecall_handler
-@ stub _set_se_translator
+@ cdecl _set_se_translator(ptr) ucrtbase._set_se_translator
 @ cdecl -arch=i386 -norelay _setjmp3(ptr long) ucrtbase._setjmp3
 @ cdecl -arch=i386,x86_64,arm longjmp(ptr long) ucrtbase.longjmp
 @ cdecl memchr(ptr long long) ucrtbase.memchr
@@ -77,7 +77,7 @@
 @ cdecl memcpy(ptr ptr long) ucrtbase.memcpy
 @ cdecl memmove(ptr ptr long) ucrtbase.memmove
 @ cdecl memset(ptr long long) ucrtbase.memset
-@ stub set_unexpected
+@ cdecl set_unexpected(ptr) ucrtbase.set_unexpected
 @ cdecl strchr(str long) ucrtbase.strchr
 @ cdecl strrchr(str long) ucrtbase.strrchr
 @ cdecl strstr(str str) ucrtbase.strstr

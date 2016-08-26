@@ -1710,6 +1710,9 @@ WINADVAPI  BOOL        WINAPI ClearEventLogW(HANDLE,LPCWSTR);
 WINADVAPI  BOOL        WINAPI CloseEventLog(HANDLE);
 WINBASEAPI BOOL        WINAPI CloseHandle(HANDLE);
 WINBASEAPI VOID        WINAPI CloseThreadpool(PTP_POOL);
+WINBASEAPI VOID        WINAPI CloseThreadpoolCleanupGroup(PTP_CLEANUP_GROUP);
+WINBASEAPI VOID        WINAPI CloseThreadpoolCleanupGroupMembers(PTP_CLEANUP_GROUP,BOOL,PVOID);
+WINBASEAPI VOID        WINAPI CloseThreadpoolWait(PTP_WAIT);
 WINBASEAPI VOID        WINAPI CloseThreadpoolWork(PTP_WORK);
 WINBASEAPI BOOL        WINAPI CommConfigDialogA(LPCSTR,HWND,LPCOMMCONFIG);
 WINBASEAPI BOOL        WINAPI CommConfigDialogW(LPCWSTR,HWND,LPCOMMCONFIG);
@@ -1775,6 +1778,8 @@ WINADVAPI  BOOL        WINAPI CreatePrivateObjectSecurity(PSECURITY_DESCRIPTOR,P
 WINADVAPI  BOOL        WINAPI CreatePrivateObjectSecurityEx(PSECURITY_DESCRIPTOR,PSECURITY_DESCRIPTOR,PSECURITY_DESCRIPTOR*,GUID*,BOOL,ULONG,HANDLE,PGENERIC_MAPPING);
 WINADVAPI  BOOL        WINAPI CreatePrivateObjectSecurityWithMultipleInheritance(PSECURITY_DESCRIPTOR,PSECURITY_DESCRIPTOR,PSECURITY_DESCRIPTOR*,GUID**,ULONG,BOOL,ULONG,HANDLE,PGENERIC_MAPPING);
 WINBASEAPI PTP_POOL    WINAPI CreateThreadpool(PVOID);
+WINBASEAPI PTP_CLEANUP_GROUP WINAPI CreateThreadpoolCleanupGroup(void);
+WINBASEAPI PTP_WAIT    WINAPI CreateThreadpoolWait(PTP_WAIT_CALLBACK,PVOID,PTP_CALLBACK_ENVIRON);
 WINBASEAPI PTP_WORK    WINAPI CreateThreadpoolWork(PTP_WORK_CALLBACK,PVOID,PTP_CALLBACK_ENVIRON);
 WINBASEAPI BOOL        WINAPI CreateProcessA(LPCSTR,LPSTR,LPSECURITY_ATTRIBUTES,LPSECURITY_ATTRIBUTES,BOOL,DWORD,LPVOID,LPCSTR,LPSTARTUPINFOA,LPPROCESS_INFORMATION);
 WINBASEAPI BOOL        WINAPI CreateProcessW(LPCWSTR,LPWSTR,LPSECURITY_ATTRIBUTES,LPSECURITY_ATTRIBUTES,BOOL,DWORD,LPVOID,LPCWSTR,LPSTARTUPINFOW,LPPROCESS_INFORMATION);
@@ -1814,7 +1819,8 @@ WINBASEAPI BOOL        WINAPI DebugActiveProcessStop(DWORD);
 WINBASEAPI void        WINAPI DebugBreak(void);
 WINBASEAPI BOOL        WINAPI DebugBreakProcess(HANDLE);
 WINBASEAPI BOOL        WINAPI DebugSetProcessKillOnExit(BOOL);
-WINBASEAPI PVOID       WINAPI DecodePointer(PVOID);
+WINBASEAPI void *      WINAPI DecodePointer(void *);
+WINBASEAPI void *      WINAPI DecodeSystemPointer(void *);
 WINADVAPI  BOOL        WINAPI DecryptFileA(LPCSTR,DWORD);
 WINADVAPI  BOOL        WINAPI DecryptFileW(LPCWSTR,DWORD);
 #define                       DecryptFile WINELIB_NAME_AW(DecryptFile)
@@ -1848,7 +1854,8 @@ WINBASEAPI BOOL        WINAPI DuplicateHandle(HANDLE,HANDLE,HANDLE,HANDLE*,DWORD
 WINADVAPI  BOOL        WINAPI DuplicateToken(HANDLE,SECURITY_IMPERSONATION_LEVEL,PHANDLE);
 WINADVAPI  BOOL        WINAPI DuplicateTokenEx(HANDLE,DWORD,LPSECURITY_ATTRIBUTES,SECURITY_IMPERSONATION_LEVEL,TOKEN_TYPE,PHANDLE);
 WINBASEAPI BOOL        WINAPI EscapeCommFunction(HANDLE,UINT);
-WINBASEAPI PVOID       WINAPI EncodePointer(PVOID);
+WINBASEAPI void *      WINAPI EncodePointer(void *);
+WINBASEAPI void *      WINAPI EncodeSystemPointer(void *);
 WINADVAPI  BOOL        WINAPI EncryptFileA(LPCSTR);
 WINADVAPI  BOOL        WINAPI EncryptFileW(LPCWSTR);
 #define                       EncryptFile WINELIB_NAME_AW(EncryptFile)
@@ -2085,6 +2092,7 @@ WINBASEAPI BOOL        WINAPI GetLogicalProcessorInformation(PSYSTEM_LOGICAL_PRO
 WINBASEAPI BOOL        WINAPI GetLogicalProcessorInformationEx(LOGICAL_PROCESSOR_RELATIONSHIP,PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,PDWORD);
 WINBASEAPI DWORD       WINAPI GetProcessHeaps(DWORD,PHANDLE);
 WINBASEAPI DWORD       WINAPI GetProcessId(HANDLE);
+WINBASEAPI DWORD       WINAPI GetProcessIdOfThread(HANDLE);
 WINBASEAPI BOOL        WINAPI GetProcessIoCounters(HANDLE,PIO_COUNTERS);
 WINBASEAPI BOOL        WINAPI GetProcessPriorityBoost(HANDLE,PBOOL);
 WINBASEAPI BOOL        WINAPI GetProcessShutdownParameters(LPDWORD,LPDWORD);
@@ -2509,6 +2517,7 @@ WINBASEAPI DWORD       WINAPI SetThreadIdealProcessor(HANDLE,DWORD);
 WINBASEAPI BOOL        WINAPI SetThreadPriority(HANDLE,INT);
 WINBASEAPI BOOL        WINAPI SetThreadPriorityBoost(HANDLE,BOOL);
 WINADVAPI  BOOL        WINAPI SetThreadToken(PHANDLE,HANDLE);
+WINBASEAPI VOID        WINAPI SetThreadpoolWait(PTP_WAIT,HANDLE,FILETIME *);
 WINBASEAPI HANDLE      WINAPI SetTimerQueueTimer(HANDLE,WAITORTIMERCALLBACK,PVOID,DWORD,DWORD,BOOL);
 WINBASEAPI BOOL        WINAPI SetTimeZoneInformation(const TIME_ZONE_INFORMATION *);
 WINADVAPI  BOOL        WINAPI SetTokenInformation(HANDLE,TOKEN_INFORMATION_CLASS,LPVOID,DWORD);
@@ -2903,13 +2912,19 @@ static FORCEINLINE LONG WINAPI InterlockedDecrement( LONG volatile *dest )
 
 /* A few optimizations for gcc */
 
-#if defined(__GNUC__) && !defined(__MINGW32__) && (defined(__i386__) || (defined(__x86_64__) && !defined(__APPLE__))) && ((__GNUC__ > 3) || ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 2)))
+#if defined(__GNUC__) && !defined(__MINGW32__) && (defined(__i386__) || defined(__x86_64__)) && ((__GNUC__ > 3) || ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 2)))
 
 static FORCEINLINE DWORD WINAPI GetLastError(void)
 {
     DWORD ret;
 #ifdef __x86_64__
+#ifdef __APPLE__
+    DWORD* teb;
+    __asm__ __volatile__( ".byte 0x65\n\tmovq 0x30,%0" : "=r" (teb) );
+    ret = teb[0x68 / sizeof(DWORD)];
+#else
     __asm__ __volatile__( ".byte 0x65\n\tmovl 0x68,%0" : "=r" (ret) );
+#endif
 #else
     __asm__ __volatile__( ".byte 0x64\n\tmovl 0x34,%0" : "=r" (ret) );
 #endif
@@ -2920,7 +2935,13 @@ static FORCEINLINE DWORD WINAPI GetCurrentProcessId(void)
 {
     DWORD ret;
 #ifdef __x86_64__
+#ifdef __APPLE__
+    DWORD* teb;
+    __asm__ __volatile__( ".byte 0x65\n\tmovq 0x30,%0" : "=r" (teb) );
+    ret = teb[0x40 / sizeof(DWORD)];
+#else
     __asm__ __volatile__( ".byte 0x65\n\tmovl 0x40,%0" : "=r" (ret) );
+#endif
 #else
     __asm__ __volatile__( ".byte 0x64\n\tmovl 0x20,%0" : "=r" (ret) );
 #endif
@@ -2931,7 +2952,13 @@ static FORCEINLINE DWORD WINAPI GetCurrentThreadId(void)
 {
     DWORD ret;
 #ifdef __x86_64__
+#ifdef __APPLE__
+    DWORD* teb;
+    __asm__ __volatile__( ".byte 0x65\n\tmovq 0x30,%0" : "=r" (teb) );
+    ret = teb[0x48 / sizeof(DWORD)];
+#else
     __asm__ __volatile__( ".byte 0x65\n\tmovl 0x48,%0" : "=r" (ret) );
+#endif
 #else
     __asm__ __volatile__( ".byte 0x64\n\tmovl 0x24,%0" : "=r" (ret) );
 #endif
@@ -2941,7 +2968,13 @@ static FORCEINLINE DWORD WINAPI GetCurrentThreadId(void)
 static FORCEINLINE void WINAPI SetLastError( DWORD err )
 {
 #ifdef __x86_64__
+#ifdef __APPLE__
+    DWORD* teb;
+    __asm__ __volatile__( ".byte 0x65\n\tmovq 0x30,%0" : "=r" (teb) );
+    teb[0x68 / sizeof(DWORD)] = err;
+#else
     __asm__ __volatile__( ".byte 0x65\n\tmovl %0,0x68" : : "r" (err) : "memory" );
+#endif
 #else
     __asm__ __volatile__( ".byte 0x64\n\tmovl %0,0x34" : : "r" (err) : "memory" );
 #endif
@@ -2951,7 +2984,13 @@ static FORCEINLINE HANDLE WINAPI GetProcessHeap(void)
 {
     HANDLE *pdb;
 #ifdef __x86_64__
+#ifdef __APPLE__
+    HANDLE** teb;
+    __asm__ __volatile__( ".byte 0x65\n\tmovq 0x30,%0" : "=r" (teb) );
+    pdb = teb[0x60 / sizeof(HANDLE*)];
+#else
     __asm__ __volatile__( ".byte 0x65\n\tmovq 0x60,%0" : "=r" (pdb) );
+#endif
     return pdb[0x30 / sizeof(HANDLE)];  /* get dword at offset 0x30 in pdb */
 #else
     __asm__ __volatile__( ".byte 0x64\n\tmovl 0x30,%0" : "=r" (pdb) );

@@ -217,6 +217,8 @@ static void release_outer_window(HTMLOuterWindow *This)
 
     if(This->nswindow)
         nsIDOMWindow_Release(This->nswindow);
+    if(This->window_proxy)
+        mozIDOMWindowProxy_Release(This->window_proxy);
 
     list_remove(&This->entry);
     heap_free(This);
@@ -333,7 +335,7 @@ static HRESULT WINAPI HTMLWindow2_Invoke(IHTMLWindow2 *iface, DISPID dispIdMembe
 static HRESULT get_frame_by_index(HTMLOuterWindow *This, UINT32 index, HTMLOuterWindow **ret)
 {
     nsIDOMWindowCollection *nsframes;
-    nsIDOMWindow *nswindow;
+    mozIDOMWindowProxy *mozwindow;
     UINT32 length;
     nsresult nsres;
 
@@ -351,16 +353,16 @@ static HRESULT get_frame_by_index(HTMLOuterWindow *This, UINT32 index, HTMLOuter
         return DISP_E_MEMBERNOTFOUND;
     }
 
-    nsres = nsIDOMWindowCollection_Item(nsframes, index, &nswindow);
+    nsres = nsIDOMWindowCollection_Item(nsframes, index, &mozwindow);
     nsIDOMWindowCollection_Release(nsframes);
     if(NS_FAILED(nsres)) {
         FIXME("nsIDOMWindowCollection_Item failed: 0x%08x\n", nsres);
         return E_FAIL;
     }
 
-    *ret = nswindow_to_window(nswindow);
+    *ret = mozwindow_to_window(mozwindow);
 
-    nsIDOMWindow_Release(nswindow);
+    mozIDOMWindowProxy_Release(mozwindow);
     return S_OK;
 }
 
@@ -368,7 +370,7 @@ HRESULT get_frame_by_name(HTMLOuterWindow *This, const WCHAR *name, BOOL deep, H
 {
     nsIDOMWindowCollection *nsframes;
     HTMLOuterWindow *window = NULL;
-    nsIDOMWindow *nswindow;
+    mozIDOMWindowProxy *mozwindow;
     nsAString name_str;
     UINT32 length, i;
     nsresult nsres;
@@ -386,15 +388,15 @@ HRESULT get_frame_by_name(HTMLOuterWindow *This, const WCHAR *name, BOOL deep, H
     }
 
     nsAString_InitDepend(&name_str, name);
-    nsres = nsIDOMWindowCollection_NamedItem(nsframes, &name_str, &nswindow);
+    nsres = nsIDOMWindowCollection_NamedItem(nsframes, &name_str, &mozwindow);
     nsAString_Finish(&name_str);
     if(NS_FAILED(nsres)) {
         nsIDOMWindowCollection_Release(nsframes);
         return E_FAIL;
     }
 
-    if(nswindow) {
-        *ret = nswindow_to_window(nswindow);
+    if(mozwindow) {
+        *ret = mozwindow_to_window(mozwindow);
         return S_OK;
     }
 
@@ -405,19 +407,19 @@ HRESULT get_frame_by_name(HTMLOuterWindow *This, const WCHAR *name, BOOL deep, H
         HTMLOuterWindow *window_iter;
         BSTR id;
 
-        nsres = nsIDOMWindowCollection_Item(nsframes, i, &nswindow);
+        nsres = nsIDOMWindowCollection_Item(nsframes, i, &mozwindow);
         if(NS_FAILED(nsres)) {
             FIXME("nsIDOMWindowCollection_Item failed: 0x%08x\n", nsres);
             hres = E_FAIL;
             break;
         }
 
-        window_iter = nswindow_to_window(nswindow);
+        window_iter = mozwindow_to_window(mozwindow);
 
-        nsIDOMWindow_Release(nswindow);
+        mozIDOMWindowProxy_Release(mozwindow);
 
         if(!window_iter) {
-            WARN("nsIDOMWindow without HTMLOuterWindow: %p\n", nswindow);
+            WARN("nsIDOMWindow without HTMLOuterWindow: %p\n", mozwindow);
             continue;
         }
 
@@ -1128,15 +1130,19 @@ static HRESULT WINAPI HTMLWindow2_get_onbeforeunload(IHTMLWindow2 *iface, VARIAN
 static HRESULT WINAPI HTMLWindow2_put_onunload(IHTMLWindow2 *iface, VARIANT v)
 {
     HTMLWindow *This = impl_from_IHTMLWindow2(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_variant(&v));
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%s)\n", This, debugstr_variant(&v));
+
+    return set_window_event(This, EVENTID_UNLOAD, &v);
 }
 
 static HRESULT WINAPI HTMLWindow2_get_onunload(IHTMLWindow2 *iface, VARIANT *p)
 {
     HTMLWindow *This = impl_from_IHTMLWindow2(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    return get_window_event(This, EVENTID_UNLOAD, p);
 }
 
 static HRESULT WINAPI HTMLWindow2_put_onhelp(IHTMLWindow2 *iface, VARIANT v)
@@ -1455,7 +1461,7 @@ static HRESULT WINAPI HTMLWindow2_moveBy(IHTMLWindow2 *iface, LONG x, LONG y)
 {
     HTMLWindow *This = impl_from_IHTMLWindow2(iface);
     FIXME("(%p)->(%d %d)\n", This, x, y);
-    return E_NOTIMPL;
+    return S_FALSE;
 }
 
 static HRESULT WINAPI HTMLWindow2_resizeTo(IHTMLWindow2 *iface, LONG x, LONG y)
@@ -1469,7 +1475,7 @@ static HRESULT WINAPI HTMLWindow2_resizeBy(IHTMLWindow2 *iface, LONG x, LONG y)
 {
     HTMLWindow *This = impl_from_IHTMLWindow2(iface);
     FIXME("(%p)->(%d %d)\n", This, x, y);
-    return E_NOTIMPL;
+    return S_FALSE;
 }
 
 static HRESULT WINAPI HTMLWindow2_get_external(IHTMLWindow2 *iface, IDispatch **p)
@@ -2927,7 +2933,12 @@ static event_target_t **HTMLWindow_get_event_target_ptr(DispatchEx *dispex)
 static void HTMLWindow_bind_event(DispatchEx *dispex, int eid)
 {
     HTMLInnerWindow *This = impl_from_DispatchEx(dispex);
-    This->doc->node.event_target.dispex.data->vtbl->bind_event(&This->doc->node.event_target.dispex, eid);
+    dispex_get_vtbl(&This->doc->node.event_target.dispex)->bind_event(&This->doc->node.event_target.dispex, eid);
+}
+
+static void HTMLWindow_init_dispex_info(dispex_data_t *info, compat_mode_t compat_mode)
+{
+    dispex_info_add_interface(info, IHTMLWindow5_tid);
 }
 
 static const dispex_static_data_vtbl_t HTMLWindow_dispex_vtbl = {
@@ -2950,9 +2961,8 @@ static const tid_t HTMLWindow_iface_tids[] = {
 static dispex_static_data_t HTMLWindow_dispex = {
     &HTMLWindow_dispex_vtbl,
     DispHTMLWindow2_tid,
-    NULL,
     HTMLWindow_iface_tids,
-    IHTMLWindow5_tid
+    HTMLWindow_init_dispex_info
 };
 
 static void *alloc_window(size_t size)
@@ -3031,8 +3041,13 @@ HRESULT HTMLOuterWindow_Create(HTMLDocumentObj *doc_obj, nsIDOMWindow *nswindow,
     window->window_ref->ref = 1;
 
     if(nswindow) {
+        nsresult nsres;
+
         nsIDOMWindow_AddRef(nswindow);
         window->nswindow = nswindow;
+
+        nsres = nsIDOMWindow_QueryInterface(nswindow, &IID_mozIDOMWindowProxy, (void**)&window->window_proxy);
+        assert(nsres == NS_OK);
     }
 
     window->scriptmode = parent ? parent->scriptmode : SCRIPTMODE_GECKO;
@@ -3160,12 +3175,12 @@ HRESULT update_window_doc(HTMLInnerWindow *window)
     return hres;
 }
 
-HTMLOuterWindow *nswindow_to_window(const nsIDOMWindow *nswindow)
+HTMLOuterWindow *mozwindow_to_window(const mozIDOMWindowProxy *mozwindow)
 {
     HTMLOuterWindow *iter;
 
     LIST_FOR_EACH_ENTRY(iter, &window_list, HTMLOuterWindow, entry) {
-        if(iter->nswindow == nswindow)
+        if(iter->window_proxy == mozwindow)
             return iter;
     }
 

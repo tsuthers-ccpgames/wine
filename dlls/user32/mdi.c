@@ -370,17 +370,6 @@ static LRESULT MDISetMenu( HWND hwnd, HMENU hmenuFrame,
             return (LRESULT)oldFrameMenu;
         }
     }
-    else
-    {
-        /* SetMenu() may already have been called, meaning that this window
-         * already has its menu. But they may have done a SetMenu() on
-         * an MDI window, and called MDISetMenu() after the fact, meaning
-         * that the "if" to this "else" wouldn't catch the need to
-         * augment the frame menu.
-         */
-        if( ci->hwndChildMaximized )
-            MDI_AugmentFrameMenu( hwndFrame, ci->hwndChildMaximized );
-    }
 
     return 0;
 }
@@ -1054,12 +1043,7 @@ LRESULT MDIClientWndProc_common( HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 
     if (!(ci = get_client_info( hwnd )))
     {
-        if (message == WM_NCCREATE)
-        {
-            WND *wndPtr = WIN_GetPtr( hwnd );
-            wndPtr->flags |= WIN_ISMDICLIENT;
-            WIN_ReleasePtr( wndPtr );
-        }
+        if (message == WM_NCCREATE) win_set_flags( hwnd, WIN_ISMDICLIENT, 0 );
         return unicode ? DefWindowProcW( hwnd, message, wParam, lParam ) :
                          DefWindowProcA( hwnd, message, wParam, lParam );
     }
@@ -1249,10 +1233,7 @@ LRESULT MDIClientWndProc_common( HWND hwnd, UINT message, WPARAM wParam, LPARAM 
 	{
 	    RECT	rect;
 
-	    rect.left = 0;
-	    rect.top = 0;
-	    rect.right = LOWORD(lParam);
-	    rect.bottom = HIWORD(lParam);
+            SetRect(&rect, 0, 0, LOWORD(lParam), HIWORD(lParam));
 	    AdjustWindowRectEx(&rect, GetWindowLongA(ci->hwndActiveChild, GWL_STYLE),
                                0, GetWindowLongA(ci->hwndActiveChild, GWL_EXSTYLE) );
 	    MoveWindow(ci->hwndActiveChild, rect.left, rect.top,

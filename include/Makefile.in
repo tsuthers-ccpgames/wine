@@ -36,11 +36,13 @@ IDL_SRCS = \
 	d2d1.idl \
 	d3d10.idl \
 	d3d10_1.idl \
+	d3d10sdklayers.idl \
 	d3d11.idl \
 	d3d11_1.idl \
 	d3d11sdklayers.idl \
 	d3dcommon.idl \
 	d3dx10core.idl \
+	d3dx11core.idl \
 	dbccmd.idl \
 	dbcses.idl \
 	dbdsad.idl \
@@ -254,7 +256,11 @@ HEADER_SRCS = \
 	d3dvec.inl \
 	d3dx10.h \
 	d3dx10async.h \
+	d3dx10math.h \
 	d3dx10tex.h \
+	d3dx11.h \
+	d3dx11async.h \
+	d3dx11tex.h \
 	d3dx9.h \
 	d3dx9anim.h \
 	d3dx9core.h \
@@ -467,6 +473,7 @@ HEADER_SRCS = \
 	msvcrt/errno.h \
 	msvcrt/fcntl.h \
 	msvcrt/float.h \
+	msvcrt/fpieee.h \
 	msvcrt/io.h \
 	msvcrt/limits.h \
 	msvcrt/locale.h \
@@ -499,6 +506,7 @@ HEADER_SRCS = \
 	msxml6did.h \
 	msxmldid.h \
 	nb30.h \
+	ncrypt.h \
 	ndrtypes.h \
 	netioapi.h \
 	nldef.h \
@@ -666,6 +674,7 @@ HEADER_SRCS = \
 	winver.h \
 	wlanapi.h \
 	wmistr.h \
+	wmium.h \
 	wnaspi32.h \
 	wownt32.h \
 	ws2def.h \

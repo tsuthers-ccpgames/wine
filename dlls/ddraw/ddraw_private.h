@@ -60,7 +60,8 @@ struct FvfToDecl
 #define DDRAW_STRIDE_ALIGNMENT  8
 
 #define DDRAW_WINED3D_FLAGS     (WINED3D_LEGACY_DEPTH_BIAS | WINED3D_VIDMEM_ACCOUNTING \
-        | WINED3D_RESTORE_MODE_ON_ACTIVATE | WINED3D_FOCUS_MESSAGES | WINED3D_PIXEL_CENTER_INTEGER)
+        | WINED3D_RESTORE_MODE_ON_ACTIVATE | WINED3D_FOCUS_MESSAGES | WINED3D_PIXEL_CENTER_INTEGER \
+        | WINED3D_LEGACY_UNBOUND_RESOURCE_COLOR)
 
 enum ddraw_device_state
 {
@@ -179,7 +180,7 @@ struct ddraw_surface
      */
 #define MAX_COMPLEX_ATTACHED 6
     struct ddraw_surface *complex_array[MAX_COMPLEX_ATTACHED];
-    /* You can't traverse the tree upwards. Only a flag for Surface::Release because its needed there,
+    /* You can't traverse the tree upwards. Only a flag for Surface::Release because it's needed there,
      * but no pointer to prevent temptations to traverse it in the wrong direction.
      */
     BOOL                    is_complex_root;

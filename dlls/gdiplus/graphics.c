@@ -51,9 +51,6 @@ static GpStatus draw_driver_string(GpGraphics *graphics, GDIPCONST UINT16 *text,
                                    GDIPCONST GpBrush *brush, GDIPCONST PointF *positions,
                                    INT flags, GDIPCONST GpMatrix *matrix);
 
-static GpStatus get_graphics_transform(GpGraphics *graphics, GpCoordinateSpace dst_space,
-        GpCoordinateSpace src_space, GpMatrix *matrix);
-
 /* Converts from gdiplus path point type to gdi path point type. */
 static BYTE convert_path_point_type(BYTE type)
 {
@@ -661,7 +658,7 @@ static BOOL color_is_gray(ARGB color)
 }
 
 /* returns preferred pixel format for the applied attributes */
-static PixelFormat apply_image_attributes(const GpImageAttributes *attributes, LPBYTE data,
+PixelFormat apply_image_attributes(const GpImageAttributes *attributes, LPBYTE data,
     UINT width, UINT height, INT stride, ColorAdjustType type, PixelFormat fmt)
 {
     UINT x, y;
@@ -1924,9 +1921,15 @@ GpStatus trace_path(GpGraphics *graphics, GpPath *path)
     return result;
 }
 
+typedef enum GraphicsContainerType {
+    BEGIN_CONTAINER,
+    SAVE_GRAPHICS
+} GraphicsContainerType;
+
 typedef struct _GraphicsContainerItem {
     struct list entry;
     GraphicsContainer contid;
+    GraphicsContainerType type;
 
     SmoothingMode smoothing;
     CompositingQuality compqual;
@@ -1943,7 +1946,7 @@ typedef struct _GraphicsContainerItem {
 } GraphicsContainerItem;
 
 static GpStatus init_container(GraphicsContainerItem** container,
-        GDIPCONST GpGraphics* graphics){
+        GDIPCONST GpGraphics* graphics, GraphicsContainerType type){
     GpStatus sts;
 
     *container = heap_alloc_zero(sizeof(GraphicsContainerItem));
@@ -1951,6 +1954,7 @@ static GpStatus init_container(GraphicsContainerItem** container,
         return OutOfMemory;
 
     (*container)->contid = graphics->contid + 1;
+    (*container)->type = type;
 
     (*container)->smoothing = graphics->smoothing;
     (*container)->compqual = graphics->compqual;
@@ -2897,23 +2901,7 @@ GpStatus WINGDIPAPI GdipDrawImagePointsRect(GpGraphics *graphics, GpImage *image
     srcheight = units_to_pixels(srcheight, srcUnit, image->yres);
     TRACE("src pixels: %f,%f %fx%f\n", srcx, srcy, srcwidth, srcheight);
 
-    if (image->picture)
-    {
-        if (!graphics->hdc)
-        {
-            FIXME("graphics object has no HDC\n");
-        }
-
-        if(IPicture_Render(image->picture, graphics->hdc,
-            pti[0].x, pti[0].y, pti[1].x - pti[0].x, pti[2].y - pti[0].y,
-            srcx, srcy, srcwidth, srcheight, NULL) != S_OK)
-        {
-            if(callback)
-                callback(callbackData);
-            return GenericError;
-        }
-    }
-    else if (image->type == ImageTypeBitmap)
+    if (image->type == ImageTypeBitmap)
     {
         GpBitmap* bitmap = (GpBitmap*)image;
         BOOL do_resampling = FALSE;
@@ -4297,6 +4285,7 @@ GpStatus WINGDIPAPI GdipGetVisibleClipBounds(GpGraphics *graphics, GpRectF *rect
 {
     GpRegion *clip_rgn;
     GpStatus stat;
+    GpMatrix device_to_world;
 
     TRACE("(%p, %p)\n", graphics, rect);
 
@@ -4311,6 +4300,13 @@ GpStatus WINGDIPAPI GdipGetVisibleClipBounds(GpGraphics *graphics, GpRectF *rect
         return stat;
 
     if((stat = get_visible_clip_region(graphics, clip_rgn)) != Ok)
+        goto cleanup;
+
+    /* transform to world coordinates */
+    if((stat = get_graphics_transform(graphics, CoordinateSpaceWorld, CoordinateSpaceDevice, &device_to_world)) != Ok)
+        goto cleanup;
+
+    if((stat = GdipTransformRegion(clip_rgn, &device_to_world)) != Ok)
         goto cleanup;
 
     /* get bounds of the region */
@@ -4371,10 +4367,13 @@ GpStatus WINGDIPAPI GdipGraphicsClear(GpGraphics *graphics, ARGB color)
     if(graphics->busy)
         return ObjectBusy;
 
+    if (graphics->image && graphics->image->type == ImageTypeMetafile)
+        return METAFILE_GraphicsClear((GpMetafile*)graphics->image, color);
+
     if((stat = GdipCreateSolidFill(color, &brush)) != Ok)
         return stat;
 
-    if((stat = get_graphics_bounds(graphics, &wnd_rect)) != Ok){
+    if((stat = GdipGetVisibleClipBounds(graphics, &wnd_rect)) != Ok){
         GdipDeleteBrush((GpBrush*)brush);
         return stat;
     }
@@ -5117,6 +5116,8 @@ GpStatus WINGDIPAPI GdipResetClip(GpGraphics *graphics)
 
 GpStatus WINGDIPAPI GdipResetWorldTransform(GpGraphics *graphics)
 {
+    GpStatus stat;
+
     TRACE("(%p)\n", graphics);
 
     if(!graphics)
@@ -5125,17 +5126,21 @@ GpStatus WINGDIPAPI GdipResetWorldTransform(GpGraphics *graphics)
     if(graphics->busy)
         return ObjectBusy;
 
-    return GdipSetMatrixElements(&graphics->worldtrans, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
-}
+    if (graphics->image && graphics->image->type == ImageTypeMetafile) {
+        stat = METAFILE_ResetWorldTransform((GpMetafile*)graphics->image);
 
-GpStatus WINGDIPAPI GdipRestoreGraphics(GpGraphics *graphics, GraphicsState state)
-{
-    return GdipEndContainer(graphics, state);
+        if (stat != Ok)
+            return stat;
+    }
+
+    return GdipSetMatrixElements(&graphics->worldtrans, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
 }
 
 GpStatus WINGDIPAPI GdipRotateWorldTransform(GpGraphics *graphics, REAL angle,
     GpMatrixOrder order)
 {
+    GpStatus stat;
+
     TRACE("(%p, %.2f, %d)\n", graphics, angle, order);
 
     if(!graphics)
@@ -5144,33 +5149,53 @@ GpStatus WINGDIPAPI GdipRotateWorldTransform(GpGraphics *graphics, REAL angle,
     if(graphics->busy)
         return ObjectBusy;
 
+    if (graphics->image && graphics->image->type == ImageTypeMetafile) {
+        stat = METAFILE_RotateWorldTransform((GpMetafile*)graphics->image, angle, order);
+
+        if (stat != Ok)
+            return stat;
+    }
+
     return GdipRotateMatrix(&graphics->worldtrans, angle, order);
 }
 
-GpStatus WINGDIPAPI GdipSaveGraphics(GpGraphics *graphics, GraphicsState *state)
-{
-    return GdipBeginContainer2(graphics, state);
-}
-
-GpStatus WINGDIPAPI GdipBeginContainer2(GpGraphics *graphics,
-        GraphicsContainer *state)
+static GpStatus begin_container(GpGraphics *graphics,
+    GraphicsContainerType type, GraphicsContainer *state)
 {
     GraphicsContainerItem *container;
     GpStatus sts;
 
-    TRACE("(%p, %p)\n", graphics, state);
-
     if(!graphics || !state)
         return InvalidParameter;
 
-    sts = init_container(&container, graphics);
+    sts = init_container(&container, graphics, type);
     if(sts != Ok)
         return sts;
 
     list_add_head(&graphics->containers, &container->entry);
     *state = graphics->contid = container->contid;
 
+    if (graphics->image && graphics->image->type == ImageTypeMetafile) {
+        if (type == BEGIN_CONTAINER)
+            METAFILE_BeginContainerNoParams((GpMetafile*)graphics->image, container->contid);
+        else
+            METAFILE_SaveGraphics((GpMetafile*)graphics->image, container->contid);
+    }
+
     return Ok;
+}
+
+GpStatus WINGDIPAPI GdipSaveGraphics(GpGraphics *graphics, GraphicsState *state)
+{
+    TRACE("(%p, %p)\n", graphics, state);
+    return begin_container(graphics, SAVE_GRAPHICS, state);
+}
+
+GpStatus WINGDIPAPI GdipBeginContainer2(GpGraphics *graphics,
+        GraphicsContainer *state)
+{
+    TRACE("(%p, %p)\n", graphics, state);
+    return begin_container(graphics, BEGIN_CONTAINER, state);
 }
 
 GpStatus WINGDIPAPI GdipBeginContainer(GpGraphics *graphics, GDIPCONST GpRectF *dstrect, GDIPCONST GpRectF *srcrect, GpUnit unit, GraphicsContainer *state)
@@ -5191,18 +5216,17 @@ GpStatus WINGDIPAPI GdipComment(GpGraphics *graphics, UINT sizeData, GDIPCONST B
     return NotImplemented;
 }
 
-GpStatus WINGDIPAPI GdipEndContainer(GpGraphics *graphics, GraphicsContainer state)
+static GpStatus end_container(GpGraphics *graphics, GraphicsContainerType type,
+    GraphicsContainer state)
 {
     GpStatus sts;
     GraphicsContainerItem *container, *container2;
-
-    TRACE("(%p, %x)\n", graphics, state);
 
     if(!graphics)
         return InvalidParameter;
 
     LIST_FOR_EACH_ENTRY(container, &graphics->containers, GraphicsContainerItem, entry){
-        if(container->contid == state)
+        if(container->contid == state && container->type == type)
             break;
     }
 
@@ -5225,12 +5249,33 @@ GpStatus WINGDIPAPI GdipEndContainer(GpGraphics *graphics, GraphicsContainer sta
     list_remove(&container->entry);
     delete_container(container);
 
+    if (graphics->image && graphics->image->type == ImageTypeMetafile) {
+        if (type == BEGIN_CONTAINER)
+            METAFILE_EndContainer((GpMetafile*)graphics->image, state);
+        else
+            METAFILE_RestoreGraphics((GpMetafile*)graphics->image, state);
+    }
+
     return Ok;
+}
+
+GpStatus WINGDIPAPI GdipEndContainer(GpGraphics *graphics, GraphicsContainer state)
+{
+    TRACE("(%p, %x)\n", graphics, state);
+    return end_container(graphics, BEGIN_CONTAINER, state);
+}
+
+GpStatus WINGDIPAPI GdipRestoreGraphics(GpGraphics *graphics, GraphicsState state)
+{
+    TRACE("(%p, %x)\n", graphics, state);
+    return end_container(graphics, SAVE_GRAPHICS, state);
 }
 
 GpStatus WINGDIPAPI GdipScaleWorldTransform(GpGraphics *graphics, REAL sx,
     REAL sy, GpMatrixOrder order)
 {
+    GpStatus stat;
+
     TRACE("(%p, %.2f, %.2f, %d)\n", graphics, sx, sy, order);
 
     if(!graphics)
@@ -5238,6 +5283,13 @@ GpStatus WINGDIPAPI GdipScaleWorldTransform(GpGraphics *graphics, REAL sx,
 
     if(graphics->busy)
         return ObjectBusy;
+
+    if (graphics->image && graphics->image->type == ImageTypeMetafile) {
+        stat = METAFILE_ScaleWorldTransform((GpMetafile*)graphics->image, sx, sy, order);
+
+        if (stat != Ok)
+            return stat;
+    }
 
     return GdipScaleMatrix(&graphics->worldtrans, sx, sy, order);
 }
@@ -5450,6 +5502,8 @@ GpStatus WINGDIPAPI GdipSetTextRenderingHint(GpGraphics *graphics,
 
 GpStatus WINGDIPAPI GdipSetWorldTransform(GpGraphics *graphics, GpMatrix *matrix)
 {
+    GpStatus stat;
+
     TRACE("(%p, %p)\n", graphics, matrix);
 
     if(!graphics || !matrix)
@@ -5462,6 +5516,13 @@ GpStatus WINGDIPAPI GdipSetWorldTransform(GpGraphics *graphics, GpMatrix *matrix
           matrix->matrix[0], matrix->matrix[1], matrix->matrix[2],
           matrix->matrix[3], matrix->matrix[4], matrix->matrix[5]);
 
+    if (graphics->image && graphics->image->type == ImageTypeMetafile) {
+        stat = METAFILE_SetWorldTransform((GpMetafile*)graphics->image, matrix);
+
+        if (stat != Ok)
+            return stat;
+    }
+
     graphics->worldtrans = *matrix;
 
     return Ok;
@@ -5470,6 +5531,8 @@ GpStatus WINGDIPAPI GdipSetWorldTransform(GpGraphics *graphics, GpMatrix *matrix
 GpStatus WINGDIPAPI GdipTranslateWorldTransform(GpGraphics *graphics, REAL dx,
     REAL dy, GpMatrixOrder order)
 {
+    GpStatus stat;
+
     TRACE("(%p, %.2f, %.2f, %d)\n", graphics, dx, dy, order);
 
     if(!graphics)
@@ -5477,6 +5540,13 @@ GpStatus WINGDIPAPI GdipTranslateWorldTransform(GpGraphics *graphics, REAL dx,
 
     if(graphics->busy)
         return ObjectBusy;
+
+    if (graphics->image && graphics->image->type == ImageTypeMetafile) {
+        stat = METAFILE_TranslateWorldTransform((GpMetafile*)graphics->image, dx, dy, order);
+
+        if (stat != Ok)
+            return stat;
+    }
 
     return GdipTranslateMatrix(&graphics->worldtrans, dx, dy, order);
 }
@@ -5552,6 +5622,13 @@ GpStatus WINGDIPAPI GdipSetClipRect(GpGraphics *graphics, REAL x, REAL y,
 
     if(graphics->busy)
         return ObjectBusy;
+
+    if (graphics->image && graphics->image->type == ImageTypeMetafile)
+    {
+        status = METAFILE_SetClipRect((GpMetafile*)graphics->image, x, y, width, height, mode);
+        if (status != Ok)
+            return status;
+    }
 
     rect.X = x;
     rect.Y = y;
@@ -5714,6 +5791,13 @@ GpStatus WINGDIPAPI GdipMultiplyWorldTransform(GpGraphics *graphics, GDIPCONST G
 
     if(graphics->busy)
         return ObjectBusy;
+
+    if (graphics->image && graphics->image->type == ImageTypeMetafile) {
+        ret = METAFILE_MultiplyWorldTransform((GpMetafile*)graphics->image, matrix, order);
+
+        if (ret != Ok)
+            return ret;
+    }
 
     m = graphics->worldtrans;
 
@@ -5887,7 +5971,7 @@ GpStatus WINGDIPAPI GdipGetClip(GpGraphics *graphics, GpRegion *region)
     return Ok;
 }
 
-static GpStatus get_graphics_transform(GpGraphics *graphics, GpCoordinateSpace dst_space,
+GpStatus get_graphics_transform(GpGraphics *graphics, GpCoordinateSpace dst_space,
         GpCoordinateSpace src_space, GpMatrix *matrix)
 {
     GpStatus stat = Ok;

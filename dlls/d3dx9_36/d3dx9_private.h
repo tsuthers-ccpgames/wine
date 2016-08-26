@@ -108,6 +108,13 @@ const char *debug_d3dxparameter_registerset(D3DXREGISTER_SET r) DECLSPEC_HIDDEN;
 void set_number(void *outdata, D3DXPARAMETER_TYPE outtype,
         const void *indata, D3DXPARAMETER_TYPE intype) DECLSPEC_HIDDEN;
 
+static inline BOOL is_param_type_sampler(D3DXPARAMETER_TYPE type)
+{
+    return type == D3DXPT_SAMPLER
+            || type == D3DXPT_SAMPLER1D || type == D3DXPT_SAMPLER2D
+            || type == D3DXPT_SAMPLER3D || type == D3DXPT_SAMPLERCUBE;
+}
+
 struct d3dx_parameter;
 
 enum pres_reg_tables
@@ -122,14 +129,23 @@ enum pres_reg_tables
     PRES_REGTAB_FIRST_SHADER = PRES_REGTAB_CONST,
 };
 
+struct d3dx_const_param_eval_output
+{
+    struct d3dx_parameter *param;
+    unsigned int table;
+    enum D3DXPARAMETER_CLASS constant_class;
+    unsigned int register_index;
+    unsigned int register_count;
+};
+
 struct d3dx_const_tab
 {
     unsigned int input_count;
     D3DXCONSTANT_DESC *inputs;
     struct d3dx_parameter **inputs_param;
-    ID3DXConstantTable *ctab;
-    /* TODO: do not keep input constant structure
-       (use it only at the parse stage) */
+    unsigned int const_set_count;
+    unsigned int const_set_size;
+    struct d3dx_const_param_eval_output *const_set;
     const enum pres_reg_tables *regset2table;
 };
 

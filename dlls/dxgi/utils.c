@@ -137,10 +137,14 @@ const char *debug_dxgi_format(DXGI_FORMAT format)
         WINE_DXGI_TO_STR(DXGI_FORMAT_B5G5R5A1_UNORM);
         WINE_DXGI_TO_STR(DXGI_FORMAT_B8G8R8A8_UNORM);
         WINE_DXGI_TO_STR(DXGI_FORMAT_B8G8R8X8_UNORM);
+        WINE_DXGI_TO_STR(DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM);
         WINE_DXGI_TO_STR(DXGI_FORMAT_B8G8R8A8_TYPELESS);
         WINE_DXGI_TO_STR(DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
         WINE_DXGI_TO_STR(DXGI_FORMAT_B8G8R8X8_TYPELESS);
         WINE_DXGI_TO_STR(DXGI_FORMAT_B8G8R8X8_UNORM_SRGB);
+        WINE_DXGI_TO_STR(DXGI_FORMAT_BC6H_TYPELESS);
+        WINE_DXGI_TO_STR(DXGI_FORMAT_BC6H_UF16);
+        WINE_DXGI_TO_STR(DXGI_FORMAT_BC6H_SF16);
         WINE_DXGI_TO_STR(DXGI_FORMAT_BC7_TYPELESS);
         WINE_DXGI_TO_STR(DXGI_FORMAT_BC7_UNORM);
         WINE_DXGI_TO_STR(DXGI_FORMAT_BC7_UNORM_SRGB);
@@ -245,10 +249,14 @@ DXGI_FORMAT dxgi_format_from_wined3dformat(enum wined3d_format_id format)
         case WINED3DFMT_B5G5R5A1_UNORM: return DXGI_FORMAT_B5G5R5A1_UNORM;
         case WINED3DFMT_B8G8R8A8_UNORM: return DXGI_FORMAT_B8G8R8A8_UNORM;
         case WINED3DFMT_B8G8R8X8_UNORM: return DXGI_FORMAT_B8G8R8X8_UNORM;
+        case WINED3DFMT_R10G10B10_XR_BIAS_A2_UNORM: return DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM;
         case WINED3DFMT_B8G8R8A8_TYPELESS: return DXGI_FORMAT_B8G8R8A8_TYPELESS;
         case WINED3DFMT_B8G8R8A8_UNORM_SRGB: return DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
         case WINED3DFMT_B8G8R8X8_TYPELESS: return DXGI_FORMAT_B8G8R8X8_TYPELESS;
         case WINED3DFMT_B8G8R8X8_UNORM_SRGB: return DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
+        case WINED3DFMT_BC6H_TYPELESS: return DXGI_FORMAT_BC6H_TYPELESS;
+        case WINED3DFMT_BC6H_UF16: return DXGI_FORMAT_BC6H_UF16;
+        case WINED3DFMT_BC6H_SF16: return DXGI_FORMAT_BC6H_SF16;
         case WINED3DFMT_BC7_TYPELESS: return DXGI_FORMAT_BC7_TYPELESS;
         case WINED3DFMT_BC7_UNORM: return DXGI_FORMAT_BC7_UNORM;
         case WINED3DFMT_BC7_UNORM_SRGB: return DXGI_FORMAT_BC7_UNORM_SRGB;
@@ -351,10 +359,14 @@ enum wined3d_format_id wined3dformat_from_dxgi_format(DXGI_FORMAT format)
         case DXGI_FORMAT_B5G5R5A1_UNORM: return WINED3DFMT_B5G5R5A1_UNORM;
         case DXGI_FORMAT_B8G8R8A8_UNORM: return WINED3DFMT_B8G8R8A8_UNORM;
         case DXGI_FORMAT_B8G8R8X8_UNORM: return WINED3DFMT_B8G8R8X8_UNORM;
+        case DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM: return WINED3DFMT_R10G10B10_XR_BIAS_A2_UNORM;
         case DXGI_FORMAT_B8G8R8A8_TYPELESS: return WINED3DFMT_B8G8R8A8_TYPELESS;
         case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB: return WINED3DFMT_B8G8R8A8_UNORM_SRGB;
         case DXGI_FORMAT_B8G8R8X8_TYPELESS: return WINED3DFMT_B8G8R8X8_TYPELESS;
         case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB: return WINED3DFMT_B8G8R8X8_UNORM_SRGB;
+        case DXGI_FORMAT_BC6H_TYPELESS: return WINED3DFMT_BC6H_TYPELESS;
+        case DXGI_FORMAT_BC6H_UF16: return WINED3DFMT_BC6H_UF16;
+        case DXGI_FORMAT_BC6H_SF16: return WINED3DFMT_BC6H_SF16;
         case DXGI_FORMAT_BC7_TYPELESS: return WINED3DFMT_BC7_TYPELESS;
         case DXGI_FORMAT_BC7_UNORM: return WINED3DFMT_BC7_UNORM;
         case DXGI_FORMAT_BC7_UNORM_SRGB: return WINED3DFMT_BC7_UNORM_SRGB;
@@ -362,6 +374,14 @@ enum wined3d_format_id wined3dformat_from_dxgi_format(DXGI_FORMAT format)
             FIXME("Unhandled DXGI_FORMAT %#x.\n", format);
             return WINED3DFMT_UNKNOWN;
     }
+}
+
+const char *debug_dxgi_mode(const DXGI_MODE_DESC *desc)
+{
+    return wine_dbg_sprintf("resolution %ux%u, refresh rate %u / %u, "
+            "format %s, scanline ordering %#x, scaling %#x",
+            desc->Width, desc->Height, desc->RefreshRate.Numerator, desc->RefreshRate.Denominator,
+            debug_dxgi_format(desc->Format), desc->ScanlineOrdering, desc->Scaling);
 }
 
 void dump_feature_levels(const D3D_FEATURE_LEVEL *feature_levels, unsigned int level_count)
@@ -377,6 +397,28 @@ void dump_feature_levels(const D3D_FEATURE_LEVEL *feature_levels, unsigned int l
     TRACE("Feature levels (count = %u):\n", level_count);
     for (i = 0; i < level_count; ++i)
         TRACE("    [%u] = %s.\n", i, debug_feature_level(feature_levels[i]));
+}
+
+UINT dxgi_rational_to_uint(const DXGI_RATIONAL *rational)
+{
+    if (rational->Denominator)
+        return rational->Numerator / rational->Denominator;
+    else
+        return rational->Numerator;
+}
+
+enum wined3d_scanline_ordering wined3d_scanline_ordering_from_dxgi(DXGI_MODE_SCANLINE_ORDER scanline_order)
+{
+    switch (scanline_order)
+    {
+        case DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED:
+            return WINED3D_SCANLINE_ORDERING_UNKNOWN;
+        case DXGI_MODE_SCANLINE_ORDER_PROGRESSIVE:
+            return WINED3D_SCANLINE_ORDERING_PROGRESSIVE;
+        default:
+            FIXME("Unhandled scanline ordering %#x.\n", scanline_order);
+            return WINED3D_SCANLINE_ORDERING_UNKNOWN;
+    }
 }
 
 void dxgi_sample_desc_from_wined3d(DXGI_SAMPLE_DESC *desc,
@@ -399,6 +441,40 @@ void wined3d_sample_desc_from_dxgi(enum wined3d_multisample_type *wined3d_type,
         *wined3d_type = WINED3D_MULTISAMPLE_NONE;
         *wined3d_quality = 0;
     }
+}
+
+unsigned int dxgi_swapchain_flags_from_wined3d(unsigned int wined3d_flags)
+{
+    unsigned int flags = 0;
+
+    wined3d_flags &= ~WINED3D_SWAPCHAIN_RESTORE_WINDOW_RECT;
+
+    if (wined3d_flags & WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH)
+    {
+        wined3d_flags &= ~WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH;
+        flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    }
+
+    if (wined3d_flags)
+        FIXME("Unhandled flags %#x.\n", flags);
+
+    return flags;
+}
+
+unsigned int wined3d_swapchain_flags_from_dxgi(unsigned int flags)
+{
+    unsigned int wined3d_flags = WINED3D_SWAPCHAIN_RESTORE_WINDOW_RECT; /* WINED3D_SWAPCHAIN_DISCARD_DEPTHSTENCIL? */
+
+    if (flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH)
+    {
+        flags &= ~DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+        wined3d_flags |= WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH;
+    }
+
+    if (flags)
+        FIXME("Unhandled flags %#x.\n", flags);
+
+    return wined3d_flags;
 }
 
 HRESULT dxgi_get_private_data(struct wined3d_private_store *store,

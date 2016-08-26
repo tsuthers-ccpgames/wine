@@ -330,7 +330,7 @@ const scriptData scriptInformation[] = {
      {LANG_ARABIC, 0, 1, 0, 0, ARABIC_CHARSET, 0, 0, 0, 0, 0, 0, 1, 1, 0},
      MS_MAKE_TAG('a','r','a','b'),
      {'M','i','c','r','o','s','o','f','t',' ','S','a','n','s',' ','S','e','r','i','f',0}},
-    {{Script_Arabic_Numeric, 1, 1, 0, 0, 0, 0, { 1,0,0,0,0,0,0,0,0,0,0}},
+    {{Script_Arabic_Numeric, 0, 1, 0, 0, 0, 0, { 2,0,0,0,0,0,0,0,0,0,0}},
      {LANG_ARABIC, 1, 1, 0, 0, ARABIC_CHARSET, 0, 0, 0, 0, 0, 0, 1, 0, 0},
      MS_MAKE_TAG('a','r','a','b'),
      {'M','i','c','r','o','s','o','f','t',' ','S','a','n','s',' ','S','e','r','i','f',0}},
@@ -342,10 +342,10 @@ const scriptData scriptInformation[] = {
      {LANG_SYRIAC, 0, 1, 0, 0, DEFAULT_CHARSET, 0, 0, 0, 0, 1, 0, 0, 1, 0},
      MS_MAKE_TAG('s','y','r','c'),
      {'E','s','t','r','a','n','g','e','l','o',' ','E','d','e','s','s','a',0}},
-    {{Script_Persian, 1, 1, 0, 0, 0, 0, { 1,0,0,0,0,0,0,0,0,0,0}},
+    {{Script_Persian, 0, 1, 0, 0, 0, 0, { 2,0,0,0,0,0,0,0,0,0,0}},
      {LANG_PERSIAN, 1, 1, 0, 0, ARABIC_CHARSET, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-     MS_MAKE_TAG('s','y','r','c'),
-     {'E','s','t','r','a','n','g','e','l','o',' ','E','d','e','s','s','a',0}},
+     MS_MAKE_TAG('a','r','a','b'),
+     {'M','i','c','r','o','s','o','f','t',' ','S','a','n','s',' ','S','e','r','i','f',0}},
     {{Script_Thaana, 1, 1, 0, 0, 0, 0, { 1,0,0,0,0,0,0,0,0,0,0}},
      {LANG_DIVEHI, 0, 1, 0, 1, DEFAULT_CHARSET, 0, 0, 0, 0, 0, 0, 0, 0, 0},
      MS_MAKE_TAG('t','h','a','a'),
@@ -891,7 +891,7 @@ static inline DWORD decode_surrogate_pair(LPCWSTR str, INT index, INT end)
 static WORD get_char_script( LPCWSTR str, INT index, INT end, INT *consumed)
 {
     static const WCHAR latin_punc[] = {'#','$','&','\'',',',';','<','>','?','@','\\','^','_','`','{','|','}','~', 0x00a0, 0};
-    WORD type = 0;
+    WORD type = 0, type2 = 0;
     DWORD ch;
     int i;
 
@@ -921,6 +921,7 @@ static WORD get_char_script( LPCWSTR str, INT index, INT end, INT *consumed)
     }
 
     GetStringTypeW(CT_CTYPE1, &str[index], 1, &type);
+    GetStringTypeW(CT_CTYPE2, &str[index], 1, &type2);
 
     if (type == 0)
         return SCRIPT_UNDEFINED;
@@ -942,7 +943,7 @@ static WORD get_char_script( LPCWSTR str, INT index, INT end, INT *consumed)
 
         if (ch >= scriptRanges[i].rangeFirst && ch <= scriptRanges[i].rangeLast)
         {
-            if (scriptRanges[i].numericScript && type & C1_DIGIT)
+            if (scriptRanges[i].numericScript && (type & C1_DIGIT || type2 == C2_ARABICNUMBER))
                 return scriptRanges[i].numericScript;
             if (scriptRanges[i].punctScript && type & C1_PUNCT)
                 return scriptRanges[i].punctScript;
@@ -1018,7 +1019,7 @@ HRESULT WINAPI ScriptFreeCache(SCRIPT_CACHE *psc)
         {
             heap_free(((ScriptCache *)*psc)->widths[i]);
         }
-        for (i = 0; i < 0x10; i++)
+        for (i = 0; i < NUM_PAGES; i++)
         {
             unsigned int j;
             if (((ScriptCache *)*psc)->page[i])
@@ -1253,6 +1254,10 @@ static inline WORD base_indic(WORD script)
     };
 }
 
+static BOOL script_is_numeric(WORD script)
+{
+    return scriptInformation[script].props.fNumeric;
+}
 
 static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
                 int cMaxItems, const SCRIPT_CONTROL *psControl,
@@ -1261,6 +1266,7 @@ static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
 {
 
 #define Numeric_space 0x0020
+#define ZWSP 0x200B
 #define ZWNJ 0x200C
 #define ZWJ  0x200D
 
@@ -1451,12 +1457,12 @@ static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
             for (i = 0; i < cInChars; i++)
             {
                 if (i > 0 && i < cInChars-1 &&
-                    scripts[i-1] == Script_Numeric &&
+                    script_is_numeric(scripts[i-1]) &&
                     strchrW(math_punc, pwcInChars[i]))
                 {
-                    if (scripts[i+1] == Script_Numeric)
+                    if (script_is_numeric(scripts[i+1]))
                     {
-                        scripts[i] = Script_Numeric;
+                        scripts[i] = scripts[i+1];
                         levels[i] = levels[i-1];
                         strength[i] = strength[i-1];
                         i++;
@@ -1466,11 +1472,11 @@ static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
                         int j;
                         for (j = i+1; j < cInChars; j++)
                         {
-                            if (scripts[j] == Script_Numeric)
+                            if (script_is_numeric(scripts[j]))
                             {
                                 for(;i<j; i++)
                                 {
-                                    scripts[i] = Script_Numeric;
+                                    scripts[i] = scripts[j];
                                     levels[i] = levels[i-1];
                                     strength[i] = strength[i-1];
                                 }
@@ -1483,8 +1489,9 @@ static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
 
             for (i = 0; i < cInChars; i++)
             {
-                /* Script_Numeric at level 0 get bumped to level 2 */
-                if (!overrides[i] && (levels[i] == 0 || (odd(psState->uBidiLevel) && levels[i] == psState->uBidiLevel+1)) && scripts[i] == Script_Numeric)
+                /* Numerics at level 0 get bumped to level 2 */
+                if (!overrides[i] && (levels[i] == 0 || (odd(psState->uBidiLevel)
+                        && levels[i] == psState->uBidiLevel + 1)) && script_is_numeric(scripts[i]))
                 {
                     levels[i] = 2;
                 }
@@ -1576,8 +1583,7 @@ static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
         if (overrides)
             pItems[index].a.s.fOverrideDirection = (overrides[cnt] != 0);
         pItems[index].a.fRTL = odd(levels[cnt]);
-        if (pItems[index].a.eScript == Script_Numeric ||
-            pItems[index].a.eScript == Script_Numeric2)
+        if (script_is_numeric(pItems[index].a.eScript))
             pItems[index].a.fLayoutRTL = layoutRTL;
         else
             pItems[index].a.fLayoutRTL = pItems[index].a.fRTL;
@@ -1590,8 +1596,7 @@ static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
         layoutRTL = odd(baselayout);
         pItems[index].a.s.uBidiLevel = baselevel;
         pItems[index].a.fRTL = odd(baselevel);
-        if (pItems[index].a.eScript == Script_Numeric ||
-            pItems[index].a.eScript == Script_Numeric2)
+        if (script_is_numeric(pItems[index].a.eScript))
             pItems[index].a.fLayoutRTL = odd(baselayout);
         else
             pItems[index].a.fLayoutRTL = pItems[index].a.fRTL;
@@ -1646,8 +1651,7 @@ static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
         if (!new_run && strength && str == BIDI_STRONG)
         {
             layoutRTL = odd(layout_levels[cnt]);
-            if (pItems[index].a.eScript == Script_Numeric ||
-                pItems[index].a.eScript == Script_Numeric2)
+            if (script_is_numeric(pItems[index].a.eScript))
                 pItems[index].a.fLayoutRTL = layoutRTL;
         }
 
@@ -1677,8 +1681,7 @@ static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
                 else
                     layoutRTL = (layoutRTL || odd(layout_levels[cnt]));
                 pItems[index].a.fRTL = odd(levels[cnt]);
-                if (pItems[index].a.eScript == Script_Numeric ||
-                    pItems[index].a.eScript == Script_Numeric2)
+                if (script_is_numeric(pItems[index].a.eScript))
                     pItems[index].a.fLayoutRTL = layoutRTL;
                 else
                     pItems[index].a.fLayoutRTL = pItems[index].a.fRTL;
@@ -1690,8 +1693,7 @@ static HRESULT _ItemizeInternal(const WCHAR *pwcInChars, int cInChars,
                     pItems[index].a.s.fOverrideDirection = TRUE;
                 pItems[index].a.s.uBidiLevel = baselevel;
                 pItems[index].a.fRTL = odd(baselevel);
-                if (pItems[index].a.eScript == Script_Numeric||
-                    pItems[index].a.eScript == Script_Numeric2)
+                if (script_is_numeric(pItems[index].a.eScript))
                     pItems[index].a.fLayoutRTL = layoutRTL;
                 else
                     pItems[index].a.fLayoutRTL = pItems[index].a.fRTL;
@@ -2762,9 +2764,9 @@ static inline int get_cluster_advance(const int* piAdvance,
  *      ScriptXtoCP (USP10.@)
  *
  * Basic algorithm :
- *  use piAdvance to find the cluster we are looking at
- *  Find the character that is the first character of the cluster
- *  That is our base piCP
+ *  Use piAdvance to find the cluster we are looking at.
+ *  Find the character that is the first character of the cluster.
+ *  That is our base piCP.
  *  If the script snaps to cluster boundaries (Hebrew, Indic, Thai) then we
  *  are good. Otherwise if the cluster is larger than 1 glyph we need to
  *  determine how far through the cluster to advance the cursor.
@@ -3080,10 +3082,6 @@ HRESULT WINAPI ScriptShapeOpenType( HDC hdc, SCRIPT_CACHE *psc,
     ((ScriptCache *)*psc)->userScript = tagScript;
     ((ScriptCache *)*psc)->userLang = tagLangSys;
 
-    /* set fNoGlyphIndex non truetype/opentype fonts */
-    if (psa && !psa->fNoGlyphIndex && !((ScriptCache *)*psc)->sfnt)
-        psa->fNoGlyphIndex = TRUE;
-
     /* Initialize a SCRIPT_VISATTR and LogClust for each char in this run */
     for (i = 0; i < cChars; i++)
     {
@@ -3103,7 +3101,7 @@ HRESULT WINAPI ScriptShapeOpenType( HDC hdc, SCRIPT_CACHE *psc,
         pwLogClust[i] = idx;
     }
 
-    if (psa && !psa->fNoGlyphIndex)
+    if (psa && !psa->fNoGlyphIndex && ((ScriptCache *)*psc)->sfnt)
     {
         WCHAR *rChars;
         if ((hr = SHAPE_CheckFontForRequiredFeatures(hdc, (ScriptCache *)*psc, psa)) != S_OK) return hr;
@@ -3179,13 +3177,26 @@ HRESULT WINAPI ScriptShapeOpenType( HDC hdc, SCRIPT_CACHE *psc,
             if (rtl) idx = cChars - 1 - i;
             pwOutGlyphs[i] = pwcChars[idx];
 
+            if (!psa)
+                continue;
+
             /* overwrite some basic control glyphs to blank */
-            if (psa && psa->eScript == Script_Control &&
-                pwcChars[idx] < ((ScriptCache *)*psc)->tm.tmFirstChar)
+            if (psa->fNoGlyphIndex)
+            {
+                if (pwcChars[idx] == ZWSP || pwcChars[idx] == ZWNJ || pwcChars[idx] == ZWJ)
+                {
+                    pwOutGlyphs[i] = 0x20;
+                    pOutGlyphProps[i].sva.fZeroWidth = 1;
+                }
+            }
+            else if (psa->eScript == Script_Control)
             {
                 if (pwcChars[idx] == 0x0009 || pwcChars[idx] == 0x000A ||
                     pwcChars[idx] == 0x000D || pwcChars[idx] >= 0x001C)
+                {
                     pwOutGlyphs[i] = ((ScriptCache *)*psc)->sfp.wgBlank;
+                    pOutGlyphProps[i].sva.fZeroWidth = 1;
+                }
             }
         }
     }
@@ -3879,16 +3890,33 @@ HRESULT WINAPI ScriptStringGetOrder(SCRIPT_STRING_ANALYSIS ssa, UINT *order)
  *  Failure: a non-zero HRESULT.
  */
 HRESULT WINAPI ScriptGetLogicalWidths(const SCRIPT_ANALYSIS *sa, int nbchars, int nbglyphs,
-                                      const int *glyph_width, const WORD *log_clust,
+                                      const int *advances, const WORD *log_clust,
                                       const SCRIPT_VISATTR *sva, int *widths)
 {
-    int i;
+    int i, next = 0, direction;
 
     TRACE("(%p, %d, %d, %p, %p, %p, %p)\n",
-          sa, nbchars, nbglyphs, glyph_width, log_clust, sva, widths);
+          sa, nbchars, nbglyphs, advances, log_clust, sva, widths);
 
-    /* FIXME */
-    for (i = 0; i < nbchars; i++) widths[i] = glyph_width[i];
+    if (sa->fRTL && !sa->fLogicalOrder)
+        direction = -1;
+    else
+        direction = 1;
+
+    for (i = 0; i < nbchars; i++)
+    {
+        int clust_size = get_cluster_size(log_clust, nbchars, i, direction, NULL, NULL);
+        int advance = get_glyph_cluster_advance(advances, sva, log_clust, nbglyphs, nbchars, log_clust[i], direction);
+        int j;
+
+        for (j = 0; j < clust_size; j++)
+        {
+            widths[next] = advance / clust_size;
+            next++;
+            if (j) i++;
+        }
+    }
+
     return S_OK;
 }
 

@@ -86,7 +86,8 @@ static inline void _test_items_ok(LPCWSTR string, DWORD cchString,
         return;
     }
     todo_wine_if (nItemsToDo)
-        winetest_ok(outnItems == nItems, "Wrong number of items\n");
+        winetest_ok(outnItems == nItems, "Wrong number of items (%u)\n", outnItems);
+    outnItems = min(outnItems, nItems);
     for (x = 0; x <= outnItems; x++)
     {
         if (items[x].isBroken && broken(outpItems[x].iCharPos == items[x].broken_value[0]))
@@ -568,6 +569,29 @@ static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     static const itemTest t561[] = {{{0,0,0,0,0,0},0,1,1,1,0,arab_tag,FALSE},{{0,0,0,0,0,0},6,0,0,0,0,-1,FALSE}};
     static const itemTest t562[] = {{{0,0,0,0,0,0},0,0,0,0,1,arab_tag,FALSE},{{0,0,0,0,0,0},6,0,0,0,0,-1,FALSE}};
 
+    /* Persian numerals and punctuation. */
+    static const WCHAR test57[] = {0x06f1, 0x06f2, 0x066c, 0x06f3, 0x06f4, 0x06f5, 0x066c,  /* ۱۲٬۳۴۵٬ */
+                                   0x06f6, 0x06f7, 0x06f8, 0x066b, 0x06f9, 0x06f0};         /* ۶۷۸٫۹۰ */
+    static const itemTest t571[] = {{{0,0,0,0,0,0}, 0,0,1,2,0,arab_tag,FALSE},{{0,0,0,0,0,0}, 2,0,1,2,0,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0}, 3,0,1,2,0,arab_tag,FALSE},{{0,0,0,0,0,0}, 6,0,1,2,0,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0}, 7,0,1,2,0,arab_tag,FALSE},{{0,0,0,0,0,0},10,0,1,2,0,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0},11,0,1,2,0,arab_tag,FALSE},{{0,0,0,0,0,0},13,0,0,0,0,-1,FALSE}};
+    static const itemTest t572[] = {{{0,0,0,0,0,0}, 0,0,0,2,0,arab_tag,FALSE},{{0,0,1,0,0,0}, 2,0,1,2,0,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0}, 3,0,0,2,0,arab_tag,FALSE},{{0,0,1,0,0,0}, 6,0,1,2,0,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0}, 7,0,0,2,0,arab_tag,FALSE},{{0,0,1,0,0,0},10,0,1,2,0,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0},11,0,0,2,0,arab_tag,FALSE},{{0,0,0,0,0,0},13,0,0,0,0,-1,FALSE}};
+    static const itemTest t573[] = {{{0,0,0,0,0,0}, 0,0,0,0,1,arab_tag,FALSE},{{0,0,0,0,0,0}, 2,0,0,0,1,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0}, 3,0,0,0,1,arab_tag,FALSE},{{0,0,0,0,0,0}, 6,0,0,0,1,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0}, 7,0,0,0,1,arab_tag,FALSE},{{0,0,0,0,0,0},10,0,0,0,1,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0},11,0,0,0,1,arab_tag,FALSE},{{0,0,0,0,0,0},13,0,0,0,0,-1,FALSE}};
+    /* Arabic numerals and punctuation. */
+    static const WCHAR test58[] = {0x0661, 0x0662, 0x066c, 0x0663, 0x0664, 0x0665, 0x066c,  /* ١٢٬٣٤٥٬ */
+                                   0x0666, 0x0667, 0x0668, 0x066b, 0x0669, 0x0660};         /* ٦٧٨٫٩٠ */
+    static const itemTest t581[] = {{{0,0,0,0,0,0}, 0,0,1,2,0,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0},13,0,0,0,0,-1,FALSE}};
+    static const itemTest t582[] = {{{0,0,1,1,0,1}, 0,0,0,0,1,arab_tag,FALSE},
+                                    {{0,0,0,0,0,0},13,0,0,0,0,-1,FALSE}};
+
     SCRIPT_ITEM items[15];
     SCRIPT_CONTROL  Control;
     SCRIPT_STATE    State;
@@ -649,6 +673,8 @@ static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     test_items_ok(test46,16,NULL,NULL,1,t461,FALSE,0);
     test_items_ok(test47,26,NULL,NULL,1,t471,FALSE,0);
     test_items_ok(test56,6,NULL,NULL,1,t561,FALSE,0);
+    test_items_ok(test57,13,NULL,NULL,7,t571,FALSE,0);
+    test_items_ok(test58,13,NULL,NULL,1,t581,FALSE,0);
 
     State.uBidiLevel = 0;
     test_items_ok(test1,4,&Control,&State,1,t11,FALSE,0);
@@ -712,6 +738,8 @@ static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     test_items_ok(test54,7,&Control,&State,2,t541,FALSE,0);
     test_items_ok(test55,8,&Control,&State,2,t551,FALSE,0);
     test_items_ok(test56,6,&Control,&State,1,t561,FALSE,0);
+    test_items_ok(test57,13,&Control,&State,7,t572,FALSE,0);
+    test_items_ok(test58,13,&Control,&State,1,t581,FALSE,0);
 
     State.uBidiLevel = 1;
     test_items_ok(test1,4,&Control,&State,1,t12,FALSE,0);
@@ -767,6 +795,8 @@ static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     test_items_ok(test46,16,&Control,&State,1,t462,FALSE,0);
     test_items_ok(test47,26,&Control,&State,1,t472,FALSE,0);
     test_items_ok(test56,6,&Control,&State,1,t561,FALSE,0);
+    test_items_ok(test57,13,&Control,&State,7,t571,FALSE,0);
+    test_items_ok(test58,13,&Control,&State,1,t581,FALSE,0);
 
     State.uBidiLevel = 1;
     Control.fMergeNeutralItems = TRUE;
@@ -823,6 +853,8 @@ static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     test_items_ok(test46,16,&Control,&State,1,t462,FALSE,0);
     test_items_ok(test47,26,&Control,&State,1,t472,FALSE,0);
     test_items_ok(test56,6,&Control,&State,1,t561,FALSE,0);
+    test_items_ok(test57,13,&Control,&State,7,t571,FALSE,0);
+    test_items_ok(test58,13,&Control,&State,1,t581,FALSE,0);
 
     State.uBidiLevel = 0;
     Control.fMergeNeutralItems = FALSE;
@@ -888,6 +920,8 @@ static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     test_items_ok(test54,7,&Control,&State,2,t542,FALSE,0);
     test_items_ok(test55,8,&Control,&State,2,t552,FALSE,0);
     test_items_ok(test56,6,&Control,&State,1,t562,FALSE,0);
+    test_items_ok(test57,13,&Control,&State,7,t573,FALSE,0);
+    test_items_ok(test58,13,&Control,&State,1,t582,FALSE,0);
 }
 
 static inline void _test_shape_ok(int valid, HDC hdc, LPCWSTR string,
@@ -1662,7 +1696,9 @@ static void test_ScriptShape(HDC hdc)
     for (i = 0; i < 2; i++)
     {
         static const WCHAR space[]  = {' ', 0};
-        static const WCHAR blanks[] = {'\t', '\r', '\n', 0x001C, 0x001D, 0x001E, 0x001F,0};
+        static const WCHAR blanks[] = {'\t', '\r', '\n', 0x001c, 0x001d, 0x001e, 0x001f,
+                                       0x200b, 0x200c, 0x200d, 0x200e, 0x200f,          /* ZWSP, ZWNJ, ZWJ, LRM, RLM */
+                                       0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0};      /* LRE, RLE, PDF, LRO, RLO */
         HFONT font, oldfont = NULL;
         LOGFONTA lf;
 
@@ -1686,13 +1722,39 @@ static void test_ScriptShape(HDC hdc)
             hr = ScriptItemize(&blanks[j], 1, 2, NULL, NULL, items, NULL);
             ok(hr == S_OK, "%s: [%02x] expected S_OK, got %08x\n", lf.lfFaceName, blanks[j], hr);
 
+            ok(!items[0].a.fNoGlyphIndex, "%s: [%02x] got unexpected fNoGlyphIndex %#x.\n",
+               lf.lfFaceName, blanks[j], items[0].a.fNoGlyphIndex);
             hr = ScriptShape(hdc, &sc, &blanks[j], 1, 1, &items[0].a, glyphs2, logclust, attrs, &nb);
             ok(hr == S_OK, "%s: [%02x] expected S_OK, got %08x\n", lf.lfFaceName, blanks[j], hr);
             ok(nb == 1, "%s: [%02x] expected 1, got %d\n", lf.lfFaceName, blanks[j], nb);
+            ok(!items[0].a.fNoGlyphIndex, "%s: [%02x] got unexpected fNoGlyphIndex %#x.\n",
+               lf.lfFaceName, blanks[j], items[0].a.fNoGlyphIndex);
 
             ok(glyphs[0] == glyphs2[0] ||
                broken(glyphs2[0] == blanks[j] && (blanks[j] < 0x10)),
                "%s: [%02x] expected %04x, got %04x\n", lf.lfFaceName, blanks[j], glyphs[0], glyphs2[0]);
+            ok(attrs[0].fZeroWidth || broken(!attrs[0].fZeroWidth && (blanks[j] < 0x10) /* Vista */),
+               "%s: [%02x] got unexpected fZeroWidth %#x.\n", lf.lfFaceName, blanks[j], attrs[0].fZeroWidth);
+
+            items[0].a.fNoGlyphIndex = 1;
+            hr = ScriptShape(hdc, &sc, &blanks[j], 1, 1, &items[0].a, glyphs2, logclust, attrs, &nb);
+            ok(hr == S_OK, "%s: [%02x] expected S_OK, got %08x\n", lf.lfFaceName, blanks[j], hr);
+            ok(nb == 1, "%s: [%02x] expected 1, got %d\n", lf.lfFaceName, blanks[j], nb);
+
+            if (blanks[j] == 0x200b || blanks[j] == 0x200c || blanks[j] == 0x200d)
+            {
+                ok(glyphs2[0] == 0x0020,
+                   "%s: [%02x] got unexpected %04x.\n", lf.lfFaceName, blanks[j], glyphs2[0]);
+                ok(attrs[0].fZeroWidth, "%s: [%02x] got unexpected fZeroWidth %#x.\n",
+                   lf.lfFaceName, blanks[j], attrs[0].fZeroWidth);
+            }
+            else
+            {
+                ok(glyphs2[0] == blanks[j],
+                   "%s: [%02x] got unexpected %04x.\n", lf.lfFaceName, blanks[j], glyphs2[0]);
+                ok(!attrs[0].fZeroWidth, "%s: [%02x] got unexpected fZeroWidth %#x.\n",
+                   lf.lfFaceName, blanks[j], attrs[0].fZeroWidth);
+            }
         }
         if (oldfont)
             DeleteObject(SelectObject(hdc, oldfont));
@@ -2388,10 +2450,7 @@ static void test_ScriptTextOut(HDC hdc)
             ok (hr == S_OK, "ScriptTextOut should return S_OK not (%08x)\n", hr);
 
             /* Test Rect Rgn is acceptable */
-            rect.top = 10;
-            rect.bottom = 20;
-            rect.left = 10;
-            rect.right = 40;
+            SetRect(&rect, 10, 10, 40, 20);
             hr = ScriptTextOut(hdc, &psc, 0, 0, 0, &rect, &pItem[0].a, NULL, 0, pwOutGlyphs1, pcGlyphs,
                                piAdvance, NULL, pGoffset);
             ok (hr == S_OK, "ScriptTextOut should return S_OK not (%08x)\n", hr);
@@ -2554,10 +2613,7 @@ static void test_ScriptTextOut3(HDC hdc)
             ok (hr == S_OK, "Should return S_OK not (%08x)\n", hr);
 
             /* Test Rect Rgn is acceptable */
-            rect.top = 10;
-            rect.bottom = 20;
-            rect.left = 10;
-            rect.right = 40;
+            SetRect(&rect, 10, 10, 40, 20);
             hr = ScriptTextOut(hdc, &psc, 0, 0, 0, &rect, &pItem[0].a, NULL, 0, pwOutGlyphs1, pcGlyphs,
                                piAdvance, NULL, pGoffset);
             ok (hr == S_OK, "ScriptTextOut should return S_OK not (%08x)\n", hr);
@@ -2843,8 +2899,8 @@ static void test_ScriptString(HDC hdc)
     int             Charset;
     DWORD           Flags = SSA_GLYPHS;
     int             ReqWidth = 100;
-    const int       Dx[5] = {10, 10, 10, 10, 10};
-    const BYTE      InClass = 0;
+    static const int Dx[(sizeof(teststr) / sizeof(WCHAR)) - 1];
+    static const BYTE InClass[(sizeof(teststr) / sizeof(WCHAR)) - 1];
     SCRIPT_STRING_ANALYSIS ssa = NULL;
 
     int             X = 10; 
@@ -2863,26 +2919,26 @@ static void test_ScriptString(HDC hdc)
     /* Test without hdc to get E_PENDING */
     hr = ScriptStringAnalyse( NULL, teststr, len, Glyphs, Charset, Flags,
                               ReqWidth, NULL, NULL, Dx, NULL,
-                              &InClass, &ssa);
+                              InClass, &ssa);
     ok(hr == E_PENDING, "ScriptStringAnalyse Stub should return E_PENDING not %08x\n", hr);
 
     /* Test that 0 length string returns E_INVALIDARG  */
     hr = ScriptStringAnalyse( hdc, teststr, 0, Glyphs, Charset, Flags,
                               ReqWidth, NULL, NULL, Dx, NULL,
-                              &InClass, &ssa);
+                              InClass, &ssa);
     ok(hr == E_INVALIDARG, "ScriptStringAnalyse should return E_INVALIDARG not %08x\n", hr);
 
     /* test with hdc, this should be a valid test  */
     hr = ScriptStringAnalyse( hdc, teststr, len, Glyphs, Charset, Flags,
                               ReqWidth, NULL, NULL, Dx, NULL,
-                              &InClass, &ssa);
+                              InClass, &ssa);
     ok(hr == S_OK, "ScriptStringAnalyse should return S_OK not %08x\n", hr);
     ScriptStringFree(&ssa);
 
     /* test makes sure that a call with a valid pssa still works */
     hr = ScriptStringAnalyse( hdc, teststr, len, Glyphs, Charset, Flags,
                               ReqWidth, NULL, NULL, Dx, NULL,
-                              &InClass, &ssa);
+                              InClass, &ssa);
     ok(hr == S_OK, "ScriptStringAnalyse should return S_OK not %08x\n", hr);
     ok(ssa != NULL, "ScriptStringAnalyse pssa should not be NULL\n");
 
@@ -2926,7 +2982,7 @@ static void test_ScriptStringXtoCP_CPtoX(HDC hdc)
     int             Charset = -1;                       /* unicode                        */
     DWORD           Flags = SSA_GLYPHS;
     int             ReqWidth = 100;
-    const BYTE      InClass = 0;
+    static const BYTE InClass[(sizeof(teststr1)/sizeof(WCHAR))-1];
     SCRIPT_STRING_ANALYSIS ssa = NULL;
 
     int             Ch;                                  /* Character position in string */
@@ -2943,7 +2999,7 @@ static void test_ScriptStringXtoCP_CPtoX(HDC hdc)
 
     hr = ScriptStringAnalyse( hdc, String, String_len, Glyphs, Charset, Flags,
                               ReqWidth, NULL, NULL, NULL, NULL,
-                              &InClass, &ssa);
+                              InClass, &ssa);
     ok(hr == S_OK ||
        hr == E_INVALIDARG, /* NT */
        "ScriptStringAnalyse should return S_OK or E_INVALIDARG not %08x\n", hr);
@@ -3083,7 +3139,7 @@ static void test_ScriptStringXtoCP_CPtoX(HDC hdc)
          */
         hr = ScriptStringAnalyse( hdc, String, String_len, Glyphs, Charset, Flags,
                                   ReqWidth, NULL, NULL, NULL, NULL,
-                                  &InClass, &ssa);
+                                  InClass, &ssa);
         ok(hr == S_OK, "ScriptStringAnalyse should return S_OK not %08x\n", hr);
 
         /*
@@ -3554,6 +3610,58 @@ static void test_ScriptGetFontFunctions(HDC hdc)
     }
 }
 
+struct logical_width_test
+{
+    int char_count;
+    int glyph_count;
+    int advances[3];
+    WORD map[3];
+    int widths[3];
+    BOOL clusterstart[3];
+    BOOL diacritic[3];
+    BOOL zerowidth[3];
+    BOOL todo;
+};
+
+static const struct logical_width_test logical_width_tests[] =
+{
+    { 3, 3, { 6, 9, 12 }, { 0, 1, 2 }, {  6,  9, 12 }, { 1, 1, 1 } },
+    { 3, 3, { 6, 9, 12 }, { 0, 1, 2 }, {  6,  9, 12 }, { 1, 1, 1 }, { 1, 0, 0 } },
+    { 3, 3, { 6, 9, 12 }, { 0, 1, 2 }, {  6,  9, 12 }, { 1, 1, 1 }, { 0 }, { 1, 1, 1 } },
+    { 3, 3, { 6, 9, 12 }, { 0, 1, 2 }, { 27, 21, 12 }, { 0, 0, 0 }, { 0 }, { 0 }, TRUE },
+    { 3, 3, { 6, 9, 12 }, { 0, 1, 2 }, {  6, 21, 12 }, { 0, 1, 0 }, { 0 }, { 0 }, TRUE },
+    { 3, 3, { 6, 9, 12 }, { 0, 1, 2 }, {  6, 21, 12 }, { 1, 1, 0 }, { 0 }, { 0 }, TRUE },
+    { 3, 3, { 6, 9, 12 }, { 0, 2, 2 }, { 15,  6,  6 }, { 1, 0, 1 } },
+};
+
+static void test_ScriptGetLogicalWidths(void)
+{
+    SCRIPT_ANALYSIS sa = { 0 };
+    unsigned int i, j;
+
+    for (i = 0; i < sizeof(logical_width_tests)/sizeof(logical_width_tests[0]); i++)
+    {
+        const struct logical_width_test *ptr = logical_width_tests + i;
+        SCRIPT_VISATTR attrs[3];
+        int widths[3];
+        HRESULT hr;
+
+        memset(attrs, 0, sizeof(attrs));
+        for (j = 0; j < ptr->glyph_count; j++)
+        {
+            attrs[j].fClusterStart = ptr->clusterstart[j];
+            attrs[j].fDiacritic = ptr->diacritic[j];
+            attrs[j].fZeroWidth = ptr->zerowidth[j];
+        }
+
+        hr = ScriptGetLogicalWidths(&sa, ptr->char_count, ptr->glyph_count, ptr->advances, ptr->map, attrs, widths);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        todo_wine_if(ptr->todo)
+            ok(!memcmp(ptr->widths, widths, sizeof(widths)), "test %u: got wrong widths\n", i);
+    }
+}
+
 START_TEST(usp10)
 {
     HWND            hwnd;
@@ -3607,6 +3715,7 @@ START_TEST(usp10)
     test_newlines();
 
     test_ScriptGetFontFunctions(hdc);
+    test_ScriptGetLogicalWidths();
 
     ReleaseDC(hwnd, hdc);
     DestroyWindow(hwnd);
