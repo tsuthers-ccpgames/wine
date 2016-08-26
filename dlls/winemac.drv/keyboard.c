@@ -996,7 +996,7 @@ static void update_modifier_state(unsigned int modifier, unsigned int modifiers,
 
 static BOOL isCmdKeyPressed()
 {
-    return GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN);
+    return (GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000 ? TRUE : FALSE;
 }
 
 /***********************************************************************
