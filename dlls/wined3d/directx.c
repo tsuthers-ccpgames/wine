@@ -1287,11 +1287,13 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GT730M,     "NVIDIA GeForce GT 730M",           DRIVER_NVIDIA_GEFORCE8,  1024},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GT740M,     "NVIDIA GeForce GT 740M",           DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GT750M,     "NVIDIA GeForce GT 750M",           DRIVER_NVIDIA_GEFORCE8,  1024},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GT755M,     "NVIDIA GeForce GT 755M",           DRIVER_NVIDIA_GEFORCE8,  1024},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX750,     "NVIDIA GeForce GTX 750",           DRIVER_NVIDIA_GEFORCE8,  1024},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX750TI,   "NVIDIA GeForce GTX 750 Ti",        DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX760,     "NVIDIA Geforce GTX 760",           DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX765M,    "NVIDIA GeForce GTX 765M",          DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX770M,    "NVIDIA GeForce GTX 770M",          DRIVER_NVIDIA_GEFORCE8,  3072},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX775M,    "NVIDIA GeForce GTX 775M",          DRIVER_NVIDIA_GEFORCE8,  3072},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX770,     "NVIDIA GeForce GTX 770",           DRIVER_NVIDIA_GEFORCE8,  2048},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX780,     "NVIDIA GeForce GTX 780",           DRIVER_NVIDIA_GEFORCE8,  3072},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX780TI,   "NVIDIA GeForce GTX 780 Ti",        DRIVER_NVIDIA_GEFORCE8,  3072},
@@ -1353,6 +1355,7 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD7660D,        "AMD Radeon HD 7660D",              DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD7700,         "AMD Radeon HD 7700 Series",        DRIVER_AMD_R600,         1024},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD7800,         "AMD Radeon HD 7800 Series",        DRIVER_AMD_R600,         2048},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD7870,         "AMD Radeon HD Pitcairn XT Prototype OpenGL Engine",        DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD7900,         "AMD Radeon HD 7900 Series",        DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD8600M,        "AMD Radeon HD 8600M Series",       DRIVER_AMD_R600,         1024},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_HD8670,         "AMD Radeon HD 8670",               DRIVER_AMD_R600,         2048},
@@ -1362,6 +1365,7 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9,             "AMD Radeon R9 290",                DRIVER_AMD_R600,         4096},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M290X,       "AMD Radeon R9 M290X",              DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M380,        "AMD Radeon R9 M380 OpenGL Engine", DRIVER_AMD_R600,         2048},
+    {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M370X,       "AMD Radeon R9 M370X OpenGL Engine", DRIVER_AMD_R600,         2048},
     {HW_VENDOR_AMD,        CARD_AMD_RADEON_R9_M395X,       "AMD Radeon R9 M395X OpenGL Engine", DRIVER_AMD_R600,         4096},
 
     /* VMware */
@@ -1799,12 +1803,14 @@ cards_nvidia_binary[] =
     {"GTX TITAN Z",                 CARD_NVIDIA_GEFORCE_GTXTITANZ}, /* Geforce 700 - highend */
     {"GTX TITAN",                   CARD_NVIDIA_GEFORCE_GTXTITAN},  /* Geforce 700 - highend */
     {"GTX 780",                     CARD_NVIDIA_GEFORCE_GTX780},    /* Geforce 700 - highend */
+    {"GTX 775M",                    CARD_NVIDIA_GEFORCE_GTX775M},   /* Geforce 700 - midend high mobile */
     {"GTX 770M",                    CARD_NVIDIA_GEFORCE_GTX770M},   /* Geforce 700 - midend high mobile */
     {"GTX 770",                     CARD_NVIDIA_GEFORCE_GTX770},    /* Geforce 700 - highend */
     {"GTX 765M",                    CARD_NVIDIA_GEFORCE_GTX765M},   /* Geforce 700 - midend high mobile */
     {"GTX 760",                     CARD_NVIDIA_GEFORCE_GTX760},    /* Geforce 700 - midend high  */
     {"GTX 750 Ti",                  CARD_NVIDIA_GEFORCE_GTX750TI},  /* Geforce 700 - midend */
     {"GTX 750",                     CARD_NVIDIA_GEFORCE_GTX750},    /* Geforce 700 - midend */
+    {"GT 755M",                     CARD_NVIDIA_GEFORCE_GT755M},    /* Geforce 700 - midend mobile */
     {"GT 750M",                     CARD_NVIDIA_GEFORCE_GT750M},    /* Geforce 700 - midend mobile */
     {"GT 740M",                     CARD_NVIDIA_GEFORCE_GT740M},    /* Geforce 700 - midend mobile */
     {"GT 730M",                     CARD_NVIDIA_GEFORCE_GT730M},    /* Geforce 700 - midend mobile */
@@ -1937,10 +1943,12 @@ cards_amd_binary[] =
     {"R9 290",                      CARD_AMD_RADEON_R9},
     {"R9 M290X",                    CARD_AMD_RADEON_R9_M290X},
     {"R9 M380",                     CARD_AMD_RADEON_R9_M380},
+    {"R9 M370X",                    CARD_AMD_RADEON_R9_M370X},
     {"R9 M395X",                    CARD_AMD_RADEON_R9_M395X},
 
     /* Southern Islands */
     {"HD 7900",                     CARD_AMD_RADEON_HD7900},
+    {"Pitcairn XT",                 CARD_AMD_RADEON_HD7870},
     {"HD 7800",                     CARD_AMD_RADEON_HD7800},
     {"HD 7700",                     CARD_AMD_RADEON_HD7700},
     /* Northern Islands */
