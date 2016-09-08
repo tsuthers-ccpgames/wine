@@ -2051,7 +2051,7 @@ void SECUR32_initNTLMSP(void)
     }
     else
     {
-        ERR_(winediag)("%s was not found or is outdated. "
+        WARN_(winediag)("%s was not found or is outdated. "
                        "Make sure that ntlm_auth >= %d.%d.%d is in your path. "
                        "Usually, you can find it in the winbind package of your distribution.\n",
                        ntlm_auth,
