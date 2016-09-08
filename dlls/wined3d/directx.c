@@ -1408,6 +1408,11 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_INTEL,      CARD_INTEL_IVBS,                "Intel(R) HD Graphics Family",                               DRIVER_INTEL_HD4000,  1536},
     {HW_VENDOR_INTEL,      CARD_INTEL_HWD,                 "Intel(R) HD Graphics 4600",                                 DRIVER_INTEL_HD4000,  1536},
     {HW_VENDOR_INTEL,      CARD_INTEL_HWM,                 "Intel(R) HD Graphics 4600",                                 DRIVER_INTEL_HD4000,  1536},
+    {HW_VENDOR_INTEL,      CARD_INTEL_HD5000,              "Intel(R) HD Graphics 5000",                                 DRIVER_INTEL_HD4000,  2048},
+    {HW_VENDOR_INTEL,      CARD_INTEL_IG5100,              "Intel(R) Iris Graphics 5100",                               DRIVER_INTEL_HD4000,  2048},
+    {HW_VENDOR_INTEL,      CARD_INTEL_IGP5200,             "Intel(R) Iris Pro Graphics 5200",                           DRIVER_INTEL_HD4000,  2048},
+    {HW_VENDOR_INTEL,      CARD_INTEL_HD5300,              "Intel(R) HD Graphics 5300",                                 DRIVER_INTEL_HD4000,  2048},
+    {HW_VENDOR_INTEL,      CARD_INTEL_HD6000,              "Intel(R) Iris(TM) Graphics 6000",                           DRIVER_INTEL_HD4000,  2048},
     {HW_VENDOR_INTEL,      CARD_INTEL_IG6100,              "Intel(R) Iris(TM) Graphics 6100",                           DRIVER_INTEL_HD4000,  2048},
     {HW_VENDOR_INTEL,      CARD_INTEL_IP6200,              "Intel(R) Iris(TM) Pro Graphics 6200",                       DRIVER_INTEL_HD4000,  2048},
     {HW_VENDOR_INTEL,      CARD_INTEL_HD520,               "Intel(R) HD Graphics 520",                                  DRIVER_INTEL_HD4000,  2048},
@@ -2041,8 +2046,12 @@ cards_intel[] =
     /* Broadwell */
     {"Iris Pro 6200",               CARD_INTEL_IP6200},
     {"Iris 6100",                   CARD_INTEL_IG6100},
+    {"HD Graphics 6000",            CARD_INTEL_HD6000},
+    {"HD Graphics 5300",            CARD_INTEL_HD5300},
     /* Haswell */
+    {"HD Graphics 5000",            CARD_INTEL_HD5000},
     {"Haswell Mobile",              CARD_INTEL_HWM},
+    {"Iris Pro",                    CARD_INTEL_HWM},
     /* Ivybridge */
     {"Ivybridge Server",            CARD_INTEL_IVBS},
     {"Ivybridge Mobile",            CARD_INTEL_IVBM},
