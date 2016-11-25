@@ -261,6 +261,7 @@
  704 stdcall -noname GUIDFromStringW(wstr ptr)
  709 stdcall SHGetSetFolderCustomSettings(ptr str long)
  714 stdcall @(ptr) SHELL32_714 # PathIsTemporaryW
+ 723 stdcall -noname SHCreateSessionKey(long ptr)
  727 stdcall SHGetImageList(long ptr ptr)
  730 stdcall -noname RestartDialogEx(long wstr long long)
  743 stdcall SHCreateFileExtractIconW(wstr long ptr ptr)
@@ -412,6 +413,7 @@
 @ stdcall SHQueryRecycleBinA(str ptr)
 @ stdcall SHQueryRecycleBinW(wstr ptr)
 @ stdcall SHQueryUserNotificationState(ptr)
+@ stdcall SHRemoveLocalizedName(wstr)
 @ stdcall SHSetLocalizedName(wstr wstr long)
 @ stdcall SHSetUnreadMailCountW(wstr long wstr)
 @ stdcall SHUpdateRecycleBinIcon()

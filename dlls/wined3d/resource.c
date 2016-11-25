@@ -311,56 +311,7 @@ void CDECL wined3d_resource_get_desc(const struct wined3d_resource *resource, st
     desc->size = resource->size;
 }
 
-HRESULT CDECL wined3d_resource_map(struct wined3d_resource *resource, unsigned int sub_resource_idx,
-        struct wined3d_map_desc *map_desc, const struct wined3d_box *box, DWORD flags)
-{
-    TRACE("resource %p, sub_resource_idx %u, map_desc %p, box %s, flags %#x.\n",
-            resource, sub_resource_idx, map_desc, debug_box(box), flags);
-
-    return resource->resource_ops->resource_sub_resource_map(resource, sub_resource_idx, map_desc, box, flags);
-}
-
-HRESULT CDECL wined3d_resource_unmap(struct wined3d_resource *resource, unsigned int sub_resource_idx)
-{
-    TRACE("resource %p, sub_resource_idx %u.\n", resource, sub_resource_idx);
-
-    return resource->resource_ops->resource_sub_resource_unmap(resource, sub_resource_idx);
-}
-
-void CDECL wined3d_resource_preload(struct wined3d_resource *resource)
-{
-    resource->resource_ops->resource_preload(resource);
-}
-
-BOOL wined3d_resource_allocate_sysmem(struct wined3d_resource *resource)
-{
-    void **p;
-    SIZE_T align = RESOURCE_ALIGNMENT - 1 + sizeof(*p);
-    void *mem;
-
-    if (!(mem = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, resource->size + align)))
-        return FALSE;
-
-    p = (void **)(((ULONG_PTR)mem + align) & ~(RESOURCE_ALIGNMENT - 1)) - 1;
-    *p = mem;
-
-    resource->heap_memory = ++p;
-
-    return TRUE;
-}
-
-void wined3d_resource_free_sysmem(struct wined3d_resource *resource)
-{
-    void **p = resource->heap_memory;
-
-    if (!p)
-        return;
-
-    HeapFree(GetProcessHeap(), 0, *(--p));
-    resource->heap_memory = NULL;
-}
-
-DWORD wined3d_resource_sanitize_map_flags(const struct wined3d_resource *resource, DWORD flags)
+static DWORD wined3d_resource_sanitise_map_flags(const struct wined3d_resource *resource, DWORD flags)
 {
     /* Not all flags make sense together, but Windows never returns an error.
      * Catch the cases that could cause issues. */
@@ -391,6 +342,57 @@ DWORD wined3d_resource_sanitize_map_flags(const struct wined3d_resource *resourc
     }
 
     return flags;
+}
+
+HRESULT CDECL wined3d_resource_map(struct wined3d_resource *resource, unsigned int sub_resource_idx,
+        struct wined3d_map_desc *map_desc, const struct wined3d_box *box, DWORD flags)
+{
+    TRACE("resource %p, sub_resource_idx %u, map_desc %p, box %s, flags %#x.\n",
+            resource, sub_resource_idx, map_desc, debug_box(box), flags);
+
+    flags = wined3d_resource_sanitise_map_flags(resource, flags);
+
+    return wined3d_cs_map(resource->device->cs, resource, sub_resource_idx, map_desc, box, flags);
+}
+
+HRESULT CDECL wined3d_resource_unmap(struct wined3d_resource *resource, unsigned int sub_resource_idx)
+{
+    TRACE("resource %p, sub_resource_idx %u.\n", resource, sub_resource_idx);
+
+    return wined3d_cs_unmap(resource->device->cs, resource, sub_resource_idx);
+}
+
+void CDECL wined3d_resource_preload(struct wined3d_resource *resource)
+{
+    wined3d_cs_emit_preload_resource(resource->device->cs, resource);
+}
+
+BOOL wined3d_resource_allocate_sysmem(struct wined3d_resource *resource)
+{
+    void **p;
+    SIZE_T align = RESOURCE_ALIGNMENT - 1 + sizeof(*p);
+    void *mem;
+
+    if (!(mem = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, resource->size + align)))
+        return FALSE;
+
+    p = (void **)(((ULONG_PTR)mem + align) & ~(RESOURCE_ALIGNMENT - 1)) - 1;
+    *p = mem;
+
+    resource->heap_memory = ++p;
+
+    return TRUE;
+}
+
+void wined3d_resource_free_sysmem(struct wined3d_resource *resource)
+{
+    void **p = resource->heap_memory;
+
+    if (!p)
+        return;
+
+    HeapFree(GetProcessHeap(), 0, *(--p));
+    resource->heap_memory = NULL;
 }
 
 GLbitfield wined3d_resource_gl_map_flags(DWORD d3d_flags)

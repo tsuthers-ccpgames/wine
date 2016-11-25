@@ -58,9 +58,12 @@ typedef struct _WS_OPERATION_CONTEXT WS_OPERATION_CONTEXT;
 typedef struct _WS_CALL_PROPERTY WS_CALL_PROPERTY;
 typedef struct _WS_DOUBLE_DESCRIPTION WS_DOUBLE_DESCRIPTION;
 typedef struct _WS_DATETIME WS_DATETIME;
+typedef struct _WS_XML_DATETIME_TEXT WS_XML_DATETIME_TEXT;
+typedef struct _WS_XML_BASE64_TEXT WS_XML_BASE64_TEXT;
 typedef struct _WS_DATETIME_DESCRIPTION WS_DATETIME_DESCRIPTION;
 typedef struct _WS_GUID_DESCRIPTION WS_GUID_DESCRIPTION;
 typedef struct _WS_UNIQUE_ID_DESCRIPTION WS_UNIQUE_ID_DESCRIPTION;
+typedef struct _WS_BYTES_DESCRIPTION WS_BYTES_DESCRIPTION;
 typedef struct _WS_URL WS_URL;
 typedef struct _WS_HTTP_URL WS_HTTP_URL;
 typedef struct _WS_HTTPS_URL WS_HTTPS_URL;
@@ -74,6 +77,7 @@ typedef struct _WS_CUSTOM_HTTP_PROXY WS_CUSTOM_HTTP_PROXY;
 typedef struct _WS_HTTP_MESSAGE_MAPPING WS_HTTP_MESSAGE_MAPPING;
 typedef struct _WS_HTTP_HEADER_MAPPING WS_HTTP_HEADER_MAPPING;
 typedef struct _WS_HTTP_REDIRECT_CALLBACK_CONTEXT WS_HTTP_REDIRECT_CALLBACK_CONTEXT;
+typedef struct _WS_PROXY_MESSAGE_CALLBACK_CONTEXT WS_PROXY_MESSAGE_CALLBACK_CONTEXT;
 
 struct _WS_STRUCT_DESCRIPTION;
 struct _WS_XML_STRING;
@@ -359,8 +363,8 @@ typedef struct _WS_INT32_DESCRIPTION {
 } WS_INT32_DESCRIPTION;
 
 typedef struct _WS_INT64_DESCRIPTION {
-    __int64 minValue;
-    __int64 maxValue;
+    __int64 DECLSPEC_ALIGN(8) minValue;
+    __int64 DECLSPEC_ALIGN(8) maxValue;
 } WS_INT64_DESCRIPTION;
 
 typedef struct _WS_UINT8_DESCRIPTION {
@@ -379,14 +383,24 @@ typedef struct _WS_UINT32_DESCRIPTION {
 } WS_UINT32_DESCRIPTION;
 
 typedef struct _WS_UINT64_DESCRIPTION {
-    unsigned __int64 minValue;
-    unsigned __int64 maxValue;
+    unsigned __int64 DECLSPEC_ALIGN(8) minValue;
+    unsigned __int64 DECLSPEC_ALIGN(8) maxValue;
 } WS_UINT64_DESCRIPTION;
 
 typedef struct _WS_WSZ_DESCRIPTION {
     ULONG minCharCount;
     ULONG maxCharCount;
 } WS_WSZ_DESCRIPTION;
+
+typedef struct _WS_STRING_DESCRIPTION {
+    ULONG minCharCount;
+    ULONG maxCharCount;
+} WS_STRING_DESCRIPTION;
+
+typedef struct _WS_XML_STRING_DESCRIPTION {
+    ULONG minByteCount;
+    ULONG maxByteCount;
+} WS_XML_STRING_DESCRIPTION;
 
 struct _WS_ENUM_VALUE {
     int value;
@@ -401,8 +415,8 @@ struct _WS_ENUM_DESCRIPTION {
 };
 
 struct _WS_DOUBLE_DESCRIPTION {
-    double minValue;
-    double maxValue;
+    double DECLSPEC_ALIGN(8) minValue;
+    double DECLSPEC_ALIGN(8) maxValue;
 };
 
 struct _WS_GUID_DESCRIPTION {
@@ -412,6 +426,11 @@ struct _WS_GUID_DESCRIPTION {
 struct _WS_UNIQUE_ID_DESCRIPTION {
     ULONG minCharCount;
     ULONG maxCharCount;
+};
+
+struct _WS_BYTES_DESCRIPTION {
+    ULONG minByteCount;
+    ULONG maxByteCount;
 };
 
 typedef enum {
@@ -584,17 +603,17 @@ typedef struct _WS_XML_INT32_TEXT {
 
 typedef struct _WS_XML_INT64_TEXT {
     WS_XML_TEXT text;
-    __int64 value;
+    __int64 DECLSPEC_ALIGN(8) value;
 } WS_XML_INT64_TEXT;
 
 typedef struct _WS_XML_UINT64_TEXT {
     WS_XML_TEXT text;
-    unsigned __int64 value;
+    unsigned __int64 DECLSPEC_ALIGN(8) value;
 } WS_XML_UINT64_TEXT;
 
 typedef struct _WS_XML_DOUBLE_TEXT {
     WS_XML_TEXT text;
-    double value;
+    double DECLSPEC_ALIGN(8) value;
 } WS_XML_DOUBLE_TEXT;
 
 typedef struct _WS_XML_GUID_TEXT {
@@ -1086,13 +1105,24 @@ typedef enum {
 } WS_DATETIME_FORMAT;
 
 struct _WS_DATETIME {
-    unsigned __int64 ticks;
+    unsigned __int64 DECLSPEC_ALIGN(8) ticks;
     WS_DATETIME_FORMAT format;
 };
 
 struct _WS_DATETIME_DESCRIPTION {
     WS_DATETIME minValue;
     WS_DATETIME maxValue;
+};
+
+struct _WS_XML_DATETIME_TEXT {
+    WS_XML_TEXT text;
+    WS_DATETIME value;
+};
+
+struct _WS_XML_BASE64_TEXT {
+    WS_XML_TEXT text;
+    BYTE *bytes;
+    ULONG length;
 };
 
 typedef enum {
@@ -1346,6 +1376,18 @@ typedef enum
 typedef void (CALLBACK *WS_MESSAGE_DONE_CALLBACK)
     (void*);
 
+typedef HRESULT (CALLBACK *WS_PROXY_MESSAGE_CALLBACK)
+    (WS_MESSAGE*, WS_HEAP*, void*, WS_ERROR*);
+
+struct _WS_PROXY_MESSAGE_CALLBACK_CONTEXT
+{
+    WS_PROXY_MESSAGE_CALLBACK callback;
+    void *state;
+};
+
+HRESULT WINAPI WsAbortServiceProxy(WS_SERVICE_PROXY*, WS_ERROR*);
+HRESULT WINAPI WsAddCustomHeader(WS_MESSAGE*, const WS_ELEMENT_DESCRIPTION*, WS_WRITE_OPTION,
+                                 const void*, ULONG, ULONG, WS_ERROR*);
 HRESULT WINAPI WsAddMappedHeader(WS_MESSAGE*, const WS_XML_STRING*, WS_TYPE, WS_WRITE_OPTION,
                                  const void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsAddressMessage(WS_MESSAGE*, const WS_ENDPOINT_ADDRESS*, WS_ERROR*);
@@ -1417,10 +1459,18 @@ HRESULT WINAPI WsOpenServiceProxy(WS_SERVICE_PROXY*, const WS_ENDPOINT_ADDRESS*,
                                   WS_ERROR*);
 HRESULT WINAPI WsReadAttribute(WS_XML_READER*, const WS_ATTRIBUTE_DESCRIPTION*, WS_READ_OPTION,
                                WS_HEAP*, void*, ULONG, WS_ERROR*);
+HRESULT WINAPI WsReadBody(WS_MESSAGE*, const WS_ELEMENT_DESCRIPTION*, WS_READ_OPTION, WS_HEAP*, void*,
+                          ULONG, WS_ERROR*);
+HRESULT WINAPI WsReadBytes(WS_XML_READER*, void*, ULONG, ULONG*, WS_ERROR*);
+HRESULT WINAPI WsReadChars(WS_XML_READER*, WCHAR*, ULONG, ULONG*, WS_ERROR*);
+HRESULT WINAPI WsReadCharsUtf8(WS_XML_READER*, BYTE*, ULONG, ULONG*, WS_ERROR*);
 HRESULT WINAPI WsReadElement(WS_XML_READER*, const WS_ELEMENT_DESCRIPTION*, WS_READ_OPTION,
                              WS_HEAP*, void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsReadEndAttribute(WS_XML_READER*, WS_ERROR*);
 HRESULT WINAPI WsReadEndElement(WS_XML_READER*, WS_ERROR*);
+HRESULT WINAPI WsReadEnvelopeEnd(WS_MESSAGE*, WS_ERROR*);
+HRESULT WINAPI WsReadEnvelopeStart(WS_MESSAGE*, WS_XML_READER*, WS_MESSAGE_DONE_CALLBACK, void*,
+                                   WS_ERROR*);
 HRESULT WINAPI WsReadNode(WS_XML_READER*, WS_ERROR*);
 HRESULT WINAPI WsReadStartAttribute(WS_XML_READER*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsReadStartElement(WS_XML_READER*, WS_ERROR*);
@@ -1432,6 +1482,8 @@ HRESULT WINAPI WsReadValue(WS_XML_READER*, WS_VALUE_TYPE, void*, ULONG, WS_ERROR
 HRESULT WINAPI WsReceiveMessage(WS_CHANNEL*, WS_MESSAGE*, const WS_MESSAGE_DESCRIPTION**, ULONG,
                                 WS_RECEIVE_OPTION, WS_READ_OPTION, WS_HEAP*, void*, ULONG, ULONG*,
                                 const WS_ASYNC_CONTEXT*, WS_ERROR*);
+HRESULT WINAPI WsRemoveCustomHeader(WS_MESSAGE*, const WS_XML_STRING*, const WS_XML_STRING*,
+                                    WS_ERROR*);
 HRESULT WINAPI WsRemoveHeader(WS_MESSAGE*, WS_HEADER_TYPE, WS_ERROR*);
 HRESULT WINAPI WsRemoveMappedHeader(WS_MESSAGE*, const WS_XML_STRING*, WS_ERROR*);
 HRESULT WINAPI WsRemoveNode(const WS_XML_NODE_POSITION*, WS_ERROR*);
@@ -1463,6 +1515,8 @@ HRESULT WINAPI WsSetOutputToBuffer(WS_XML_WRITER*, WS_XML_BUFFER*, const WS_XML_
 HRESULT WINAPI WsSetReaderPosition(WS_XML_READER*, const WS_XML_NODE_POSITION*, WS_ERROR*);
 HRESULT WINAPI WsSetWriterPosition(WS_XML_WRITER*, const WS_XML_NODE_POSITION*, WS_ERROR*);
 HRESULT WINAPI WsSkipNode(WS_XML_READER*, WS_ERROR*);
+HRESULT WINAPI WsWriteArray(WS_XML_WRITER*, const WS_XML_STRING*, const WS_XML_STRING*, WS_VALUE_TYPE,
+                            const void*, ULONG, ULONG, ULONG, WS_ERROR*);
 HRESULT WINAPI WsWriteAttribute(WS_XML_WRITER*, const WS_ATTRIBUTE_DESCRIPTION*, WS_WRITE_OPTION,
                                 const void*, ULONG, WS_ERROR*);
 HRESULT WINAPI WsWriteBody(WS_MESSAGE*, const WS_ELEMENT_DESCRIPTION*, WS_WRITE_OPTION, const void*,

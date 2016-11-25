@@ -1067,7 +1067,6 @@ struct process_snapshot *process_snap( int *count )
         ptr->count    = process->obj.refcount;
         ptr->priority = process->priority;
         ptr->handles  = get_handle_table_count(process);
-        ptr->unix_pid = process->unix_pid;
         grab_object( process );
         ptr++;
     }
@@ -1470,7 +1469,7 @@ DECL_HANDLER(get_dll_info)
 {
     struct process *process;
 
-    if ((process = get_process_from_handle( req->handle, PROCESS_QUERY_INFORMATION )))
+    if ((process = get_process_from_handle( req->handle, PROCESS_QUERY_LIMITED_INFORMATION )))
     {
         struct process_dll *dll;
 

@@ -1343,8 +1343,10 @@ static nsresult NSAPI nsChannel_SetReferrerWithPolicy(nsIHttpChannel *iface, nsI
     }
 
     hres = IUri_GetDisplayUri(referrer->uri, &referrer_uri);
-    if(SUCCEEDED(hres) )
+    if(SUCCEEDED(hres)) {
         set_http_header(&This->request_headers, refererW, sizeof(refererW)/sizeof(WCHAR), referrer_uri, SysStringLen(referrer_uri));
+        SysFreeString(referrer_uri);
+    }
 
     This->referrer = (nsIURI*)&referrer->nsIFileURL_iface;
     return NS_OK;
@@ -2344,6 +2346,8 @@ static nsrefcnt NSAPI nsURI_Release(nsIFileURL *iface)
             nsIWebBrowserChrome_Release(&This->container->nsIWebBrowserChrome_iface);
         if(This->uri)
             IUri_Release(This->uri);
+        if(This->uri_builder)
+            IUriBuilder_Release(This->uri_builder);
         heap_free(This->origin_charset);
         heap_free(This);
     }

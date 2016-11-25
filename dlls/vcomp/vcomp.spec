@@ -73,16 +73,16 @@
 @ stub _vcomp_ordered_begin
 @ stub _vcomp_ordered_end
 @ stub _vcomp_ordered_loop_end
-@ stub _vcomp_reduction_i1
-@ stub _vcomp_reduction_i2
-@ stub _vcomp_reduction_i4
-@ stub _vcomp_reduction_i8
-@ stub _vcomp_reduction_r4
-@ stub _vcomp_reduction_r8
-@ stub _vcomp_reduction_u1
-@ stub _vcomp_reduction_u2
-@ stub _vcomp_reduction_u4
-@ stub _vcomp_reduction_u8
+@ cdecl _vcomp_reduction_i1(long ptr long)
+@ cdecl _vcomp_reduction_i2(long ptr long)
+@ cdecl _vcomp_reduction_i4(long ptr long)
+@ cdecl _vcomp_reduction_i8(long ptr int64)
+@ cdecl _vcomp_reduction_r4(long ptr float)
+@ cdecl _vcomp_reduction_r8(long ptr double)
+@ cdecl _vcomp_reduction_u1(long ptr long) _vcomp_reduction_i1
+@ cdecl _vcomp_reduction_u2(long ptr long) _vcomp_reduction_i2
+@ cdecl _vcomp_reduction_u4(long ptr long) _vcomp_reduction_i4
+@ cdecl _vcomp_reduction_u8(long ptr int64) _vcomp_reduction_i8
 @ cdecl _vcomp_sections_init(long)
 @ cdecl _vcomp_sections_next()
 @ cdecl _vcomp_set_num_threads(long)

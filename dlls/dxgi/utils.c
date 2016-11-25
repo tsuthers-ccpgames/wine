@@ -443,11 +443,24 @@ void wined3d_sample_desc_from_dxgi(enum wined3d_multisample_type *wined3d_type,
     }
 }
 
+void wined3d_display_mode_from_dxgi(struct wined3d_display_mode *wined3d_mode,
+        const DXGI_MODE_DESC *mode)
+{
+    wined3d_mode->width = mode->Width;
+    wined3d_mode->height = mode->Height;
+    wined3d_mode->refresh_rate = dxgi_rational_to_uint(&mode->RefreshRate);
+    wined3d_mode->format_id = wined3dformat_from_dxgi_format(mode->Format);
+    wined3d_mode->scanline_ordering = wined3d_scanline_ordering_from_dxgi(mode->ScanlineOrdering);
+}
+
+#define DXGI_WINED3D_SWAPCHAIN_FLAGS \
+        (WINED3D_SWAPCHAIN_USE_CLOSEST_MATCHING_MODE | WINED3D_SWAPCHAIN_RESTORE_WINDOW_RECT)
+
 unsigned int dxgi_swapchain_flags_from_wined3d(unsigned int wined3d_flags)
 {
     unsigned int flags = 0;
 
-    wined3d_flags &= ~WINED3D_SWAPCHAIN_RESTORE_WINDOW_RECT;
+    wined3d_flags &= ~DXGI_WINED3D_SWAPCHAIN_FLAGS;
 
     if (wined3d_flags & WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH)
     {
@@ -463,7 +476,7 @@ unsigned int dxgi_swapchain_flags_from_wined3d(unsigned int wined3d_flags)
 
 unsigned int wined3d_swapchain_flags_from_dxgi(unsigned int flags)
 {
-    unsigned int wined3d_flags = WINED3D_SWAPCHAIN_RESTORE_WINDOW_RECT; /* WINED3D_SWAPCHAIN_DISCARD_DEPTHSTENCIL? */
+    unsigned int wined3d_flags = DXGI_WINED3D_SWAPCHAIN_FLAGS; /* WINED3D_SWAPCHAIN_DISCARD_DEPTHSTENCIL? */
 
     if (flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH)
     {

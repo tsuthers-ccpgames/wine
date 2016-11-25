@@ -10,6 +10,7 @@
 @ cdecl wined3d_create(long)
 @ cdecl wined3d_decref(ptr)
 @ cdecl wined3d_enum_adapter_modes(ptr long long long long ptr)
+@ cdecl wined3d_find_closest_matching_adapter_mode(ptr long ptr)
 @ cdecl wined3d_get_adapter_count(ptr)
 @ cdecl wined3d_get_adapter_display_mode(ptr long ptr ptr)
 @ cdecl wined3d_get_adapter_identifier(ptr long long ptr)
@@ -28,8 +29,6 @@
 @ cdecl wined3d_buffer_get_parent(ptr)
 @ cdecl wined3d_buffer_get_resource(ptr)
 @ cdecl wined3d_buffer_incref(ptr)
-@ cdecl wined3d_buffer_map(ptr long long ptr long)
-@ cdecl wined3d_buffer_unmap(ptr)
 
 @ cdecl wined3d_device_acquire_focus_window(ptr ptr)
 @ cdecl wined3d_device_begin_scene(ptr)

@@ -97,10 +97,10 @@ static void ff_dump_effect(struct ff_effect *effect)
     if (effect->replay.length)
       length = wine_dbg_sprintf("%u ms", effect->replay.length);
 
-    TRACE("type: 0x%x %s, id %d, direction 0x%x (angle: %.2f), time length %s, start delay %u ms\n",
+    TRACE("type 0x%x %s, id %d, direction 0x%x (source angle %.2f), time length %s, start delay %u ms\n",
           effect->type, type, effect->id, effect->direction, angle, length, effect->replay.delay);
     if (effect->trigger.button || effect->trigger.interval)
-        TRACE("trigger button %u, re-trigger interval %u ms\n",
+        TRACE(" -> trigger button %u, re-trigger interval %u ms\n",
               effect->trigger.button, effect->trigger.interval);
 
     if (effect->type == FF_PERIODIC)
@@ -118,8 +118,9 @@ static void ff_dump_effect(struct ff_effect *effect)
             FE(FF_CUSTOM);
         }
 #undef FE
-        TRACE(" -> waveform 0x%x %s, period %u, magnitude %d, offset %d, phase %u, custom len %d\n",
-              per->waveform, wave, per->period, per->magnitude, per->offset, per->phase, per->custom_len);
+        angle = ff_effect_direction_to_rad(per->phase) * 180 / M_PI;
+        TRACE(" -> waveform 0x%x %s, period %u ms, magnitude %d, offset %d, phase 0x%x (angle %.2f), custom len %d\n",
+              per->waveform, wave, per->period, per->magnitude, per->offset, per->phase, angle, per->custom_len);
         env = &per->envelope;
     }
     else if (effect->type == FF_CONSTANT)
@@ -137,7 +138,7 @@ static void ff_dump_effect(struct ff_effect *effect)
     else if (effect->type == FF_RUMBLE)
     {
         struct ff_rumble_effect *rumble = &effect->u.rumble;
-        TRACE(" -> strong/weak magnitude %d/%d\n", rumble->strong_magnitude, rumble->weak_magnitude);
+        TRACE(" -> strong/weak magnitude %u/%u\n", rumble->strong_magnitude, rumble->weak_magnitude);
     }
     else if (effect->type == FF_SPRING || effect->type == FF_FRICTION ||
              effect->type == FF_DAMPER || effect->type == FF_INERTIA)
@@ -154,7 +155,7 @@ static void ff_dump_effect(struct ff_effect *effect)
     }
 
     if (env)
-        TRACE(" -> envelope attack length/level %u/%u, fade length/level %u/%u\n",
+        TRACE(" -> envelope attack length(ms)/level %u/%u, fade length(ms)/level %u/%u\n",
               env->attack_length, env->attack_level, env->fade_length, env->fade_level);
 }
 
@@ -585,8 +586,12 @@ static HRESULT WINAPI LinuxInputEffectImpl_SetParameters(
             env->fade_length = 0;
             env->fade_level = 0;
         }
-        else
-            WARN("Ignoring dinput envelope not supported in the linux effect\n");
+        else if(peff->lpEnvelope)
+        {
+            if(peff->lpEnvelope->dwAttackTime || peff->lpEnvelope->dwAttackLevel ||
+               peff->lpEnvelope->dwFadeTime || peff->lpEnvelope->dwFadeLevel)
+                WARN("Ignoring dinput envelope not supported in the linux effect\n");
+        }
     }
 
     /* Gain and Sample Period settings are not supported by the linux
@@ -628,7 +633,8 @@ static HRESULT WINAPI LinuxInputEffectImpl_SetParameters(
 
             This->effect.u.periodic.magnitude = (tsp->dwMagnitude / 10) * 32;
             This->effect.u.periodic.offset = (tsp->lOffset / 10) * 32;
-            This->effect.u.periodic.phase = (tsp->dwPhase / 9) * 8; /* == (/ 36 * 32) */
+            /* phase ranges from 0 - 35999 in dinput and 0 - 65535 on linux */
+            This->effect.u.periodic.phase = (tsp->dwPhase / 36) * 65;
             /* dinput uses microseconds, linux uses miliseconds */
             if (tsp->dwPeriod <= 1000)
                 This->effect.u.periodic.period = 1;
@@ -649,43 +655,49 @@ static HRESULT WINAPI LinuxInputEffectImpl_SetParameters(
             tsp = peff->lpvTypeSpecificParams;
 	    This->effect.u.ramp.start_level = (tsp->lStart / 10) * 32;
 	    This->effect.u.ramp.end_level = (tsp->lEnd / 10) * 32;
-	} else if (type == DIEFT_CONDITION) {
-            LPCDICONDITION tsp = peff->lpvTypeSpecificParams;
-            if (peff->cbTypeSpecificParams == sizeof(DICONDITION)) {
-		/* One condition block.  This needs to be rotated to direction,
-		 * and expanded to separate x and y conditions. */
-		int i;
-		double factor[2], angle;
-		/* rotate so 0 points right */
-		angle = ff_effect_direction_to_rad(This->effect.direction + 0xc000);
-		factor[0] = sin(angle);
-		factor[1] = -cos(angle);
-                for (i = 0; i < 2; ++i) {
-                    This->effect.u.condition[i].center = (int)(factor[i] * (tsp->lOffset / 10) * 32);
-                    This->effect.u.condition[i].right_coeff = (int)(factor[i] * (tsp->lPositiveCoefficient / 10) * 32);
-                    This->effect.u.condition[i].left_coeff = (int)(factor[i] * (tsp->lNegativeCoefficient / 10) * 32); 
-                    This->effect.u.condition[i].right_saturation = (int)(factor[i] * (tsp->dwPositiveSaturation / 10) * 32);
-                    This->effect.u.condition[i].left_saturation = (int)(factor[i] * (tsp->dwNegativeSaturation / 10) * 32);
-                    This->effect.u.condition[i].deadband = (int)(factor[i] * (tsp->lDeadBand / 10) * 32);
-                }
-	    } else if (peff->cbTypeSpecificParams == 2 * sizeof(DICONDITION)) {
-		/* Two condition blocks.  Direct parameter copy. */
-		int i;
-                for (i = 0; i < 2; ++i) {
-		    This->effect.u.condition[i].center = (tsp[i].lOffset / 10) * 32;
-		    This->effect.u.condition[i].right_coeff = (tsp[i].lPositiveCoefficient / 10) * 32;
-		    This->effect.u.condition[i].left_coeff = (tsp[i].lNegativeCoefficient / 10) * 32;
-		    This->effect.u.condition[i].right_saturation = (tsp[i].dwPositiveSaturation / 10) * 32;
-		    This->effect.u.condition[i].left_saturation = (tsp[i].dwNegativeSaturation / 10) * 32;
-		    This->effect.u.condition[i].deadband = (tsp[i].lDeadBand / 10) * 32;
-		}
-	    } else {
+        }
+        else if (type == DIEFT_CONDITION)
+        {
+            DICONDITION *tsp = peff->lpvTypeSpecificParams;
+            struct ff_condition_effect *cond = This->effect.u.condition;
+            int i, j, sources;
+            double factor[2];
+
+            if (peff->cbTypeSpecificParams == sizeof(DICONDITION))
+            {
+                /* One condition block.  This needs to be rotated to direction,
+                 * and expanded to separate x and y conditions. Ensures 0 points right */
+                double angle = ff_effect_direction_to_rad(This->effect.direction + 0xc000);
+                factor[0] = sin(angle);
+                factor[1] = -cos(angle);
+                sources = 1;
+            }
+            else if (peff->cbTypeSpecificParams == 2 * sizeof(DICONDITION))
+            {
+                /* Direct parameter copy without changes */
+                factor[0] = factor[1] = 1;
+                sources = 2;
+            }
+            else
                 return DIERR_INVALIDPARAM;
-	    }
-	} else {
-	    FIXME("Custom force types are not supported\n");	
-	    return DIERR_INVALIDPARAM;
-	}
+
+            for (i = j = 0; i < 2; ++i)
+            {
+                cond[i].center = (int)(factor[i] * (tsp[j].lOffset / 10) * 32);
+                cond[i].right_coeff = (int)(factor[i] * (tsp[j].lPositiveCoefficient / 10) * 32);
+                cond[i].left_coeff = (int)(factor[i] * (tsp[j].lNegativeCoefficient / 10) * 32);
+                cond[i].right_saturation = (int)(factor[i] * (tsp[j].dwPositiveSaturation / 10) * 65);
+                cond[i].left_saturation = (int)(factor[i] * (tsp[j].dwNegativeSaturation / 10) * 65);
+                cond[i].deadband = (int)(factor[i] * (tsp[j].lDeadBand / 10) * 32);
+                if (sources == 2)
+                    j++;
+            }
+        }
+        else
+        {
+            FIXME("Custom force types are not supported\n");
+            return DIERR_INVALIDPARAM;
+        }
     }
 
     if (!(dwFlags & DIEP_NODOWNLOAD))

@@ -55,7 +55,10 @@ enum wined3d_cs_op
     WINED3D_CS_OP_RESET_STATE,
     WINED3D_CS_OP_DESTROY_OBJECT,
     WINED3D_CS_OP_QUERY_ISSUE,
+    WINED3D_CS_OP_PRELOAD_RESOURCE,
     WINED3D_CS_OP_UNLOAD_RESOURCE,
+    WINED3D_CS_OP_MAP,
+    WINED3D_CS_OP_UNMAP,
 };
 
 struct wined3d_cs_present
@@ -276,10 +279,35 @@ struct wined3d_cs_query_issue
     DWORD flags;
 };
 
+struct wined3d_cs_preload_resource
+{
+    enum wined3d_cs_op opcode;
+    struct wined3d_resource *resource;
+};
+
 struct wined3d_cs_unload_resource
 {
     enum wined3d_cs_op opcode;
     struct wined3d_resource *resource;
+};
+
+struct wined3d_cs_map
+{
+    enum wined3d_cs_op opcode;
+    struct wined3d_resource *resource;
+    unsigned int sub_resource_idx;
+    struct wined3d_map_desc *map_desc;
+    const struct wined3d_box *box;
+    DWORD flags;
+    HRESULT *hr;
+};
+
+struct wined3d_cs_unmap
+{
+    enum wined3d_cs_op opcode;
+    struct wined3d_resource *resource;
+    unsigned int sub_resource_idx;
+    HRESULT *hr;
 };
 
 static void wined3d_cs_exec_present(struct wined3d_cs *cs, const void *data)
@@ -1250,6 +1278,28 @@ void wined3d_cs_emit_query_issue(struct wined3d_cs *cs, struct wined3d_query *qu
     cs->ops->submit(cs);
 }
 
+static void wined3d_cs_exec_preload_resource(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_preload_resource *op = data;
+    struct wined3d_resource *resource = op->resource;
+
+    resource->resource_ops->resource_preload(resource);
+    wined3d_resource_release(resource);
+}
+
+void wined3d_cs_emit_preload_resource(struct wined3d_cs *cs, struct wined3d_resource *resource)
+{
+    struct wined3d_cs_preload_resource *op;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_PRELOAD_RESOURCE;
+    op->resource = resource;
+
+    wined3d_resource_acquire(resource);
+
+    cs->ops->submit(cs);
+}
+
 static void wined3d_cs_exec_unload_resource(struct wined3d_cs *cs, const void *data)
 {
     const struct wined3d_cs_unload_resource *op = data;
@@ -1270,6 +1320,59 @@ void wined3d_cs_emit_unload_resource(struct wined3d_cs *cs, struct wined3d_resou
     wined3d_resource_acquire(resource);
 
     cs->ops->submit(cs);
+}
+
+static void wined3d_cs_exec_map(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_map *op = data;
+    struct wined3d_resource *resource = op->resource;
+
+    *op->hr = resource->resource_ops->resource_sub_resource_map(resource,
+            op->sub_resource_idx, op->map_desc, op->box, op->flags);
+}
+
+HRESULT wined3d_cs_map(struct wined3d_cs *cs, struct wined3d_resource *resource, unsigned int sub_resource_idx,
+        struct wined3d_map_desc *map_desc, const struct wined3d_box *box, unsigned int flags)
+{
+    struct wined3d_cs_map *op;
+    HRESULT hr;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_MAP;
+    op->resource = resource;
+    op->sub_resource_idx = sub_resource_idx;
+    op->map_desc = map_desc;
+    op->box = box;
+    op->flags = flags;
+    op->hr = &hr;
+
+    cs->ops->submit(cs);
+
+    return hr;
+}
+
+static void wined3d_cs_exec_unmap(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_unmap *op = data;
+    struct wined3d_resource *resource = op->resource;
+
+    *op->hr = resource->resource_ops->resource_sub_resource_unmap(resource, op->sub_resource_idx);
+}
+
+HRESULT wined3d_cs_unmap(struct wined3d_cs *cs, struct wined3d_resource *resource, unsigned int sub_resource_idx)
+{
+    struct wined3d_cs_unmap *op;
+    HRESULT hr;
+
+    op = cs->ops->require_space(cs, sizeof(*op));
+    op->opcode = WINED3D_CS_OP_UNMAP;
+    op->resource = resource;
+    op->sub_resource_idx = sub_resource_idx;
+    op->hr = &hr;
+
+    cs->ops->submit(cs);
+
+    return hr;
 }
 
 static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void *data) =
@@ -1303,7 +1406,10 @@ static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void
     /* WINED3D_CS_OP_RESET_STATE                */ wined3d_cs_exec_reset_state,
     /* WINED3D_CS_OP_DESTROY_OBJECT             */ wined3d_cs_exec_destroy_object,
     /* WINED3D_CS_OP_QUERY_ISSUE                */ wined3d_cs_exec_query_issue,
+    /* WINED3D_CS_OP_PRELOAD_RESOURCE           */ wined3d_cs_exec_preload_resource,
     /* WINED3D_CS_OP_UNLOAD_RESOURCE            */ wined3d_cs_exec_unload_resource,
+    /* WINED3D_CS_OP_MAP                        */ wined3d_cs_exec_map,
+    /* WINED3D_CS_OP_UNMAP                      */ wined3d_cs_exec_unmap,
 };
 
 static void *wined3d_cs_st_require_space(struct wined3d_cs *cs, size_t size)

@@ -43,6 +43,7 @@ WINE_DECLARE_DEBUG_CHANNEL(relay);
 
 extern NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event );
 
+static const WCHAR winedeviceW[] = {'w','i','n','e','d','e','v','i','c','e',0};
 static SERVICE_STATUS_HANDLE service_handle;
 static PTP_CLEANUP_GROUP cleanup_group;
 static SC_HANDLE manager_handle;
@@ -58,7 +59,13 @@ struct wine_driver
     WCHAR name[1];
 };
 
-static struct wine_rb_tree wine_drivers;
+static int wine_drivers_rb_compare( const void *key, const struct wine_rb_entry *entry )
+{
+    const struct wine_driver *driver = WINE_RB_ENTRY_VALUE( entry, const struct wine_driver, entry );
+    return strcmpW( (const WCHAR *)key, driver->name );
+}
+
+static struct wine_rb_tree wine_drivers = { wine_drivers_rb_compare };
 
 static CRITICAL_SECTION drivers_cs;
 static CRITICAL_SECTION_DEBUG critsect_debug =
@@ -68,35 +75,6 @@ static CRITICAL_SECTION_DEBUG critsect_debug =
       0, 0, { (DWORD_PTR)(__FILE__ ": drivers_cs") }
 };
 static CRITICAL_SECTION drivers_cs = { &critsect_debug, -1, 0, 0, 0, 0 };
-
-static void *wine_drivers_rb_alloc( size_t size )
-{
-    return HeapAlloc( GetProcessHeap(), 0, size );
-}
-
-static void *wine_drivers_rb_realloc( void *ptr, size_t size )
-{
-    return HeapReAlloc( GetProcessHeap(), 0, ptr, size );
-}
-
-static void wine_drivers_rb_free( void *ptr )
-{
-    HeapFree( GetProcessHeap(), 0, ptr );
-}
-
-static int wine_drivers_rb_compare( const void *key, const struct wine_rb_entry *entry )
-{
-    const struct wine_driver *driver = WINE_RB_ENTRY_VALUE( entry, const struct wine_driver, entry );
-    return strcmpW( (const WCHAR *)key, driver->name );
-}
-
-static const struct wine_rb_functions wine_drivers_rb_functions =
-{
-    wine_drivers_rb_alloc,
-    wine_drivers_rb_realloc,
-    wine_drivers_rb_free,
-    wine_drivers_rb_compare,
-};
 
 /* find the LDR_MODULE corresponding to the driver module */
 static LDR_MODULE *find_ldr_module( HMODULE module )
@@ -372,7 +350,7 @@ static NTSTATUS unload_driver( struct wine_rb_entry *entry, BOOL destroy )
         return STATUS_SUCCESS;
     }
 
-    wine_rb_remove( &wine_drivers, driver->name );
+    wine_rb_remove( &wine_drivers, &driver->entry );
 
     memset( &environment, 0, sizeof(environment) );
     environment.Version = 1;
@@ -427,7 +405,7 @@ static void WINAPI async_create_driver( PTP_CALLBACK_INSTANCE instance, void *co
 
 error:
     EnterCriticalSection( &drivers_cs );
-    wine_rb_remove( &wine_drivers, driver->name );
+    wine_rb_remove( &wine_drivers, &driver->entry );
     LeaveCriticalSection( &drivers_cs );
 
     set_service_status( driver->handle, SERVICE_STOPPED, 0 );
@@ -478,7 +456,13 @@ static NTSTATUS create_driver( const WCHAR *driver_name )
 
 static void wine_drivers_rb_destroy( struct wine_rb_entry *entry, void *context )
 {
-    unload_driver( entry, TRUE );
+    if (unload_driver( entry, TRUE ) != STATUS_SUCCESS)
+    {
+        struct wine_driver *driver = WINE_RB_ENTRY_VALUE( entry, struct wine_driver, entry );
+        ObDereferenceObject( driver->driver_obj );
+        CloseServiceHandle( (void *)driver->handle );
+        HeapFree( GetProcessHeap(), 0, driver );
+    }
 }
 
 static void WINAPI async_shutdown_drivers( PTP_CALLBACK_INSTANCE instance, void *context )
@@ -503,20 +487,57 @@ static void shutdown_drivers( void )
     shutdown_in_progress = TRUE;
 }
 
+static DWORD device_handler( DWORD ctrl, const WCHAR *driver_name )
+{
+    struct wine_rb_entry *entry;
+    DWORD result = NO_ERROR;
+
+    if (shutdown_in_progress)
+        return ERROR_SERVICE_CANNOT_ACCEPT_CTRL;
+
+    EnterCriticalSection( &drivers_cs );
+    entry = wine_rb_get( &wine_drivers, driver_name );
+
+    switch (ctrl)
+    {
+    case SERVICE_CONTROL_START:
+        if (entry) break;
+        result = RtlNtStatusToDosError(create_driver( driver_name ));
+        break;
+
+    case SERVICE_CONTROL_STOP:
+        if (!entry) break;
+        result = RtlNtStatusToDosError(unload_driver( entry, FALSE ));
+        break;
+
+    default:
+        FIXME( "got driver ctrl %x for %s\n", ctrl, wine_dbgstr_w(driver_name) );
+        break;
+    }
+    LeaveCriticalSection( &drivers_cs );
+    return result;
+}
+
 static DWORD WINAPI service_handler( DWORD ctrl, DWORD event_type, LPVOID event_data, LPVOID context )
 {
-    const WCHAR *driver_name = context;
+    const WCHAR *service_group = context;
+
+    if (ctrl & SERVICE_CONTROL_FORWARD_FLAG)
+    {
+        if (!event_data) return ERROR_INVALID_PARAMETER;
+        return device_handler( ctrl & ~SERVICE_CONTROL_FORWARD_FLAG, (const WCHAR *)event_data );
+    }
 
     switch (ctrl)
     {
     case SERVICE_CONTROL_STOP:
     case SERVICE_CONTROL_SHUTDOWN:
-        WINE_TRACE( "shutting down %s\n", wine_dbgstr_w(driver_name) );
+        TRACE( "shutting down %s\n", wine_dbgstr_w(service_group) );
         set_service_status( service_handle, SERVICE_STOP_PENDING, 0 );
         shutdown_drivers();
         return NO_ERROR;
     default:
-        WINE_FIXME( "got service ctrl %x for %s\n", ctrl, wine_dbgstr_w(driver_name) );
+        FIXME( "got service ctrl %x for %s\n", ctrl, wine_dbgstr_w(service_group) );
         set_service_status( service_handle, SERVICE_RUNNING,
                             SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN );
         return NO_ERROR;
@@ -525,27 +546,24 @@ static DWORD WINAPI service_handler( DWORD ctrl, DWORD event_type, LPVOID event_
 
 static void WINAPI ServiceMain( DWORD argc, LPWSTR *argv )
 {
-    const WCHAR *driver_name = argv[0];
-    NTSTATUS status;
+    const WCHAR *service_group = (argc >= 2) ? argv[1] : argv[0];
 
-    if (wine_rb_init( &wine_drivers, &wine_drivers_rb_functions ))
-        return;
     if (!(stop_event = CreateEventW( NULL, TRUE, FALSE, NULL )))
         return;
     if (!(cleanup_group = CreateThreadpoolCleanupGroup()))
         return;
     if (!(manager_handle = OpenSCManagerW( NULL, NULL, SC_MANAGER_CONNECT )))
         return;
-    if (!(service_handle = RegisterServiceCtrlHandlerExW( driver_name, service_handler, (void *)driver_name )))
+    if (!(service_handle = RegisterServiceCtrlHandlerExW( winedeviceW, service_handler, (void *)service_group )))
         return;
 
-    EnterCriticalSection( &drivers_cs );
-    status = create_driver( driver_name );
-    LeaveCriticalSection( &drivers_cs );
+    TRACE( "starting service group %s\n", wine_dbgstr_w(service_group) );
+    set_service_status( service_handle, SERVICE_RUNNING,
+                        SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN );
 
-    if (status == STATUS_SUCCESS)
-        wine_ntoskrnl_main_loop( stop_event );
+    wine_ntoskrnl_main_loop( stop_event );
 
+    TRACE( "service group %s stopped\n", wine_dbgstr_w(service_group) );
     set_service_status( service_handle, SERVICE_STOPPED, 0 );
     CloseServiceHandle( manager_handle );
     CloseThreadpoolCleanupGroup( cleanup_group );
@@ -556,13 +574,7 @@ int wmain( int argc, WCHAR *argv[] )
 {
     SERVICE_TABLE_ENTRYW service_table[2];
 
-    if (!argv[1])
-    {
-        WINE_ERR( "missing device name, winedevice isn't supposed to be run manually\n" );
-        return 1;
-    }
-
-    service_table[0].lpServiceName = argv[1];
+    service_table[0].lpServiceName = (void *)winedeviceW;
     service_table[0].lpServiceProc = ServiceMain;
     service_table[1].lpServiceName = NULL;
     service_table[1].lpServiceProc = NULL;

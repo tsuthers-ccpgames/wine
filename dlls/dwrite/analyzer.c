@@ -169,6 +169,18 @@ static const struct dwritescript_properties dwritescripts_properties[Script_Last
     { /* Sidd */ { 0x64646953, 302,  8, 0x0020, 1, 0, 1, 1, 0, 0, 0 }, _OT('s','i','d','d') },
     { /* Tirh */ { 0x68726954, 326, 15, 0x0020, 1, 1, 0, 0, 0, 1, 0 }, _OT('t','i','r','h') },
     { /* Wara */ { 0x61726157, 262,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('w','a','r','a') },
+    { /* Adlm */ { 0x6d6c6441, 166,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('a','d','l','m') },
+    { /* Ahom */ { 0x6d6f6841, 338,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('a','h','o','m') },
+    { /* Hluw */ { 0x77756c48,  80,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('h','l','u','w') },
+    { /* Bhks */ { 0x736b6842, 334,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('b','h','k','s') },
+    { /* Hatr */ { 0x72746148, 127,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('h','a','t','r') },
+    { /* Marc */ { 0x6372614d, 332,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('m','a','r','c') },
+    { /* Mult */ { 0x746c754d, 323,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('m','u','l','t') },
+    { /* Newa */ { 0x6177654e, 333,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('n','e','w','a') },
+    { /* Hung */ { 0x676e7548, 176,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('h','u','n','g') },
+    { /* Osge */ { 0x6567734f, 219,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('o','s','g','e') },
+    { /* Sgnw */ { 0x776e6753,  95,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('s','g','n','w') },
+    { /* Tang */ { 0x676e6154, 520,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('t','a','n','g') },
 };
 #undef _OT
 
@@ -193,7 +205,7 @@ static const struct fallback_mapping fontfallback_neutral_data[] = {
 
 struct dwrite_fontfallback {
     IDWriteFontFallback IDWriteFontFallback_iface;
-    IDWriteFactory3 *factory;
+    IDWriteFactory4 *factory;
     IDWriteFontCollection1 *systemcollection;
     const struct fallback_mapping *mappings;
     UINT32 count;
@@ -1785,14 +1797,14 @@ static ULONG WINAPI fontfallback_AddRef(IDWriteFontFallback *iface)
 {
     struct dwrite_fontfallback *fallback = impl_from_IDWriteFontFallback(iface);
     TRACE("(%p)\n", fallback);
-    return IDWriteFactory3_AddRef(fallback->factory);
+    return IDWriteFactory4_AddRef(fallback->factory);
 }
 
 static ULONG WINAPI fontfallback_Release(IDWriteFontFallback *iface)
 {
     struct dwrite_fontfallback *fallback = impl_from_IDWriteFontFallback(iface);
     TRACE("(%p)\n", fallback);
-    return IDWriteFactory3_Release(fallback->factory);
+    return IDWriteFactory4_Release(fallback->factory);
 }
 
 static int compare_fallback_mapping(const void *a, const void *b)
@@ -1968,7 +1980,7 @@ static const IDWriteFontFallbackVtbl fontfallbackvtbl = {
     fontfallback_MapCharacters
 };
 
-HRESULT create_system_fontfallback(IDWriteFactory3 *factory, IDWriteFontFallback **ret)
+HRESULT create_system_fontfallback(IDWriteFactory4 *factory, IDWriteFontFallback **ret)
 {
     struct dwrite_fontfallback *fallback;
 
@@ -1982,7 +1994,7 @@ HRESULT create_system_fontfallback(IDWriteFactory3 *factory, IDWriteFontFallback
     fallback->factory = factory;
     fallback->mappings = fontfallback_neutral_data;
     fallback->count = sizeof(fontfallback_neutral_data)/sizeof(fontfallback_neutral_data[0]);
-    IDWriteFactory3_GetSystemFontCollection(fallback->factory, FALSE, &fallback->systemcollection, FALSE);
+    IDWriteFactory4_GetSystemFontCollection(fallback->factory, FALSE, &fallback->systemcollection, FALSE);
 
     *ret = &fallback->IDWriteFontFallback_iface;
     return S_OK;

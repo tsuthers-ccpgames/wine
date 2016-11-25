@@ -291,7 +291,8 @@ void device_clear_render_targets(struct wined3d_device *device, UINT rt_count, c
         UINT rect_count, const RECT *clear_rect, const RECT *draw_rect, DWORD flags, const struct wined3d_color *color,
         float depth, DWORD stencil)
 {
-    struct wined3d_surface *target = rt_count ? wined3d_rendertarget_view_get_surface(fb->render_targets[0]) : NULL;
+    struct wined3d_rendertarget_view *rtv = rt_count ? fb->render_targets[0] : NULL;
+    struct wined3d_surface *target = rtv ? wined3d_rendertarget_view_get_surface(rtv) : NULL;
     struct wined3d_rendertarget_view *dsv = fb->depth_stencil;
     struct wined3d_surface *depth_stencil = dsv ? wined3d_rendertarget_view_get_surface(dsv) : NULL;
     const struct wined3d_state *state = &device->state;
@@ -339,7 +340,7 @@ void device_clear_render_targets(struct wined3d_device *device, UINT rt_count, c
     if (target)
     {
         render_offscreen = context->render_offscreen;
-        surface_get_drawable_size(target, context, &drawable_width, &drawable_height);
+        wined3d_rendertarget_view_get_drawable_size(rtv, context, &drawable_width, &drawable_height);
     }
     else
     {
@@ -684,7 +685,7 @@ static void create_dummy_textures(struct wined3d_device *device, struct wined3d_
 {
     const struct wined3d_d3d_info *d3d_info = &device->adapter->d3d_info;
     const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
-    unsigned int i, j, count;
+    unsigned int i;
     DWORD color;
 
     if (d3d_info->wined3d_creation_flags & WINED3D_LEGACY_UNBOUND_RESOURCE_COLOR)
@@ -696,127 +697,109 @@ static void create_dummy_textures(struct wined3d_device *device, struct wined3d_
      * OpenGL will only allow that when a valid texture is bound.
      * We emulate this by creating dummy textures and binding them
      * to each texture stage when the currently set D3D texture is NULL. */
-    count = min(MAX_COMBINED_SAMPLERS, gl_info->limits.combined_samplers);
-    for (i = 0; i < count; ++i)
+    context_active_texture(context, gl_info, 0);
+
+    gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_textures.tex_2d);
+    checkGLcall("glGenTextures");
+    TRACE("Dummy 2D texture given name %u.\n", device->dummy_textures.tex_2d);
+
+    gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D, device->dummy_textures.tex_2d);
+    checkGLcall("glBindTexture");
+
+    gl_info->gl_ops.gl.p_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0,
+            GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, &color);
+    checkGLcall("glTexImage2D");
+
+    if (gl_info->supported[ARB_TEXTURE_RECTANGLE])
     {
-        /* Make appropriate texture active */
-        context_active_texture(context, gl_info, i);
-
-        gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_texture_2d[i]);
+        gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_textures.tex_rect);
         checkGLcall("glGenTextures");
-        TRACE("Dummy 2D texture %u given name %u.\n", i, device->dummy_texture_2d[i]);
+        TRACE("Dummy rectangle texture given name %u.\n", device->dummy_textures.tex_rect);
 
-        gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D, device->dummy_texture_2d[i]);
+        gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_RECTANGLE_ARB, device->dummy_textures.tex_rect);
         checkGLcall("glBindTexture");
 
-        gl_info->gl_ops.gl.p_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0,
+        gl_info->gl_ops.gl.p_glTexImage2D(GL_TEXTURE_RECTANGLE_ARB, 0, GL_RGBA8, 1, 1, 0,
                 GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, &color);
         checkGLcall("glTexImage2D");
-
-        if (gl_info->supported[ARB_TEXTURE_RECTANGLE])
-        {
-            gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_texture_rect[i]);
-            checkGLcall("glGenTextures");
-            TRACE("Dummy rectangle texture %u given name %u.\n", i, device->dummy_texture_rect[i]);
-
-            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_RECTANGLE_ARB, device->dummy_texture_rect[i]);
-            checkGLcall("glBindTexture");
-
-            gl_info->gl_ops.gl.p_glTexImage2D(GL_TEXTURE_RECTANGLE_ARB, 0, GL_RGBA8, 1, 1, 0,
-                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, &color);
-            checkGLcall("glTexImage2D");
-        }
-
-        if (gl_info->supported[EXT_TEXTURE3D])
-        {
-            gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_texture_3d[i]);
-            checkGLcall("glGenTextures");
-            TRACE("Dummy 3D texture %u given name %u.\n", i, device->dummy_texture_3d[i]);
-
-            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_3D, device->dummy_texture_3d[i]);
-            checkGLcall("glBindTexture");
-
-            GL_EXTCALL(glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, 1, 1, 1, 0,
-                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, &color));
-            checkGLcall("glTexImage3D");
-        }
-
-        if (gl_info->supported[ARB_TEXTURE_CUBE_MAP])
-        {
-            gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_texture_cube[i]);
-            checkGLcall("glGenTextures");
-            TRACE("Dummy cube texture %u given name %u.\n", i, device->dummy_texture_cube[i]);
-
-            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_CUBE_MAP, device->dummy_texture_cube[i]);
-            checkGLcall("glBindTexture");
-
-            for (j = GL_TEXTURE_CUBE_MAP_POSITIVE_X; j <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z; ++j)
-            {
-                gl_info->gl_ops.gl.p_glTexImage2D(j, 0, GL_RGBA8, 1, 1, 0,
-                        GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, &color);
-                checkGLcall("glTexImage2D");
-            }
-        }
-
-        if (gl_info->supported[EXT_TEXTURE_ARRAY])
-        {
-            gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_texture_2d_array[i]);
-            checkGLcall("glGenTextures");
-            TRACE("Dummy 2D array texture %u given name %u.\n", i, device->dummy_texture_2d_array[i]);
-
-            gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D_ARRAY, device->dummy_texture_2d_array[i]);
-            checkGLcall("glBindTexture");
-
-            GL_EXTCALL(glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, 1, 1, 1, 0,
-                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, &color));
-            checkGLcall("glTexImage3D");
-        }
-    }
-}
-
-/* Context activation is done by the caller. */
-static void destroy_dummy_textures(struct wined3d_device *device, const struct wined3d_gl_info *gl_info)
-{
-    unsigned int count = min(MAX_COMBINED_SAMPLERS, gl_info->limits.combined_samplers);
-
-    if (gl_info->supported[EXT_TEXTURE_ARRAY])
-    {
-        gl_info->gl_ops.gl.p_glDeleteTextures(count, device->dummy_texture_2d_array);
-        checkGLcall("glDeleteTextures(count, device->dummy_texture_2d_array)");
-    }
-
-    if (gl_info->supported[ARB_TEXTURE_CUBE_MAP])
-    {
-        gl_info->gl_ops.gl.p_glDeleteTextures(count, device->dummy_texture_cube);
-        checkGLcall("glDeleteTextures(count, device->dummy_texture_cube)");
     }
 
     if (gl_info->supported[EXT_TEXTURE3D])
     {
-        gl_info->gl_ops.gl.p_glDeleteTextures(count, device->dummy_texture_3d);
-        checkGLcall("glDeleteTextures(count, device->dummy_texture_3d)");
+        gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_textures.tex_3d);
+        checkGLcall("glGenTextures");
+        TRACE("Dummy 3D texture given name %u.\n", device->dummy_textures.tex_3d);
+
+        gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_3D, device->dummy_textures.tex_3d);
+        checkGLcall("glBindTexture");
+
+        GL_EXTCALL(glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, 1, 1, 1, 0,
+                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, &color));
+        checkGLcall("glTexImage3D");
     }
 
-    if (gl_info->supported[ARB_TEXTURE_RECTANGLE])
+    if (gl_info->supported[ARB_TEXTURE_CUBE_MAP])
     {
-        gl_info->gl_ops.gl.p_glDeleteTextures(count, device->dummy_texture_rect);
-        checkGLcall("glDeleteTextures(count, device->dummy_texture_rect)");
+        gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_textures.tex_cube);
+        checkGLcall("glGenTextures");
+        TRACE("Dummy cube texture given name %u.\n", device->dummy_textures.tex_cube);
+
+        gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_CUBE_MAP, device->dummy_textures.tex_cube);
+        checkGLcall("glBindTexture");
+
+        for (i = GL_TEXTURE_CUBE_MAP_POSITIVE_X; i <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z; ++i)
+        {
+            gl_info->gl_ops.gl.p_glTexImage2D(i, 0, GL_RGBA8, 1, 1, 0,
+                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, &color);
+            checkGLcall("glTexImage2D");
+        }
     }
 
-    gl_info->gl_ops.gl.p_glDeleteTextures(count, device->dummy_texture_2d);
-    checkGLcall("glDeleteTextures(count, device->dummy_texture_2d)");
+    if (gl_info->supported[EXT_TEXTURE_ARRAY])
+    {
+        gl_info->gl_ops.gl.p_glGenTextures(1, &device->dummy_textures.tex_2d_array);
+        checkGLcall("glGenTextures");
+        TRACE("Dummy 2D array texture given name %u.\n", device->dummy_textures.tex_2d_array);
 
-    memset(device->dummy_texture_2d_array, 0, count * sizeof(*device->dummy_texture_2d_array));
-    memset(device->dummy_texture_cube, 0, count * sizeof(*device->dummy_texture_cube));
-    memset(device->dummy_texture_3d, 0, count * sizeof(*device->dummy_texture_3d));
-    memset(device->dummy_texture_rect, 0, count * sizeof(*device->dummy_texture_rect));
-    memset(device->dummy_texture_2d, 0, count * sizeof(*device->dummy_texture_2d));
+        gl_info->gl_ops.gl.p_glBindTexture(GL_TEXTURE_2D_ARRAY, device->dummy_textures.tex_2d_array);
+        checkGLcall("glBindTexture");
+
+        GL_EXTCALL(glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, 1, 1, 1, 0,
+                    GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, &color));
+        checkGLcall("glTexImage3D");
+    }
+
+    context_bind_dummy_textures(device, context);
 }
 
 /* Context activation is done by the caller. */
-static void create_default_samplers(struct wined3d_device *device)
+static void destroy_dummy_textures(struct wined3d_device *device, struct wined3d_context *context)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+
+    if (gl_info->supported[EXT_TEXTURE_ARRAY])
+        gl_info->gl_ops.gl.p_glDeleteTextures(1, &device->dummy_textures.tex_2d_array);
+
+    if (gl_info->supported[ARB_TEXTURE_CUBE_MAP])
+        gl_info->gl_ops.gl.p_glDeleteTextures(1, &device->dummy_textures.tex_cube);
+
+    if (gl_info->supported[EXT_TEXTURE3D])
+        gl_info->gl_ops.gl.p_glDeleteTextures(1, &device->dummy_textures.tex_3d);
+
+    if (gl_info->supported[ARB_TEXTURE_RECTANGLE])
+        gl_info->gl_ops.gl.p_glDeleteTextures(1, &device->dummy_textures.tex_rect);
+
+    gl_info->gl_ops.gl.p_glDeleteTextures(1, &device->dummy_textures.tex_2d);
+
+    checkGLcall("Delete dummy textures");
+
+    memset(&device->dummy_textures, 0, sizeof(device->dummy_textures));
+}
+
+/* Context activation is done by the caller. */
+static void create_default_samplers(struct wined3d_device *device, struct wined3d_context *context)
+{
+    const struct wined3d_gl_info *gl_info = context->gl_info;
 
     if (gl_info->supported[ARB_SAMPLER_OBJECTS])
     {
@@ -847,9 +830,9 @@ static void create_default_samplers(struct wined3d_device *device)
 }
 
 /* Context activation is done by the caller. */
-static void destroy_default_samplers(struct wined3d_device *device)
+static void destroy_default_samplers(struct wined3d_device *device, struct wined3d_context *context)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = context->gl_info;
 
     if (gl_info->supported[ARB_SAMPLER_OBJECTS])
     {
@@ -1075,10 +1058,10 @@ HRESULT CDECL wined3d_device_init_3d(struct wined3d_device *device,
     device->swapchains[0] = swapchain;
     device_init_swapchain_state(device, swapchain);
 
-    context = context_acquire(device, swapchain->front_buffer->sub_resources[0].u.surface);
+    context = context_acquire(device, NULL);
 
     create_dummy_textures(device, context);
-    create_default_samplers(device);
+    create_default_samplers(device, context);
 
     device->contexts[0]->last_was_rhw = 0;
 
@@ -1202,16 +1185,12 @@ HRESULT CDECL wined3d_device_uninit_3d(struct wined3d_device *device)
     /* Destroy the shader backend. Note that this has to happen after all shaders are destroyed. */
     device->blitter->free_private(device);
     device->shader_backend->shader_free_private(device);
-    destroy_dummy_textures(device, gl_info);
-    destroy_default_samplers(device);
+    destroy_dummy_textures(device, context);
+    destroy_default_samplers(device, context);
 
-    /* Release the context again as soon as possible. In particular,
-     * releasing the render target views below may release the last reference
-     * to the swapchain associated with this context, which in turn will
-     * destroy the context. */
     context_release(context);
 
-    /* Release the buffers (with sanity checks)*/
+    /* Release the buffers (with sanity checks) */
     if (device->onscreen_depth_stencil)
     {
         surface = device->onscreen_depth_stencil;
@@ -1875,7 +1854,7 @@ HRESULT CDECL wined3d_device_set_clip_plane(struct wined3d_device *device,
     TRACE("device %p, plane_idx %u, plane %p.\n", device, plane_idx, plane);
 
     /* Validate plane_idx. */
-    if (plane_idx >= device->adapter->gl_info.limits.clipplanes)
+    if (plane_idx >= device->adapter->gl_info.limits.user_clip_distances)
     {
         TRACE("Application has requested clipplane this device doesn't support.\n");
         return WINED3DERR_INVALIDCALL;
@@ -1904,7 +1883,7 @@ HRESULT CDECL wined3d_device_get_clip_plane(const struct wined3d_device *device,
     TRACE("device %p, plane_idx %u, plane %p.\n", device, plane_idx, plane);
 
     /* Validate plane_idx. */
-    if (plane_idx >= device->adapter->gl_info.limits.clipplanes)
+    if (plane_idx >= device->adapter->gl_info.limits.user_clip_distances)
     {
         TRACE("Application has requested clipplane this device doesn't support.\n");
         return WINED3DERR_INVALIDCALL;
@@ -2885,6 +2864,8 @@ static HRESULT process_vertices_strided(const struct wined3d_device *device, DWO
         DWORD DestFVF)
 {
     struct wined3d_matrix mat, proj_mat, view_mat, world_mat;
+    struct wined3d_map_desc map_desc;
+    struct wined3d_box box = {0};
     struct wined3d_viewport vp;
     UINT vertex_size;
     unsigned int i;
@@ -2925,11 +2906,14 @@ static HRESULT process_vertices_strided(const struct wined3d_device *device, DWO
         doClip = FALSE;
 
     vertex_size = get_flexible_vertex_size(DestFVF);
-    if (FAILED(hr = wined3d_buffer_map(dest, dwDestIndex * vertex_size, dwCount * vertex_size, &dest_ptr, 0)))
+    box.left = dwDestIndex * vertex_size;
+    box.right = box.left + dwCount * vertex_size;
+    if (FAILED(hr = wined3d_resource_map(&dest->resource, 0, &map_desc, &box, 0)))
     {
         WARN("Failed to map buffer, hr %#x.\n", hr);
         return hr;
     }
+    dest_ptr = map_desc.data;
 
     wined3d_device_get_transform(device, WINED3D_TS_VIEW, &view_mat);
     wined3d_device_get_transform(device, WINED3D_TS_PROJECTION, &proj_mat);
@@ -3139,7 +3123,7 @@ static HRESULT process_vertices_strided(const struct wined3d_device *device, DWO
         }
     }
 
-    wined3d_buffer_unmap(dest);
+    wined3d_resource_unmap(&dest->resource, 0);
 
     return WINED3D_OK;
 }
@@ -3191,11 +3175,12 @@ HRESULT CDECL wined3d_device_process_vertices(struct wined3d_device *device,
         e = &stream_info.elements[i];
         buffer = state->streams[e->stream_idx].buffer;
         e->data.buffer_object = 0;
-        e->data.addr += (ULONG_PTR)buffer_get_sysmem(buffer, context);
+        e->data.addr += (ULONG_PTR)wined3d_buffer_load_sysmem(buffer, context);
         if (buffer->buffer_object)
         {
             GL_EXTCALL(glDeleteBuffers(1, &buffer->buffer_object));
             buffer->buffer_object = 0;
+            wined3d_buffer_invalidate_location(buffer, WINED3D_LOCATION_BUFFER);
         }
         if (e->data.addr)
             e->data.addr += e->stride * src_start_idx;
@@ -3617,7 +3602,7 @@ static HRESULT wined3d_device_update_texture_3d(struct wined3d_device *device,
 
         data.buffer_object = 0;
         data.addr = src.data;
-        wined3d_texture_upload_data(dst_texture, i, context, &data, src.row_pitch, src.slice_pitch);
+        wined3d_texture_upload_data(dst_texture, i, context, NULL, &data, src.row_pitch, src.slice_pitch);
         wined3d_texture_invalidate_location(dst_texture, i, ~WINED3D_LOCATION_TEXTURE_RGB);
 
         if (FAILED(hr = wined3d_resource_unmap(&src_texture->resource, src_level + i)))
@@ -4078,15 +4063,10 @@ void CDECL wined3d_device_update_sub_resource(struct wined3d_device *device, str
         unsigned int sub_resource_idx, const struct wined3d_box *box, const void *data, unsigned int row_pitch,
         unsigned int depth_pitch)
 {
-    struct wined3d_texture_sub_resource *sub_resource;
-    const struct wined3d_gl_info *gl_info;
+    unsigned int width, height, depth, level;
     struct wined3d_const_bo_address addr;
-    unsigned int width, height, level;
     struct wined3d_context *context;
     struct wined3d_texture *texture;
-    struct wined3d_surface *surface;
-    POINT dst_point;
-    RECT src_rect;
 
     TRACE("device %p, resource %p, sub_resource_idx %u, box %s, data %p, row_pitch %u, depth_pitch %u.\n",
             device, resource, sub_resource_idx, debug_box(box), data, row_pitch, depth_pitch);
@@ -4108,64 +4088,46 @@ void CDECL wined3d_device_update_sub_resource(struct wined3d_device *device, str
         return;
     }
 
-    if (resource->type != WINED3D_RTYPE_TEXTURE_2D)
+    if (resource->type != WINED3D_RTYPE_TEXTURE_2D && resource->type != WINED3D_RTYPE_TEXTURE_3D)
     {
         FIXME("Not implemented for %s resources.\n", debug_d3dresourcetype(resource->type));
         return;
     }
 
     texture = texture_from_resource(resource);
-    if (!(sub_resource = wined3d_texture_get_sub_resource(texture, sub_resource_idx)))
+    if (sub_resource_idx >= texture->level_count * texture->layer_count)
     {
         WARN("Invalid sub_resource_idx %u.\n", sub_resource_idx);
         return;
     }
-    surface = sub_resource->u.surface;
 
     level = sub_resource_idx % texture->level_count;
     width = wined3d_texture_get_level_width(texture, level);
     height = wined3d_texture_get_level_height(texture, level);
+    depth = wined3d_texture_get_level_depth(texture, level);
 
-    src_rect.left = 0;
-    src_rect.top = 0;
-    if (box)
+    if (box && (box->left >= box->right || box->right > width
+            || box->top >= box->bottom || box->bottom > height
+            || box->front >= box->back || box->back > depth))
     {
-        if (box->left >= box->right || box->right > width
-                || box->top >= box->bottom || box->bottom > height
-                || box->front >= box->back)
-        {
-            WARN("Invalid box %s specified.\n", debug_box(box));
-            return;
-        }
-
-        src_rect.right = box->right - box->left;
-        src_rect.bottom = box->bottom - box->top;
-        dst_point.x = box->left;
-        dst_point.y = box->top;
-    }
-    else
-    {
-        src_rect.right = width;
-        src_rect.bottom = height;
-        dst_point.x = 0;
-        dst_point.y = 0;
+        WARN("Invalid box %s specified.\n", debug_box(box));
+        return;
     }
 
     addr.buffer_object = 0;
     addr.addr = data;
 
     context = context_acquire(resource->device, NULL);
-    gl_info = context->gl_info;
 
-    /* Only load the surface for partial updates. */
-    if (!dst_point.x && !dst_point.y && src_rect.right == width && src_rect.bottom == height)
+    /* Only load the sub-resource for partial updates. */
+    if (!box || (!box->left && !box->top && !box->front
+            && box->right == width && box->bottom == height && box->back == depth))
         wined3d_texture_prepare_texture(texture, context, FALSE);
     else
         wined3d_texture_load_location(texture, sub_resource_idx, context, WINED3D_LOCATION_TEXTURE_RGB);
     wined3d_texture_bind_and_dirtify(texture, context, FALSE);
 
-    wined3d_surface_upload_data(surface, gl_info, resource->format,
-            &src_rect, row_pitch, &dst_point, FALSE, &addr);
+    wined3d_texture_upload_data(texture, sub_resource_idx, context, box, &addr, row_pitch, depth_pitch);
 
     context_release(context);
 
@@ -4578,14 +4540,17 @@ static void delete_opengl_contexts(struct wined3d_device *device, struct wined3d
 
     device->blitter->free_private(device);
     device->shader_backend->shader_free_private(device);
-    destroy_dummy_textures(device, gl_info);
-    destroy_default_samplers(device);
+    destroy_dummy_textures(device, context);
+    destroy_default_samplers(device, context);
 
     context_release(context);
 
     while (device->context_count)
     {
-        swapchain_destroy_contexts(device->contexts[0]->swapchain);
+        if (device->contexts[0]->swapchain)
+            swapchain_destroy_contexts(device->contexts[0]->swapchain);
+        else
+            context_destroy(device, device->contexts[0]);
     }
 
     HeapFree(GetProcessHeap(), 0, swapchain->context);
@@ -4635,7 +4600,7 @@ static HRESULT create_primary_opengl_context(struct wined3d_device *device, stru
     swapchain->context[0] = context;
     swapchain->num_contexts = 1;
     create_dummy_textures(device, context);
-    create_default_samplers(device);
+    create_default_samplers(device, context);
     context_release(context);
 
     return WINED3D_OK;
@@ -5045,14 +5010,6 @@ static int wined3d_sampler_compare(const void *key, const struct wine_rb_entry *
     return memcmp(&sampler->desc, key, sizeof(sampler->desc));
 }
 
-static const struct wine_rb_functions wined3d_sampler_rb_functions =
-{
-    wined3d_rb_alloc,
-    wined3d_rb_realloc,
-    wined3d_rb_free,
-    wined3d_sampler_compare,
-};
-
 HRESULT device_init(struct wined3d_device *device, struct wined3d *wined3d,
         UINT adapter_idx, enum wined3d_device_type device_type, HWND focus_window, DWORD flags,
         BYTE surface_alignment, struct wined3d_device_parent *device_parent)
@@ -5084,11 +5041,7 @@ HRESULT device_init(struct wined3d_device *device, struct wined3d *wined3d,
 
     fragment_pipeline = adapter->fragment_pipe;
 
-    if (wine_rb_init(&device->samplers, &wined3d_sampler_rb_functions) == -1)
-    {
-        ERR("Failed to initialize sampler rbtree.\n");
-        return E_OUTOFMEMORY;
-    }
+    wine_rb_init(&device->samplers, wined3d_sampler_compare);
 
     if (vertex_pipeline->vp_states && fragment_pipeline->states
             && FAILED(hr = compile_state_table(device->StateTable, device->multistate_funcs,

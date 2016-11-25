@@ -1924,9 +1924,11 @@ static HRESULT STDMETHODCALLTYPE d2d_geometry_sink_Close(ID2D1GeometrySink *ifac
     }
 
 done:
-    d2d_path_geometry_free_figures(geometry);
     if (FAILED(hr))
+    {
+        d2d_path_geometry_free_figures(geometry);
         geometry->u.path.state = D2D_GEOMETRY_STATE_ERROR;
+    }
     return hr;
 }
 
@@ -2112,10 +2114,24 @@ static HRESULT STDMETHODCALLTYPE d2d_path_geometry_StrokeContainsPoint(ID2D1Path
 static HRESULT STDMETHODCALLTYPE d2d_path_geometry_FillContainsPoint(ID2D1PathGeometry *iface,
         D2D1_POINT_2F point, const D2D1_MATRIX_3X2_F *transform, float tolerance, BOOL *contains)
 {
-    FIXME("iface %p, point {%.8e, %.8e}, transform %p, tolerance %.8e, contains %p stub!\n",
+    struct d2d_geometry *geometry = impl_from_ID2D1PathGeometry(iface);
+    D2D1_MATRIX_3X2_F g_i;
+
+    TRACE("iface %p, point {%.8e, %.8e}, transform %p, tolerance %.8e, contains %p.\n",
             iface, point.x, point.y, transform, tolerance, contains);
 
-    return E_NOTIMPL;
+    if (transform)
+    {
+        if (!d2d_matrix_invert(&g_i, transform))
+            return D2DERR_UNSUPPORTED_OPERATION;
+        d2d_point_transform(&point, &g_i, point.x, point.y);
+    }
+
+    *contains = !!d2d_path_geometry_point_inside(geometry, &point);
+
+    TRACE("-> %#x.\n", *contains);
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_path_geometry_CompareWithGeometry(ID2D1PathGeometry *iface,
@@ -2374,10 +2390,30 @@ static HRESULT STDMETHODCALLTYPE d2d_rectangle_geometry_StrokeContainsPoint(ID2D
 static HRESULT STDMETHODCALLTYPE d2d_rectangle_geometry_FillContainsPoint(ID2D1RectangleGeometry *iface,
         D2D1_POINT_2F point, const D2D1_MATRIX_3X2_F *transform, float tolerance, BOOL *contains)
 {
-    FIXME("iface %p, point {%.8e, %.8e}, transform %p, tolerance %.8e, contains %p stub!\n",
+    struct d2d_geometry *geometry = impl_from_ID2D1RectangleGeometry(iface);
+    D2D1_RECT_F *rect = &geometry->u.rectangle.rect;
+    float dx, dy;
+
+    TRACE("iface %p, point {%.8e, %.8e}, transform %p, tolerance %.8e, contains %p.\n",
             iface, point.x, point.y, transform, tolerance, contains);
 
-    return E_NOTIMPL;
+    if (transform)
+    {
+        D2D1_MATRIX_3X2_F g_i;
+
+        if (!d2d_matrix_invert(&g_i, transform))
+            return D2DERR_UNSUPPORTED_OPERATION;
+        d2d_point_transform(&point, &g_i, point.x, point.y);
+    }
+
+    if (tolerance == 0.0f)
+        tolerance = D2D1_DEFAULT_FLATTENING_TOLERANCE;
+
+    dx = max(fabsf((rect->right  + rect->left) / 2.0f - point.x) - (rect->right  - rect->left) / 2.0f, 0.0f);
+    dy = max(fabsf((rect->bottom + rect->top)  / 2.0f - point.y) - (rect->bottom - rect->top)  / 2.0f, 0.0f);
+
+    *contains = tolerance * tolerance > (dx * dx + dy * dy);
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_rectangle_geometry_CompareWithGeometry(ID2D1RectangleGeometry *iface,
@@ -2617,20 +2653,35 @@ static HRESULT STDMETHODCALLTYPE d2d_transformed_geometry_StrokeContainsPoint(ID
         D2D1_POINT_2F point, float stroke_width, ID2D1StrokeStyle *stroke_style, const D2D1_MATRIX_3X2_F *transform,
         float tolerance, BOOL *contains)
 {
-    FIXME("iface %p, point {%.8e, %.8e}, stroke_width %.8e, stroke_style %p, "
-            "transform %p, tolerance %.8e, contains %p stub!\n",
+    struct d2d_geometry *geometry = impl_from_ID2D1TransformedGeometry(iface);
+    D2D1_MATRIX_3X2_F g;
+
+    TRACE("iface %p, point {%.8e, %.8e}, stroke_width %.8e, stroke_style %p, "
+            "transform %p, tolerance %.8e, contains %p.\n",
             iface, point.x, point.y, stroke_width, stroke_style, transform, tolerance, contains);
 
-    return E_NOTIMPL;
+    g = geometry->transform;
+    if (transform)
+        d2d_matrix_multiply(&g, transform);
+
+    return ID2D1Geometry_StrokeContainsPoint(geometry->u.transformed.src_geometry, point, stroke_width, stroke_style,
+            &g, tolerance, contains);
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_transformed_geometry_FillContainsPoint(ID2D1TransformedGeometry *iface,
         D2D1_POINT_2F point, const D2D1_MATRIX_3X2_F *transform, float tolerance, BOOL *contains)
 {
-    FIXME("iface %p, point {%.8e, %.8e}, transform %p, tolerance %.8e, contains %p stub!\n",
+    struct d2d_geometry *geometry = impl_from_ID2D1TransformedGeometry(iface);
+    D2D1_MATRIX_3X2_F g;
+
+    TRACE("iface %p, point {%.8e, %.8e}, transform %p, tolerance %.8e, contains %p.\n",
             iface, point.x, point.y, transform, tolerance, contains);
 
-    return E_NOTIMPL;
+    g = geometry->transform;
+    if (transform)
+        d2d_matrix_multiply(&g, transform);
+
+    return ID2D1Geometry_FillContainsPoint(geometry->u.transformed.src_geometry, point, &g, tolerance, contains);
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_transformed_geometry_CompareWithGeometry(ID2D1TransformedGeometry *iface,

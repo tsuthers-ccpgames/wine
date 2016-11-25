@@ -145,6 +145,8 @@ static const WCHAR szUnpublishComponents[] =
     {'U','n','p','u','b','l','i','s','h', 'C','o','m','p','o','n','e','n','t','s',0};
 static const WCHAR szUnpublishFeatures[] =
     {'U','n','p','u','b','l','i','s','h','F','e','a','t','u','r','e','s',0};
+static const WCHAR szUnpublishProduct[] =
+    {'U','n','p','u','b','l','i','s','h','P','r','o','d','u','c','t',0};
 static const WCHAR szUnregisterComPlus[] =
     {'U','n','r','e','g','i','s','t','e','r','C','o','m','P','l','u','s',0};
 static const WCHAR szUnregisterTypeLibraries[] =
@@ -3506,14 +3508,14 @@ static WCHAR *build_full_keypath( MSIPACKAGE *package, MSICOMPONENT *comp )
 
 static UINT ACTION_ProcessComponents(MSIPACKAGE *package)
 {
-    WCHAR squished_pc[GUID_SIZE], squished_cc[GUID_SIZE];
+    WCHAR squashed_pc[SQUASHED_GUID_SIZE], squashed_cc[SQUASHED_GUID_SIZE];
     UINT rc;
     MSICOMPONENT *comp;
     HKEY hkey;
 
     TRACE("\n");
 
-    squash_guid(package->ProductCode,squished_pc);
+    squash_guid( package->ProductCode, squashed_pc );
     msi_set_sourcedir_props(package, FALSE);
 
     LIST_FOR_EACH_ENTRY( comp, &package->components, MSICOMPONENT, entry )
@@ -3525,7 +3527,7 @@ static UINT ACTION_ProcessComponents(MSIPACKAGE *package)
         if (!comp->ComponentId)
             continue;
 
-        squash_guid( comp->ComponentId, squished_cc );
+        squash_guid( comp->ComponentId, squashed_cc );
         msi_free( comp->FullKeypath );
         comp->FullKeypath = build_full_keypath( package, comp );
 
@@ -3535,7 +3537,7 @@ static UINT ACTION_ProcessComponents(MSIPACKAGE *package)
         else action = comp->ActionRequest;
 
         TRACE("Component %s (%s) Keypath=%s RefCount=%u Clients=%u Action=%u\n",
-                            debugstr_w(comp->Component), debugstr_w(squished_cc),
+                            debugstr_w(comp->Component), debugstr_w(squashed_cc),
                             debugstr_w(comp->FullKeypath), comp->RefCount, comp->num_clients, action);
 
         if (action == INSTALLSTATE_LOCAL || action == INSTALLSTATE_SOURCE)
@@ -3558,7 +3560,7 @@ static UINT ACTION_ProcessComponents(MSIPACKAGE *package)
                 msi_reg_set_val_str(hkey, szPermKey, comp->FullKeypath);
             }
             if (action == INSTALLSTATE_LOCAL)
-                msi_reg_set_val_str(hkey, squished_pc, comp->FullKeypath);
+                msi_reg_set_val_str( hkey, squashed_pc, comp->FullKeypath );
             else
             {
                 MSIFILE *file;
@@ -3595,7 +3597,7 @@ static UINT ACTION_ProcessComponents(MSIPACKAGE *package)
                 lstrcpyW(ptr2, ptr);
                 msi_free(sourcepath);
 
-                msi_reg_set_val_str(hkey, squished_pc, source);
+                msi_reg_set_val_str( hkey, squashed_pc, source );
             }
             RegCloseKey(hkey);
         }
@@ -3624,7 +3626,7 @@ static UINT ACTION_ProcessComponents(MSIPACKAGE *package)
                     WARN( "failed to open component key %u\n", rc );
                     continue;
                 }
-                res = RegDeleteValueW( hkey, squished_pc );
+                res = RegDeleteValueW( hkey, squashed_pc );
                 RegCloseKey(hkey);
                 if (res) WARN( "failed to delete component value %d\n", res );
             }
@@ -4222,15 +4224,6 @@ static UINT msi_publish_sourcelist(MSIPACKAGE *package, HKEY hkey)
 
 static UINT msi_publish_product_properties(MSIPACKAGE *package, HKEY hkey)
 {
-    MSIHANDLE hdb, suminfo;
-    WCHAR guids[MAX_PATH];
-    WCHAR packcode[SQUISH_GUID_SIZE];
-    LPWSTR buffer;
-    LPWSTR ptr;
-    DWORD langid;
-    DWORD size;
-    UINT r;
-
     static const WCHAR szARPProductIcon[] =
         {'A','R','P','P','R','O','D','U','C','T','I','C','O','N',0};
     static const WCHAR szAssignment[] =
@@ -4240,6 +4233,10 @@ static UINT msi_publish_product_properties(MSIPACKAGE *package, HKEY hkey)
     static const WCHAR szClients[] =
         {'C','l','i','e','n','t','s',0};
     static const WCHAR szColon[] = {':',0};
+    MSIHANDLE hdb, suminfo;
+    WCHAR *buffer, *ptr, guids[MAX_PATH], packcode[SQUASHED_GUID_SIZE];
+    DWORD langid, size;
+    UINT r;
 
     buffer = msi_dup_property(package->db, INSTALLPROPERTY_PRODUCTNAMEW);
     msi_reg_set_val_str(hkey, INSTALLPROPERTY_PRODUCTNAMEW, buffer);
@@ -4302,8 +4299,7 @@ static UINT msi_publish_upgrade_code(MSIPACKAGE *package)
 {
     UINT r;
     HKEY hkey;
-    LPWSTR upgrade;
-    WCHAR squashed_pc[SQUISH_GUID_SIZE];
+    WCHAR *upgrade, squashed_pc[SQUASHED_GUID_SIZE];
 
     upgrade = msi_dup_property(package->db, szUpgradeCode);
     if (!upgrade)
@@ -5195,9 +5191,8 @@ static UINT msi_publish_install_properties(MSIPACKAGE *package, HKEY hkey)
 
 static UINT ACTION_RegisterProduct(MSIPACKAGE *package)
 {
-    WCHAR squashed_pc[SQUISH_GUID_SIZE];
+    WCHAR *upgrade_code, squashed_pc[SQUASHED_GUID_SIZE];
     MSIRECORD *uirow;
-    LPWSTR upgrade_code;
     HKEY hkey, props, upgrade_key;
     UINT rc;
 
@@ -5290,31 +5285,50 @@ static UINT msi_unpublish_icons( MSIPACKAGE *package )
     return ERROR_SUCCESS;
 }
 
-static UINT msi_unpublish_product( MSIPACKAGE *package, const WCHAR *remove )
+static void remove_product_upgrade_code( MSIPACKAGE *package )
 {
-    static const WCHAR szUpgradeCode[] = {'U','p','g','r','a','d','e','C','o','d','e',0};
-    WCHAR *upgrade, **features;
-    BOOL full_uninstall = TRUE;
-    MSIFEATURE *feature;
+    WCHAR *code, product[SQUASHED_GUID_SIZE];
+    HKEY hkey;
+    LONG res;
+    DWORD count;
+
+    squash_guid( package->ProductCode, product );
+    if (!(code = msi_dup_property( package->db, szUpgradeCode )))
+    {
+        WARN( "upgrade code not found\n" );
+        return;
+    }
+    if (!MSIREG_OpenUpgradeCodesKey( code, &hkey, FALSE ))
+    {
+        RegDeleteValueW( hkey, product );
+        res = RegQueryInfoKeyW( hkey, NULL, NULL, NULL, NULL, NULL, &count, NULL, NULL, NULL, NULL, NULL );
+        RegCloseKey( hkey );
+        if (!res && !count) MSIREG_DeleteUpgradeCodesKey( code );
+    }
+    if (!MSIREG_OpenUserUpgradeCodesKey( code, &hkey, FALSE ))
+    {
+        RegDeleteValueW( hkey, product );
+        res = RegQueryInfoKeyW( hkey, NULL, NULL, NULL, NULL, NULL, &count, NULL, NULL, NULL, NULL, NULL );
+        RegCloseKey( hkey );
+        if (!res && !count) MSIREG_DeleteUserUpgradeCodesKey( code );
+    }
+    if (!MSIREG_OpenClassesUpgradeCodesKey( code, &hkey, FALSE ))
+    {
+        RegDeleteValueW( hkey, product );
+        res = RegQueryInfoKeyW( hkey, NULL, NULL, NULL, NULL, NULL, &count, NULL, NULL, NULL, NULL, NULL );
+        RegCloseKey( hkey );
+        if (!res && !count) MSIREG_DeleteClassesUpgradeCodesKey( code );
+    }
+
+    msi_free( code );
+}
+
+static UINT ACTION_UnpublishProduct(MSIPACKAGE *package)
+{
     MSIPATCHINFO *patch;
-    UINT i;
-
-    LIST_FOR_EACH_ENTRY( feature, &package->features, MSIFEATURE, entry )
-    {
-        if (feature->Action == INSTALLSTATE_LOCAL) full_uninstall = FALSE;
-    }
-    features = msi_split_string( remove, ',' );
-    for (i = 0; features && features[i]; i++)
-    {
-        if (!strcmpW( features[i], szAll )) full_uninstall = TRUE;
-    }
-    msi_free(features);
-
-    if (!full_uninstall)
-        return ERROR_SUCCESS;
 
     MSIREG_DeleteProductKey(package->ProductCode);
-    MSIREG_DeleteUserDataProductKey(package->ProductCode);
+    MSIREG_DeleteUserDataProductKey(package->ProductCode, package->Context);
     MSIREG_DeleteUninstallKey(package->ProductCode, package->platform);
 
     MSIREG_DeleteLocalClassesProductKey(package->ProductCode);
@@ -5322,13 +5336,7 @@ static UINT msi_unpublish_product( MSIPACKAGE *package, const WCHAR *remove )
     MSIREG_DeleteUserProductKey(package->ProductCode);
     MSIREG_DeleteUserFeaturesKey(package->ProductCode);
 
-    upgrade = msi_dup_property(package->db, szUpgradeCode);
-    if (upgrade)
-    {
-        MSIREG_DeleteUserUpgradeCodesKey(upgrade);
-        MSIREG_DeleteClassesUpgradeCodesKey(upgrade);
-        msi_free(upgrade);
-    }
+    remove_product_upgrade_code( package );
 
     LIST_FOR_EACH_ENTRY(patch, &package->patches, MSIPATCHINFO, entry)
     {
@@ -5347,10 +5355,32 @@ static UINT msi_unpublish_product( MSIPACKAGE *package, const WCHAR *remove )
     return ERROR_SUCCESS;
 }
 
+static BOOL is_full_uninstall( MSIPACKAGE *package )
+{
+    WCHAR **features, *remove = msi_dup_property( package->db, szRemove );
+    MSIFEATURE *feature;
+    BOOL ret = TRUE;
+    UINT i;
+
+    LIST_FOR_EACH_ENTRY( feature, &package->features, MSIFEATURE, entry )
+    {
+        if (feature->Action == INSTALLSTATE_LOCAL) ret = FALSE;
+    }
+
+    features = msi_split_string( remove, ',' );
+    for (i = 0; features && features[i]; i++)
+    {
+        if (!strcmpW( features[i], szAll )) ret = TRUE;
+    }
+
+    msi_free(features);
+    msi_free(remove);
+    return ret;
+}
+
 static UINT ACTION_InstallFinalize(MSIPACKAGE *package)
 {
     UINT rc;
-    WCHAR *remove;
 
     /* first do the same as an InstallExecute */
     rc = execute_script(package, SCRIPT_INSTALL);
@@ -5362,9 +5392,9 @@ static UINT ACTION_InstallFinalize(MSIPACKAGE *package)
     if (rc != ERROR_SUCCESS)
         return rc;
 
-    remove = msi_dup_property(package->db, szRemove);
-    rc = msi_unpublish_product(package, remove);
-    msi_free(remove);
+    if (is_full_uninstall(package))
+        rc = ACTION_UnpublishProduct(package);
+
     return rc;
 }
 
@@ -5392,26 +5422,24 @@ UINT ACTION_ForceReboot(MSIPACKAGE *package)
     '/','I',' ','\"','%','s','\"',' ',
     'A','F','T','E','R','R','E','B','O','O','T','=','1',' ',
     'R','U','N','O','N','C','E','E','N','T','R','Y','=','\"','%','s','\"',0};
-    WCHAR buffer[256], sysdir[MAX_PATH];
+    WCHAR buffer[256], sysdir[MAX_PATH], squashed_pc[SQUASHED_GUID_SIZE];
     HKEY hkey;
-    WCHAR squished_pc[100];
 
-    squash_guid(package->ProductCode,squished_pc);
+    squash_guid( package->ProductCode, squashed_pc );
 
     GetSystemDirectoryW(sysdir, sizeof(sysdir)/sizeof(sysdir[0]));
     RegCreateKeyW(HKEY_LOCAL_MACHINE,RunOnce,&hkey);
-    snprintfW(buffer,sizeof(buffer)/sizeof(buffer[0]),msiexec_fmt,sysdir,
-     squished_pc);
+    snprintfW( buffer, sizeof(buffer)/sizeof(buffer[0]), msiexec_fmt, sysdir, squashed_pc );
 
-    msi_reg_set_val_str( hkey, squished_pc, buffer );
+    msi_reg_set_val_str( hkey, squashed_pc, buffer );
     RegCloseKey(hkey);
 
     TRACE("Reboot command %s\n",debugstr_w(buffer));
 
     RegCreateKeyW(HKEY_LOCAL_MACHINE,InstallRunOnce,&hkey);
-    sprintfW(buffer,install_fmt,package->ProductCode,squished_pc);
+    sprintfW( buffer, install_fmt, package->ProductCode, squashed_pc );
 
-    msi_reg_set_val_str( hkey, squished_pc, buffer );
+    msi_reg_set_val_str( hkey, squashed_pc, buffer );
     RegCloseKey(hkey);
 
     return ERROR_INSTALL_SUSPEND;
@@ -5533,7 +5561,7 @@ static UINT ACTION_RegisterUser(MSIPACKAGE *package)
 
     if (msi_check_unpublish(package))
     {
-        MSIREG_DeleteUserDataProductKey(package->ProductCode);
+        MSIREG_DeleteUserDataProductKey(package->ProductCode, package->Context);
         goto end;
     }
 
@@ -7400,7 +7428,8 @@ static UINT ACTION_SetODBCFolders( MSIPACKAGE *package )
 static UINT ITERATE_RemoveExistingProducts( MSIRECORD *rec, LPVOID param )
 {
     static const WCHAR fmtW[] =
-        {'m','s','i','e','x','e','c',' ','/','i',' ','%','s',' ','R','E','M','O','V','E','=','%','s',0};
+        {'m','s','i','e','x','e','c',' ','/','q','n',' ','/','i',' ','%','s',' ',
+         'R','E','M','O','V','E','=','%','s',0};
     MSIPACKAGE *package = param;
     const WCHAR *property = MSI_RecordGetString( rec, 7 );
     int attrs = MSI_RecordGetInteger( rec, 5 );
@@ -7681,7 +7710,7 @@ StandardActions[] =
     { szProcessComponents, ACTION_ProcessComponents, szProcessComponents },
     { szPublishComponents, ACTION_PublishComponents, szUnpublishComponents },
     { szPublishFeatures, ACTION_PublishFeatures, szUnpublishFeatures },
-    { szPublishProduct, ACTION_PublishProduct, NULL },
+    { szPublishProduct, ACTION_PublishProduct, szUnpublishProduct },
     { szRegisterClassInfo, ACTION_RegisterClassInfo, szUnregisterClassInfo },
     { szRegisterComPlus, ACTION_RegisterComPlus, szUnregisterComPlus },
     { szRegisterExtensionInfo, ACTION_RegisterExtensionInfo, szUnregisterExtensionInfo },
@@ -7710,6 +7739,7 @@ StandardActions[] =
     { szStopServices, ACTION_StopServices, szStartServices },
     { szUnpublishComponents, ACTION_UnpublishComponents, szPublishComponents },
     { szUnpublishFeatures, ACTION_UnpublishFeatures, szPublishFeatures },
+    { szUnpublishProduct, ACTION_UnpublishProduct, NULL }, /* for rollback only */
     { szUnregisterClassInfo, ACTION_UnregisterClassInfo, szRegisterClassInfo },
     { szUnregisterComPlus, ACTION_UnregisterComPlus, szRegisterComPlus },
     { szUnregisterExtensionInfo, ACTION_UnregisterExtensionInfo, szRegisterExtensionInfo },

@@ -29,12 +29,33 @@ struct d2d_factory
     ID2D1Factory ID2D1Factory_iface;
     LONG refcount;
 
-    ID3D10Device1 *wic_device;
+    ID3D10Device1 *device;
+
+    float dpi_x;
+    float dpi_y;
 };
 
 static inline struct d2d_factory *impl_from_ID2D1Factory(ID2D1Factory *iface)
 {
     return CONTAINING_RECORD(iface, struct d2d_factory, ID2D1Factory_iface);
+}
+
+static HRESULT d2d_factory_reload_sysmetrics(struct d2d_factory *factory)
+{
+    HDC hdc;
+
+    if (!(hdc = GetDC(NULL)))
+    {
+        factory->dpi_x = factory->dpi_y = 96.0f;
+        return E_FAIL;
+    }
+
+    factory->dpi_x = GetDeviceCaps(hdc, LOGPIXELSX);
+    factory->dpi_y = GetDeviceCaps(hdc, LOGPIXELSY);
+
+    ReleaseDC(NULL, hdc);
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_factory_QueryInterface(ID2D1Factory *iface, REFIID iid, void **out)
@@ -74,8 +95,8 @@ static ULONG STDMETHODCALLTYPE d2d_factory_Release(ID2D1Factory *iface)
 
     if (!refcount)
     {
-        if (factory->wic_device)
-            ID3D10Device1_Release(factory->wic_device);
+        if (factory->device)
+            ID3D10Device1_Release(factory->device);
         HeapFree(GetProcessHeap(), 0, factory);
     }
 
@@ -84,17 +105,21 @@ static ULONG STDMETHODCALLTYPE d2d_factory_Release(ID2D1Factory *iface)
 
 static HRESULT STDMETHODCALLTYPE d2d_factory_ReloadSystemMetrics(ID2D1Factory *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d2d_factory *factory = impl_from_ID2D1Factory(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p.\n", iface);
+
+    return d2d_factory_reload_sysmetrics(factory);
 }
 
 static void STDMETHODCALLTYPE d2d_factory_GetDesktopDpi(ID2D1Factory *iface, float *dpi_x, float *dpi_y)
 {
-    FIXME("iface %p, dpi_x %p, dpi_y %p stub!\n", iface, dpi_x, dpi_y);
+    struct d2d_factory *factory = impl_from_ID2D1Factory(iface);
 
-    *dpi_x = 96.0f;
-    *dpi_y = 96.0f;
+    TRACE("iface %p, dpi_x %p, dpi_y %p.\n", iface, dpi_x, dpi_y);
+
+    *dpi_x = factory->dpi_x;
+    *dpi_y = factory->dpi_y;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_factory_CreateRectangleGeometry(ID2D1Factory *iface,
@@ -138,10 +163,10 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateEllipseGeometry(ID2D1Factory 
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_factory_CreateGeometryGroup(ID2D1Factory *iface,
-        D2D1_FILL_MODE fill_mode, ID2D1Geometry *geometry, UINT32 geometry_count, ID2D1GeometryGroup **group)
+        D2D1_FILL_MODE fill_mode, ID2D1Geometry **geometries, UINT32 geometry_count, ID2D1GeometryGroup **group)
 {
-    FIXME("iface %p, fill_mode %#x, geometry %p, geometry_count %u, group %p stub!\n",
-            iface, fill_mode, geometry, geometry_count, group);
+    FIXME("iface %p, fill_mode %#x, geometries %p, geometry_count %u, group %p stub!\n",
+            iface, fill_mode, geometries, geometry_count, group);
 
     return E_NOTIMPL;
 }
@@ -223,11 +248,24 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDrawingStateBlock(ID2D1Factor
     return S_OK;
 }
 
+static HRESULT d2d_factory_get_device(struct d2d_factory *factory, ID3D10Device1 **device)
+{
+    HRESULT hr = S_OK;
+
+    if (!factory->device && FAILED(hr = D3D10CreateDevice1(NULL, D3D10_DRIVER_TYPE_HARDWARE, NULL, D3D10_CREATE_DEVICE_BGRA_SUPPORT,
+            D3D10_FEATURE_LEVEL_10_0, D3D10_1_SDK_VERSION, &factory->device)))
+        WARN("Failed to create device, hr %#x.\n", hr);
+
+    *device = factory->device;
+    return hr;
+}
+
 static HRESULT STDMETHODCALLTYPE d2d_factory_CreateWicBitmapRenderTarget(ID2D1Factory *iface,
         IWICBitmap *target, const D2D1_RENDER_TARGET_PROPERTIES *desc, ID2D1RenderTarget **render_target)
 {
     struct d2d_factory *factory = impl_from_ID2D1Factory(iface);
     struct d2d_wic_render_target *object;
+    ID3D10Device1 *device;
     HRESULT hr;
 
     TRACE("iface %p, target %p, desc %p, render_target %p.\n", iface, target, desc, render_target);
@@ -235,15 +273,13 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateWicBitmapRenderTarget(ID2D1Fa
     if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    if (!factory->wic_device && FAILED(hr = D3D10CreateDevice1(NULL, D3D10_DRIVER_TYPE_HARDWARE, NULL,
-            D3D10_CREATE_DEVICE_BGRA_SUPPORT, D3D10_FEATURE_LEVEL_10_0, D3D10_1_SDK_VERSION, &factory->wic_device)))
+    if (FAILED(hr = d2d_factory_get_device(factory, &device)))
     {
-        WARN("Failed to create device, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
         return hr;
     }
 
-    if (FAILED(hr = d2d_wic_render_target_init(object, iface, factory->wic_device, target, desc)))
+    if (FAILED(hr = d2d_wic_render_target_init(object, iface, device, target, desc)))
     {
         WARN("Failed to initialize render target, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
@@ -260,9 +296,30 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateHwndRenderTarget(ID2D1Factory
         const D2D1_RENDER_TARGET_PROPERTIES *desc, const D2D1_HWND_RENDER_TARGET_PROPERTIES *hwnd_rt_desc,
         ID2D1HwndRenderTarget **render_target)
 {
-    FIXME("iface %p, desc %p, hwnd_rt_desc %p, render_target %p stub!\n", iface, desc, hwnd_rt_desc, render_target);
+    struct d2d_factory *factory = impl_from_ID2D1Factory(iface);
+    struct d2d_hwnd_render_target *object;
+    ID3D10Device1 *device;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, desc %p, hwnd_rt_desc %p, render_target %p.\n", iface, desc, hwnd_rt_desc, render_target);
+
+    if (FAILED(hr = d2d_factory_get_device(factory, &device)))
+        return hr;
+
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    if (FAILED(hr = d2d_hwnd_render_target_init(object, iface, device, desc, hwnd_rt_desc)))
+    {
+        WARN("Failed to initialize render target, hr %#x.\n", hr);
+        HeapFree(GetProcessHeap(), 0, object);
+        return hr;
+    }
+
+    TRACE("Created render target %p.\n", object);
+    *render_target = &object->ID2D1HwndRenderTarget_iface;
+
+    return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDxgiSurfaceRenderTarget(ID2D1Factory *iface,
@@ -292,9 +349,30 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDxgiSurfaceRenderTarget(ID2D1
 static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDCRenderTarget(ID2D1Factory *iface,
         const D2D1_RENDER_TARGET_PROPERTIES *desc, ID2D1DCRenderTarget **render_target)
 {
-    FIXME("iface %p, desc %p, render_target %p stub!\n", iface, desc, render_target);
+    struct d2d_factory *factory = impl_from_ID2D1Factory(iface);
+    struct d2d_dc_render_target *object;
+    ID3D10Device1 *device;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, desc %p, render_target %p.\n", iface, desc, render_target);
+
+    if (FAILED(hr = d2d_factory_get_device(factory, &device)))
+        return hr;
+
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    if (FAILED(hr = d2d_dc_render_target_init(object, iface, device, desc)))
+    {
+        WARN("Failed to initialize render target, hr %#x.\n", hr);
+        HeapFree(GetProcessHeap(), 0, object);
+        return hr;
+    }
+
+    TRACE("Created render target %p.\n", object);
+    *render_target = &object->ID2D1DCRenderTarget_iface;
+
+    return S_OK;
 }
 
 static const struct ID2D1FactoryVtbl d2d_factory_vtbl =
@@ -328,6 +406,7 @@ static void d2d_factory_init(struct d2d_factory *factory, D2D1_FACTORY_TYPE fact
 
     factory->ID2D1Factory_iface.lpVtbl = &d2d_factory_vtbl;
     factory->refcount = 1;
+    d2d_factory_reload_sysmetrics(factory);
 }
 
 HRESULT WINAPI D2D1CreateFactory(D2D1_FACTORY_TYPE factory_type, REFIID iid,

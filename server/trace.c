@@ -3741,37 +3741,81 @@ static void dump_open_clipboard_request( const struct open_clipboard_request *re
 
 static void dump_open_clipboard_reply( const struct open_clipboard_reply *req )
 {
-    fprintf( stderr, " owner=%d", req->owner );
+    fprintf( stderr, " owner=%08x", req->owner );
 }
 
 static void dump_close_clipboard_request( const struct close_clipboard_request *req )
 {
-    fprintf( stderr, " changed=%d", req->changed );
 }
 
 static void dump_close_clipboard_reply( const struct close_clipboard_reply *req )
 {
     fprintf( stderr, " viewer=%08x", req->viewer );
-    fprintf( stderr, ", owner=%d", req->owner );
-}
-
-static void dump_set_clipboard_info_request( const struct set_clipboard_info_request *req )
-{
-    fprintf( stderr, " flags=%08x", req->flags );
     fprintf( stderr, ", owner=%08x", req->owner );
-}
-
-static void dump_set_clipboard_info_reply( const struct set_clipboard_info_reply *req )
-{
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", old_clipboard=%08x", req->old_clipboard );
-    fprintf( stderr, ", old_owner=%08x", req->old_owner );
-    fprintf( stderr, ", old_viewer=%08x", req->old_viewer );
-    fprintf( stderr, ", seqno=%08x", req->seqno );
 }
 
 static void dump_empty_clipboard_request( const struct empty_clipboard_request *req )
 {
+}
+
+static void dump_set_clipboard_data_request( const struct set_clipboard_data_request *req )
+{
+    fprintf( stderr, " format=%08x", req->format );
+    fprintf( stderr, ", lcid=%08x", req->lcid );
+    dump_varargs_bytes( ", data=", cur_size );
+}
+
+static void dump_set_clipboard_data_reply( const struct set_clipboard_data_reply *req )
+{
+    fprintf( stderr, " seqno=%08x", req->seqno );
+}
+
+static void dump_get_clipboard_data_request( const struct get_clipboard_data_request *req )
+{
+    fprintf( stderr, " format=%08x", req->format );
+    fprintf( stderr, ", cached=%d", req->cached );
+    fprintf( stderr, ", seqno=%08x", req->seqno );
+}
+
+static void dump_get_clipboard_data_reply( const struct get_clipboard_data_reply *req )
+{
+    fprintf( stderr, " from=%08x", req->from );
+    fprintf( stderr, ", owner=%08x", req->owner );
+    fprintf( stderr, ", seqno=%08x", req->seqno );
+    fprintf( stderr, ", total=%u", req->total );
+    dump_varargs_bytes( ", data=", cur_size );
+}
+
+static void dump_get_clipboard_formats_request( const struct get_clipboard_formats_request *req )
+{
+    fprintf( stderr, " format=%08x", req->format );
+}
+
+static void dump_get_clipboard_formats_reply( const struct get_clipboard_formats_reply *req )
+{
+    fprintf( stderr, " count=%08x", req->count );
+    dump_varargs_uints( ", formats=", cur_size );
+}
+
+static void dump_enum_clipboard_formats_request( const struct enum_clipboard_formats_request *req )
+{
+    fprintf( stderr, " previous=%08x", req->previous );
+}
+
+static void dump_enum_clipboard_formats_reply( const struct enum_clipboard_formats_reply *req )
+{
+    fprintf( stderr, " format=%08x", req->format );
+}
+
+static void dump_release_clipboard_request( const struct release_clipboard_request *req )
+{
+    fprintf( stderr, " owner=%08x", req->owner );
+}
+
+static void dump_release_clipboard_reply( const struct release_clipboard_reply *req )
+{
+    fprintf( stderr, " viewer=%08x", req->viewer );
+    fprintf( stderr, ", owner=%08x", req->owner );
 }
 
 static void dump_get_clipboard_info_request( const struct get_clipboard_info_request *req )
@@ -3796,6 +3840,16 @@ static void dump_set_clipboard_viewer_reply( const struct set_clipboard_viewer_r
 {
     fprintf( stderr, " old_viewer=%08x", req->old_viewer );
     fprintf( stderr, ", owner=%08x", req->owner );
+}
+
+static void dump_add_clipboard_listener_request( const struct add_clipboard_listener_request *req )
+{
+    fprintf( stderr, " window=%08x", req->window );
+}
+
+static void dump_remove_clipboard_listener_request( const struct remove_clipboard_listener_request *req )
+{
+    fprintf( stderr, " window=%08x", req->window );
 }
 
 static void dump_open_token_request( const struct open_token_request *req )
@@ -4623,10 +4677,16 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_set_class_info_request,
     (dump_func)dump_open_clipboard_request,
     (dump_func)dump_close_clipboard_request,
-    (dump_func)dump_set_clipboard_info_request,
     (dump_func)dump_empty_clipboard_request,
+    (dump_func)dump_set_clipboard_data_request,
+    (dump_func)dump_get_clipboard_data_request,
+    (dump_func)dump_get_clipboard_formats_request,
+    (dump_func)dump_enum_clipboard_formats_request,
+    (dump_func)dump_release_clipboard_request,
     (dump_func)dump_get_clipboard_info_request,
     (dump_func)dump_set_clipboard_viewer_request,
+    (dump_func)dump_add_clipboard_listener_request,
+    (dump_func)dump_remove_clipboard_listener_request,
     (dump_func)dump_open_token_request,
     (dump_func)dump_set_global_windows_request,
     (dump_func)dump_adjust_token_privileges_request,
@@ -4903,10 +4963,16 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_set_class_info_reply,
     (dump_func)dump_open_clipboard_reply,
     (dump_func)dump_close_clipboard_reply,
-    (dump_func)dump_set_clipboard_info_reply,
     NULL,
+    (dump_func)dump_set_clipboard_data_reply,
+    (dump_func)dump_get_clipboard_data_reply,
+    (dump_func)dump_get_clipboard_formats_reply,
+    (dump_func)dump_enum_clipboard_formats_reply,
+    (dump_func)dump_release_clipboard_reply,
     (dump_func)dump_get_clipboard_info_reply,
     (dump_func)dump_set_clipboard_viewer_reply,
+    NULL,
+    NULL,
     (dump_func)dump_open_token_reply,
     (dump_func)dump_set_global_windows_reply,
     (dump_func)dump_adjust_token_privileges_reply,
@@ -5183,10 +5249,16 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "set_class_info",
     "open_clipboard",
     "close_clipboard",
-    "set_clipboard_info",
     "empty_clipboard",
+    "set_clipboard_data",
+    "get_clipboard_data",
+    "get_clipboard_formats",
+    "enum_clipboard_formats",
+    "release_clipboard",
     "get_clipboard_info",
     "set_clipboard_viewer",
+    "add_clipboard_listener",
+    "remove_clipboard_listener",
     "open_token",
     "set_global_windows",
     "adjust_token_privileges",
@@ -5307,6 +5379,8 @@ static const struct
     { "INVALID_IMAGE_NOT_MZ",        STATUS_INVALID_IMAGE_NOT_MZ },
     { "INVALID_IMAGE_PROTECT",       STATUS_INVALID_IMAGE_PROTECT },
     { "INVALID_IMAGE_WIN_64",        STATUS_INVALID_IMAGE_WIN_64 },
+    { "INVALID_LOCK_SEQUENCE",       STATUS_INVALID_LOCK_SEQUENCE },
+    { "INVALID_OWNER",               STATUS_INVALID_OWNER },
     { "INVALID_PARAMETER",           STATUS_INVALID_PARAMETER },
     { "INVALID_SECURITY_DESCR",      STATUS_INVALID_SECURITY_DESCR },
     { "IO_TIMEOUT",                  STATUS_IO_TIMEOUT },
@@ -5340,7 +5414,6 @@ static const struct
     { "OBJECT_PATH_SYNTAX_BAD",      STATUS_OBJECT_PATH_SYNTAX_BAD },
     { "OBJECT_TYPE_MISMATCH",        STATUS_OBJECT_TYPE_MISMATCH },
     { "PENDING",                     STATUS_PENDING },
-    { "PIPE_BUSY",                   STATUS_PIPE_BUSY },
     { "PIPE_CONNECTED",              STATUS_PIPE_CONNECTED },
     { "PIPE_DISCONNECTED",           STATUS_PIPE_DISCONNECTED },
     { "PIPE_LISTENING",              STATUS_PIPE_LISTENING },

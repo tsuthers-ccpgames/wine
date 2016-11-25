@@ -205,6 +205,12 @@ static BOOL session_set_option( object_header_t *hdr, DWORD option, LPVOID buffe
         TRACE("WINHTTP_OPTION_UNLOAD_NOTIFY_EVENT: %p\n", *(HANDLE *)buffer);
         session->unload_event = *(HANDLE *)buffer;
         return TRUE;
+    case WINHTTP_OPTION_MAX_CONNS_PER_SERVER:
+        FIXME("WINHTTP_OPTION_MAX_CONNS_PER_SERVER: %d\n", *(DWORD *)buffer);
+        return TRUE;
+    case WINHTTP_OPTION_MAX_CONNS_PER_1_0_SERVER:
+        FIXME("WINHTTP_OPTION_MAX_CONNS_PER_1_0_SERVER: %d\n", *(DWORD *)buffer);
+        return TRUE;
     default:
         FIXME("unimplemented option %u\n", option);
         set_last_error( ERROR_INVALID_PARAMETER );
@@ -993,6 +999,14 @@ static BOOL request_set_option( object_header_t *hdr, DWORD option, LPVOID buffe
         if (!(session->proxy_password = buffer_to_str( buffer, buflen ))) return FALSE;
         return TRUE;
     }
+    case WINHTTP_OPTION_CLIENT_CERT_CONTEXT:
+        if (!(hdr->flags & WINHTTP_FLAG_SECURE))
+        {
+            SetLastError( ERROR_WINHTTP_INCORRECT_HANDLE_STATE );
+            return FALSE;
+        }
+        FIXME("WINHTTP_OPTION_CLIENT_CERT_CONTEXT\n");
+        return TRUE;
     default:
         FIXME("unimplemented option %u\n", option);
         set_last_error( ERROR_INVALID_PARAMETER );
@@ -1218,7 +1232,7 @@ static BOOL set_option( object_header_t *hdr, DWORD option, LPVOID buffer, DWORD
 {
     BOOL ret = TRUE;
 
-    if (!buffer)
+    if (!buffer && buflen)
     {
         set_last_error( ERROR_INVALID_PARAMETER );
         return FALSE;
@@ -1750,6 +1764,8 @@ static char *download_script( const WCHAR *url, DWORD *out_size )
 
     memset( &uc, 0, sizeof(uc) );
     uc.dwStructSize = sizeof(uc);
+    uc.dwHostNameLength = -1;
+    uc.dwUrlPathLength = -1;
     if (!WinHttpCrackUrl( url, 0, 0, &uc )) return NULL;
     if (!(hostname = heap_alloc( (uc.dwHostNameLength + 1) * sizeof(WCHAR) ))) return NULL;
     memcpy( hostname, uc.lpszHostName, uc.dwHostNameLength * sizeof(WCHAR) );
@@ -1811,6 +1827,7 @@ static BOOL run_script( char *script, DWORD size, const WCHAR *url, WINHTTP_PROX
     char *result, *urlA;
     DWORD len_result;
     struct AUTO_PROXY_SCRIPT_BUFFER buffer;
+    URL_COMPONENTSW uc;
 
     buffer.dwStructSize = sizeof(buffer);
     buffer.lpszScriptBuffer = script;
@@ -1822,10 +1839,23 @@ static BOOL run_script( char *script, DWORD size, const WCHAR *url, WINHTTP_PROX
         heap_free( urlA );
         return FALSE;
     }
-    if ((ret = InternetGetProxyInfo( urlA, strlen(urlA), NULL, 0, &result, &len_result )))
+
+    memset( &uc, 0, sizeof(uc) );
+    uc.dwStructSize = sizeof(uc);
+    uc.dwHostNameLength = -1;
+
+    if (WinHttpCrackUrl( url, 0, 0, &uc ))
     {
-        ret = parse_script_result( result, info );
-        heap_free( result );
+        char *hostnameA = strdupWA_sized( uc.lpszHostName, uc.dwHostNameLength );
+
+        if ((ret = InternetGetProxyInfo( urlA, strlen(urlA),
+                        hostnameA, strlen(hostnameA), &result, &len_result )))
+        {
+            ret = parse_script_result( result, info );
+            heap_free( result );
+        }
+
+        heap_free( hostnameA );
     }
     heap_free( urlA );
     return InternetDeInitializeAutoProxyDll( NULL, 0 );

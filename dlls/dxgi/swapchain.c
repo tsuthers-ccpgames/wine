@@ -78,6 +78,11 @@ static ULONG STDMETHODCALLTYPE dxgi_swapchain_Release(IDXGISwapChain *iface)
     if (!refcount)
     {
         IWineDXGIDevice *device = swapchain->device;
+        if (swapchain->target)
+        {
+            WARN("Releasing fullscreen swapchain.\n");
+            IDXGIOutput_Release(swapchain->target);
+        }
         if (swapchain->factory)
             IDXGIFactory_Release(swapchain->factory);
         wined3d_mutex_lock();
@@ -229,16 +234,23 @@ static HRESULT STDMETHODCALLTYPE DECLSPEC_HOTPATCH dxgi_swapchain_SetFullscreenS
         }
     }
 
-    swapchain->fullscreen = fullscreen;
-    if (swapchain->target)
-        IDXGIOutput_Release(swapchain->target);
-    swapchain->target = target;
-
     wined3d_mutex_lock();
     wined3d_swapchain_get_desc(swapchain->wined3d_swapchain, &swapchain_desc);
     swapchain_desc.windowed = !fullscreen;
     hr = wined3d_swapchain_set_fullscreen(swapchain->wined3d_swapchain, &swapchain_desc, NULL);
     wined3d_mutex_unlock();
+
+    if (SUCCEEDED(hr))
+    {
+        swapchain->fullscreen = fullscreen;
+        if (swapchain->target)
+            IDXGIOutput_Release(swapchain->target);
+        swapchain->target = target;
+    }
+    else
+    {
+        IDXGIOutput_Release(target);
+    }
 
     return hr;
 }
@@ -351,11 +363,7 @@ static HRESULT STDMETHODCALLTYPE dxgi_swapchain_ResizeTarget(IDXGISwapChain *ifa
     if (target_mode_desc->Scaling)
         FIXME("Ignoring scaling %#x.\n", target_mode_desc->Scaling);
 
-    mode.width = target_mode_desc->Width;
-    mode.height = target_mode_desc->Height;
-    mode.refresh_rate = dxgi_rational_to_uint(&target_mode_desc->RefreshRate);
-    mode.format_id = wined3dformat_from_dxgi_format(target_mode_desc->Format);
-    mode.scanline_ordering = wined3d_scanline_ordering_from_dxgi(target_mode_desc->ScanlineOrdering);
+    wined3d_display_mode_from_dxgi(&mode, target_mode_desc);
 
     wined3d_mutex_lock();
     hr = wined3d_swapchain_resize_target(swapchain->wined3d_swapchain, &mode);
@@ -484,6 +492,9 @@ HRESULT dxgi_swapchain_init(struct dxgi_swapchain *swapchain, struct dxgi_device
     swapchain->refcount = 1;
     wined3d_mutex_lock();
     wined3d_private_store_init(&swapchain->private_store);
+
+    if (!desc->windowed && (!desc->backbuffer_width || !desc->backbuffer_height))
+        FIXME("Fullscreen swapchain with back buffer width/height equal to 0 not supported properly.\n");
 
     swapchain->fullscreen = !desc->windowed;
     desc->windowed = TRUE;

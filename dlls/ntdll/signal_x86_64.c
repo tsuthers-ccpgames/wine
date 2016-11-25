@@ -2400,7 +2400,6 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_contex
             {
             case ExceptionContinueExecution:
                 if (rec->ExceptionFlags & EH_NONCONTINUABLE) return STATUS_NONCONTINUABLE_EXCEPTION;
-                *orig_context = *dispatch.ContextRecord;
                 return STATUS_SUCCESS;
             case ExceptionContinueSearch:
                 break;
@@ -2431,7 +2430,6 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_contex
             {
             case ExceptionContinueExecution:
                 if (rec->ExceptionFlags & EH_NONCONTINUABLE) return STATUS_NONCONTINUABLE_EXCEPTION;
-                *orig_context = *dispatch.ContextRecord;
                 return STATUS_SUCCESS;
             case ExceptionContinueSearch:
                 break;
@@ -3571,6 +3569,7 @@ void WINAPI RtlRestoreContext( CONTEXT *context, EXCEPTION_RECORD *rec )
         context->R13       = jmp->R13;
         context->R14       = jmp->R14;
         context->R15       = jmp->R15;
+        context->Rip       = jmp->Rip;
         context->u.s.Xmm6  = jmp->Xmm6;
         context->u.s.Xmm7  = jmp->Xmm7;
         context->u.s.Xmm8  = jmp->Xmm8;

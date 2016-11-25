@@ -314,15 +314,28 @@ static void test_database(void)
     test_GetDataSource2(extended_prop);
 }
 
+static void free_dispparams(DISPPARAMS *params)
+{
+    unsigned int i;
+
+    for (i = 0; i < params->cArgs && params->rgvarg; i++)
+        VariantClear(&params->rgvarg[i]);
+    CoTaskMemFree(params->rgvarg);
+    CoTaskMemFree(params->rgdispidNamedArgs);
+}
+
 static void test_errorinfo(void)
 {
     ICreateErrorInfo *createerror;
     ERRORINFO info, info2, info3;
-    IErrorInfo *errorinfo;
+    IErrorInfo *errorinfo, *errorinfo2;
     IErrorRecords *errrecs;
-    IUnknown *unk = NULL;
+    IUnknown *unk = NULL, *unk2;
+    DISPPARAMS dispparams;
+    DISPID dispid;
     DWORD context;
     ULONG cnt = 0;
+    VARIANT arg;
     HRESULT hr;
     GUID guid;
     BSTR str;
@@ -381,6 +394,22 @@ static void test_errorinfo(void)
     hr = IUnknown_QueryInterface(unk, &IID_IErrorRecords, (void**)&errrecs);
     ok(hr == S_OK, "got %08x\n", hr);
 
+    hr = IErrorRecords_GetRecordCount(errrecs, &cnt);
+    ok(hr == S_OK, "got %08x\n", hr);
+    ok(cnt == 0, "Got unexpected record count %u\n", cnt);
+
+    hr = IErrorRecords_GetBasicErrorInfo(errrecs, 0, &info3);
+    ok(hr == DB_E_BADRECORDNUM, "got %08x\n", hr);
+
+    hr = IErrorRecords_GetCustomErrorObject(errrecs, 0, &IID_IUnknown, &unk2);
+    ok(hr == DB_E_BADRECORDNUM, "got %08x\n", hr);
+
+    hr = IErrorRecords_GetErrorInfo(errrecs, 0, 0, &errorinfo2);
+    ok(hr == DB_E_BADRECORDNUM, "got %08x\n", hr);
+
+    hr = IErrorRecords_GetErrorParameters(errrecs, 0, &dispparams);
+    ok(hr == DB_E_BADRECORDNUM, "got %08x\n", hr);
+
     memset(&info, 0, sizeof(ERRORINFO));
     info.dwMinor = 1;
     memset(&info2, 0, sizeof(ERRORINFO));
@@ -397,6 +426,12 @@ static void test_errorinfo(void)
     ok(hr == S_OK, "got %08x\n", hr);
     ok(cnt == 1, "expected 1 got %d\n", cnt);
 
+    /* Record does not contain custom error object. */
+    unk2 = (void*)0xdeadbeef;
+    hr = IErrorRecords_GetCustomErrorObject(errrecs, 0, &IID_IUnknown, &unk2);
+    ok(hr == S_OK, "got %08x\n", hr);
+    ok(unk2 == NULL, "Got custom object %p.\n", unk2);
+
     hr = IErrorRecords_AddErrorRecord(errrecs, &info2, 2, NULL, NULL, 0);
     ok(hr == S_OK, "got %08x\n", hr);
 
@@ -411,11 +446,44 @@ static void test_errorinfo(void)
     ok(hr == DB_E_BADRECORDNUM, "got %08x\n", hr);
 
     hr = IErrorRecords_GetBasicErrorInfo(errrecs, 0, &info3);
-    todo_wine ok(hr == S_OK, "got %08x\n", hr);
-    if(hr == S_OK)
-    {
-        ok(info3.dwMinor == 2, "expected 2 got %d\n", info3.dwMinor);
-    }
+    ok(hr == S_OK, "got %08x\n", hr);
+    ok(info3.dwMinor == 2, "expected 2 got %d\n", info3.dwMinor);
+
+    hr = IErrorRecords_GetErrorParameters(errrecs, 0, NULL);
+    ok(hr == E_INVALIDARG, "got %08x\n", hr);
+
+    memset(&dispparams, 0xcc, sizeof(dispparams));
+    hr = IErrorRecords_GetErrorParameters(errrecs, 0, &dispparams);
+    ok(hr == S_OK, "got %08x\n", hr);
+    ok(dispparams.rgvarg == NULL, "Got arguments %p\n", dispparams.rgvarg);
+    ok(dispparams.rgdispidNamedArgs == NULL, "Got named arguments %p\n", dispparams.rgdispidNamedArgs);
+    ok(dispparams.cArgs == 0, "Got argument count %u\n", dispparams.cArgs);
+    ok(dispparams.cNamedArgs == 0, "Got named argument count %u\n", dispparams.cNamedArgs);
+
+    V_VT(&arg) = VT_BSTR;
+    V_BSTR(&arg) = SysAllocStringLen(NULL, 0);
+    dispid = 0x123;
+
+    dispparams.rgvarg = &arg;
+    dispparams.cArgs = 1;
+    dispparams.rgdispidNamedArgs = &dispid;
+    dispparams.cNamedArgs = 1;
+    hr = IErrorRecords_AddErrorRecord(errrecs, &info2, 0, &dispparams, NULL, 0);
+    ok(hr == S_OK, "got %08x\n", hr);
+
+    memset(&dispparams, 0, sizeof(dispparams));
+    hr = IErrorRecords_GetErrorParameters(errrecs, 0, &dispparams);
+    ok(hr == S_OK, "got %08x\n", hr);
+
+    ok(V_VT(&dispparams.rgvarg[0]) == VT_BSTR, "Got arg type %d\n", V_VT(&dispparams.rgvarg[0]));
+    ok(V_BSTR(&dispparams.rgvarg[0]) != V_BSTR(&arg), "Got arg bstr %d\n", V_VT(&dispparams.rgvarg[0]));
+
+    ok(dispparams.rgdispidNamedArgs[0] == 0x123, "Got named argument %d\n", dispparams.rgdispidNamedArgs[0]);
+    ok(dispparams.cArgs == 1, "Got argument count %u\n", dispparams.cArgs);
+    ok(dispparams.cNamedArgs == 1, "Got named argument count %u\n", dispparams.cNamedArgs);
+
+    free_dispparams(&dispparams);
+    VariantClear(&arg);
 
     IErrorRecords_Release(errrecs);
     IUnknown_Release(unk);

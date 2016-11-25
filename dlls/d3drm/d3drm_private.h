@@ -21,10 +21,15 @@
 #ifndef __D3DRM_PRIVATE_INCLUDED__
 #define __D3DRM_PRIVATE_INCLUDED__
 
-#include "d3drm.h"
+#define NONAMELESSUNION
+#define NONAMELESSSTRUCT
+#define COBJMACROS
+#include <assert.h>
+#include <math.h>
 #include "dxfile.h"
 #include "d3drmwin.h"
-
+#include "rmxfguid.h"
+#include "wine/debug.h"
 #include "wine/list.h"
 
 #ifndef ARRAY_SIZE
@@ -139,5 +144,20 @@ struct d3drm_file_header
 };
 
 extern char templates[] DECLSPEC_HIDDEN;
+
+static inline BYTE d3drm_color_component(float c)
+{
+    if (c <= 0.0f)
+        return 0u;
+    if (c >= 1.0f)
+        return 0xffu;
+    return floor(c * 255.0f);
+}
+
+static inline void d3drm_set_color(D3DCOLOR *color, float r, float g, float b, float a)
+{
+    *color = RGBA_MAKE(d3drm_color_component(r), d3drm_color_component(g),
+            d3drm_color_component(b), d3drm_color_component(a));
+}
 
 #endif /* __D3DRM_PRIVATE_INCLUDED__ */

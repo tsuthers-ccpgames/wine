@@ -1794,6 +1794,7 @@ BOOL CDECL X11DRV_CreateWindow( HWND hwnd )
                                            CWOverrideRedirect | CWEventMask, &attr );
         XFlush( data->display );
         SetPropA( hwnd, clip_window_prop, (HANDLE)data->clip_window );
+        X11DRV_InitClipboard();
     }
     return TRUE;
 }
@@ -2242,7 +2243,7 @@ void CDECL X11DRV_WindowPosChanging( HWND hwnd, HWND insert_after, UINT swp_flag
     surface_rect = get_surface_rect( visible_rect );
     if (data->surface)
     {
-        if (!memcmp( &data->surface->rect, &surface_rect, sizeof(surface_rect) ))
+        if (EqualRect( &data->surface->rect, &surface_rect ))
         {
             /* existing surface is good enough */
             window_surface_add_ref( data->surface );
@@ -2310,7 +2311,7 @@ void CDECL X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flags
             old_client_rect.right  - data->client_rect.right  == x_offset &&
             old_client_rect.top    - data->client_rect.top    == y_offset &&
             old_client_rect.bottom - data->client_rect.bottom == y_offset &&
-            !memcmp( &valid_rects[0], &data->client_rect, sizeof(RECT) ))
+            EqualRect( &valid_rects[0], &data->client_rect ))
         {
             /* if we have an X window the bits will be moved by the X server */
             if (!window && (x_offset != 0 || y_offset != 0))
@@ -2594,7 +2595,7 @@ BOOL CDECL X11DRV_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO 
     OffsetRect( &rect, -window_rect->left, -window_rect->top );
 
     surface = data->surface;
-    if (!surface || memcmp( &surface->rect, &rect, sizeof(RECT) ))
+    if (!surface || !EqualRect( &surface->rect, &rect ))
     {
         data->surface = create_surface( data->whole_window, &data->vis, &rect,
                                         color_key, !data->embedded );
@@ -2660,9 +2661,8 @@ LRESULT CDECL X11DRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 
     switch(msg)
     {
-    case WM_X11DRV_ACQUIRE_SELECTION:
-        X11DRV_AcquireClipboard( hwnd );
-        return 0;
+    case WM_X11DRV_UPDATE_CLIPBOARD:
+        return update_clipboard( hwnd );
     case WM_X11DRV_SET_WIN_REGION:
         if ((data = get_win_data( hwnd )))
         {

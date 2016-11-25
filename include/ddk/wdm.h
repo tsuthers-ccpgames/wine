@@ -28,6 +28,16 @@
 #define POINTER_ALIGNMENT
 #endif
 
+/* FIXME: We suppose that page size is 4096 */
+#undef PAGE_SIZE
+#define PAGE_SIZE   0x1000
+#define PAGE_SHIFT  12
+
+#define BYTE_OFFSET(va) ((ULONG)((ULONG_PTR)(va) & (PAGE_SIZE - 1)))
+#define PAGE_ALIGN(va)  ((PVOID)((ULONG_PTR)(va) & ~(PAGE_SIZE - 1)))
+#define ADDRESS_AND_SIZE_TO_SPAN_PAGES(va, length) \
+    ((BYTE_OFFSET(va) + ((SIZE_T)(length)) + (PAGE_SIZE - 1)) >> PAGE_SHIFT)
+
 typedef LONG KPRIORITY;
 
 typedef ULONG_PTR KSPIN_LOCK, *PKSPIN_LOCK;
@@ -48,6 +58,7 @@ typedef NTSTATUS (WINAPI *PDRIVER_INITIALIZE)(struct _DRIVER_OBJECT *, PUNICODE_
 typedef NTSTATUS (WINAPI *PDRIVER_DISPATCH)(struct _DEVICE_OBJECT *, struct _IRP *);
 typedef void (WINAPI *PDRIVER_STARTIO)(struct _DEVICE_OBJECT *, struct _IRP *);
 typedef void (WINAPI *PDRIVER_UNLOAD)(struct _DRIVER_OBJECT *);
+typedef NTSTATUS (WINAPI *PDRIVER_ADD_DEVICE)(struct _DRIVER_OBJECT *, struct _DEVICE_OBJECT *);
 
 typedef struct _DISPATCHER_HEADER {
   UCHAR  Type;
@@ -336,7 +347,7 @@ typedef struct _DEVICE_RELATIONS *PDEVICE_RELATIONS;
 
 typedef struct _DRIVER_EXTENSION {
   struct _DRIVER_OBJECT  *DriverObject;
-  PVOID  AddDevice;
+  PDRIVER_ADD_DEVICE AddDevice;
   ULONG  Count;
   UNICODE_STRING  ServiceKeyName;
 } DRIVER_EXTENSION, *PDRIVER_EXTENSION;
@@ -455,6 +466,23 @@ typedef struct _IRP {
   } Tail;
 } IRP;
 typedef struct _IRP *PIRP;
+
+#define IRP_NOCACHE               0x0001
+#define IRP_PAGING_IO             0x0002
+#define IRP_MOUNT_COMPLETION      0x0002
+#define IRP_SYNCHRONOUS_API       0x0004
+#define IRP_ASSOCIATED_IRP        0x0008
+#define IRP_BUFFERED_IO           0x0010
+#define IRP_DEALLOCATE_BUFFER     0x0020
+#define IRP_INPUT_OPERATION       0x0040
+#define IRP_SYNCHRONOUS_PAGING_IO 0x0040
+#define IRP_CREATE_OPERATION      0x0080
+#define IRP_READ_OPERATION        0x0100
+#define IRP_WRITE_OPERATION       0x0200
+#define IRP_CLOSE_OPERATION       0x0400
+#define IRP_DEFER_IO_COMPLETION   0x0800
+#define IRP_OB_QUERY_NAME         0x1000
+#define IRP_HOLD_DEVICE_QUEUE     0x2000
 
 typedef VOID (WINAPI *PINTERFACE_REFERENCE)(
   PVOID  Context);
@@ -1017,6 +1045,17 @@ typedef struct _MDL {
 } MDL, *PMDL;
 
 typedef MDL *PMDLX;
+typedef ULONG PFN_NUMBER, *PPFN_NUMBER;
+
+static inline void MmInitializeMdl(MDL *mdl, void *va, SIZE_T length)
+{
+    mdl->Next       = NULL;
+    mdl->Size       = sizeof(MDL) + sizeof(PFN_NUMBER) * ADDRESS_AND_SIZE_TO_SPAN_PAGES(va, length);
+    mdl->MdlFlags   = 0;
+    mdl->StartVa    = (void *)PAGE_ALIGN(va);
+    mdl->ByteOffset = BYTE_OFFSET(va);
+    mdl->ByteCount  = length;
+}
 
 typedef struct _KTIMER {
     DISPATCHER_HEADER Header;
@@ -1174,19 +1213,35 @@ NTSTATUS WINAPI ObCloseHandle(IN HANDLE handle);
 # ifdef NONAMELESSSTRUCT
 #  define IoGetCurrentIrpStackLocation(_Irp) ((_Irp)->Tail.Overlay.s.u2.CurrentStackLocation)
 #  define IoGetNextIrpStackLocation(_Irp) ((_Irp)->Tail.Overlay.s.u2.CurrentStackLocation - 1)
+   static inline void IoSkipCurrentIrpStackLocation(IRP *irp) {irp->Tail.Overlay.s.u2.CurrentStackLocation++; irp->CurrentLocation++;}
 # else
 #  define IoGetCurrentIrpStackLocation(_Irp) ((_Irp)->Tail.Overlay.u2.CurrentStackLocation)
 #  define IoGetNextIrpStackLocation(_Irp) ((_Irp)->Tail.Overlay.u2.CurrentStackLocation - 1)
+   static inline void IoSkipCurrentIrpStackLocation(IRP *irp) {irp->Tail.Overlay.u2.CurrentStackLocation++; irp->CurrentLocation++;}
 # endif
 #else
 # ifdef NONAMELESSSTRUCT
 #  define IoGetCurrentIrpStackLocation(_Irp) ((_Irp)->Tail.Overlay.s.CurrentStackLocation)
 #  define IoGetNextIrpStackLocation(_Irp) ((_Irp)->Tail.Overlay.s.CurrentStackLocation - 1)
+    static inline void IoSkipCurrentIrpStackLocation(IRP *irp) {irp->Tail.Overlay.s.CurrentStackLocation++; irp->CurrentLocation++;}
 # else
 #  define IoGetCurrentIrpStackLocation(_Irp) ((_Irp)->Tail.Overlay.CurrentStackLocation)
 #  define IoGetNextIrpStackLocation(_Irp) ((_Irp)->Tail.Overlay.CurrentStackLocation - 1)
+    static inline void IoSkipCurrentIrpStackLocation(IRP *irp) {irp->Tail.Overlay.CurrentStackLocation++; irp->CurrentLocation++;}
 # endif
 #endif
+
+static inline void IoSetCompletionRoutine(IRP *irp, PIO_COMPLETION_ROUTINE routine, void *context,
+                                          BOOLEAN on_success, BOOLEAN on_error, BOOLEAN on_cancel)
+{
+    IO_STACK_LOCATION *irpsp = IoGetNextIrpStackLocation(irp);
+    irpsp->CompletionRoutine = routine;
+    irpsp->Context = context;
+    irpsp->Control = 0;
+    if (on_success) irpsp->Control |= SL_INVOKE_ON_SUCCESS;
+    if (on_error)   irpsp->Control |= SL_INVOKE_ON_ERROR;
+    if (on_cancel)  irpsp->Control |= SL_INVOKE_ON_CANCEL;
+}
 
 #define KernelMode 0
 #define UserMode   1
@@ -1234,6 +1289,7 @@ PVOID     WINAPI IoGetDriverObjectExtension(PDRIVER_OBJECT,PVOID);
 PDEVICE_OBJECT WINAPI IoGetRelatedDeviceObject(PFILE_OBJECT);
 void      WINAPI IoInitializeIrp(IRP*,USHORT,CCHAR);
 VOID      WINAPI IoInitializeRemoveLockEx(PIO_REMOVE_LOCK,ULONG,ULONG,ULONG,ULONG);
+void      WINAPI IoInvalidateDeviceRelations(PDEVICE_OBJECT,DEVICE_RELATION_TYPE);
 NTSTATUS  WINAPI IoWMIRegistrationControl(PDEVICE_OBJECT,ULONG);
 
 PKTHREAD  WINAPI KeGetCurrentThread(void);
@@ -1250,7 +1306,16 @@ PVOID     WINAPI MmAllocateContiguousMemory(SIZE_T,PHYSICAL_ADDRESS);
 PVOID     WINAPI MmAllocateNonCachedMemory(SIZE_T);
 PMDL      WINAPI MmAllocatePagesForMdl(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,SIZE_T);
 void      WINAPI MmFreeNonCachedMemory(PVOID,SIZE_T);
+PVOID     WINAPI MmMapLockedPagesSpecifyCache(PMDL,KPROCESSOR_MODE,MEMORY_CACHING_TYPE,PVOID,ULONG,ULONG);
 MM_SYSTEMSIZE WINAPI MmQuerySystemSize(void);
+
+static inline void *MmGetSystemAddressForMdlSafe(MDL *mdl, ULONG priority)
+{
+    if (mdl->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA | MDL_SOURCE_IS_NONPAGED_POOL))
+        return mdl->MappedSystemVa;
+    else
+        return MmMapLockedPagesSpecifyCache(mdl, KernelMode, MmCached, NULL, FALSE, priority);
+}
 
 void      WINAPI ObDereferenceObject(void*);
 NTSTATUS  WINAPI ObReferenceObjectByHandle(HANDLE,ACCESS_MASK,POBJECT_TYPE,KPROCESSOR_MODE,PVOID*,POBJECT_HANDLE_INFORMATION);

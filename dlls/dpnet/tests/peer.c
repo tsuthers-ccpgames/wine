@@ -198,6 +198,7 @@ static void test_get_sp_caps(void)
     hr = IDirectPlay8Peer_GetSPCaps(peer, &CLSID_DP8SP_TCPIP, &caps, 0);
     ok(hr == DPN_OK, "GetSPCaps failed with %x\n", hr);
 
+    ok(caps.dwSize == sizeof(DPN_SP_CAPS), "got %d\n", caps.dwSize);
     ok((caps.dwFlags &
         (DPNSPCAPS_SUPPORTSDPNSRV | DPNSPCAPS_SUPPORTSBROADCAST | DPNSPCAPS_SUPPORTSALLADAPTERS)) ==
        (DPNSPCAPS_SUPPORTSDPNSRV | DPNSPCAPS_SUPPORTSBROADCAST | DPNSPCAPS_SUPPORTSALLADAPTERS),
@@ -210,6 +211,74 @@ static void test_get_sp_caps(void)
     ok(caps.dwBuffersPerThread == 1, "expected 1, got %d\n", caps.dwBuffersPerThread);
     ok(caps.dwSystemBufferSize == 0x10000 || broken(caps.dwSystemBufferSize == 0x2000 /* before Win8 */),
        "expected 0x10000, got 0x%x\n", caps.dwSystemBufferSize);
+}
+
+static void test_player_info(void)
+{
+    HRESULT hr;
+    DPN_PLAYER_INFO info;
+    WCHAR name[] = {'w','i','n','e',0};
+    WCHAR name2[] = {'w','i','n','e','2',0};
+    WCHAR data[] = {'X','X','X','X',0};
+
+    ZeroMemory( &info, sizeof(DPN_PLAYER_INFO) );
+    info.dwSize = sizeof(DPN_PLAYER_INFO);
+    info.dwInfoFlags = DPNINFO_NAME;
+
+    hr = IDirectPlay8Peer_SetPeerInfo(peer, NULL, NULL, NULL, DPNSETPEERINFO_SYNC);
+    ok(hr == E_POINTER, "got %x\n", hr);
+
+    info.pwszName = NULL;
+    hr = IDirectPlay8Peer_SetPeerInfo(peer, &info, NULL, NULL, DPNSETPEERINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    info.pwszName = name;
+    hr = IDirectPlay8Peer_SetPeerInfo(peer, &info, NULL, NULL, DPNSETPEERINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    info.dwInfoFlags = DPNINFO_NAME;
+    info.pwszName = name2;
+    hr = IDirectPlay8Peer_SetPeerInfo(peer, &info, NULL, NULL, DPNSETPEERINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+if(0) /* Crashes on windows */
+{
+    info.dwInfoFlags = DPNINFO_DATA;
+    info.pwszName = NULL;
+    info.pvData = NULL;
+    info.dwDataSize = sizeof(data);
+    hr = IDirectPlay8Peer_SetPeerInfo(peer, &info, NULL, NULL, DPNSETPEERINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+}
+
+    info.dwInfoFlags = DPNINFO_DATA;
+    info.pwszName = NULL;
+    info.pvData = data;
+    info.dwDataSize = 0;
+    hr = IDirectPlay8Peer_SetPeerInfo(peer, &info, NULL, NULL, DPNSETPEERINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    info.dwInfoFlags = DPNINFO_DATA;
+    info.pwszName = NULL;
+    info.pvData = data;
+    info.dwDataSize = sizeof(data);
+    hr = IDirectPlay8Peer_SetPeerInfo(peer, &info, NULL, NULL, DPNSETPEERINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    info.dwInfoFlags = DPNINFO_DATA | DPNINFO_NAME;
+    info.pwszName = name;
+    info.pvData = data;
+    info.dwDataSize = sizeof(data);
+    hr = IDirectPlay8Peer_SetPeerInfo(peer, &info, NULL, NULL, DPNSETPEERINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    /* Leave PeerInfo with only the name set. */
+    info.dwInfoFlags = DPNINFO_DATA | DPNINFO_NAME;
+    info.pwszName = name;
+    info.pvData = NULL;
+    info.dwDataSize = 0;
+    hr = IDirectPlay8Peer_SetPeerInfo(peer, &info, NULL, NULL, DPNSETPEERINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
 }
 
 static void test_cleanup_dp(void)
@@ -238,5 +307,6 @@ START_TEST(peer)
     test_enum_service_providers();
     test_enum_hosts();
     test_get_sp_caps();
+    test_player_info();
     test_cleanup_dp();
 }

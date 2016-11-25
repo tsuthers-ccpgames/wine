@@ -317,6 +317,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 @property (readwrite, nonatomic) BOOL disabled;
 @property (readwrite, nonatomic) BOOL noActivate;
 @property (readwrite, nonatomic) BOOL floating;
+@property (readwrite, nonatomic) BOOL drawnSinceShown;
 @property (readwrite, getter=isFakingClose, nonatomic) BOOL fakingClose;
 @property (retain, nonatomic) NSWindow* latentParentWindow;
 
@@ -345,6 +346,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (BOOL) becameEligibleParentOrChild;
     - (void) becameIneligibleChild;
+
+    - (void) windowDidDrawContent;
 
 @end
 
@@ -383,7 +386,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         if ([window contentView] != self)
             return;
 
-        if (window.shapeChangedSinceLastDraw && window.shape && !window.colorKeyed && !window.usePerPixelAlpha)
+        if (window.drawnSinceShown && window.shapeChangedSinceLastDraw && window.shape && !window.colorKeyed && !window.usePerPixelAlpha)
         {
             [[NSColor clearColor] setFill];
             NSRectFill(rect);
@@ -441,6 +444,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                         CGImageRelease(image);
                     }
                 }
+
+                [window windowDidDrawContent];
             }
 
             pthread_mutex_unlock(window.surface_mutex);
@@ -449,7 +454,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         // If the window may be transparent, then we have to invalidate the
         // shadow every time we draw.  Also, if this is the first time we've
         // drawn since changing from transparent to opaque.
-        if (window.colorKeyed || window.usePerPixelAlpha || window.shapeChangedSinceLastDraw)
+        if (window.drawnSinceShown && (window.colorKeyed || window.usePerPixelAlpha || window.shapeChangedSinceLastDraw))
         {
             window.shapeChangedSinceLastDraw = FALSE;
             [window invalidateShadow];
@@ -794,6 +799,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     static WineWindow* causing_becomeKeyWindow;
 
     @synthesize disabled, noActivate, floating, fullscreen, fakingClose, latentParentWindow, hwnd, queue;
+    @synthesize drawnSinceShown;
     @synthesize surface, surface_mutex;
     @synthesize shape, shapeData, shapeChangedSinceLastDraw;
     @synthesize colorKeyed, colorKeyRed, colorKeyGreen, colorKeyBlue;
@@ -831,7 +837,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         [window setAcceptsMouseMovedEvents:YES];
         [window setColorSpace:[NSColorSpace genericRGBColorSpace]];
         [window setDelegate:window];
-        [window setAutodisplay:NO];
+        [window setBackgroundColor:[NSColor clearColor]];
+        [window setOpaque:NO];
         window.hwnd = hwnd;
         window.queue = queue;
         window->savedContentMinSize = NSZeroSize;
@@ -1191,6 +1198,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         {
             if ([self level] > [child level])
                 [child setLevel:[self level]];
+            if (![child isVisible])
+                [child setAutodisplay:YES];
             [self addChildWindow:child ordered:NSWindowAbove];
             [child checkWineDisplayLink];
             [latentChildWindows removeObjectIdenticalTo:child];
@@ -1455,6 +1464,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                     // Then the levels get fixed by -adjustWindowLevels.
                     if ([self level] != [other level])
                         [self setLevel:[other level]];
+                    [self setAutodisplay:YES];
                     [self orderWindow:orderingMode relativeTo:[other windowNumber]];
                     [self checkWineDisplayLink];
 
@@ -1474,6 +1484,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                 next = [controller frontWineWindow];
                 if (next && [self level] < [next level])
                     [self setLevel:[next level]];
+                [self setAutodisplay:YES];
                 [self orderFront:nil];
                 [self checkWineDisplayLink];
                 needAdjustWindowLevels = TRUE;
@@ -1530,6 +1541,9 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         else
             [self orderOut:nil];
         [self checkWineDisplayLink];
+        [self setBackgroundColor:[NSColor clearColor]];
+        [self setOpaque:NO];
+        drawnSinceShown = NO;
         savedVisibleState = FALSE;
         if (wasVisible && wasOnActiveSpace && fullscreen)
             [controller updateFullscreenWindows];
@@ -1824,6 +1838,30 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     - (void) postBroughtForwardEvent
     {
         macdrv_event* event = macdrv_create_event(WINDOW_BROUGHT_FORWARD, self);
+        [queue postEvent:event];
+        macdrv_release_event(event);
+    }
+
+    - (void) postWindowFrameChanged:(NSRect)frame fullscreen:(BOOL)isFullscreen resizing:(BOOL)resizing
+    {
+        macdrv_event* event;
+        NSUInteger style = self.styleMask;
+
+        if (isFullscreen)
+            style |= NSFullScreenWindowMask;
+        else
+            style &= ~NSFullScreenWindowMask;
+        frame = [[self class] contentRectForFrameRect:frame styleMask:style];
+        [[WineApplicationController sharedController] flipRect:&frame];
+
+        /* Coalesce events by discarding any previous ones still in the queue. */
+        [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_FRAME_CHANGED)
+                               forWindow:self];
+
+        event = macdrv_create_event(WINDOW_FRAME_CHANGED, self);
+        event->window_frame_changed.frame = cgrect_win_from_mac(NSRectToCGRect(frame));
+        event->window_frame_changed.fullscreen = isFullscreen;
+        event->window_frame_changed.in_resize = resizing;
         [queue postEvent:event];
         macdrv_release_event(event);
     }
@@ -2266,6 +2304,17 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         [self setAutodisplay:NO];
     }
 
+    - (void) windowDidDrawContent
+    {
+        if (!drawnSinceShown)
+        {
+            drawnSinceShown = YES;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self checkTransparency];
+            });
+        }
+    }
+
     - (NSArray*) childWineWindows
     {
         NSArray* childWindows = self.childWindows;
@@ -2564,7 +2613,6 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (void)windowDidResize:(NSNotification *)notification
     {
-        macdrv_event* event;
         NSRect frame = self.wine_fractionalFrame;
 
         if ([self inLiveResize])
@@ -2575,28 +2623,18 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                 resizingFromTop = TRUE;
         }
 
-        frame = [self contentRectForFrameRect:frame];
-
         if (ignore_windowResize || exitingFullScreen) return;
 
         if ([self preventResizing])
         {
-            [self setContentMinSize:frame.size];
-            [self setContentMaxSize:frame.size];
+            NSRect contentRect = [self contentRectForFrameRect:frame];
+            [self setContentMinSize:contentRect.size];
+            [self setContentMaxSize:contentRect.size];
         }
 
-        [[WineApplicationController sharedController] flipRect:&frame];
-
-        /* Coalesce events by discarding any previous ones still in the queue. */
-        [queue discardEventsMatchingMask:event_mask_for_type(WINDOW_FRAME_CHANGED)
-                               forWindow:self];
-
-        event = macdrv_create_event(WINDOW_FRAME_CHANGED, self);
-        event->window_frame_changed.frame = cgrect_win_from_mac(NSRectToCGRect(frame));
-        event->window_frame_changed.fullscreen = ([self styleMask] & NSFullScreenWindowMask) != 0;
-        event->window_frame_changed.in_resize = [self inLiveResize];
-        [queue postEvent:event];
-        macdrv_release_event(event);
+        [self postWindowFrameChanged:frame
+                          fullscreen:([self styleMask] & NSFullScreenWindowMask) != 0
+                            resizing:[self inLiveResize]];
 
         [[[self contentView] inputContext] invalidateCharacterCoordinates];
         [self updateFullscreen];
@@ -2658,6 +2696,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     - (void) windowWillExitFullScreen:(NSNotification*)notification
     {
         exitingFullScreen = TRUE;
+        [self postWindowFrameChanged:nonFullscreenFrame fullscreen:FALSE resizing:FALSE];
     }
 
     - (void)windowWillMiniaturize:(NSNotification *)notification
@@ -2783,6 +2822,13 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
         [self.queue query:query timeout:3];
         macdrv_release_query(query);
+    }
+
+    - (void) pasteboardChangedOwner:(NSPasteboard*)sender
+    {
+        macdrv_event* event = macdrv_create_event(LOST_PASTEBOARD_OWNERSHIP, self);
+        [queue postEvent:event];
+        macdrv_release_event(event);
     }
 
 

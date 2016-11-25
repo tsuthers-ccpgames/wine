@@ -65,6 +65,7 @@ struct tray_icon
     UINT           info_flags;      /* flags for info balloon */
     UINT           info_timeout;    /* timeout for info balloon */
     HICON          info_icon;       /* info balloon icon */
+    UINT           version;         /* notify icon api version */
 };
 
 static struct list icon_list = LIST_INIT( icon_list );
@@ -435,11 +436,35 @@ done:
     if (dib) DeleteObject( dib );
 }
 
+static BOOL notify_owner( struct tray_icon *icon, UINT msg, LPARAM lparam )
+{
+    WPARAM wp = icon->id;
+    LPARAM lp = msg;
+
+    if (icon->version >= NOTIFY_VERSION_4)
+    {
+        POINT pt = { (short)LOWORD(lparam), (short)HIWORD(lparam) };
+
+        ClientToScreen( icon->window, &pt );
+        wp = MAKEWPARAM( pt.x, pt.y );
+        lp = MAKELPARAM( msg, icon->id );
+    }
+
+    TRACE( "relaying 0x%x\n", msg );
+    if (!PostMessageW( icon->owner, icon->callback_message, wp, lp ) &&
+        (GetLastError() == ERROR_INVALID_WINDOW_HANDLE))
+    {
+        WARN( "application window was destroyed, removing icon %u\n", icon->id );
+        delete_icon( icon );
+        return FALSE;
+    }
+    return TRUE;
+}
+
 /* window procedure for the individual tray icon window */
 static LRESULT WINAPI tray_icon_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     struct tray_icon *icon = NULL;
-    BOOL ret;
 
     TRACE("hwnd=%p, msg=0x%x\n", hwnd, msg);
 
@@ -476,23 +501,24 @@ static LRESULT WINAPI tray_icon_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 
     case WM_MOUSEMOVE:
     case WM_LBUTTONDOWN:
-    case WM_LBUTTONUP:
     case WM_RBUTTONDOWN:
-    case WM_RBUTTONUP:
     case WM_MBUTTONDOWN:
     case WM_MBUTTONUP:
     case WM_LBUTTONDBLCLK:
     case WM_RBUTTONDBLCLK:
     case WM_MBUTTONDBLCLK:
-        /* notify the owner hwnd of the message */
-        TRACE("relaying 0x%x\n", msg);
-        ret = PostMessageW(icon->owner, icon->callback_message, icon->id, msg);
-        if (!ret && (GetLastError() == ERROR_INVALID_WINDOW_HANDLE))
-        {
-            WARN( "application window was destroyed, removing icon %u\n", icon->id );
-            delete_icon( icon );
-        }
-        return 0;
+        notify_owner( icon, msg, lparam );
+        break;
+
+    case WM_LBUTTONUP:
+        if (!notify_owner( icon, msg, lparam )) break;
+        if (icon->version > 0) notify_owner( icon, NIN_SELECT, lparam );
+        break;
+
+    case WM_RBUTTONUP:
+        if (!notify_owner( icon, msg, lparam )) break;
+        if (icon->version > 0) notify_owner( icon, WM_CONTEXTMENU, lparam );
+        break;
 
     case WM_WINDOWPOSCHANGED:
         update_systray_balloon_position();
@@ -833,6 +859,13 @@ int CDECL wine_notify_icon( DWORD msg, NOTIFYICONDATAW *data )
         break;
     case NIM_MODIFY:
         if ((icon = get_icon( data->hWnd, data->uID ))) ret = modify_icon( icon, data );
+        break;
+    case NIM_SETVERSION:
+        if ((icon = get_icon( data->hWnd, data->uID )))
+        {
+            icon->version = data->u.uVersion;
+            ret = TRUE;
+        }
         break;
     case 0xdead:  /* Wine extension: owner window has died */
         cleanup_icons( data->hWnd );

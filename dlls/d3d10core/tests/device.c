@@ -30,6 +30,23 @@
 #define BITS_N1_0 0xbf800000
 #define BITS_1_0  0x3f800000
 
+struct format_support
+{
+    DXGI_FORMAT format;
+    BOOL optional;
+};
+
+static const struct format_support display_format_support[] =
+{
+    {DXGI_FORMAT_R8G8B8A8_UNORM},
+    {DXGI_FORMAT_R8G8B8A8_UNORM_SRGB},
+    {DXGI_FORMAT_B8G8R8A8_UNORM,             TRUE},
+    {DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,        TRUE},
+    {DXGI_FORMAT_R16G16B16A16_FLOAT},
+    {DXGI_FORMAT_R10G10B10A2_UNORM},
+    {DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM, TRUE},
+};
+
 struct vec2
 {
     float x, y;
@@ -903,6 +920,7 @@ static BOOL init_test_context_(unsigned int line, struct d3d10core_test_context 
 {
     D3D10_VIEWPORT vp;
     HRESULT hr;
+    RECT rect;
 
     memset(context, 0, sizeof(*context));
 
@@ -911,8 +929,10 @@ static BOOL init_test_context_(unsigned int line, struct d3d10core_test_context 
         skip_(__FILE__, line)("Failed to create device.\n");
         return FALSE;
     }
+    SetRect(&rect, 0, 0, 640, 480);
+    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, FALSE);
     context->window = CreateWindowA("static", "d3d10core_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+            0, 0, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, NULL, NULL);
     context->swapchain = create_swapchain(context->device, context->window, NULL);
     hr = IDXGISwapChain_GetBuffer(context->swapchain, 0, &IID_ID3D10Texture2D, (void **)&context->backbuffer);
     ok_(__FILE__, line)(SUCCEEDED(hr), "Failed to get backbuffer, hr %#x.\n", hr);
@@ -2387,7 +2407,8 @@ static void test_render_target_views(void)
     ID3D10RenderTargetView *rtv;
     ID3D10Texture2D *texture;
     ID3D10Device *device;
-    unsigned int i, j;
+    unsigned int i, j, k;
+    void *data;
     HRESULT hr;
 
     if (!init_test_context(&test_context))
@@ -2405,6 +2426,9 @@ static void test_render_target_views(void)
     texture_desc.CPUAccessFlags = 0;
     texture_desc.MiscFlags = 0;
 
+    data = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, texture_desc.Width * texture_desc.Height * 4);
+    ok(!!data, "Failed to allocate memory.\n");
+
     for (i = 0; i < sizeof(tests) / sizeof(*tests); ++i)
     {
         const struct test *test = &tests[i];
@@ -2420,6 +2444,17 @@ static void test_render_target_views(void)
         hr = ID3D10Device_CreateRenderTargetView(device, (ID3D10Resource *)texture, &rtv_desc, &rtv);
         ok(SUCCEEDED(hr), "Test %u: Failed to create render target view, hr %#x.\n", i, hr);
 
+        for (j = 0; j < texture_desc.ArraySize; ++j)
+        {
+            for (k = 0; k < texture_desc.MipLevels; ++k)
+            {
+                unsigned int sub_resource_idx = j * texture_desc.MipLevels + k;
+                ID3D10Device_UpdateSubresource(device,
+                        (ID3D10Resource *)texture, sub_resource_idx, NULL, data, texture_desc.Width * 4, 0);
+            }
+        }
+        check_texture_color(texture, 0, 0);
+
         ID3D10Device_OMSetRenderTargets(device, 1, &rtv, NULL);
         draw_color_quad(&test_context, &red);
 
@@ -2432,6 +2467,7 @@ static void test_render_target_views(void)
         ID3D10Texture2D_Release(texture);
     }
 
+    HeapFree(GetProcessHeap(), 0, data);
     release_test_context(&test_context);
 }
 
@@ -6451,6 +6487,7 @@ static void test_fragment_coords(void)
 static void test_update_subresource(void)
 {
     struct d3d10core_test_context test_context;
+    D3D10_SUBRESOURCE_DATA resource_data;
     D3D10_TEXTURE2D_DESC texture_desc;
     ID3D10SamplerState *sampler_state;
     ID3D10ShaderResourceView *ps_srv;
@@ -6491,6 +6528,7 @@ static void test_update_subresource(void)
         0x00107e46, 0x00000000, 0x00106000, 0x00000000, 0x0100003e,
     };
     static const float red[] = {1.0f, 0.0f, 0.0f, 0.5f};
+    static const DWORD initial_data[16] = {0};
     static const DWORD bitmap_data[] =
     {
         0xff0000ff, 0xff00ffff, 0xff00ff00, 0xffffff00,
@@ -6523,7 +6561,11 @@ static void test_update_subresource(void)
     texture_desc.CPUAccessFlags = 0;
     texture_desc.MiscFlags = 0;
 
-    hr = ID3D10Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
+    resource_data.pSysMem = initial_data;
+    resource_data.SysMemPitch = texture_desc.Width * sizeof(*initial_data);
+    resource_data.SysMemSlicePitch = 0;
+
+    hr = ID3D10Device_CreateTexture2D(device, &texture_desc, &resource_data, &texture);
     ok(SUCCEEDED(hr), "Failed to create a 2d texture, hr %#x\n", hr);
 
     hr = ID3D10Device_CreateShaderResourceView(device, (ID3D10Resource *)texture, NULL, &ps_srv);
@@ -6685,6 +6727,7 @@ static void test_copy_subresource_region(void)
         0x0010000a, 0x00000000, 0x0100003e,
     };
     static const float red[] = {1.0f, 0.0f, 0.0f, 0.5f};
+    static const DWORD initial_data[16] = {0};
     static const DWORD bitmap_data[] =
     {
         0xff0000ff, 0xff00ffff, 0xff00ff00, 0xffffff00,
@@ -6717,13 +6760,17 @@ static void test_copy_subresource_region(void)
     texture_desc.CPUAccessFlags = 0;
     texture_desc.MiscFlags = 0;
 
-    hr = ID3D10Device_CreateTexture2D(device, &texture_desc, NULL, &dst_texture);
+    resource_data.pSysMem = initial_data;
+    resource_data.SysMemPitch = texture_desc.Width * sizeof(*initial_data);
+    resource_data.SysMemSlicePitch = 0;
+
+    hr = ID3D10Device_CreateTexture2D(device, &texture_desc, &resource_data, &dst_texture);
     ok(SUCCEEDED(hr), "Failed to create 2d texture, hr %#x.\n", hr);
 
     texture_desc.Usage = D3D10_USAGE_IMMUTABLE;
 
     resource_data.pSysMem = bitmap_data;
-    resource_data.SysMemPitch = 4 * sizeof(*bitmap_data);
+    resource_data.SysMemPitch = texture_desc.Width * sizeof(*bitmap_data);
     resource_data.SysMemSlicePitch = 0;
 
     hr = ID3D10Device_CreateTexture2D(device, &texture_desc, &resource_data, &src_texture);
@@ -6823,7 +6870,8 @@ static void test_copy_subresource_region(void)
     ID3D10Device_PSSetSamplers(device, 0, 1, &sampler_state);
     ID3D10Device_PSSetShader(device, ps);
 
-    dst_buffer = create_buffer(device, D3D10_BIND_CONSTANT_BUFFER, sizeof(float_colors), NULL);
+    memset(float_colors, 0, sizeof(float_colors));
+    dst_buffer = create_buffer(device, D3D10_BIND_CONSTANT_BUFFER, sizeof(float_colors), float_colors);
 
     ID3D10Device_PSSetConstantBuffers(device, 0, 1, &dst_buffer);
 
@@ -6880,126 +6928,6 @@ static void test_copy_subresource_region(void)
     ID3D10Buffer_Release(dst_buffer);
     ID3D10Buffer_Release(src_buffer);
     ID3D10PixelShader_Release(ps);
-    release_test_context(&test_context);
-}
-
-static void test_buffer_data_init(void)
-{
-    struct resource_readback rb;
-    ID3D10Buffer *buffer;
-    ID3D10Device *device;
-    unsigned int i;
-
-    if (!(device = create_device()))
-    {
-        skip("Failed to create device.\n");
-        return;
-    }
-
-    buffer = create_buffer(device, D3D10_BIND_SHADER_RESOURCE, 1024, NULL);
-
-    get_buffer_readback(buffer, &rb);
-    for (i = 0; i < rb.width; ++i)
-    {
-        DWORD r = get_readback_color(&rb, i / sizeof(DWORD), 0);
-        ok(!r, "Got unexpected result %#x at offset %u.\n", r, i);
-    }
-    release_resource_readback(&rb);
-
-    ID3D10Buffer_Release(buffer);
-    ID3D10Device_Release(device);
-}
-
-static void test_texture_data_init(void)
-{
-    static const float white[] = {1.0f, 1.0f, 1.0f, 1.0f};
-    struct d3d10core_test_context test_context;
-    D3D10_TEXTURE2D_DESC desc;
-    ID3D10Texture2D *texture;
-    ID3D10Device *device;
-    UINT count = 0;
-    HRESULT hr;
-
-    if (!init_test_context(&test_context))
-        return;
-
-    device = test_context.device;
-
-    desc.Width = 640;
-    desc.Height = 480;
-    desc.MipLevels = 1;
-    desc.ArraySize = 1;
-    desc.SampleDesc.Count = 1;
-    desc.SampleDesc.Quality = 0;
-    desc.Usage = D3D10_USAGE_DEFAULT;
-    desc.BindFlags = 0;
-    desc.CPUAccessFlags = 0;
-    desc.MiscFlags = 0;
-
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
-    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
-    check_texture_color(texture, 0x00000000, 0);
-    ID3D10Texture2D_Release(texture);
-
-    desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
-    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
-    check_texture_color(texture, 0x00000000, 0);
-    ID3D10Texture2D_Release(texture);
-
-    desc.Format = DXGI_FORMAT_D32_FLOAT;
-    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
-    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
-    check_texture_float(texture, 0.0f, 0);
-    ID3D10Texture2D_Release(texture);
-
-    desc.ArraySize = 4;
-
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
-    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
-    check_texture_float(texture, 0.0f, 0);
-    ID3D10Texture2D_Release(texture);
-
-    desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
-    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
-    check_texture_color(texture, 0x00000000, 0);
-    ID3D10Texture2D_Release(texture);
-
-    desc.Format = DXGI_FORMAT_D32_FLOAT;
-    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
-    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
-    check_texture_float(texture, 0.0f, 0);
-    ID3D10Texture2D_Release(texture);
-
-    hr = ID3D10Device_CheckMultisampleQualityLevels(device, DXGI_FORMAT_R8G8B8A8_UNORM, 2, &count);
-    ok(SUCCEEDED(hr), "Failed to get quality levels, hr %#x.\n", hr);
-    if (!count)
-    {
-        skip("Multisampling not supported for DXGI_FORMAT_R8G8B8A8_UNORM, skipping tests.\n");
-        release_test_context(&test_context);
-        return;
-    }
-
-    ID3D10Device_ClearRenderTargetView(device, test_context.backbuffer_rtv, white);
-
-    desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.SampleDesc.Count = 2;
-    desc.SampleDesc.Quality = 0;
-    desc.BindFlags = D3D10_BIND_RENDER_TARGET;
-    hr = ID3D10Device_CreateTexture2D(device, &desc, NULL, &texture);
-    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
-
-    ID3D10Device_ResolveSubresource(device, (ID3D10Resource *)test_context.backbuffer, 0,
-            (ID3D10Resource *)texture, 0, DXGI_FORMAT_R8G8B8A8_UNORM);
-
-    todo_wine check_texture_color(test_context.backbuffer, 0x00000000, 0);
-
-    ID3D10Texture2D_Release(texture);
-
     release_test_context(&test_context);
 }
 
@@ -7258,6 +7186,73 @@ float4 main(const ps_in v) : SV_TARGET
     release_test_context(&test_context);
 }
 
+static void test_swapchain_formats(void)
+{
+    DXGI_SWAP_CHAIN_DESC swapchain_desc;
+    IDXGISwapChain *swapchain;
+    IDXGIDevice *dxgi_device;
+    IDXGIAdapter *adapter;
+    IDXGIFactory *factory;
+    ID3D10Device *device;
+    unsigned int i;
+    ULONG refcount;
+    HRESULT hr;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device.\n");
+        return;
+    }
+
+    swapchain_desc.BufferDesc.Width = 800;
+    swapchain_desc.BufferDesc.Height = 600;
+    swapchain_desc.BufferDesc.RefreshRate.Numerator = 0;
+    swapchain_desc.BufferDesc.RefreshRate.Denominator = 0;
+    swapchain_desc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+    swapchain_desc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+    swapchain_desc.SampleDesc.Count = 1;
+    swapchain_desc.SampleDesc.Quality = 0;
+    swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    swapchain_desc.BufferCount = 1;
+    swapchain_desc.OutputWindow = CreateWindowA("static", "d3d10core_test", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    swapchain_desc.Windowed = TRUE;
+    swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    swapchain_desc.Flags = 0;
+
+    hr = ID3D10Device_QueryInterface(device, &IID_IDXGIDevice, (void **)&dxgi_device);
+    ok(SUCCEEDED(hr), "Failed to query IDXGIDevice, hr %#x.\n", hr);
+    hr = IDXGIDevice_GetAdapter(dxgi_device, &adapter);
+    ok(SUCCEEDED(hr), "GetAdapter failed, hr %#x.\n", hr);
+    IDXGIDevice_Release(dxgi_device);
+    hr = IDXGIAdapter_GetParent(adapter, &IID_IDXGIFactory, (void **)&factory);
+    ok(SUCCEEDED(hr), "GetParent failed, hr %#x.\n", hr);
+    IDXGIAdapter_Release(adapter);
+
+    swapchain_desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_TYPELESS;
+    hr = IDXGIFactory_CreateSwapChain(factory, (IUnknown *)device, &swapchain_desc, &swapchain);
+    todo_wine ok(hr == E_INVALIDARG, "Got unexpected hr %#x for typeless format.\n", hr);
+    if (SUCCEEDED(hr))
+        IDXGISwapChain_Release(swapchain);
+
+    for (i = 0; i < sizeof(display_format_support) / sizeof(*display_format_support); ++i)
+    {
+        if (display_format_support[i].optional)
+            continue;
+
+        swapchain_desc.BufferDesc.Format = display_format_support[i].format;
+        hr = IDXGIFactory_CreateSwapChain(factory, (IUnknown *)device, &swapchain_desc, &swapchain);
+        ok(hr == S_OK, "Got unexpected hr %#x for format %#x.\n", hr, display_format_support[i].format);
+        refcount = IDXGISwapChain_Release(swapchain);
+        ok(!refcount, "Swapchain has %u references left.\n", refcount);
+    }
+
+    refcount = ID3D10Device_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    refcount = IDXGIFactory_Release(factory);
+    ok(!refcount, "Factory has %u references left.\n", refcount);
+    DestroyWindow(swapchain_desc.OutputWindow);
+}
+
 static void test_swapchain_views(void)
 {
     struct d3d10core_test_context test_context;
@@ -7312,6 +7307,7 @@ static void test_swapchain_flip(void)
     DWORD color;
     HWND window;
     HRESULT hr;
+    RECT rect;
 
     static const D3D10_INPUT_ELEMENT_DESC layout_desc[] =
     {
@@ -7392,8 +7388,10 @@ static void test_swapchain_flip(void)
         skip("Failed to create device, skipping tests.\n");
         return;
     }
+    SetRect(&rect, 0, 0, 640, 480);
+    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, FALSE);
     window = CreateWindowA("static", "d3d10core_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+            0, 0, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, NULL, NULL);
     desc.buffer_count = 3;
     desc.swap_effect = DXGI_SWAP_EFFECT_SEQUENTIAL;
     desc.windowed = TRUE;
@@ -9372,6 +9370,238 @@ static void test_line_antialiasing_blending(void)
     release_test_context(&test_context);
 }
 
+static void check_format_support(const unsigned int *format_support,
+        const struct format_support *formats, unsigned int format_count,
+        unsigned int feature_flag, const char *feature_name)
+{
+    unsigned int i;
+
+    for (i = 0; i < format_count; ++i)
+    {
+        DXGI_FORMAT format = formats[i].format;
+        unsigned int supported = format_support[format] & feature_flag;
+
+        if (formats[i].optional)
+        {
+            if (supported)
+                trace("Optional format %#x - %s supported.\n", format, feature_name);
+            continue;
+        }
+
+        ok(supported, "Format %#x - %s supported, format support %#x.\n",
+                format, feature_name, format_support[format]);
+    }
+}
+
+static void test_required_format_support(void)
+{
+    unsigned int format_support[DXGI_FORMAT_B4G4R4A4_UNORM + 1];
+    ID3D10Device *device;
+    DXGI_FORMAT format;
+    ULONG refcount;
+    HRESULT hr;
+
+    static const struct format_support index_buffers[] =
+    {
+        {DXGI_FORMAT_R32_UINT},
+        {DXGI_FORMAT_R16_UINT},
+    };
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device.\n");
+        return;
+    }
+
+    memset(format_support, 0, sizeof(format_support));
+    for (format = DXGI_FORMAT_UNKNOWN; format <= DXGI_FORMAT_B4G4R4A4_UNORM; ++format)
+    {
+        hr = ID3D10Device_CheckFormatSupport(device, format, &format_support[format]);
+        todo_wine ok(hr == S_OK || (hr == E_FAIL && !format_support[format]),
+                "Got unexpected result for format %#x: hr %#x, format_support %#x.\n",
+                format, hr, format_support[format]);
+    }
+    if (hr == E_NOTIMPL)
+    {
+        skip("CheckFormatSupport not implemented.\n");
+        ID3D10Device_Release(device);
+        return;
+    }
+
+    check_format_support(format_support, index_buffers,
+            sizeof(index_buffers) / sizeof(*index_buffers),
+            D3D10_FORMAT_SUPPORT_IA_INDEX_BUFFER, "index buffer");
+
+    check_format_support(format_support, display_format_support,
+            sizeof(display_format_support) / sizeof(*display_format_support),
+            D3D10_FORMAT_SUPPORT_DISPLAY, "display");
+
+    refcount = ID3D10Device_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+}
+
+static void test_ddy(void)
+{
+    static const struct
+    {
+        struct vec4 position;
+        unsigned int color;
+    }
+    quad[] =
+    {
+        {{-1.0f, -1.0f, 0.0f, 1.0f}, 0x00ff0000},
+        {{-1.0f,  1.0f, 0.0f, 1.0f}, 0x0000ff00},
+        {{ 1.0f, -1.0f, 0.0f, 1.0f}, 0x00ff0000},
+        {{ 1.0f,  1.0f, 0.0f, 1.0f}, 0x0000ff00},
+    };
+    static const D3D10_INPUT_ELEMENT_DESC layout_desc[] =
+    {
+        {"SV_POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0,  0, D3D10_INPUT_PER_VERTEX_DATA, 0},
+        {"COLOR",       0, DXGI_FORMAT_R8G8B8A8_UNORM,     0, 16, D3D10_INPUT_PER_VERTEX_DATA, 0},
+    };
+#if 0
+struct vs_data
+{
+    float4 pos : SV_POSITION;
+    float4 color : COLOR;
+};
+
+void main(in struct vs_data vs_input, out struct vs_data vs_output)
+{
+    vs_output.pos = vs_input.pos;
+    vs_output.color = vs_input.color;
+}
+#endif
+    static const DWORD vs_code[] =
+    {
+        0x43425844, 0xd5b32785, 0x35332906, 0x4d05e031, 0xf66a58af, 0x00000001, 0x00000144, 0x00000003,
+        0x0000002c, 0x00000080, 0x000000d4, 0x4e475349, 0x0000004c, 0x00000002, 0x00000008, 0x00000038,
+        0x00000000, 0x00000000, 0x00000003, 0x00000000, 0x00000f0f, 0x00000044, 0x00000000, 0x00000000,
+        0x00000003, 0x00000001, 0x00000f0f, 0x505f5653, 0x5449534f, 0x004e4f49, 0x4f4c4f43, 0xabab0052,
+        0x4e47534f, 0x0000004c, 0x00000002, 0x00000008, 0x00000038, 0x00000000, 0x00000001, 0x00000003,
+        0x00000000, 0x0000000f, 0x00000044, 0x00000000, 0x00000000, 0x00000003, 0x00000001, 0x0000000f,
+        0x505f5653, 0x5449534f, 0x004e4f49, 0x4f4c4f43, 0xabab0052, 0x52444853, 0x00000068, 0x00010040,
+        0x0000001a, 0x0300005f, 0x001010f2, 0x00000000, 0x0300005f, 0x001010f2, 0x00000001, 0x04000067,
+        0x001020f2, 0x00000000, 0x00000001, 0x03000065, 0x001020f2, 0x00000001, 0x05000036, 0x001020f2,
+        0x00000000, 0x00101e46, 0x00000000, 0x05000036, 0x001020f2, 0x00000001, 0x00101e46, 0x00000001,
+        0x0100003e,
+    };
+#if 0
+struct ps_data
+{
+    float4 pos : SV_POSITION;
+    float4 color : COLOR;
+};
+
+float4 main(struct ps_data ps_input) : SV_Target
+{
+    return ddy(ps_input.color) * 240.0 + 0.5;
+}
+#endif
+    static const DWORD ps_code[] =
+    {
+        0x43425844, 0x423712f6, 0x786c59c2, 0xa6023c60, 0xb79faad2, 0x00000001, 0x00000138, 0x00000003,
+        0x0000002c, 0x00000080, 0x000000b4, 0x4e475349, 0x0000004c, 0x00000002, 0x00000008, 0x00000038,
+        0x00000000, 0x00000001, 0x00000003, 0x00000000, 0x0000000f, 0x00000044, 0x00000000, 0x00000000,
+        0x00000003, 0x00000001, 0x00000f0f, 0x505f5653, 0x5449534f, 0x004e4f49, 0x4f4c4f43, 0xabab0052,
+        0x4e47534f, 0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000003,
+        0x00000000, 0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x52444853, 0x0000007c, 0x00000040,
+        0x0000001f, 0x03001062, 0x001010f2, 0x00000001, 0x03000065, 0x001020f2, 0x00000000, 0x02000068,
+        0x00000001, 0x0500000c, 0x001000f2, 0x00000000, 0x00101e46, 0x00000001, 0x0f000032, 0x001020f2,
+        0x00000000, 0x00100e46, 0x00000000, 0x00004002, 0x43700000, 0x43700000, 0x43700000, 0x43700000,
+        0x00004002, 0x3f000000, 0x3f000000, 0x3f000000, 0x3f000000, 0x0100003e,
+    };
+    static const float red[] = {1.0f, 0.0f, 0.0f, 1.0f};
+    struct d3d10core_test_context test_context;
+    D3D10_TEXTURE2D_DESC texture_desc;
+    ID3D10InputLayout *input_layout;
+    unsigned int stride, offset;
+    struct resource_readback rb;
+    ID3D10RenderTargetView *rtv;
+    ID3D10Texture2D *texture;
+    ID3D10VertexShader *vs;
+    ID3D10PixelShader *ps;
+    ID3D10Device *device;
+    ID3D10Buffer *vb;
+    DWORD color;
+    HRESULT hr;
+
+    if (!init_test_context(&test_context))
+        return;
+
+    device = test_context.device;
+
+    ID3D10Texture2D_GetDesc(test_context.backbuffer, &texture_desc);
+    hr = ID3D10Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+
+    hr = ID3D10Device_CreateRenderTargetView(device, (ID3D10Resource *)texture, NULL, &rtv);
+    ok(SUCCEEDED(hr), "Failed to create render target view, hr %#x.\n", hr);
+
+    hr = ID3D10Device_CreateInputLayout(device, layout_desc, sizeof(layout_desc) / sizeof(*layout_desc),
+            vs_code, sizeof(vs_code), &input_layout);
+    ok(SUCCEEDED(hr), "Failed to create input layout, hr %#x.\n", hr);
+
+    vb = create_buffer(device, D3D10_BIND_VERTEX_BUFFER, sizeof(quad), quad);
+
+    hr = ID3D10Device_CreateVertexShader(device, vs_code, sizeof(vs_code), &vs);
+    ok(SUCCEEDED(hr), "Failed to create vertex shader, hr %#x.\n", hr);
+
+    ID3D10Device_IASetInputLayout(device, input_layout);
+    ID3D10Device_IASetPrimitiveTopology(device, D3D10_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    stride = sizeof(*quad);
+    offset = 0;
+    ID3D10Device_IASetVertexBuffers(device, 0, 1, &vb, &stride, &offset);
+    ID3D10Device_VSSetShader(device, vs);
+
+    hr = ID3D10Device_CreatePixelShader(device, ps_code, sizeof(ps_code), &ps);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+
+    ID3D10Device_PSSetShader(device, ps);
+
+    ID3D10Device_OMSetRenderTargets(device, 1, &rtv, NULL);
+    ID3D10Device_ClearRenderTargetView(device, rtv, red);
+    ID3D10Device_Draw(device, 4, 0);
+
+    get_texture_readback(texture, 0, &rb);
+    color = get_readback_color(&rb, 320, 190);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_readback_color(&rb, 255, 240);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_readback_color(&rb, 320, 240);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_readback_color(&rb, 385, 240);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_readback_color(&rb, 320, 290);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    release_resource_readback(&rb);
+
+    ID3D10Device_OMSetRenderTargets(device, 1, &test_context.backbuffer_rtv, NULL);
+    ID3D10Device_ClearRenderTargetView(device, test_context.backbuffer_rtv, red);
+    ID3D10Device_Draw(device, 4, 0);
+
+    get_texture_readback(test_context.backbuffer, 0, &rb);
+    color = get_readback_color(&rb, 320, 190);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_readback_color(&rb, 255, 240);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_readback_color(&rb, 320, 240);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_readback_color(&rb, 385, 240);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    color = get_readback_color(&rb, 320, 290);
+    ok(compare_color(color, 0x7fff007f, 1), "Got unexpected color 0x%08x.\n", color);
+    release_resource_readback(&rb);
+
+    ID3D10PixelShader_Release(ps);
+    ID3D10VertexShader_Release(vs);
+    ID3D10Buffer_Release(vb);
+    ID3D10InputLayout_Release(input_layout);
+    ID3D10Texture2D_Release(texture);
+    ID3D10RenderTargetView_Release(rtv);
+    release_test_context(&test_context);
+}
+
 START_TEST(device)
 {
     test_feature_level();
@@ -9403,10 +9633,9 @@ START_TEST(device)
     test_fragment_coords();
     test_update_subresource();
     test_copy_subresource_region();
-    test_buffer_data_init();
-    test_texture_data_init();
     test_check_multisample_quality_levels();
     test_cb_relative_addressing();
+    test_swapchain_formats();
     test_swapchain_views();
     test_swapchain_flip();
     test_clear_render_target_view();
@@ -9424,4 +9653,6 @@ START_TEST(device)
     test_index_buffer_offset();
     test_face_culling();
     test_line_antialiasing_blending();
+    test_required_format_support();
+    test_ddy();
 }

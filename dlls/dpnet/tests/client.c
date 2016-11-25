@@ -197,6 +197,7 @@ static void test_get_sp_caps(void)
     hr = IDirectPlay8Client_GetSPCaps(client, &CLSID_DP8SP_TCPIP, &caps, 0);
     ok(hr == DPN_OK, "GetSPCaps failed with %x\n", hr);
 
+    ok(caps.dwSize == sizeof(DPN_SP_CAPS), "got %d\n", caps.dwSize);
     ok((caps.dwFlags &
         (DPNSPCAPS_SUPPORTSDPNSRV | DPNSPCAPS_SUPPORTSBROADCAST | DPNSPCAPS_SUPPORTSALLADAPTERS)) ==
        (DPNSPCAPS_SUPPORTSDPNSRV | DPNSPCAPS_SUPPORTSBROADCAST | DPNSPCAPS_SUPPORTSALLADAPTERS),
@@ -220,14 +221,82 @@ static void test_lobbyclient(void)
     ok(hr == S_OK, "Failed to create object\n");
     if(SUCCEEDED(hr))
     {
+        hr = IDirectPlay8LobbyClient_Initialize(client, NULL, NULL, 0);
+        ok(hr == E_POINTER, "got 0x%08x\n", hr);
+
         hr = IDirectPlay8LobbyClient_Initialize(client, NULL, DirectPlayLobbyClientMessageHandler, 0);
-        todo_wine ok(hr == S_OK, "got 0x%08x\n", hr);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
 
         hr = IDirectPlay8LobbyClient_Close(client, 0);
         todo_wine ok(hr == S_OK, "got 0x%08x\n", hr);
 
         IDirectPlay8LobbyClient_Release(client);
     }
+}
+
+static void test_player_info(void)
+{
+    HRESULT hr;
+    DPN_PLAYER_INFO info;
+    WCHAR name[] = {'w','i','n','e',0};
+    WCHAR name2[] = {'w','i','n','e','2',0};
+    WCHAR data[] = {'X','X','X','X',0};
+
+    ZeroMemory( &info, sizeof(DPN_PLAYER_INFO) );
+    info.dwSize = sizeof(DPN_PLAYER_INFO);
+    info.dwInfoFlags = DPNINFO_NAME;
+
+    hr = IDirectPlay8Client_SetClientInfo(client, NULL, NULL, NULL, DPNSETCLIENTINFO_SYNC);
+    ok(hr == E_POINTER, "got %x\n", hr);
+
+    info.pwszName = NULL;
+    hr = IDirectPlay8Client_SetClientInfo(client, &info, NULL, NULL, DPNSETCLIENTINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    info.pwszName = name;
+    hr = IDirectPlay8Client_SetClientInfo(client, &info, NULL, NULL, DPNSETCLIENTINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    info.dwInfoFlags = DPNINFO_NAME;
+    info.pwszName = name2;
+    hr = IDirectPlay8Client_SetClientInfo(client, &info, NULL, NULL, DPNSETCLIENTINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    info.dwInfoFlags = DPNINFO_DATA;
+    info.pwszName = NULL;
+    info.pvData = NULL;
+    info.dwDataSize = sizeof(data);
+    hr = IDirectPlay8Client_SetClientInfo(client, &info, NULL, NULL, DPNSETCLIENTINFO_SYNC);
+    ok(hr == E_POINTER, "got %x\n", hr);
+
+    info.dwInfoFlags = DPNINFO_DATA;
+    info.pwszName = NULL;
+    info.pvData = data;
+    info.dwDataSize = 0;
+    hr = IDirectPlay8Client_SetClientInfo(client, &info, NULL, NULL, DPNSETCLIENTINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    info.dwInfoFlags = DPNINFO_DATA;
+    info.pwszName = NULL;
+    info.pvData = data;
+    info.dwDataSize = sizeof(data);
+    hr = IDirectPlay8Client_SetClientInfo(client, &info, NULL, NULL, DPNSETCLIENTINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    info.dwInfoFlags = DPNINFO_DATA | DPNINFO_NAME;
+    info.pwszName = name;
+    info.pvData = data;
+    info.dwDataSize = sizeof(data);
+    hr = IDirectPlay8Client_SetClientInfo(client, &info, NULL, NULL, DPNSETCLIENTINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    /* Leave ClientInfo with only the name set. */
+    info.dwInfoFlags = DPNINFO_DATA | DPNINFO_NAME;
+    info.pwszName = name;
+    info.pvData = NULL;
+    info.dwDataSize = 0;
+    hr = IDirectPlay8Client_SetClientInfo(client, &info, NULL, NULL, DPNSETCLIENTINFO_SYNC);
+    ok(hr == S_OK, "got %x\n", hr);
 }
 
 static void test_cleanup_dp(void)
@@ -250,6 +319,33 @@ static void test_cleanup_dp(void)
     CoUninitialize();
 }
 
+static void test_close(void)
+{
+    HRESULT hr;
+    static IDirectPlay8Client* client2;
+    DPN_SP_CAPS caps;
+
+    hr = CoCreateInstance(&CLSID_DirectPlay8Client, NULL, CLSCTX_INPROC_SERVER, &IID_IDirectPlay8Client, (void **)&client2);
+    ok(hr == S_OK, "got 0x%x\n", hr);
+
+    memset(&caps, 0, sizeof(DPN_SP_CAPS));
+    caps.dwSize = sizeof(DPN_SP_CAPS);
+
+    hr = IDirectPlay8Client_Initialize(client2, NULL, DirectPlayMessageHandler, 0);
+    ok(hr == S_OK, "got %x\n", hr);
+
+    hr = IDirectPlay8Client_GetSPCaps(client2, &CLSID_DP8SP_TCPIP, &caps, 0);
+    ok(hr == DPN_OK, "got %x\n", hr);
+
+    hr = IDirectPlay8Client_Close(client2, 0);
+    ok(hr == DPN_OK, "got %x\n", hr);
+
+    hr = IDirectPlay8Client_GetSPCaps(client2, &CLSID_DP8SP_TCPIP, &caps, 0);
+    ok(hr == DPNERR_UNINITIALIZED, "got %x\n", hr);
+
+    IDirectPlay8Client_Release(client2);
+}
+
 START_TEST(client)
 {
     if(!test_init_dp())
@@ -258,6 +354,8 @@ START_TEST(client)
     test_enum_service_providers();
     test_enum_hosts();
     test_get_sp_caps();
+    test_player_info();
     test_lobbyclient();
+    test_close();
     test_cleanup_dp();
 }

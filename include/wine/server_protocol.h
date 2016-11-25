@@ -4468,7 +4468,7 @@ struct open_clipboard_request
 struct open_clipboard_reply
 {
     struct reply_header __header;
-    int            owner;
+    user_handle_t  owner;
     char __pad_12[4];
 };
 
@@ -4477,41 +4477,14 @@ struct open_clipboard_reply
 struct close_clipboard_request
 {
     struct request_header __header;
-    int            changed;
+    char __pad_12[4];
 };
 struct close_clipboard_reply
 {
     struct reply_header __header;
     user_handle_t  viewer;
-    int            owner;
-};
-
-
-
-struct set_clipboard_info_request
-{
-    struct request_header __header;
-    unsigned int   flags;
     user_handle_t  owner;
-    char __pad_20[4];
 };
-struct set_clipboard_info_reply
-{
-    struct reply_header __header;
-    unsigned int   flags;
-    user_handle_t  old_clipboard;
-    user_handle_t  old_owner;
-    user_handle_t  old_viewer;
-    unsigned int   seqno;
-    char __pad_28[4];
-};
-
-#define SET_CB_SEQNO     0x008
-#define SET_CB_RELOWNER  0x010
-#define CB_OPEN_ANY      0x020
-#define CB_OPEN          0x040
-#define CB_OWNER         0x080
-#define CB_PROCESS       0x100
 
 
 
@@ -4523,6 +4496,85 @@ struct empty_clipboard_request
 struct empty_clipboard_reply
 {
     struct reply_header __header;
+};
+
+
+
+struct set_clipboard_data_request
+{
+    struct request_header __header;
+    unsigned int   format;
+    unsigned int   lcid;
+    /* VARARG(data,bytes); */
+    char __pad_20[4];
+};
+struct set_clipboard_data_reply
+{
+    struct reply_header __header;
+    unsigned int   seqno;
+    char __pad_12[4];
+};
+
+
+
+struct get_clipboard_data_request
+{
+    struct request_header __header;
+    unsigned int   format;
+    int            cached;
+    unsigned int   seqno;
+};
+struct get_clipboard_data_reply
+{
+    struct reply_header __header;
+    unsigned int   from;
+    user_handle_t  owner;
+    unsigned int   seqno;
+    data_size_t    total;
+    /* VARARG(data,bytes); */
+};
+
+
+
+struct get_clipboard_formats_request
+{
+    struct request_header __header;
+    unsigned int   format;
+};
+struct get_clipboard_formats_reply
+{
+    struct reply_header __header;
+    unsigned int   count;
+    /* VARARG(formats,uints); */
+    char __pad_12[4];
+};
+
+
+
+struct enum_clipboard_formats_request
+{
+    struct request_header __header;
+    unsigned int   previous;
+};
+struct enum_clipboard_formats_reply
+{
+    struct reply_header __header;
+    unsigned int   format;
+    char __pad_12[4];
+};
+
+
+
+struct release_clipboard_request
+{
+    struct request_header __header;
+    user_handle_t  owner;
+};
+struct release_clipboard_reply
+{
+    struct reply_header __header;
+    user_handle_t  viewer;
+    user_handle_t  owner;
 };
 
 
@@ -4555,6 +4607,30 @@ struct set_clipboard_viewer_reply
     struct reply_header __header;
     user_handle_t  old_viewer;
     user_handle_t  owner;
+};
+
+
+
+struct add_clipboard_listener_request
+{
+    struct request_header __header;
+    user_handle_t  window;
+};
+struct add_clipboard_listener_reply
+{
+    struct reply_header __header;
+};
+
+
+
+struct remove_clipboard_listener_request
+{
+    struct request_header __header;
+    user_handle_t  window;
+};
+struct remove_clipboard_listener_reply
+{
+    struct reply_header __header;
 };
 
 
@@ -5689,10 +5765,16 @@ enum request
     REQ_set_class_info,
     REQ_open_clipboard,
     REQ_close_clipboard,
-    REQ_set_clipboard_info,
     REQ_empty_clipboard,
+    REQ_set_clipboard_data,
+    REQ_get_clipboard_data,
+    REQ_get_clipboard_formats,
+    REQ_enum_clipboard_formats,
+    REQ_release_clipboard,
     REQ_get_clipboard_info,
     REQ_set_clipboard_viewer,
+    REQ_add_clipboard_listener,
+    REQ_remove_clipboard_listener,
     REQ_open_token,
     REQ_set_global_windows,
     REQ_adjust_token_privileges,
@@ -5973,10 +6055,16 @@ union generic_request
     struct set_class_info_request set_class_info_request;
     struct open_clipboard_request open_clipboard_request;
     struct close_clipboard_request close_clipboard_request;
-    struct set_clipboard_info_request set_clipboard_info_request;
     struct empty_clipboard_request empty_clipboard_request;
+    struct set_clipboard_data_request set_clipboard_data_request;
+    struct get_clipboard_data_request get_clipboard_data_request;
+    struct get_clipboard_formats_request get_clipboard_formats_request;
+    struct enum_clipboard_formats_request enum_clipboard_formats_request;
+    struct release_clipboard_request release_clipboard_request;
     struct get_clipboard_info_request get_clipboard_info_request;
     struct set_clipboard_viewer_request set_clipboard_viewer_request;
+    struct add_clipboard_listener_request add_clipboard_listener_request;
+    struct remove_clipboard_listener_request remove_clipboard_listener_request;
     struct open_token_request open_token_request;
     struct set_global_windows_request set_global_windows_request;
     struct adjust_token_privileges_request adjust_token_privileges_request;
@@ -6255,10 +6343,16 @@ union generic_reply
     struct set_class_info_reply set_class_info_reply;
     struct open_clipboard_reply open_clipboard_reply;
     struct close_clipboard_reply close_clipboard_reply;
-    struct set_clipboard_info_reply set_clipboard_info_reply;
     struct empty_clipboard_reply empty_clipboard_reply;
+    struct set_clipboard_data_reply set_clipboard_data_reply;
+    struct get_clipboard_data_reply get_clipboard_data_reply;
+    struct get_clipboard_formats_reply get_clipboard_formats_reply;
+    struct enum_clipboard_formats_reply enum_clipboard_formats_reply;
+    struct release_clipboard_reply release_clipboard_reply;
     struct get_clipboard_info_reply get_clipboard_info_reply;
     struct set_clipboard_viewer_reply set_clipboard_viewer_reply;
+    struct add_clipboard_listener_reply add_clipboard_listener_reply;
+    struct remove_clipboard_listener_reply remove_clipboard_listener_reply;
     struct open_token_reply open_token_reply;
     struct set_global_windows_reply set_global_windows_reply;
     struct adjust_token_privileges_reply adjust_token_privileges_reply;
@@ -6318,6 +6412,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 513
+#define SERVER_PROTOCOL_VERSION 523
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

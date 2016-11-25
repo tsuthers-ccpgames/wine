@@ -86,10 +86,13 @@ static void test_acquire_context(void)
 
     result = CryptAcquireContextA(
         &hProv, NULL, MS_DEF_DSS_DH_PROV_A, PROV_DSS_DH, CRYPT_NEWKEYSET);
-    ok(result, "Expected no errors.\n");
+    ok(result || GetLastError() == NTE_EXISTS, "Expected no errors or NTE_EXISTS\n");
 
-    result = CryptReleaseContext(hProv, 0);
-    ok(result, "Expected release of the provider.\n");
+    if (result)
+    {
+        result = CryptReleaseContext(hProv, 0);
+        ok(result, "Expected release of the provider.\n");
+    }
 
     result = CryptAcquireContextA(&hProv, NULL, NULL, PROV_DSS, 0);
     ok(result, "Expected no errors.\n");
@@ -636,7 +639,8 @@ static void test_data_encryption(const struct encrypt_test *tests, int testLen)
         ok(result, "Expected data decryption.\n");
 
         /* Verify we have received expected decrypted data */
-        ok(!memcmp(pbData, tests[i].decrypted, dataLen), "Incorrect decrypted data.\n");
+        ok(!memcmp(pbData, tests[i].decrypted, dataLen) ||
+           broken(tests[i].algid == CALG_RC4), "Incorrect decrypted data.\n");
 
         result = CryptDestroyKey(pKey);
         ok(result, "Expected no DestroyKey errors.\n");
@@ -1313,11 +1317,11 @@ static void test_keyExchange_dssDH(HCRYPTPROV hProv, const struct keyExchange_te
         ok(result, "Failed to import key for user 2, got %x\n", GetLastError());
 
         /* Set the shared key parameters to matching cipher type */
-        algid = CALG_RC4;
+        algid = CALG_3DES;
         result = CryptSetKeyParam(sessionKey1, KP_ALGID, (BYTE *)&algid, 0);
         ok(result, "Failed to set session key for user 1, got %x\n", GetLastError());
 
-        algid = CALG_RC4;
+        algid = CALG_3DES;
         result = CryptSetKeyParam(sessionKey2, KP_ALGID, (BYTE *)&algid, 0);
         ok(result, "Failed to set session key for user 2, got %x\n", GetLastError());
 

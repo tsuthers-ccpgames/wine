@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2016-04-19 11:46+0100\n"
+"PO-Revision-Date: 2016-10-20 16:19+0100\n"
 "Last-Translator: Frédéric Delanoy <frederic.delanoy@gmail.com>\n"
 "Language-Team: French\n"
 "Language: fr\n"
@@ -48,7 +48,7 @@ msgid "&Modify..."
 msgstr "&Modifier..."
 
 #: appwiz.rc:69 appwiz.rc:45 cryptui.rc:346 msacm32.rc:40 winecfg.rc:200
-#: winecfg.rc:237 wordpad.rc:248
+#: winecfg.rc:237 wordpad.rc:256
 msgid "&Remove"
 msgstr "&Supprimer"
 
@@ -61,15 +61,15 @@ msgstr "Informations de support"
 #: cryptui.rc:263 cryptui.rc:275 cryptui.rc:365 dinput.rc:46 ieframe.rc:96
 #: localui.rc:44 localui.rc:57 mpr.rc:49 msacm32.rc:53 mshtml.rc:47
 #: mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62 oledlg.rc:94 serialui.rc:41
-#: setupapi.rc:59 shell32.rc:276 shell32.rc:300 shell32.rc:322 shell32.rc:340
+#: setupapi.rc:59 shell32.rc:276 shell32.rc:300 shell32.rc:322 shell32.rc:341
 #: shlwapi.rc:44 user32.rc:83 user32.rc:98 wininet.rc:51 wininet.rc:71
 #: winspool.rc:42 net.rc:47 notepad.rc:117 oleview.rc:162 oleview.rc:175
 #: progman.rc:106 progman.rc:124 progman.rc:142 progman.rc:158 progman.rc:180
 #: progman.rc:199 progman.rc:216 regedit.rc:247 regedit.rc:258 regedit.rc:271
 #: regedit.rc:287 regedit.rc:300 regedit.rc:313 taskmgr.rc:442 taskmgr.rc:517
-#: winecfg.rc:214 winecfg.rc:224 wineconsole.rc:135 winefile.rc:131
-#: winefile.rc:154 winefile.rc:184 winemine.rc:71 winemine.rc:81 winemine.rc:95
-#: wordpad.rc:207 wordpad.rc:218 wordpad.rc:236 wordpad.rc:249
+#: winecfg.rc:214 winecfg.rc:224 wineconsole.rc:135 winefile.rc:128
+#: winefile.rc:151 winefile.rc:181 winemine.rc:71 winemine.rc:81 winemine.rc:95
+#: wordpad.rc:215 wordpad.rc:226 wordpad.rc:244 wordpad.rc:257
 msgid "OK"
 msgstr "OK"
 
@@ -83,7 +83,7 @@ msgstr ""
 msgid "Publisher:"
 msgstr "Éditeur :"
 
-#: appwiz.rc:81 winefile.rc:169
+#: appwiz.rc:81 winefile.rc:166
 msgid "Version:"
 msgstr "Version :"
 
@@ -145,15 +145,15 @@ msgstr "&Installer"
 #: cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81 localui.rc:45
 #: localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48 mshtml.rc:58
 #: msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42 setupapi.rc:42
-#: setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312 shell32.rc:341
+#: setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312 shell32.rc:342
 #: shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52 wininet.rc:72
 #: winspool.rc:43 notepad.rc:118 oleview.rc:163 oleview.rc:176 progman.rc:107
 #: progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181 progman.rc:200
 #: progman.rc:217 regedit.rc:248 regedit.rc:259 regedit.rc:272 regedit.rc:288
 #: regedit.rc:301 regedit.rc:314 taskmgr.rc:443 taskmgr.rc:518 wineboot.rc:34
-#: winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136 winefile.rc:132
-#: winefile.rc:155 winefile.rc:185 winemine.rc:96 wordpad.rc:208 wordpad.rc:219
-#: wordpad.rc:237 wordpad.rc:250
+#: winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136 winefile.rc:129
+#: winefile.rc:152 winefile.rc:182 winemine.rc:96 wordpad.rc:216 wordpad.rc:227
+#: wordpad.rc:245 wordpad.rc:258
 msgid "Cancel"
 msgstr "Annuler"
 
@@ -308,7 +308,7 @@ msgstr "non compressé"
 msgid "Canceling..."
 msgstr "Annulation..."
 
-#: comctl32.rc:52 winefile.rc:160
+#: comctl32.rc:52 winefile.rc:157
 msgid "Properties for %s"
 msgstr "Propriétés de %s"
 
@@ -355,7 +355,7 @@ msgstr "&Réinitialiser"
 #: clock.rc:44 notepad.rc:60 notepad.rc:119 oleview.rc:72 progman.rc:55
 #: progman.rc:108 progman.rc:126 progman.rc:144 progman.rc:160 progman.rc:184
 #: progman.rc:202 progman.rc:219 regedit.rc:79 taskmgr.rc:87 winefile.rc:82
-#: winemine.rc:51 winhlp32.rc:57 wordpad.rc:94
+#: winemine.rc:51 winhlp32.rc:57 wordpad.rc:102
 msgid "&Help"
 msgstr "Aid&e"
 
@@ -393,7 +393,7 @@ msgid "None"
 msgstr "Aucune"
 
 #: comctl32.rc:31 cryptui.rc:230 regedit.rc:237 taskmgr.rc:434 winedbg.rc:60
-#: winedbg.rc:75 wordpad.rc:172
+#: winedbg.rc:75 wordpad.rc:180
 msgid "Close"
 msgstr "Fermer"
 
@@ -426,7 +426,7 @@ msgstr "Liste des fichiers de &type :"
 msgid "Dri&ves:"
 msgstr "&Lecteurs :"
 
-#: comdlg32.rc:173 comdlg32.rc:195 winefile.rc:176
+#: comdlg32.rc:173 comdlg32.rc:195 winefile.rc:173
 msgid "&Read Only"
 msgstr "Lectu&re seule"
 
@@ -439,7 +439,7 @@ msgid "Save As"
 msgstr "Enregistrer"
 
 #: comdlg32.rc:201 comdlg32.rc:210 comdlg32.rc:356 comdlg32.rc:54 hhctrl.rc:49
-#: wordpad.rc:165
+#: wordpad.rc:173
 msgid "Print"
 msgstr "Imprimer"
 
@@ -678,7 +678,7 @@ msgstr "Imprimer dans un fichier"
 msgid "&Properties"
 msgstr "&Propriétés"
 
-#: comdlg32.rc:366 comdlg32.rc:404 msacm32.rc:34 winefile.rc:141
+#: comdlg32.rc:366 comdlg32.rc:404 msacm32.rc:34 winefile.rc:138
 msgid "&Name:"
 msgstr "&Nom :"
 
@@ -886,67 +886,67 @@ msgstr "Italique"
 msgid "Bold Italic"
 msgstr "Gras italique"
 
-#: comdlg32.rc:121 wordpad.rc:117
+#: comdlg32.rc:121 wordpad.rc:125
 msgid "Black"
 msgstr "Noir"
 
-#: comdlg32.rc:122 wordpad.rc:118
+#: comdlg32.rc:122 wordpad.rc:126
 msgid "Maroon"
 msgstr "Marron"
 
-#: comdlg32.rc:123 wordpad.rc:119
+#: comdlg32.rc:123 wordpad.rc:127
 msgid "Green"
 msgstr "Vert"
 
-#: comdlg32.rc:124 wordpad.rc:120
+#: comdlg32.rc:124 wordpad.rc:128
 msgid "Olive"
 msgstr "Olive"
 
-#: comdlg32.rc:125 wordpad.rc:121
+#: comdlg32.rc:125 wordpad.rc:129
 msgid "Navy"
 msgstr "Bleu marine"
 
-#: comdlg32.rc:126 wordpad.rc:122
+#: comdlg32.rc:126 wordpad.rc:130
 msgid "Purple"
 msgstr "Pourpre"
 
-#: comdlg32.rc:127 wordpad.rc:123
+#: comdlg32.rc:127 wordpad.rc:131
 msgid "Teal"
 msgstr "Sarcelle"
 
-#: comdlg32.rc:128 wordpad.rc:124
+#: comdlg32.rc:128 wordpad.rc:132
 msgid "Gray"
 msgstr "Gris"
 
-#: comdlg32.rc:129 wordpad.rc:125
+#: comdlg32.rc:129 wordpad.rc:133
 msgid "Silver"
 msgstr "Argent"
 
-#: comdlg32.rc:130 wordpad.rc:126
+#: comdlg32.rc:130 wordpad.rc:134
 msgid "Red"
 msgstr "Rouge"
 
-#: comdlg32.rc:131 wordpad.rc:127
+#: comdlg32.rc:131 wordpad.rc:135
 msgid "Lime"
 msgstr "Citron vert"
 
-#: comdlg32.rc:132 wordpad.rc:128
+#: comdlg32.rc:132 wordpad.rc:136
 msgid "Yellow"
 msgstr "Jaune"
 
-#: comdlg32.rc:133 wordpad.rc:129
+#: comdlg32.rc:133 wordpad.rc:137
 msgid "Blue"
 msgstr "Bleu"
 
-#: comdlg32.rc:134 wordpad.rc:130
+#: comdlg32.rc:134 wordpad.rc:138
 msgid "Fuchsia"
 msgstr "Fuchsia"
 
-#: comdlg32.rc:135 wordpad.rc:131
+#: comdlg32.rc:135 wordpad.rc:139
 msgid "Aqua"
 msgstr "Eau"
 
-#: comdlg32.rc:136 wordpad.rc:132
+#: comdlg32.rc:136 wordpad.rc:140
 msgid "White"
 msgstr "Blanc"
 
@@ -3163,13 +3163,13 @@ msgid "Proper&ties"
 msgstr "Proprié&tés"
 
 #: hhctrl.rc:87 shdoclc.rc:79 shdoclc.rc:93 shdoclc.rc:117 shdoclc.rc:159
-#: shdoclc.rc:183 user32.rc:60 wordpad.rc:104
+#: shdoclc.rc:183 user32.rc:60 wordpad.rc:112
 msgid "Cu&t"
 msgstr "&Couper"
 
 #: hhctrl.rc:88 shdoclc.rc:80 shdoclc.rc:94 shdoclc.rc:118 shdoclc.rc:133
 #: shdoclc.rc:160 shdoclc.rc:184 shell32.rc:102 user32.rc:61 wineconsole.rc:32
-#: winhlp32.rc:40 wordpad.rc:105
+#: winhlp32.rc:40 wordpad.rc:113
 msgid "&Copy"
 msgstr "C&opier"
 
@@ -3234,7 +3234,7 @@ msgstr "Sommaire"
 msgid "Sync"
 msgstr "Synchroniser"
 
-#: hhctrl.rc:50 wineconsole.rc:60 wordpad.rc:158
+#: hhctrl.rc:50 wineconsole.rc:60 wordpad.rc:166
 msgid "Options"
 msgstr "Options"
 
@@ -7447,7 +7447,7 @@ msgid "Source:"
 msgstr "Source :"
 
 #: oledlg.rc:86 shdoclc.rc:50 shdoclc.rc:82 shdoclc.rc:95 shdoclc.rc:135
-#: shdoclc.rc:162 shdoclc.rc:186 user32.rc:62 wineconsole.rc:33 wordpad.rc:106
+#: shdoclc.rc:162 shdoclc.rc:186 user32.rc:62 wineconsole.rc:33 wordpad.rc:114
 msgid "&Paste"
 msgstr "Co&ller"
 
@@ -7990,7 +7990,7 @@ msgstr "Aligner les icônes"
 msgid "Paste as Link"
 msgstr "Coller comme lien"
 
-#: shell32.rc:67 progman.rc:100 wordpad.rc:213
+#: shell32.rc:67 progman.rc:100 wordpad.rc:221
 msgid "New"
 msgstr "Nouveau"
 
@@ -8084,7 +8084,13 @@ msgstr "Exécuté avec %s"
 msgid "Wine was brought to you by:"
 msgstr "Wine est une réalisation de :"
 
-#: shell32.rc:337
+#: shell32.rc:334
+#, fuzzy
+#| msgid "&Run..."
+msgid "Run"
+msgstr "E&xécuter..."
+
+#: shell32.rc:338
 msgid ""
 "Type the name of a program, folder, document, or Internet resource, and Wine "
 "will open it for you."
@@ -8092,12 +8098,12 @@ msgstr ""
 "Entrez le nom d'un programme, d'un dossier, d'un document ou d'une ressource "
 "Internet, et Wine l'ouvrira pour vous."
 
-#: shell32.rc:338
+#: shell32.rc:339
 msgid "&Open:"
 msgstr "&Ouvrir :"
 
-#: shell32.rc:342 progman.rc:182 progman.rc:201 progman.rc:218 winecfg.rc:243
-#: winefile.rc:133
+#: shell32.rc:343 progman.rc:182 progman.rc:201 progman.rc:218 winecfg.rc:243
+#: winefile.rc:130
 msgid "&Browse..."
 msgstr "&Parcourir..."
 
@@ -8113,7 +8119,7 @@ msgstr "Type"
 msgid "Modified"
 msgstr "Modifié"
 
-#: shell32.rc:141 winefile.rc:175 winefile.rc:114
+#: shell32.rc:141 winefile.rc:172 winefile.rc:114
 msgid "Attributes"
 msgstr "Attributs"
 
@@ -10635,6 +10641,10 @@ msgstr "Passerelle par défaut"
 msgid "IPv6 address"
 msgstr "Adresse IPv6"
 
+#: msinfo32.rc:28
+msgid "System Information"
+msgstr "Informations système"
+
 #: net.rc:30
 msgid ""
 "The syntax of this command is:\n"
@@ -10986,42 +10996,42 @@ msgstr "&Haut :"
 msgid "Encoding:"
 msgstr "Codage :"
 
-#: notepad.rc:132 wordpad.rc:281
+#: notepad.rc:132 wordpad.rc:289
 msgctxt "accelerator Select All"
 msgid "A"
 msgstr "A"
 
-#: notepad.rc:133 wordpad.rc:283
+#: notepad.rc:133 wordpad.rc:291
 msgctxt "accelerator Copy"
 msgid "C"
 msgstr "C"
 
-#: notepad.rc:134 regedit.rc:323 wordpad.rc:279
+#: notepad.rc:134 regedit.rc:323 wordpad.rc:287
 msgctxt "accelerator Find"
 msgid "F"
 msgstr "F"
 
-#: notepad.rc:135 wordpad.rc:280
+#: notepad.rc:135 wordpad.rc:288
 msgctxt "accelerator Replace"
 msgid "H"
 msgstr "H"
 
-#: notepad.rc:136 wordpad.rc:289
+#: notepad.rc:136 wordpad.rc:297
 msgctxt "accelerator New"
 msgid "N"
 msgstr "N"
 
-#: notepad.rc:137 wordpad.rc:290
+#: notepad.rc:137 wordpad.rc:298
 msgctxt "accelerator Open"
 msgid "O"
 msgstr "O"
 
-#: notepad.rc:138 regedit.rc:324 wordpad.rc:292
+#: notepad.rc:138 regedit.rc:324 wordpad.rc:300
 msgctxt "accelerator Print"
 msgid "P"
 msgstr "P"
 
-#: notepad.rc:139 wordpad.rc:291
+#: notepad.rc:139 wordpad.rc:299
 msgctxt "accelerator Save"
 msgid "S"
 msgstr "S"
@@ -11031,12 +11041,12 @@ msgctxt "accelerator Paste"
 msgid "V"
 msgstr "V"
 
-#: notepad.rc:141 wordpad.rc:282
+#: notepad.rc:141 wordpad.rc:290
 msgctxt "accelerator Cut"
 msgid "X"
 msgstr "X"
 
-#: notepad.rc:142 wordpad.rc:284
+#: notepad.rc:142 wordpad.rc:292
 msgctxt "accelerator Undo"
 msgid "Z"
 msgstr "Z"
@@ -11181,11 +11191,11 @@ msgstr "Mode &expert"
 msgid "&Hidden component categories"
 msgstr "Catégories de composants &cachés"
 
-#: oleview.rc:67 oleview.rc:89 winefile.rc:65 wordpad.rc:71 wordpad.rc:264
+#: oleview.rc:67 oleview.rc:89 winefile.rc:65 wordpad.rc:71 wordpad.rc:272
 msgid "&Toolbar"
 msgstr "Barre d'&outils"
 
-#: oleview.rc:68 oleview.rc:90 winefile.rc:67 wordpad.rc:74 wordpad.rc:267
+#: oleview.rc:68 oleview.rc:90 winefile.rc:67 wordpad.rc:74 wordpad.rc:275
 msgid "&Status Bar"
 msgstr "Barre d'&état"
 
@@ -11686,6 +11696,15 @@ msgid ""
 "  REG [operation] /?\n"
 "\n"
 msgstr ""
+"Usage :\n"
+"  REG [opération] [paramètres]\n"
+"\n"
+"Opérations prises en charge :\n"
+"  ADD | DELETE | QUERY\n"
+"\n"
+"Pour de l'aide sur une opération spécifique, tapez :\n"
+"  REG [opération] /?\n"
+"\n"
 
 #: reg.rc:36
 msgid ""
@@ -11777,7 +11796,7 @@ msgid ""
 "reg: Unable to delete all registry values in '%1'. An unexpected error "
 "occurred.\n"
 msgstr ""
-"reg : Impossible d'effacer toutes les valeurs de registre dans « %1 ».Une "
+"reg : impossible d'effacer toutes les valeurs de registre dans « %1 ». Une "
 "erreur inattendue est survenue.\n"
 
 #: reg.rc:59
@@ -11785,32 +11804,28 @@ msgid ""
 "reg: Unable to complete the specified operation. An unexpected error "
 "occurred.\n"
 msgstr ""
-"reg : Impossible d'effectuer l'opération spécifiée. Une erreur inattendue "
+"reg : impossible d'effectuer l'opération spécifiée. Une erreur inattendue "
 "est survenue.\n"
 
 #: reg.rc:60
 msgid "Search complete. Number of matches found: %1!d!\n"
-msgstr ""
+msgstr "Recherche terminée. Nombre de correspondances trouvées : %1!d!\n"
 
 #: reg.rc:61
-#, fuzzy
-#| msgid "reg: Invalid key name\n"
 msgid "reg: Invalid syntax. "
-msgstr "reg : nom de clé invalide\n"
+msgstr "reg : syntaxe invalide. "
 
 #: reg.rc:62
-#, fuzzy
-#| msgid "uninstaller: Invalid option [%1]\n"
 msgid "reg: Invalid option [%1]. "
-msgstr "uninstaller : option [%1] invalide\n"
+msgstr "reg : option [%1] invalide. "
 
 #: reg.rc:63
 msgid "Type \"REG /?\" for help.\n"
-msgstr ""
+msgstr "Tapez « REG /? » pour de l'aide.\n"
 
 #: reg.rc:64
 msgid "Type \"REG %1 /?\" for help.\n"
-msgstr ""
+msgstr "Tapez « REG %1 /? » pour de l'aide.\n"
 
 #: reg.rc:65 regedit.rc:205
 msgid "(value not set)"
@@ -12057,133 +12072,131 @@ msgid ""
 "  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
 "  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
 msgstr ""
+"Usage :\n"
+"  regedit [options] [nom_fichier] [clé_registre]\n"
+"\n"
+"Options :\n"
+"  [pas d'option]  Lancer la version graphique de ce programme.\n"
+"  /L:system.dat   L'emplacement du fichier system.dat à modifier.\n"
+"                  Compatible avec toute autre option. Ignorée.\n"
+"  /R:user.dat     L'emplacement du fichier user.dat à modifier.\n"
+"                  Compatible avec toute autre option. Ignorée.\n"
+"  /C              Importer le contenu d'un fichier de registre.\n"
+"  /D              Effacer une clé de registre spécifiée.\n"
+"  /E              Exporter le contenu d'une clé de registre spécifiée dans \n"
+"                  fichier. Si aucune clé n'est spécifiée, le registre "
+"entier \n"
+"                  est exporté.\n"
+"  /S              Mode silencieux. Aucun message ne sera affiché.\n"
+"  /V              Lancer l'interface graphique en mode avancé. Ignorée.\n"
+"  /?              Afficher ces informations et se terminer.\n"
+"  [nom_fichier]   L'emplacement du fichier contenant des informations de "
+"registre \n"
+"                  à importer.\n"
+"                  Si utilisée avec [/E], cette option spécifie "
+"l'emplacement \n"
+"                  du fichier où les informations du registre seront "
+"exportées.\n"
+"  [clé_registre]  La clé de registre à modifier.\n"
+"\n"
+"Exemples d'usage :\n"
+"  regedit \"import.reg\"\n"
+"  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
+"  regedit /D \"HKEY_LOCAL_MACHINE\\Chemin\\Défectueux\"\n"
 
 #: regedit.rc:360
-#, fuzzy
-#| msgid ""
-#| "regsvr32: Invalid or unrecognized switch [%1]\n"
-#| "\n"
 msgid "regedit: Invalid or unrecognized switch [%1]\n"
-msgstr ""
-"regsvr32 : Option [%1] invalide ou non reconnue\n"
-"\n"
+msgstr "regedit : option [%1] invalide ou non reconnue\n"
 
 #: regedit.rc:361
 msgid "Type \"regedit /?\" for help.\n"
-msgstr ""
+msgstr "Tapez « regedit /? » pour de l'aide.\n"
 
 #: regedit.rc:362
-#, fuzzy
-#| msgid "No command was specified."
 msgid "regedit: No filename was specified.\n"
-msgstr "Aucune commande spécifiée."
+msgstr "regedit : aucun nom de fichier spécifié.\n"
 
 #: regedit.rc:363
 msgid "regedit: No registry key was specified for removal.\n"
-msgstr ""
+msgstr "regedit : aucune clé de registre à supprimer n'a été spécifiée.\n"
 
 #: regedit.rc:364
-#, fuzzy
-#| msgid "uninstaller: The application with GUID '%1' was not found\n"
 msgid "regedit: The file '%1' was not found.\n"
-msgstr "uninstaller : l'application de GUID « %1 » est introuvable\n"
+msgstr "regedit : le fichier « %1 » est introuvable.\n"
 
 #: regedit.rc:365
-#, fuzzy
-#| msgid "reg: Unable to access remote machine\n"
 msgid "regedit: Unable to open the file '%1'.\n"
-msgstr "reg : impossible d'accéder à une machine distante\n"
+msgstr "regedit : impossible d'ouvrir le fichier « %1 ».\n"
 
 #: regedit.rc:366
-#, fuzzy
-#| msgid "Invalid handle operation.\n"
 msgid "regedit: Unhandled action.\n"
-msgstr "Opération invalide sur un descripteur.\n"
+msgstr "regedit : action non gérée.\n"
 
 #: regedit.rc:367
 msgid "regedit: Out of memory! (%1!S!, line %2!u!)\n"
-msgstr ""
+msgstr "regedit : mémoire insuffisante ! (%1!S!, ligne %2!u!)\n"
 
 #: regedit.rc:368
-#, fuzzy
-#| msgid "reg: Invalid key name\n"
 msgid "regedit: Invalid hexadecimal value.\n"
-msgstr "reg : nom de clé invalide\n"
+msgstr "regedit : valeur hexadécimale invalide.\n"
 
 #: regedit.rc:369
 msgid ""
 "regedit: Unable to convert hexadecimal data. An invalid value was "
 "encountered at '%1'.\n"
 msgstr ""
+"regedit : impossible de convertir les données hexadécimales. Une valeur "
+"invalide a été trouvée dans « %1 ».\n"
 
 #: regedit.rc:370
-#, fuzzy
-#| msgid ""
-#| "regsvr32: Invalid or unrecognized switch [%1]\n"
-#| "\n"
 msgid "regedit: Unrecognized escape sequence [\\%1!c!]\n"
-msgstr ""
-"regsvr32 : Option [%1] invalide ou non reconnue\n"
-"\n"
+msgstr "regedit : séquence d'échappement non reconnue [\\%1!c!]\n"
 
 #: regedit.rc:371
-#, fuzzy
-#| msgid "reg: Unsupported registry data type [%1]\n"
 msgid "regedit: Unsupported registry data type [%1]\n"
-msgstr "reg : type non pris en charge [%1]\n"
+msgstr "regedit : type de données de registre non pris en charge [%1]\n"
 
 #: regedit.rc:372
-#, fuzzy
-#| msgid "reg: Unable to access remote machine\n"
 msgid "regedit: Unexpected end of line in '%1'.\n"
-msgstr "reg : impossible d'accéder à une machine distante\n"
+msgstr "regedit : fin de ligne inattendue dans « %1 ».\n"
 
 #: regedit.rc:373
-#, fuzzy
-#| msgid "uninstaller: The application with GUID '%1' was not found\n"
 msgid "regedit: The line '%1' was not recognized.\n"
-msgstr "uninstaller : l'application de GUID « %1 » est introuvable\n"
+msgstr "regedit : la ligne « %1 » n'a pas été reconnue.\n"
 
 #: regedit.rc:374
-#, fuzzy
-#| msgid "reg: Unable to access remote machine\n"
 msgid "regedit: Unable to add the registry value '%1' to '%2'.\n"
-msgstr "reg : impossible d'accéder à une machine distante\n"
+msgstr ""
+"regedit : impossible d'ajouter la valeur de registre « %1 » à « %2 ».\n"
 
 #: regedit.rc:375
-#, fuzzy
-#| msgid "reg: Unable to access remote machine\n"
 msgid "regedit: Unable to open the registry key '%1'.\n"
-msgstr "reg : impossible d'accéder à une machine distante\n"
+msgstr "regedit : impossible d'ouvrir la clé de registre « %1 ».\n"
 
 #: regedit.rc:376
-#, fuzzy
-#| msgid "reg: Unsupported registry data type [%1]\n"
 msgid "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
-msgstr "reg : type non pris en charge [%1]\n"
+msgstr "regedit : type de données de registre [%1] rencontré dans [%2].\n"
 
 #: regedit.rc:377
 msgid "regedit: The registry value '%1' will be exported as binary data.\n"
 msgstr ""
+"regedit : la valeur de registre « %1 » sera exportée comme donnée binaire.\n"
 
 #: regedit.rc:378
 msgid "regedit: Incorrect registry class specification in '%1'.\n"
 msgstr ""
+"regedit : spécification de classe de registre incorrecte dans « %1 ».\n"
 
 #: regedit.rc:379
-#, fuzzy
-#| msgid ""
-#| "reg: The system was unable to find the specified registry key or value\n"
 msgid ""
 "regedit: Unable to export '%1'. The specified registry key was not found.\n"
 msgstr ""
-"reg : le système n'a pas pu trouver la clé ou valeur de registre spécifiée\n"
+"regedit : impossible d'exporter « %1 ». La clé de registre spécifiée est "
+"introuvable.\n"
 
 #: regedit.rc:380
-#, fuzzy
-#| msgid "reg: Unable to access remote machine\n"
 msgid "regedit: Unable to delete the registry class '%1'.\n"
-msgstr "reg : impossible d'accéder à une machine distante\n"
+msgstr "regedit : impossible d'effacer la classe de registre « %1 ».\n"
 
 #: regedit.rc:163
 msgid "Quits the registry editor"
@@ -14353,79 +14366,79 @@ msgstr "Arranger &verticalement\tCtrl+F4"
 msgid "&About Wine File Manager"
 msgstr "À &propos du gestionnaire de fichiers de Wine"
 
-#: winefile.rc:125
+#: winefile.rc:122
 msgid "Select destination"
 msgstr "Sélectionner la destination"
 
-#: winefile.rc:138
+#: winefile.rc:135
 msgid "By File Type"
 msgstr "Par type de fichier"
 
-#: winefile.rc:143
+#: winefile.rc:140
 msgid "File type"
 msgstr "Type de fichier"
 
-#: winefile.rc:144
+#: winefile.rc:141
 msgid "&Directories"
 msgstr "&Répertoires"
 
-#: winefile.rc:146
+#: winefile.rc:143
 msgid "&Programs"
 msgstr "&Programmes"
 
-#: winefile.rc:148
+#: winefile.rc:145
 msgid "Docu&ments"
 msgstr "Docu&ments"
 
-#: winefile.rc:150
+#: winefile.rc:147
 msgid "&Other files"
 msgstr "&Autres fichiers"
 
-#: winefile.rc:152
+#: winefile.rc:149
 msgid "Show Hidden/&System Files"
 msgstr "Montrer les fichiers cachés/&système"
 
-#: winefile.rc:163
+#: winefile.rc:160
 msgid "&File Name:"
 msgstr "Nom du &fichier :"
 
-#: winefile.rc:165
+#: winefile.rc:162
 msgid "Full &Path:"
 msgstr "Chemin com&plet :"
 
-#: winefile.rc:167
+#: winefile.rc:164
 msgid "Last Change:"
 msgstr "Modification :"
 
-#: winefile.rc:171
+#: winefile.rc:168
 msgid "Cop&yright:"
 msgstr "Cop&yright :"
 
-#: winefile.rc:173
+#: winefile.rc:170
 msgid "Size:"
 msgstr "Taille :"
 
-#: winefile.rc:177
+#: winefile.rc:174
 msgid "H&idden"
 msgstr "Cac&hé"
 
-#: winefile.rc:178
+#: winefile.rc:175
 msgid "&Archive"
 msgstr "&Archive"
 
-#: winefile.rc:179
+#: winefile.rc:176
 msgid "&System"
 msgstr "&Système"
 
-#: winefile.rc:180
+#: winefile.rc:177
 msgid "&Compressed"
 msgstr "&Compressé"
 
-#: winefile.rc:181
+#: winefile.rc:178
 msgid "Version information"
 msgstr "Informations de version"
 
-#: winefile.rc:197
+#: winefile.rc:194
 msgctxt "accelerator Fullscreen"
 msgid "S"
 msgstr "S"
@@ -14477,21 +14490,6 @@ msgstr "Index/Inode"
 #: winefile.rc:117
 msgid "%1 of %2 free"
 msgstr "%1 libres sur %2"
-
-#: winefile.rc:118
-msgctxt "unit kilobyte"
-msgid "kB"
-msgstr "ko"
-
-#: winefile.rc:119
-msgctxt "unit megabyte"
-msgid "MB"
-msgstr "Mo"
-
-#: winefile.rc:120
-msgctxt "unit gigabyte"
-msgid "GB"
-msgstr "Go"
 
 #: winemine.rc:37
 msgid "&Game"
@@ -14689,6 +14687,10 @@ msgstr "Erreur : alias non trouvé\n"
 msgid "Error: Invalid query\n"
 msgstr "Erreur : requête invalide\n"
 
+#: wmic.rc:31
+msgid "Error: Invalid syntax for PATH\n"
+msgstr "Erreur : Syntaxe invalide pour PATH\n"
+
 #: wordpad.rc:31
 msgid "&New...\tCtrl+N"
 msgstr "&Nouveau...\tCtrl+N"
@@ -14741,11 +14743,11 @@ msgstr "Format de &paragraphe"
 msgid "&Get text"
 msgstr "Texte &complet"
 
-#: wordpad.rc:72 wordpad.rc:265
+#: wordpad.rc:72 wordpad.rc:273
 msgid "&Format Bar"
 msgstr "&Barre de format"
 
-#: wordpad.rc:73 wordpad.rc:266
+#: wordpad.rc:73 wordpad.rc:274
 msgid "&Ruler"
 msgstr "&Règle"
 
@@ -14761,257 +14763,281 @@ msgstr "&Date et heure..."
 msgid "F&ormat"
 msgstr "Forma&t"
 
-#: wordpad.rc:85 wordpad.rc:108
+#: wordpad.rc:85
+msgid "&Lists"
+msgstr "&Listes"
+
+#: wordpad.rc:87 wordpad.rc:116
 msgid "&Bullet points"
 msgstr "Pu&ces"
 
-#: wordpad.rc:86 wordpad.rc:109
+#: wordpad.rc:88
+msgid "Numbers"
+msgstr "Numéros"
+
+#: wordpad.rc:89
+msgid "Letters - lower case"
+msgstr "Lettres - minuscules"
+
+#: wordpad.rc:90
+msgid "Letters - upper case"
+msgstr "Lettres - majuscules"
+
+#: wordpad.rc:91
+msgid "Roman numerals - lower case"
+msgstr "Chiffres romains - minuscules"
+
+#: wordpad.rc:92
+msgid "Roman numerals - upper case"
+msgstr "Chiffres romains - majuscules"
+
+#: wordpad.rc:94 wordpad.rc:117
 msgid "&Paragraph..."
 msgstr "Para&graphe..."
 
-#: wordpad.rc:87
+#: wordpad.rc:95
 msgid "&Tabs..."
 msgstr "&Tabulations..."
 
-#: wordpad.rc:88
+#: wordpad.rc:96
 msgid "Backgroun&d"
 msgstr "&Arrière-plan"
 
-#: wordpad.rc:90
+#: wordpad.rc:98
 msgid "&System\tCtrl+1"
 msgstr "&Système\tCtrl+1"
 
-#: wordpad.rc:91
+#: wordpad.rc:99
 msgid "&Pale yellow\tCtrl+2"
 msgstr "&Jaune pâle\tCtrl+2"
 
-#: wordpad.rc:96
+#: wordpad.rc:104
 msgid "&About Wine Wordpad"
 msgstr "À &propos du Wordpad de Wine"
 
-#: wordpad.rc:133
+#: wordpad.rc:141
 msgid "Automatic"
 msgstr "Automatique"
 
-#: wordpad.rc:202
+#: wordpad.rc:210
 msgid "Date and time"
 msgstr "Date et heure"
 
-#: wordpad.rc:205
+#: wordpad.rc:213
 msgid "Available formats"
 msgstr "Formats disponibles"
 
-#: wordpad.rc:216
+#: wordpad.rc:224
 msgid "New document type"
 msgstr "Nouveau type de document"
 
-#: wordpad.rc:224
+#: wordpad.rc:232
 msgid "Paragraph format"
 msgstr "Format de paragraphe"
 
-#: wordpad.rc:227
+#: wordpad.rc:235
 msgid "Indentation"
 msgstr "Indentation"
 
-#: wordpad.rc:228 wordpad.rc:151
+#: wordpad.rc:236 wordpad.rc:159
 msgid "Left"
 msgstr "Gauche"
 
-#: wordpad.rc:230 wordpad.rc:152
+#: wordpad.rc:238 wordpad.rc:160
 msgid "Right"
 msgstr "Droite"
 
-#: wordpad.rc:232
+#: wordpad.rc:240
 msgid "First line"
 msgstr "Première ligne"
 
-#: wordpad.rc:234
+#: wordpad.rc:242
 msgid "Alignment"
 msgstr "Alignement"
 
-#: wordpad.rc:242
+#: wordpad.rc:250
 msgid "Tabs"
 msgstr "Tabulations"
 
-#: wordpad.rc:245
+#: wordpad.rc:253
 msgid "Tab stops"
 msgstr "Taquets de tabulation"
 
-#: wordpad.rc:247
+#: wordpad.rc:255
 msgid "&Add"
 msgstr "A&jouter"
 
-#: wordpad.rc:251
+#: wordpad.rc:259
 msgid "Remove al&l"
 msgstr "Supprimer &tous"
 
-#: wordpad.rc:259
+#: wordpad.rc:267
 msgid "Line wrapping"
 msgstr "Passage à la ligne automatique"
 
-#: wordpad.rc:260
+#: wordpad.rc:268
 msgid "&No line wrapping"
 msgstr "&Aucun"
 
-#: wordpad.rc:261
+#: wordpad.rc:269
 msgid "Wrap text by the &window border"
 msgstr "Au niveau de la bordure de fe&nêtre"
 
-#: wordpad.rc:262
+#: wordpad.rc:270
 msgid "Wrap text by the &margin"
 msgstr "Au niveau de la &marge"
 
-#: wordpad.rc:263
+#: wordpad.rc:271
 msgid "Toolbars"
 msgstr "Barres d'outils"
 
-#: wordpad.rc:276
+#: wordpad.rc:284
 msgctxt "accelerator Align Left"
 msgid "L"
 msgstr "L"
 
-#: wordpad.rc:277
+#: wordpad.rc:285
 msgctxt "accelerator Align Center"
 msgid "E"
 msgstr "E"
 
-#: wordpad.rc:278
+#: wordpad.rc:286
 msgctxt "accelerator Align Right"
 msgid "R"
 msgstr "R"
 
-#: wordpad.rc:285
+#: wordpad.rc:293
 msgctxt "accelerator Redo"
 msgid "Y"
 msgstr "Y"
 
-#: wordpad.rc:286
+#: wordpad.rc:294
 msgctxt "accelerator Bold"
 msgid "B"
 msgstr "B"
 
-#: wordpad.rc:287
+#: wordpad.rc:295
 msgctxt "accelerator Italic"
 msgid "I"
 msgstr "I"
 
-#: wordpad.rc:288
+#: wordpad.rc:296
 msgctxt "accelerator Underline"
 msgid "U"
 msgstr "U"
 
-#: wordpad.rc:139
+#: wordpad.rc:147
 msgid "All documents (*.*)"
 msgstr "Tous les documents (*.*)"
 
-#: wordpad.rc:140
+#: wordpad.rc:148
 msgid "Text documents (*.txt)"
 msgstr "Documents texte (*.txt)"
 
-#: wordpad.rc:141
+#: wordpad.rc:149
 msgid "Unicode text document (*.txt)"
 msgstr "Documents texte Unicode (*.txt)"
 
-#: wordpad.rc:142
+#: wordpad.rc:150
 msgid "Rich text format (*.rtf)"
 msgstr "Format de texte enrichi (*.rtf)"
 
-#: wordpad.rc:143
+#: wordpad.rc:151
 msgid "Rich text document"
 msgstr "Format de texte enrichi (RTF)"
 
-#: wordpad.rc:144
+#: wordpad.rc:152
 msgid "Text document"
 msgstr "Document texte"
 
-#: wordpad.rc:145
+#: wordpad.rc:153
 msgid "Unicode text document"
 msgstr "Document texte Unicode"
 
-#: wordpad.rc:146
+#: wordpad.rc:154
 msgid "Printer files (*.prn)"
 msgstr "Fichiers d'impression (*.prn)"
 
-#: wordpad.rc:153
+#: wordpad.rc:161
 msgid "Center"
 msgstr "Centrer"
 
-#: wordpad.rc:159
+#: wordpad.rc:167
 msgid "Text"
 msgstr "Texte"
 
-#: wordpad.rc:160
+#: wordpad.rc:168
 msgid "Rich text"
 msgstr "Texte riche"
 
-#: wordpad.rc:166
+#: wordpad.rc:174
 msgid "Next page"
 msgstr "Page suivante"
 
-#: wordpad.rc:167
+#: wordpad.rc:175
 msgid "Previous page"
 msgstr "Page précédente"
 
-#: wordpad.rc:168
+#: wordpad.rc:176
 msgid "Two pages"
 msgstr "Deux pages"
 
-#: wordpad.rc:169
+#: wordpad.rc:177
 msgid "One page"
 msgstr "Une page"
 
-#: wordpad.rc:170
+#: wordpad.rc:178
 msgid "Zoom in"
 msgstr "Zoom avant"
 
-#: wordpad.rc:171
+#: wordpad.rc:179
 msgid "Zoom out"
 msgstr "Zoom arrière"
 
-#: wordpad.rc:173
+#: wordpad.rc:181
 msgid "Page"
 msgstr "Page"
 
-#: wordpad.rc:174
+#: wordpad.rc:182
 msgid "Pages"
 msgstr "Pages"
 
-#: wordpad.rc:175
+#: wordpad.rc:183
 msgctxt "unit: centimeter"
 msgid "cm"
 msgstr "cm"
 
-#: wordpad.rc:176
+#: wordpad.rc:184
 msgctxt "unit: inch"
 msgid "in"
 msgstr "po"
 
-#: wordpad.rc:177
+#: wordpad.rc:185
 msgid "inch"
 msgstr "pouces"
 
-#: wordpad.rc:178
+#: wordpad.rc:186
 msgctxt "unit: point"
 msgid "pt"
 msgstr "pt"
 
-#: wordpad.rc:183
+#: wordpad.rc:191
 msgid "Document"
 msgstr "Document"
 
-#: wordpad.rc:184
+#: wordpad.rc:192
 msgid "Save changes to '%s'?"
 msgstr "Enregistrer les modifications de « %s » ?"
 
-#: wordpad.rc:185
+#: wordpad.rc:193
 msgid "Finished searching the document."
 msgstr "Recherche terminée dans le document."
 
-#: wordpad.rc:186
+#: wordpad.rc:194
 msgid "Failed to load the RichEdit library."
 msgstr "Impossible de charger la bibliothèque RichEdit."
 
-#: wordpad.rc:187
+#: wordpad.rc:195
 msgid ""
 "You have chosen to save in plain text format, which will cause all "
 "formatting to be lost. Are you sure that you wish to do this?"
@@ -15019,36 +15045,36 @@ msgstr ""
 "Vous avez choisi d'enregistrer en mode texte, ce qui induit la perte de tout "
 "formatage. Voulez-vous vraiment continuer ?"
 
-#: wordpad.rc:190
+#: wordpad.rc:198
 msgid "Invalid number format."
 msgstr "Format de nombre invalide."
 
-#: wordpad.rc:191
+#: wordpad.rc:199
 msgid "OLE storage documents are not supported."
 msgstr "Les documents conteneur OLE ne sont pas pris en charge."
 
-#: wordpad.rc:192
+#: wordpad.rc:200
 msgid "Could not save the file."
 msgstr "Impossible d'enregistrer le fichier."
 
-#: wordpad.rc:193
+#: wordpad.rc:201
 msgid "You do not have access to save the file."
 msgstr ""
 "Vous ne disposez pas des droits nécessaires à l'enregistrement du fichier."
 
-#: wordpad.rc:194
+#: wordpad.rc:202
 msgid "Could not open the file."
 msgstr "Impossible d'ouvrir le fichier."
 
-#: wordpad.rc:195
+#: wordpad.rc:203
 msgid "You do not have access to open the file."
 msgstr "Vous ne disposez pas des droits nécessaires à l'ouverture du fichier."
 
-#: wordpad.rc:196
+#: wordpad.rc:204
 msgid "Printing not implemented."
 msgstr "L'impression n'est pas prise en charge."
 
-#: wordpad.rc:197
+#: wordpad.rc:205
 msgid "Cannot add more than 32 tab stops."
 msgstr "Impossible d'ajouter plus de 32 taquets de tabulation."
 

@@ -22,6 +22,7 @@
  */
 
 #define WINVER 0x0602 /* for CURSOR_SUPPRESSED */
+#include <stdlib.h>
 #define COBJMACROS
 #include <initguid.h>
 #include <d3d8.h>
@@ -1269,6 +1270,21 @@ static void test_display_modes(void)
     IDirect3D8_Release(d3d);
 }
 
+struct mode
+{
+    unsigned int w;
+    unsigned int h;
+};
+
+static int compare_mode(const void *a, const void *b)
+{
+    const struct mode *mode_a = a;
+    const struct mode *mode_b = b;
+    unsigned int w = mode_a->w - mode_b->w;
+    unsigned int h = mode_b->h - mode_b->h;
+    return abs(w) >= abs(h) ? -w : -h;
+}
+
 static void test_reset(void)
 {
     UINT width, orig_width = GetSystemMetrics(SM_CXSCREEN);
@@ -1303,11 +1319,7 @@ static void test_reset(void)
         D3DVSD_END(),
     };
 
-    struct
-    {
-        UINT w;
-        UINT h;
-    } *modes = NULL;
+    struct mode *modes = NULL;
 
     window = CreateWindowA("d3d8_test_wc", "d3d8_test", WS_OVERLAPPEDWINDOW,
             100, 100, 160, 160, NULL, NULL, NULL, NULL);
@@ -1357,6 +1369,9 @@ static void test_reset(void)
         skip("Less than 2 modes supported, skipping mode tests.\n");
         goto cleanup;
     }
+
+    /* Prefer higher resolutions. */
+    qsort(modes, mode_count, sizeof(*modes), compare_mode);
 
     i = 0;
     if (modes[i].w == orig_width && modes[i].h == orig_height) ++i;
@@ -7578,18 +7593,19 @@ static void test_lost_device(void)
     ret = SetForegroundWindow(GetDesktopWindow());
     ok(ret, "Failed to set foreground window.\n");
     hr = IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
-    ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
+    /* The device is not lost on Windows 10. */
+    ok(hr == D3DERR_DEVICELOST || broken(hr == D3D_OK), "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice8_TestCooperativeLevel(device);
-    ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
+    ok(hr == D3DERR_DEVICELOST || broken(hr == D3D_OK), "Got unexpected hr %#x.\n", hr);
 
     ret = ShowWindow(window, SW_RESTORE);
     ok(ret, "Failed to restore window.\n");
     ret = SetForegroundWindow(window);
     ok(ret, "Failed to set foreground window.\n");
     hr = IDirect3DDevice8_TestCooperativeLevel(device);
-    ok(hr == D3DERR_DEVICENOTRESET, "Got unexpected hr %#x.\n", hr);
+    ok(hr == D3DERR_DEVICENOTRESET || broken(hr == D3D_OK), "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
-    ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
+    ok(hr == D3DERR_DEVICELOST || broken(hr == D3D_OK), "Got unexpected hr %#x.\n", hr);
 
     hr = reset_device(device, &device_desc);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -7624,14 +7640,15 @@ static void test_lost_device(void)
     hr = reset_device(device, &device_desc);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice8_TestCooperativeLevel(device);
-    todo_wine ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
+    /* The device is not lost on Windows 10. */
+    todo_wine ok(hr == D3DERR_DEVICELOST || broken(hr == D3D_OK), "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice8_Present(device, NULL, NULL, NULL, NULL);
-    todo_wine ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
+    todo_wine ok(hr == D3DERR_DEVICELOST || broken(hr == D3D_OK), "Got unexpected hr %#x.\n", hr);
 
     ret = SetForegroundWindow(GetDesktopWindow());
     ok(ret, "Failed to set foreground window.\n");
     hr = reset_device(device, &device_desc);
-    ok(hr == D3DERR_DEVICELOST, "Got unexpected hr %#x.\n", hr);
+    ok(hr == D3DERR_DEVICELOST || broken(hr == D3D_OK), "Got unexpected hr %#x.\n", hr);
     ret = ShowWindow(window, SW_RESTORE);
     ok(ret, "Failed to restore window.\n");
     ret = SetForegroundWindow(window);
@@ -7888,6 +7905,37 @@ static void test_swapchain_parameters(void)
     DestroyWindow(window);
 }
 
+static void test_check_device_format(void)
+{
+    IDirect3D8 *d3d;
+    HRESULT hr;
+
+    d3d = Direct3DCreate8(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+
+    hr = IDirect3D8_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            0, D3DRTYPE_VERTEXBUFFER, D3DFMT_VERTEXDATA);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3D8_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            0, D3DRTYPE_INDEXBUFFER, D3DFMT_VERTEXDATA);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3D8_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            0, D3DRTYPE_INDEXBUFFER, D3DFMT_INDEX16);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirect3D8_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            D3DUSAGE_SOFTWAREPROCESSING, D3DRTYPE_VERTEXBUFFER, D3DFMT_VERTEXDATA);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3D8_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            D3DUSAGE_SOFTWAREPROCESSING, D3DRTYPE_INDEXBUFFER, D3DFMT_VERTEXDATA);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3D8_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            D3DUSAGE_SOFTWAREPROCESSING, D3DRTYPE_INDEXBUFFER, D3DFMT_INDEX16);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+
+    IDirect3D8_Release(d3d);
+}
+
 static void test_miptree_layout(void)
 {
     unsigned int pool_idx, format_idx, base_dimension, level_count, offset, i, j;
@@ -7909,9 +7957,11 @@ static void test_miptree_layout(void)
     }
     formats[] =
     {
-        {D3DFMT_A8R8G8B8, "D3DFMT_A8R8G8B8"},
-        {D3DFMT_A8,       "D3DFMT_A8"},
-        {D3DFMT_L8,       "D3DFMT_L8"},
+        {D3DFMT_A8R8G8B8,             "D3DFMT_A8R8G8B8"},
+        {D3DFMT_A8,                   "D3DFMT_A8"},
+        {D3DFMT_L8,                   "D3DFMT_L8"},
+        {MAKEFOURCC('A','T','I','1'), "D3DFMT_ATI1"},
+        {MAKEFOURCC('A','T','I','2'), "D3DFMT_ATI2"},
     };
     static const struct
     {
@@ -8135,6 +8185,7 @@ START_TEST(device)
     test_lost_device();
     test_resource_priority();
     test_swapchain_parameters();
+    test_check_device_format();
     test_miptree_layout();
 
     UnregisterClassA("d3d8_test_wc", GetModuleHandleA(NULL));

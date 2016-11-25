@@ -88,6 +88,13 @@ word
 @tab@word
 
 @pwd@>echo @tab@ on @space@@space@
+--- @ with chains and brackets
+
+@todo_wine@@pwd@>(echo the @ character chains until  && )  && echo and can hide brackets  || ()  ||@space@
+@todo_wine@the @ character chains until
+@todo_wine@we leave the current depth
+@todo_wine@and can hide brackets
+@todo_wine@---
 noecho1
 noecho2
 echo3
@@ -645,6 +652,19 @@ foo
 foo
 '1' GEQ "10"
 "10" GEQ "10"
+--- unconditional ampersand after if one line
+1@space@
+2@space@
+3 else echo 4
+---
+x@space@
+---
+x@space@
+---
+x@space@
+---
+x@space@
+---
 ------------ Testing for ------------
 --- plain FOR
 A

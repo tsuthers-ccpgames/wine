@@ -732,7 +732,8 @@ static void shader_arb_update_float_vertex_constants(struct wined3d_device *devi
 
     /* We don't want shader constant dirtification to be an O(contexts), so just dirtify the active
      * context. On a context switch the old context will be fully dirtified */
-    if (!context || context->swapchain->device != device) return;
+    if (!context || context->device != device)
+        return;
 
     memset(priv->vshader_const_dirty + start, 1, sizeof(*priv->vshader_const_dirty) * count);
     priv->highest_dirty_vs_const = max(priv->highest_dirty_vs_const, start + count);
@@ -745,7 +746,8 @@ static void shader_arb_update_float_pixel_constants(struct wined3d_device *devic
 
     /* We don't want shader constant dirtification to be an O(contexts), so just dirtify the active
      * context. On a context switch the old context will be fully dirtified */
-    if (!context || context->swapchain->device != device) return;
+    if (!context || context->device != device)
+        return;
 
     memset(priv->pshader_const_dirty + start, 1, sizeof(*priv->pshader_const_dirty) * count);
     priv->highest_dirty_ps_const = max(priv->highest_dirty_ps_const, start + count);
@@ -820,7 +822,7 @@ static void shader_generate_arb_declarations(const struct wined3d_shader *shader
             if(use_nv_clip(gl_info) && ctx->target_version >= NV2)
             {
                 if(ctx->cur_vs_args->super.clip_enabled)
-                    clip_limit = gl_info->limits.clipplanes;
+                    clip_limit = gl_info->limits.user_clip_distances;
                 else
                     clip_limit = 0;
             }
@@ -833,13 +835,16 @@ static void shader_generate_arb_declarations(const struct wined3d_shader *shader
             max_constantsF -= *num_clipplanes;
             if(*num_clipplanes < clip_limit)
             {
-                WARN("Only %u clipplanes out of %u enabled\n", *num_clipplanes, gl_info->limits.clipplanes);
+                WARN("Only %u clip planes out of %u enabled.\n", *num_clipplanes,
+                        gl_info->limits.user_clip_distances);
             }
         }
         else
         {
-            if (ctx->target_version >= NV2) *num_clipplanes = gl_info->limits.clipplanes;
-            else *num_clipplanes = min(gl_info->limits.clipplanes, 4);
+            if (ctx->target_version >= NV2)
+                *num_clipplanes = gl_info->limits.user_clip_distances;
+            else
+                *num_clipplanes = min(gl_info->limits.user_clip_distances, 4);
         }
     }
 
@@ -3230,7 +3235,7 @@ static void vshader_add_footer(struct shader_arb_ctx_priv *priv_ctx,
         unsigned int cur_clip = 0;
         const char *zero = arb_get_helper_value(WINED3D_SHADER_TYPE_VERTEX, ARB_ZERO);
 
-        for (i = 0; i < gl_info->limits.clipplanes; ++i)
+        for (i = 0; i < gl_info->limits.user_clip_distances; ++i)
         {
             if (args->clip.boolclip.clipplane_mask & (1u << i))
             {
@@ -3264,22 +3269,24 @@ static void vshader_add_footer(struct shader_arb_ctx_priv *priv_ctx,
      * 1.0 or -1.0 to turn the rendering upside down for offscreen rendering. PosFixup.x
      * contains 1.0 to allow a mad, but arb vs swizzles are too restricted for that.
      */
-    shader_addline(buffer, "MUL TA, posFixup, TMP_OUT.w;\n");
-    shader_addline(buffer, "ADD TMP_OUT.x, TMP_OUT.x, TA.z;\n");
-    shader_addline(buffer, "MAD TMP_OUT.y, TMP_OUT.y, posFixup.y, TA.w;\n");
+    if (!gl_info->supported[ARB_CLIP_CONTROL])
+    {
+        shader_addline(buffer, "MUL TA, posFixup, TMP_OUT.w;\n");
+        shader_addline(buffer, "ADD TMP_OUT.x, TMP_OUT.x, TA.z;\n");
+        shader_addline(buffer, "MAD TMP_OUT.y, TMP_OUT.y, posFixup.y, TA.w;\n");
 
-    /* Z coord [0;1]->[-1;1] mapping, see comment in transform_projection in state.c
-     * and the glsl equivalent
-     */
-    if (need_helper_const(shader_data, reg_maps, gl_info))
-    {
-        const char *two = arb_get_helper_value(WINED3D_SHADER_TYPE_VERTEX, ARB_TWO);
-        shader_addline(buffer, "MAD TMP_OUT.z, TMP_OUT.z, %s, -TMP_OUT.w;\n", two);
-    }
-    else
-    {
-        shader_addline(buffer, "ADD TMP_OUT.z, TMP_OUT.z, TMP_OUT.z;\n");
-        shader_addline(buffer, "ADD TMP_OUT.z, TMP_OUT.z, -TMP_OUT.w;\n");
+        /* Z coord [0;1]->[-1;1] mapping, see comment in
+         * get_projection_matrix() in utils.c. */
+        if (need_helper_const(shader_data, reg_maps, gl_info))
+        {
+            const char *two = arb_get_helper_value(WINED3D_SHADER_TYPE_VERTEX, ARB_TWO);
+            shader_addline(buffer, "MAD TMP_OUT.z, TMP_OUT.z, %s, -TMP_OUT.w;\n", two);
+        }
+        else
+        {
+            shader_addline(buffer, "ADD TMP_OUT.z, TMP_OUT.z, TMP_OUT.z;\n");
+            shader_addline(buffer, "ADD TMP_OUT.z, TMP_OUT.z, -TMP_OUT.w;\n");
+        }
     }
 
     shader_addline(buffer, "MOV result.position, TMP_OUT;\n");
@@ -4957,14 +4964,6 @@ static int sig_tree_compare(const void *key, const struct wine_rb_entry *entry)
     return compare_sig(key, &e->sig);
 }
 
-static const struct wine_rb_functions sig_tree_functions =
-{
-    wined3d_rb_alloc,
-    wined3d_rb_realloc,
-    wined3d_rb_free,
-    sig_tree_compare
-};
-
 static HRESULT shader_arb_alloc(struct wined3d_device *device, const struct wined3d_vertex_pipe_ops *vertex_pipe,
         const struct fragment_pipeline *fragment_pipe)
 {
@@ -4993,14 +4992,7 @@ static HRESULT shader_arb_alloc(struct wined3d_device *device, const struct wine
     memset(priv->pshader_const_dirty, 1,
             sizeof(*priv->pshader_const_dirty) * d3d_info->limits.ps_uniform_count);
 
-    if (wine_rb_init(&priv->signature_tree, &sig_tree_functions) == -1)
-    {
-        ERR("RB tree init failed\n");
-        fragment_pipe->free_private(device);
-        vertex_pipe->vp_free(device);
-        HeapFree(GetProcessHeap(), 0, priv);
-        return E_OUTOFMEMORY;
-    }
+    wine_rb_init(&priv->signature_tree, sig_tree_compare);
 
     priv->vertex_pipe = vertex_pipe;
     priv->fragment_pipe = fragment_pipe;
@@ -5064,10 +5056,7 @@ static void shader_arb_free_context_data(struct wined3d_context *context)
 {
     struct shader_arb_priv *priv;
 
-    if (!context->swapchain)
-        return;
-
-    priv = context->swapchain->device->shader_priv;
+    priv = context->device->shader_priv;
     if (priv->last_context == context)
         priv->last_context = NULL;
 }
@@ -5884,13 +5873,7 @@ static void *arbfp_alloc(const struct wined3d_shader_backend_ops *shader_backend
     else if (!(priv = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*priv))))
         return NULL;
 
-    if (wine_rb_init(&priv->fragment_shaders, &wined3d_ffp_frag_program_rb_functions) == -1)
-    {
-        ERR("Failed to initialize rbtree.\n");
-        if (priv != shader_priv)
-            HeapFree(GetProcessHeap(), 0, priv);
-        return NULL;
-    }
+    wine_rb_init(&priv->fragment_shaders, wined3d_ffp_frag_program_key_compare);
     priv->use_arbfp_fixed_func = TRUE;
 
     return priv;
@@ -5955,8 +5938,8 @@ static void arbfp_get_caps(const struct wined3d_gl_info *gl_info, struct fragmen
 
     /* TODO: Implement WINED3DTEXOPCAPS_PREMODULATE */
 
-    caps->MaxTextureBlendStages   = 8;
-    caps->MaxSimultaneousTextures = min(gl_info->limits.fragment_samplers, 8);
+    caps->MaxTextureBlendStages   = MAX_TEXTURES;
+    caps->MaxSimultaneousTextures = min(gl_info->limits.fragment_samplers, MAX_TEXTURES);
 }
 
 static DWORD arbfp_get_emul_mask(const struct wined3d_gl_info *gl_info)
@@ -5967,8 +5950,8 @@ static DWORD arbfp_get_emul_mask(const struct wined3d_gl_info *gl_info)
 static void state_texfactor_arbfp(struct wined3d_context *context,
         const struct wined3d_state *state, DWORD state_id)
 {
-    struct wined3d_device *device = context->swapchain->device;
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    struct wined3d_device *device = context->device;
     struct wined3d_color color;
 
     if (device->shader_backend == &arb_program_shader_backend)
@@ -5994,8 +5977,8 @@ static void state_tss_constant_arbfp(struct wined3d_context *context,
         const struct wined3d_state *state, DWORD state_id)
 {
     DWORD stage = (state_id - STATE_TEXTURESTAGE(0, 0)) / (WINED3D_HIGHEST_TEXTURE_STATE + 1);
-    struct wined3d_device *device = context->swapchain->device;
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    struct wined3d_device *device = context->device;
     struct wined3d_color color;
 
     if (device->shader_backend == &arb_program_shader_backend)
@@ -6021,8 +6004,8 @@ static void state_tss_constant_arbfp(struct wined3d_context *context,
 static void state_arb_specularenable(struct wined3d_context *context,
         const struct wined3d_state *state, DWORD state_id)
 {
-    struct wined3d_device *device = context->swapchain->device;
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    struct wined3d_device *device = context->device;
     float col[4];
 
     if (device->shader_backend == &arb_program_shader_backend)
@@ -6056,8 +6039,8 @@ static void state_arb_specularenable(struct wined3d_context *context,
 static void set_bumpmat_arbfp(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
     DWORD stage = (state_id - STATE_TEXTURESTAGE(0, 0)) / (WINED3D_HIGHEST_TEXTURE_STATE + 1);
-    struct wined3d_device *device = context->swapchain->device;
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    struct wined3d_device *device = context->device;
     float mat[2][2];
 
     context->constant_update_mask |= WINED3D_SHADER_CONST_PS_BUMP_ENV;
@@ -6087,8 +6070,8 @@ static void tex_bumpenvlum_arbfp(struct wined3d_context *context,
         const struct wined3d_state *state, DWORD state_id)
 {
     DWORD stage = (state_id - STATE_TEXTURESTAGE(0, 0)) / (WINED3D_HIGHEST_TEXTURE_STATE + 1);
-    struct wined3d_device *device = context->swapchain->device;
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    struct wined3d_device *device = context->device;
     float param[4];
 
     context->constant_update_mask |= WINED3D_SHADER_CONST_PS_BUMP_ENV;
@@ -6146,10 +6129,10 @@ static void alpha_test_arbfp(struct wined3d_context *context, const struct wined
 
 static void color_key_arbfp(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
-    struct wined3d_device *device = context->swapchain->device;
-    const struct wined3d_gl_info *gl_info = context->gl_info;
-    struct wined3d_color float_key[2];
     const struct wined3d_texture *texture = state->textures[0];
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+    struct wined3d_device *device = context->device;
+    struct wined3d_color float_key[2];
 
     if (!texture)
         return;
@@ -6701,8 +6684,8 @@ static GLuint gen_arbfp_ffp_shader(const struct ffp_frag_settings *settings, con
 
 static void fragment_prog_arbfp(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
-    const struct wined3d_device *device = context->swapchain->device;
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    const struct wined3d_device *device = context->device;
     struct shader_arb_priv *priv = device->fragment_priv;
     BOOL use_pshader = use_ps(state);
     struct ffp_frag_settings settings;
@@ -7065,14 +7048,6 @@ static void arbfp_free_blit_shader(struct wine_rb_entry *entry, void *context)
     HeapFree(GetProcessHeap(), 0, entry_arb);
 }
 
-static const struct wine_rb_functions wined3d_arbfp_blit_rb_functions =
-{
-    wined3d_rb_alloc,
-    wined3d_rb_realloc,
-    wined3d_rb_free,
-    arbfp_blit_type_compare,
-};
-
 static HRESULT arbfp_blit_alloc(struct wined3d_device *device)
 {
     struct arbfp_blit_priv *priv;
@@ -7080,12 +7055,7 @@ static HRESULT arbfp_blit_alloc(struct wined3d_device *device)
     if (!(priv = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*priv))))
         return E_OUTOFMEMORY;
 
-    if (wine_rb_init(&priv->shaders, &wined3d_arbfp_blit_rb_functions) == -1)
-    {
-        ERR("Failed to initialize rbtree.\n");
-        HeapFree(GetProcessHeap(), 0, priv);
-        return E_OUTOFMEMORY;
-    }
+    wine_rb_init(&priv->shaders, arbfp_blit_type_compare);
 
     device->blit_priv = priv;
 

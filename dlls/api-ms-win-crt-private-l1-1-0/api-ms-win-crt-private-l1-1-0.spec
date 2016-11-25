@@ -38,7 +38,7 @@
 @ stub __dcrt_get_wide_environment_from_os
 @ stub __dcrt_initial_narrow_environment
 @ stub __intrinsic_abnormal_termination
-@ stub __intrinsic_setjmp
+@ cdecl -arch=i386,x86_64,arm -norelay __intrinsic_setjmp(ptr) ucrtbase.__intrinsic_setjmp
 @ stub __intrinsic_setjmpex
 @ stub __processing_throw
 @ stub __report_gsfailure
@@ -46,7 +46,7 @@
 @ cdecl __std_exception_destroy(ptr) ucrtbase.__std_exception_destroy
 @ cdecl __std_type_info_compare(ptr ptr) ucrtbase.__std_type_info_compare
 @ cdecl __std_type_info_destroy_list(ptr) ucrtbase.__std_type_info_destroy_list
-@ stub __std_type_info_hash
+@ cdecl __std_type_info_hash(ptr) ucrtbase.__std_type_info_hash
 @ cdecl __std_type_info_name(ptr ptr) ucrtbase.__std_type_info_name
 @ cdecl __unDName(ptr str long ptr ptr long) ucrtbase.__unDName
 @ cdecl __unDNameEx(ptr str long ptr ptr ptr long) ucrtbase.__unDNameEx

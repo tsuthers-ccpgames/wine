@@ -225,7 +225,7 @@ struct module* module_new(struct process* pcs, const WCHAR* name,
     module->sources_used      = 0;
     module->sources_alloc     = 0;
     module->sources           = 0;
-    wine_rb_init(&module->sources_offsets_tree, &source_rb_functions);
+    wine_rb_init(&module->sources_offsets_tree, source_rb_compare);
 
     return module;
 }
@@ -679,7 +679,6 @@ BOOL module_remove(struct process* pcs, struct module* module)
     }
     hash_table_destroy(&module->ht_symbols);
     hash_table_destroy(&module->ht_types);
-    wine_rb_destroy(&module->sources_offsets_tree, NULL, NULL);
     HeapFree(GetProcessHeap(), 0, module->sources);
     HeapFree(GetProcessHeap(), 0, module->addr_sorttab);
     pool_destroy(&module->pool);

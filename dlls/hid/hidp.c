@@ -23,6 +23,7 @@
 #include <stdarg.h>
 
 #define NONAMELESSUNION
+#include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
 #include "winbase.h"
@@ -52,23 +53,26 @@ static NTSTATUS get_report_data(BYTE *report, INT reportLength, INT startBit, IN
     }
     else
     {
-        ULONG byte_index = (startBit + valueSize - 1) / 8;
+        ULONG byte_index = startBit / 8;
         ULONG data = 0;
         ULONG remainingBits = valueSize;
+        ULONG shift = 0;
+        ULONG begin_offset = startBit % 8;
         while (remainingBits)
         {
-            data <<= 8;
-
             if (remainingBits >= 8)
             {
-                data |= report[byte_index];
-                byte_index --;
-                remainingBits -= 8;
+                BYTE mask = 0xff << begin_offset;
+                data |= (report[byte_index] & mask) << shift;
+                byte_index ++;
+                remainingBits -= (8-begin_offset);
+                shift += (8-begin_offset);
+                begin_offset = 0;
             }
             else if (remainingBits > 0)
             {
-                BYTE mask = ~(0xff << (8-remainingBits));
-                data |= report[byte_index] & mask;
+                BYTE mask = (0xff >> (8-remainingBits)) << begin_offset;
+                data |= (report[byte_index] & mask) << shift;
                 remainingBits = 0;
             }
         }
@@ -506,7 +510,8 @@ ULONG WINAPI HidP_MaxUsageListLength(HIDP_REPORT_TYPE ReportType, USAGE UsagePag
         int j;
         for (j = 0; j < report->elementCount; j++)
         {
-            if (report->Elements[j].caps.button.UsagePage == UsagePage)
+            if (report->Elements[j].ElementType == ButtonElement &&
+               (UsagePage == 0 || report->Elements[j].caps.button.UsagePage == UsagePage))
             {
                 if (report->Elements[j].caps.button.IsRange)
                     count += (report->Elements[j].caps.button.u.Range.UsageMax -
@@ -518,4 +523,153 @@ ULONG WINAPI HidP_MaxUsageListLength(HIDP_REPORT_TYPE ReportType, USAGE UsagePag
         report = HID_NEXT_REPORT(data, report);
     }
     return count;
+}
+
+NTSTATUS WINAPI HidP_TranslateUsagesToI8042ScanCodes(USAGE *ChangedUsageList,
+    ULONG UsageListLength, HIDP_KEYBOARD_DIRECTION KeyAction,
+    HIDP_KEYBOARD_MODIFIER_STATE *ModifierState,
+    PHIDP_INSERT_SCANCODES InsertCodesProcedure, VOID *InsertCodesContext)
+{
+    FIXME("stub: %p, %i, %i, %p, %p, %p\n", ChangedUsageList, UsageListLength,
+        KeyAction, ModifierState, InsertCodesProcedure, InsertCodesContext);
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS WINAPI HidP_GetSpecificButtonCaps(HIDP_REPORT_TYPE ReportType,
+    USAGE UsagePage, USHORT LinkCollection, USAGE Usage,
+    HIDP_BUTTON_CAPS *ButtonCaps, USHORT *ButtonCapsLength, PHIDP_PREPARSED_DATA PreparsedData)
+{
+    WINE_HIDP_PREPARSED_DATA *data = (WINE_HIDP_PREPARSED_DATA*)PreparsedData;
+    WINE_HID_REPORT *report = NULL;
+    USHORT b_count = 0, r_count = 0;
+    int i,j,u;
+
+    TRACE("(%i, 0x%x, %i, 0x%x, %p %p %p)\n", ReportType, UsagePage, LinkCollection,
+        Usage, ButtonCaps, ButtonCapsLength, PreparsedData);
+
+    if (data->magic != HID_MAGIC)
+        return HIDP_STATUS_INVALID_PREPARSED_DATA;
+
+    switch(ReportType)
+    {
+        case HidP_Input:
+            b_count = data->caps.NumberInputButtonCaps;
+            r_count = data->dwInputReportCount;
+            report = HID_INPUT_REPORTS(data);
+            break;
+        case HidP_Output:
+            b_count = data->caps.NumberOutputButtonCaps;
+            r_count = data->dwOutputReportCount;
+            report = HID_OUTPUT_REPORTS(data);
+            break;
+        case HidP_Feature:
+            b_count = data->caps.NumberFeatureButtonCaps;
+            r_count = data->dwFeatureReportCount;
+            report = HID_FEATURE_REPORTS(data);
+            break;
+        default:
+            return HIDP_STATUS_INVALID_REPORT_TYPE;
+    }
+
+    if (!r_count || !b_count || !report)
+    {
+        *ButtonCapsLength = 0;
+        return HIDP_STATUS_SUCCESS;
+    }
+
+    b_count = min(b_count, *ButtonCapsLength);
+
+    u = 0;
+    for (j = 0; j < r_count && u < b_count; j++)
+    {
+        for (i = 0; i < report->elementCount && u < b_count; i++)
+        {
+            if (report->Elements[i].ElementType == ButtonElement &&
+                (UsagePage == 0 || UsagePage == report->Elements[i].caps.button.UsagePage) &&
+                (LinkCollection == 0 || LinkCollection == report->Elements[i].caps.button.LinkCollection) &&
+                (Usage == 0 || (
+                  (!report->Elements[i].caps.button.IsRange &&
+                    Usage == report->Elements[i].caps.button.u.NotRange.Usage)) ||
+                  (report->Elements[i].caps.button.IsRange &&
+                    Usage >=report->Elements[i].caps.button.u.Range.UsageMin &&
+                    Usage <= report->Elements[i].caps.button.u.Range.UsageMax)))
+            {
+                ButtonCaps[u++] = report->Elements[i].caps.button;
+            }
+        }
+        report = HID_NEXT_REPORT(data, report);
+    }
+    TRACE("Matched %i usages\n", u);
+
+    *ButtonCapsLength = u;
+
+    return HIDP_STATUS_SUCCESS;
+}
+
+
+NTSTATUS WINAPI HidP_GetSpecificValueCaps(HIDP_REPORT_TYPE ReportType,
+    USAGE UsagePage, USHORT LinkCollection, USAGE Usage,
+    HIDP_VALUE_CAPS *ValueCaps, USHORT *ValueCapsLength, PHIDP_PREPARSED_DATA PreparsedData)
+{
+    WINE_HIDP_PREPARSED_DATA *data = (PWINE_HIDP_PREPARSED_DATA)PreparsedData;
+    WINE_HID_REPORT *report = NULL;
+    USHORT v_count = 0, r_count = 0;
+    int i,j,u;
+
+    TRACE("(%i, 0x%x, %i, 0x%x, %p %p %p)\n", ReportType, UsagePage, LinkCollection,
+        Usage, ValueCaps, ValueCapsLength, PreparsedData);
+
+    if (data->magic != HID_MAGIC)
+        return HIDP_STATUS_INVALID_PREPARSED_DATA;
+
+    switch(ReportType)
+    {
+        case HidP_Input:
+            v_count = data->caps.NumberInputValueCaps;
+            r_count = data->dwInputReportCount;
+            report = HID_INPUT_REPORTS(data);
+            break;
+        case HidP_Output:
+            v_count = data->caps.NumberOutputValueCaps;
+            r_count = data->dwOutputReportCount;
+            report = HID_OUTPUT_REPORTS(data);
+            break;
+        case HidP_Feature:
+            v_count = data->caps.NumberFeatureValueCaps;
+            r_count = data->dwFeatureReportCount;
+            report = HID_FEATURE_REPORTS(data);
+            break;
+        default:
+            return HIDP_STATUS_INVALID_REPORT_TYPE;
+    }
+
+    if (!r_count || !v_count || !report)
+    {
+        *ValueCapsLength = 0;
+        return HIDP_STATUS_SUCCESS;
+    }
+
+    v_count = min(v_count, *ValueCapsLength);
+
+    u = 0;
+    for (j = 0; j < r_count && u < v_count; j++)
+    {
+        for (i = 0; i < report->elementCount && u < v_count; i++)
+        {
+            if (report->Elements[i].ElementType == ValueElement &&
+                (UsagePage == 0 || UsagePage == report->Elements[i].caps.value.UsagePage) &&
+                (LinkCollection == 0 || LinkCollection == report->Elements[i].caps.value.LinkCollection) &&
+                (Usage == 0 || Usage == report->Elements[i].caps.value.u.NotRange.Usage))
+            {
+                ValueCaps[u++] = report->Elements[i].caps.value;
+            }
+        }
+        report = HID_NEXT_REPORT(data, report);
+    }
+    TRACE("Matched %i usages\n", u);
+
+    *ValueCapsLength = u;
+
+    return HIDP_STATUS_SUCCESS;
 }

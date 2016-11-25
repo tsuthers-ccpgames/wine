@@ -958,6 +958,13 @@ LRESULT WIN_DestroyWindow( HWND hwnd )
 
     TRACE("%p\n", hwnd );
 
+    /* destroy default IME window */
+    if (win_set_flags( hwnd, 0, WIN_HAS_IME_WIN ) & WIN_HAS_IME_WIN)
+    {
+        TRACE("unregister IME window for %p\n", hwnd);
+        imm_unregister_window( hwnd );
+    }
+
     /* free child windows */
     if ((list = WIN_ListChildren( hwnd )))
     {
@@ -1617,6 +1624,15 @@ HWND WIN_CreateWindowEx( CREATESTRUCTW *cs, LPCWSTR className, HINSTANCE module,
         goto failed;
     }
 
+    /* create default IME window */
+
+    if (imm_register_window && !is_desktop_window( hwnd ) &&
+        parent != get_hwnd_message_parent() && imm_register_window( hwnd ))
+    {
+        TRACE("register IME window for %p\n", hwnd);
+        win_set_flags( hwnd, WIN_HAS_IME_WIN, 0 );
+    }
+
     /* send WM_NCCALCSIZE */
 
     if (WIN_GetRectangles( hwnd, COORDS_PARENT, &rect, NULL ))
@@ -1789,6 +1805,8 @@ static void WIN_SendDestroyMsg( HWND hwnd )
         if (hwnd == info.hwndActive) WINPOS_ActivateOtherWindow( hwnd );
     }
 
+    if (hwnd == GetClipboardOwner()) CLIPBOARD_ReleaseOwner( hwnd );
+
     /*
      * Send the WM_DESTROY to the window.
      */
@@ -1898,8 +1916,6 @@ BOOL WINAPI DestroyWindow( HWND hwnd )
 
     WIN_SendDestroyMsg( hwnd );
     if (!IsWindow( hwnd )) return TRUE;
-
-    CLIPBOARD_ReleaseOwner( hwnd );
 
       /* Destroy the window storage */
 

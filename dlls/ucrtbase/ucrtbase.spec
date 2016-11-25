@@ -93,7 +93,7 @@
 @ cdecl __fpecode()
 @ stub __initialize_lconv_for_unsigned_char
 @ stub __intrinsic_abnormal_termination
-@ stub __intrinsic_setjmp
+@ cdecl -arch=i386,x86_64,arm -norelay __intrinsic_setjmp(ptr) MSVCRT__setjmp
 @ stub __intrinsic_setjmpex
 @ cdecl __isascii(long) MSVCRT___isascii
 @ cdecl __iscsym(long) MSVCRT___iscsym
@@ -144,7 +144,7 @@
 @ cdecl __std_exception_destroy(ptr) MSVCRT___std_exception_destroy
 @ cdecl __std_type_info_compare(ptr ptr) MSVCRT_type_info_compare
 @ cdecl __std_type_info_destroy_list(ptr) MSVCRT_type_info_destroy_list
-@ stub __std_type_info_hash
+@ cdecl __std_type_info_hash(ptr) MSVCRT_type_info_hash
 @ cdecl __std_type_info_name(ptr ptr) MSVCRT_type_info_name_list
 @ cdecl __stdio_common_vfprintf(int64 ptr str ptr ptr) MSVCRT__stdio_common_vfprintf
 @ stub __stdio_common_vfprintf_p
@@ -1902,7 +1902,7 @@
 @ stub _setsystime(ptr long)
 @ cdecl _sleep(long) MSVCRT__sleep
 @ varargs _sopen(str long long) MSVCRT__sopen
-@ stub _sopen_dispatch
+@ cdecl _sopen_dispatch(str long long long ptr long) MSVCRT__sopen_dispatch
 @ cdecl _sopen_s(ptr str long long long) MSVCRT__sopen_s
 @ varargs _spawnl(long str str)
 @ varargs _spawnle(long str str)
@@ -2077,7 +2077,7 @@
 @ stub _wfindfirst32i64
 @ cdecl _wfindfirst64(wstr ptr) MSVCRT__wfindfirst64
 @ cdecl _wfindfirst64i32(wstr ptr) MSVCRT__wfindfirst64i32
-@ stub _wfindnext32
+@ cdecl _wfindnext32(long ptr) MSVCRT__wfindnext32
 @ stub _wfindnext32i64
 @ cdecl _wfindnext64(long ptr) MSVCRT__wfindnext64
 @ cdecl _wfindnext64i32(long ptr) MSVCRT__wfindnext64i32
@@ -2109,7 +2109,7 @@
 @ cdecl _wsearchenv_s(wstr wstr ptr long) MSVCRT__wsearchenv_s
 @ cdecl _wsetlocale(long wstr) MSVCRT__wsetlocale
 @ varargs _wsopen(wstr long long) MSVCRT__wsopen
-@ stub _wsopen_dispatch
+@ cdecl _wsopen_dispatch(wstr long long long ptr long) MSVCRT__wsopen_dispatch
 @ cdecl _wsopen_s(ptr wstr long long long) MSVCRT__wsopen_s
 @ varargs _wspawnl(long wstr wstr)
 @ varargs _wspawnle(long wstr wstr)

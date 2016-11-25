@@ -53,6 +53,7 @@
 #include "windef.h"
 #include "winbase.h"
 #include "winuser.h"
+#include "winnls.h"
 
 #include "wine/test.h"
 
@@ -1647,6 +1648,8 @@ static void test_ToUnicode(void)
     const BYTE SC_RETURN = 0x1c, SC_TAB = 0x0f, SC_A = 0x1e;
     const BYTE HIGHEST_BIT = 0x80;
     int i, ret;
+    BOOL us_kbd = (GetKeyboardLayout(0) == (HKL)(ULONG_PTR)0x04090409);
+
     for(i=0; i<256; i++)
         state[i]=0;
 
@@ -1673,7 +1676,10 @@ static void test_ToUnicode(void)
 
         if(!vk)
         {
-            short vk_ret = VkKeyScanW(utests[i].chr);
+            short vk_ret;
+
+            if (!us_kbd) continue;
+            vk_ret = VkKeyScanW(utests[i].chr);
             if (vk_ret == -1) continue;
             vk = vk_ret & 0xff;
             if (vk_ret & 0x100) mod |= shift;
@@ -2493,6 +2499,36 @@ static void test_GetKeyState(void)
     CloseHandle(semaphores[1]);
 }
 
+static void test_OemKeyScan(void)
+{
+    DWORD ret, expect, vkey, scan;
+    WCHAR oem, wchr;
+    char oem_char;
+
+    for (oem = 0; oem < 0x200; oem++)
+    {
+        ret = OemKeyScan( oem );
+
+        oem_char = LOBYTE( oem );
+        if (!OemToCharBuffW( &oem_char, &wchr, 1 ))
+            expect = -1;
+        else
+        {
+            vkey = VkKeyScanW( wchr );
+            scan = MapVirtualKeyW( LOBYTE( vkey ), MAPVK_VK_TO_VSC );
+            if (!scan)
+                expect = -1;
+            else
+            {
+                vkey &= 0xff00;
+                vkey <<= 8;
+                expect = vkey | scan;
+            }
+        }
+        ok( ret == expect, "%04x: got %08x expected %08x\n", oem, ret, expect );
+    }
+}
+
 START_TEST(input)
 {
     init_function_pointers();
@@ -2516,6 +2552,7 @@ START_TEST(input)
     test_key_names();
     test_attach_input();
     test_GetKeyState();
+    test_OemKeyScan();
 
     if(pGetMouseMovePointsEx)
         test_GetMouseMovePointsEx();

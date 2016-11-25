@@ -248,7 +248,7 @@
 @ stub ElfReportEventW
 @ stdcall EnableTrace(long long long ptr int64)
 @ stdcall EnableTraceEx(ptr ptr int64 long long int64 int64 long ptr)
-# @ stub EnableTraceEx2
+@ stdcall EnableTraceEx2(int64 ptr long long int64 int64 long ptr)
 @ stdcall EncryptFileA(str)
 @ stdcall EncryptFileW(wstr)
 # @ stub EncryptedFileKeyInfo
@@ -272,15 +272,15 @@
 @ stdcall EventActivityIdControl(long ptr)
 @ stdcall EventEnabled(int64 ptr)
 @ stdcall EventProviderEnabled(int64 long int64)
-@ stdcall EventRegister(ptr ptr ptr ptr)
+@ stdcall EventRegister(ptr ptr ptr ptr) ntdll.EtwEventRegister
 @ stdcall EventSetInformation(int64 long ptr long)
-@ stdcall EventUnregister(int64)
+@ stdcall EventUnregister(int64) ntdll.EtwEventUnregister
 @ stdcall EventWrite(int64 ptr long ptr)
 # @ stub EventWriteEndScenario
 # @ stub EventWriteEx
 # @ stub EventWriteStartScenario
 # @ stub EventWriteString
-# @ stub EventWriteTransfer
+@ stdcall EventWriteTransfer(int64 ptr ptr ptr long ptr)
 @ stdcall FileEncryptionStatusA(str ptr)
 @ stdcall FileEncryptionStatusW(wstr ptr)
 @ stdcall FindFirstFreeAce(ptr ptr)

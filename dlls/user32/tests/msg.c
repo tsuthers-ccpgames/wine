@@ -6463,7 +6463,7 @@ void dump_region(HRGN hrgn)
     GetRegionData( hrgn, size, data );
     printf("%d rects:", data->rdh.nCount );
     for (i = 0, rect = (RECT *)data->Buffer; i < data->rdh.nCount; i++, rect++)
-        printf( " (%d,%d)-(%d,%d)", rect->left, rect->top, rect->right, rect->bottom );
+        printf( " %s", wine_dbgstr_rect( rect ));
     printf("\n");
     HeapFree( GetProcessHeap(), 0, data );
 }
@@ -6644,7 +6644,7 @@ static const struct message WmSetParentStyle[] = {
 static void test_paint_messages(void)
 {
     BOOL ret;
-    RECT rect;
+    RECT rect, rect2;
     POINT pt;
     MSG msg;
     HWND hparent, hchild;
@@ -6709,7 +6709,8 @@ static void test_paint_messages(void)
      */
     trace("testing ValidateRect(0, NULL)\n");
     SetRectEmpty( &rect );
-    if (ValidateRect(0, &rect))  /* not supported on Win9x */
+    if (ValidateRect(0, &rect) && /* not supported on Win9x */
+        GetUpdateRect(hwnd, NULL, FALSE))  /* or >= Win 8 */
     {
         check_update_rgn( hwnd, hrgn );
         ok_sequence( WmInvalidateErase, "InvalidateErase", FALSE );
@@ -7183,15 +7184,21 @@ static void test_paint_messages(void)
     SetRectRgn( hrgn, 10, 10, 40, 40 );
     check_update_rgn( hchild, hrgn );
     MoveWindow( hparent, -20, -20, 200, 200, FALSE );
-    SetRectRgn( hrgn, 20, 20, 100, 100 );
+    GetUpdateRect( hparent, &rect2, FALSE );
+    if (!EqualRect( &rect2, &rect )) /* Win 8 and later don't crop update to screen */
+    {
+        rect.left += 20;
+        rect.top += 20;
+    }
+    SetRectRgn( hrgn, rect.left, rect.top, rect.right, rect.bottom );
     check_update_rgn( hparent, hrgn );
-    SetRectRgn( hrgn, 30, 30, 40, 40 );
+    SetRectRgn( hrgn, rect.left + 10, rect.top + 10, 40, 40 );
     check_update_rgn( hchild, hrgn );
 
     /* invalidated region is cropped by the parent rects */
     SetRect( &rect, 0, 0, 50, 50 );
     RedrawWindow( hchild, &rect, 0, RDW_INVALIDATE | RDW_ERASE );
-    SetRectRgn( hrgn, 30, 30, 50, 50 );
+    SetRectRgn( hrgn, rect2.left + 10, rect2.top + 10, 50, 50 );
     check_update_rgn( hchild, hrgn );
 
     DestroyWindow( hparent );
@@ -8196,6 +8203,12 @@ static LRESULT MsgCheckProc (BOOL unicode, HWND hwnd, UINT message,
         BeginPaint( hwnd, &ps );
         beginpaint_counter--;
         EndPaint( hwnd, &ps );
+        return 0;
+    }
+
+    if (message == WM_CONTEXTMENU)
+    {
+        /* don't create context menu */
         return 0;
     }
 
@@ -12054,9 +12067,8 @@ static void test_ShowWindow(void)
         SetLastError(0xdeadbeef);
         ret = pGetMonitorInfoA(hmon, &mi);
         ok(ret, "GetMonitorInfo error %u\n", GetLastError());
-        trace("monitor (%d,%d-%d,%d), work (%d,%d-%d,%d)\n",
-            mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom,
-            mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom);
+        trace("monitor %s, work %s\n", wine_dbgstr_rect(&mi.rcMonitor),
+              wine_dbgstr_rect(&mi.rcWork));
         work_rc = mi.rcWork;
     }
 
@@ -12074,11 +12086,8 @@ static void test_ShowWindow(void)
     ok(wp.ptMaxPosition.x == -1 && wp.ptMaxPosition.y == -1,
        "expected -1,-1 got %d,%d\n", wp.ptMaxPosition.x, wp.ptMaxPosition.y);
     todo_wine_if (work_rc.left || work_rc.top) /* FIXME: remove once Wine is fixed */
-    ok(EqualRect(&win_rc, &wp.rcNormalPosition),
-       "expected %d,%d-%d,%d got %d,%d-%d,%d\n",
-        win_rc.left, win_rc.top, win_rc.right, win_rc.bottom,
-        wp.rcNormalPosition.left, wp.rcNormalPosition.top,
-        wp.rcNormalPosition.right, wp.rcNormalPosition.bottom);
+    ok(EqualRect(&win_rc, &wp.rcNormalPosition), "expected %s got %s\n", wine_dbgstr_rect(&win_rc),
+       wine_dbgstr_rect(&wp.rcNormalPosition));
 
     for (i = 0; i < sizeof(sw)/sizeof(sw[0]); i++)
     {
@@ -12130,11 +12139,8 @@ static void test_ShowWindow(void)
            "expected %d,%d got %d,%d\n", sw[i].wp_max.x, sw[i].wp_max.y, wp.ptMaxPosition.x, wp.ptMaxPosition.y);
 
 if (0) /* FIXME: Wine behaves completely different here */
-        ok(EqualRect(&win_rc, &wp.rcNormalPosition),
-           "expected %d,%d-%d,%d got %d,%d-%d,%d\n",
-            win_rc.left, win_rc.top, win_rc.right, win_rc.bottom,
-            wp.rcNormalPosition.left, wp.rcNormalPosition.top,
-            wp.rcNormalPosition.right, wp.rcNormalPosition.bottom);
+        ok(EqualRect(&win_rc, &wp.rcNormalPosition), "expected %s got %s\n",
+           wine_dbgstr_rect(&win_rc), wine_dbgstr_rect(&wp.rcNormalPosition));
     }
     DestroyWindow(hwnd);
     flush_events();
@@ -13887,13 +13893,81 @@ static void test_paintingloop(void)
     DestroyWindow(hwnd);
 }
 
+static const struct message NCRBUTTONDOWNSeq[] =
+{
+    { EVENT_SYSTEM_CAPTURESTART, winevent_hook|wparam|lparam, 0, 0 },
+    { EVENT_SYSTEM_CAPTUREEND, winevent_hook|wparam|lparam, 0, 0 },
+    { WM_CAPTURECHANGED, sent },
+    { WM_CONTEXTMENU, sent, /*hwnd*/0, -1 },
+    { 0 }
+};
+
+struct rbuttonup_thread_data
+{
+    HWND hwnd;
+    HANDLE wndproc_finished;
+};
+
+static DWORD CALLBACK post_rbuttonup_msg( void *arg )
+{
+    struct rbuttonup_thread_data *data = arg;
+    DWORD ret;
+
+    ret = WaitForSingleObject( data->wndproc_finished, 500 );
+    todo_wine ok( ret == WAIT_OBJECT_0, "WaitForSingleObject returned %x\n", ret );
+    if( ret == WAIT_OBJECT_0 ) return 0;
+
+    PostMessageA( data->hwnd, WM_RBUTTONUP, 0, 0 );
+    return 0;
+}
+
 static void test_defwinproc(void)
 {
     HWND hwnd;
     MSG msg;
     BOOL gotwmquit = FALSE;
-    hwnd = CreateWindowExA(0, "static", "test_defwndproc", WS_POPUP, 0,0,0,0,0,0,0, NULL);
+    POINT pos;
+    RECT rect;
+    INT x, y;
+    LRESULT res;
+    struct rbuttonup_thread_data data;
+    HANDLE thread;
+
+    hwnd = CreateWindowExA(0, "TestWindowClass", "test_defwndproc",
+            WS_VISIBLE | WS_CAPTION | WS_OVERLAPPEDWINDOW, 0,0,500,100,0,0,0, NULL);
     assert(hwnd);
+    flush_events();
+
+    GetCursorPos(&pos);
+    GetWindowRect(hwnd, &rect);
+    x = (rect.left+rect.right) / 2;
+    y = rect.top + GetSystemMetrics(SM_CYFRAME) + 1;
+    SetCursorPos(x, y);
+    flush_events();
+    res = DefWindowProcA( hwnd, WM_NCHITTEST, 0, MAKELPARAM(x, y));
+    ok(res == HTCAPTION, "WM_NCHITTEST returned %ld\n", res);
+
+    mouse_event( MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0 );
+    mouse_event( MOUSEEVENTF_LEFTUP, 0, 0, 0, 0 );
+    flush_events();
+
+    flush_sequence();
+    mouse_event( MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0 );
+    /* workaround for missing support for clicking on window frame */
+    data.hwnd = hwnd;
+    data.wndproc_finished = CreateEventA( NULL, FALSE, FALSE, NULL );
+    thread = CreateThread( NULL, 0, post_rbuttonup_msg, (void*)&data, 0, NULL );
+
+    DefWindowProcA( hwnd, WM_NCRBUTTONDOWN, HTCAPTION, MAKELPARAM(x, y));
+    ok_sequence(NCRBUTTONDOWNSeq, "WM_NCRBUTTONDOWN on caption", FALSE);
+
+    SetEvent( data.wndproc_finished );
+    WaitForSingleObject( thread, 1000 );
+    CloseHandle( data.wndproc_finished );
+    CloseHandle( thread );
+
+    SetCursorPos(pos.x, pos.y);
+
     DefWindowProcA( hwnd, WM_ENDSESSION, 1, 0);
     while (PeekMessageA( &msg, 0, 0, 0, PM_REMOVE )) {
         if( msg.message == WM_QUIT) gotwmquit = TRUE;
@@ -13980,6 +14054,7 @@ static void test_clipboard_viewers(void)
     trace("clipbd viewers: hWnd1=%p, hWnd2=%p, hWnd3=%p\n", hWnd1, hWnd2, hWnd3);
     assert(hWnd1 && hWnd2 && hWnd3);
 
+    CountClipboardFormats(); /* Ensure that we do not have an X11 update to the clipboard */
     flush_sequence();
 
     /* Test getting the clipboard viewer and setting the viewer to NULL. */
@@ -15480,8 +15555,8 @@ static void test_layered_window(void)
     size.cx = 0;
     ret = pUpdateLayeredWindow( hwnd, 0, &pos, &size, hdc, &src, 0, NULL, ULW_OPAQUE );
     ok( !ret, "UpdateLayeredWindow should fail on non-layered window\n" );
-    ok( GetLastError() == ERROR_INVALID_PARAMETER || broken(ERROR_MR_MID_NOT_FOUND) /* win7 */,
-        "wrong error %u\n", GetLastError() );
+    ok( GetLastError() == ERROR_INVALID_PARAMETER || broken(GetLastError() == ERROR_MR_MID_NOT_FOUND) ||
+        broken(GetLastError() == ERROR_GEN_FAILURE) /* win7 */, "wrong error %u\n", GetLastError() );
     size.cx = 1;
     size.cy = -1;
     ret = pUpdateLayeredWindow( hwnd, 0, &pos, &size, hdc, &src, 0, NULL, ULW_OPAQUE );
@@ -15783,6 +15858,98 @@ todo_wine_if (thread_n == 2)
     flush_sequence();
 }
 
+static LRESULT CALLBACK insendmessage_wnd_proc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+{
+    DWORD flags = InSendMessageEx( NULL );
+    BOOL ret;
+
+    switch (msg)
+    {
+    case WM_USER:
+        ok( flags == ISMEX_SEND, "wrong flags %x\n", flags );
+        ok( InSendMessage(), "InSendMessage returned false\n" );
+        ret = ReplyMessage( msg );
+        ok( ret, "ReplyMessage failed err %u\n", GetLastError() );
+        flags = InSendMessageEx( NULL );
+        ok( flags == (ISMEX_SEND | ISMEX_REPLIED), "wrong flags %x\n", flags );
+        ok( InSendMessage(), "InSendMessage returned false\n" );
+        break;
+    case WM_USER + 1:
+        ok( flags == ISMEX_NOTIFY, "wrong flags %x\n", flags );
+        ok( InSendMessage(), "InSendMessage returned false\n" );
+        ret = ReplyMessage( msg );
+        ok( ret, "ReplyMessage failed err %u\n", GetLastError() );
+        flags = InSendMessageEx( NULL );
+        ok( flags == ISMEX_NOTIFY, "wrong flags %x\n", flags );
+        ok( InSendMessage(), "InSendMessage returned false\n" );
+        break;
+    case WM_USER + 2:
+        ok( flags == ISMEX_CALLBACK, "wrong flags %x\n", flags );
+        ok( InSendMessage(), "InSendMessage returned false\n" );
+        ret = ReplyMessage( msg );
+        ok( ret, "ReplyMessage failed err %u\n", GetLastError() );
+        flags = InSendMessageEx( NULL );
+        ok( flags == (ISMEX_CALLBACK | ISMEX_REPLIED) || flags == ISMEX_SEND, "wrong flags %x\n", flags );
+        ok( InSendMessage(), "InSendMessage returned false\n" );
+        break;
+    case WM_USER + 3:
+        ok( flags == ISMEX_NOSEND, "wrong flags %x\n", flags );
+        ok( !InSendMessage(), "InSendMessage returned true\n" );
+        ret = ReplyMessage( msg );
+        ok( !ret, "ReplyMessage succeeded\n" );
+        break;
+    }
+
+    return DefWindowProcA( hwnd, msg, wp, lp );
+}
+
+static void CALLBACK msg_callback( HWND hwnd, UINT msg, ULONG_PTR arg, LRESULT result )
+{
+    ok( msg == WM_USER + 2, "wrong msg %x\n", msg );
+    ok( result == WM_USER + 2, "wrong result %lx\n", result );
+}
+
+static DWORD WINAPI send_message_thread( void *arg )
+{
+    HWND win = arg;
+
+    SendMessageA( win, WM_USER, 0, 0 );
+    SendNotifyMessageA( win, WM_USER + 1, 0, 0 );
+    SendMessageCallbackA( win, WM_USER + 2, 0, 0, msg_callback, 0 );
+    PostMessageA( win, WM_USER + 3, 0, 0 );
+    PostMessageA( win, WM_QUIT, 0, 0 );
+    return 0;
+}
+
+static void test_InSendMessage(void)
+{
+    WNDCLASSA cls;
+    HWND win;
+    MSG msg;
+    HANDLE thread;
+    DWORD tid;
+
+    memset(&cls, 0, sizeof(cls));
+    cls.lpfnWndProc = insendmessage_wnd_proc;
+    cls.hInstance = GetModuleHandleA(NULL);
+    cls.lpszClassName = "InSendMessage_test";
+    RegisterClassA(&cls);
+
+    win = CreateWindowA( "InSendMessage_test", NULL, 0, 0, 0, 0, 0, NULL, 0, NULL, 0 );
+    ok( win != NULL, "CreateWindow failed: %d\n", GetLastError() );
+
+    thread = CreateThread( NULL, 0, send_message_thread, win, 0, &tid );
+    ok( thread != NULL, "CreateThread failed: %d\n", GetLastError() );
+
+    while (GetMessageA(&msg, NULL, 0, 0)) DispatchMessageA( &msg );
+
+    ok( WaitForSingleObject( thread, 30000 ) == WAIT_OBJECT_0, "WaitForSingleObject failed\n" );
+    CloseHandle( thread );
+
+    DestroyWindow( win );
+    UnregisterClassA( "InSendMessage_test", GetModuleHandleA(NULL) );
+}
+
 static const struct message DoubleSetCaptureSeq[] =
 {
     { WM_CAPTURECHANGED, sent },
@@ -15891,6 +16058,7 @@ START_TEST(msg)
 
     test_SendMessage_other_thread(1);
     test_SendMessage_other_thread(2);
+    test_InSendMessage();
     test_SetFocus();
     test_SetParent();
     test_PostMessage();

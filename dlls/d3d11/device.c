@@ -2780,8 +2780,11 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CheckFeatureSupport(ID3D11Device *
                 return E_INVALIDARG;
             }
 
-            threading_data->DriverConcurrentCreates = FALSE;
-            threading_data->DriverCommandLists = FALSE;
+            /* We lie about the threading support to make Tomb Raider 2013 and
+             * Deus Ex: Human Revolution happy. */
+            FIXME("Returning fake threading support data.\n");
+            threading_data->DriverConcurrentCreates = TRUE;
+            threading_data->DriverCommandLists = TRUE;
             return S_OK;
         }
         case D3D11_FEATURE_D3D10_X_HARDWARE_OPTIONS:
@@ -5271,21 +5274,6 @@ static const struct wined3d_device_parent_ops d3d_wined3d_device_parent_ops =
     device_parent_create_swapchain,
 };
 
-static void *d3d_rb_alloc(size_t size)
-{
-    return HeapAlloc(GetProcessHeap(), 0, size);
-}
-
-static void *d3d_rb_realloc(void *ptr, size_t size)
-{
-    return HeapReAlloc(GetProcessHeap(), 0, ptr, size);
-}
-
-static void d3d_rb_free(void *ptr)
-{
-    HeapFree(GetProcessHeap(), 0, ptr);
-}
-
 static int d3d_sampler_state_compare(const void *key, const struct wine_rb_entry *entry)
 {
     const D3D11_SAMPLER_DESC *ka = key;
@@ -5294,14 +5282,6 @@ static int d3d_sampler_state_compare(const void *key, const struct wine_rb_entry
     return memcmp(ka, kb, sizeof(*ka));
 }
 
-static const struct wine_rb_functions d3d_sampler_state_rb_ops =
-{
-    d3d_rb_alloc,
-    d3d_rb_realloc,
-    d3d_rb_free,
-    d3d_sampler_state_compare,
-};
-
 static int d3d_blend_state_compare(const void *key, const struct wine_rb_entry *entry)
 {
     const D3D11_BLEND_DESC *ka = key;
@@ -5309,14 +5289,6 @@ static int d3d_blend_state_compare(const void *key, const struct wine_rb_entry *
 
     return memcmp(ka, kb, sizeof(*ka));
 }
-
-static const struct wine_rb_functions d3d_blend_state_rb_ops =
-{
-    d3d_rb_alloc,
-    d3d_rb_realloc,
-    d3d_rb_free,
-    d3d_blend_state_compare,
-};
 
 static int d3d_depthstencil_state_compare(const void *key, const struct wine_rb_entry *entry)
 {
@@ -5327,14 +5299,6 @@ static int d3d_depthstencil_state_compare(const void *key, const struct wine_rb_
     return memcmp(ka, kb, sizeof(*ka));
 }
 
-static const struct wine_rb_functions d3d_depthstencil_state_rb_ops =
-{
-    d3d_rb_alloc,
-    d3d_rb_realloc,
-    d3d_rb_free,
-    d3d_depthstencil_state_compare,
-};
-
 static int d3d_rasterizer_state_compare(const void *key, const struct wine_rb_entry *entry)
 {
     const D3D11_RASTERIZER_DESC *ka = key;
@@ -5343,15 +5307,7 @@ static int d3d_rasterizer_state_compare(const void *key, const struct wine_rb_en
     return memcmp(ka, kb, sizeof(*ka));
 }
 
-static const struct wine_rb_functions d3d_rasterizer_state_rb_ops =
-{
-    d3d_rb_alloc,
-    d3d_rb_realloc,
-    d3d_rb_free,
-    d3d_rasterizer_state_compare,
-};
-
-HRESULT d3d_device_init(struct d3d_device *device, void *outer_unknown)
+void d3d_device_init(struct d3d_device *device, void *outer_unknown)
 {
     device->IUnknown_inner.lpVtbl = &d3d_device_inner_unknown_vtbl;
     device->ID3D11Device_iface.lpVtbl = &d3d11_device_vtbl;
@@ -5366,39 +5322,13 @@ HRESULT d3d_device_init(struct d3d_device *device, void *outer_unknown)
     d3d11_immediate_context_init(&device->immediate_context, device);
     ID3D11DeviceContext_Release(&device->immediate_context.ID3D11DeviceContext_iface);
 
-    if (wine_rb_init(&device->blend_states, &d3d_blend_state_rb_ops) == -1)
-    {
-        WARN("Failed to initialize blend state rbtree.\n");
-        return E_FAIL;
-    }
     device->blend_factor[0] = 1.0f;
     device->blend_factor[1] = 1.0f;
     device->blend_factor[2] = 1.0f;
     device->blend_factor[3] = 1.0f;
 
-    if (wine_rb_init(&device->depthstencil_states, &d3d_depthstencil_state_rb_ops) == -1)
-    {
-        WARN("Failed to initialize depthstencil state rbtree.\n");
-        wine_rb_destroy(&device->blend_states, NULL, NULL);
-        return E_FAIL;
-    }
-
-    if (wine_rb_init(&device->rasterizer_states, &d3d_rasterizer_state_rb_ops) == -1)
-    {
-        WARN("Failed to initialize rasterizer state rbtree.\n");
-        wine_rb_destroy(&device->depthstencil_states, NULL, NULL);
-        wine_rb_destroy(&device->blend_states, NULL, NULL);
-        return E_FAIL;
-    }
-
-    if (wine_rb_init(&device->sampler_states, &d3d_sampler_state_rb_ops) == -1)
-    {
-        WARN("Failed to initialize sampler state rbtree.\n");
-        wine_rb_destroy(&device->rasterizer_states, NULL, NULL);
-        wine_rb_destroy(&device->depthstencil_states, NULL, NULL);
-        wine_rb_destroy(&device->blend_states, NULL, NULL);
-        return E_FAIL;
-    }
-
-    return S_OK;
+    wine_rb_init(&device->blend_states, d3d_blend_state_compare);
+    wine_rb_init(&device->depthstencil_states, d3d_depthstencil_state_compare);
+    wine_rb_init(&device->rasterizer_states, d3d_rasterizer_state_compare);
+    wine_rb_init(&device->sampler_states, d3d_sampler_state_compare);
 }

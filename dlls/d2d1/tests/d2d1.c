@@ -17,6 +17,7 @@
  */
 
 #define COBJMACROS
+#include <limits.h>
 #include <math.h>
 #include "d2d1.h"
 #include "wincrypt.h"
@@ -54,6 +55,14 @@ static void set_rect(D2D1_RECT_F *rect, float left, float top, float right, floa
     rect->bottom = bottom;
 }
 
+static void set_rounded_rect(D2D1_ROUNDED_RECT *rect, float left, float top, float right, float bottom,
+        float radius_x, float radius_y)
+{
+    set_rect(&rect->rect, left, top, right, bottom);
+    rect->radiusX = radius_x;
+    rect->radiusY = radius_y;
+}
+
 static void set_rect_u(D2D1_RECT_U *rect, UINT32 left, UINT32 top, UINT32 right, UINT32 bottom)
 {
     rect->left = left;
@@ -71,6 +80,12 @@ static void set_color(D2D1_COLOR_F *color, float r, float g, float b, float a)
 }
 
 static void set_size_u(D2D1_SIZE_U *size, unsigned int w, unsigned int h)
+{
+    size->width = w;
+    size->height = h;
+}
+
+static void set_size_f(D2D1_SIZE_F *size, float w, float h)
 {
     size->width = w;
     size->height = h;
@@ -113,6 +128,22 @@ static void translate_matrix(D2D1_MATRIX_3X2_F *matrix, float x, float y)
 {
     matrix->_31 += x * matrix->_11 + y * matrix->_21;
     matrix->_32 += x * matrix->_12 + y * matrix->_22;
+}
+
+static BOOL compare_float(float f, float g, unsigned int ulps)
+{
+    int x = *(int *)&f;
+    int y = *(int *)&g;
+
+    if (x < 0)
+        x = INT_MIN - x;
+    if (y < 0)
+        y = INT_MIN - y;
+
+    if (abs(x - y) > ulps)
+        return FALSE;
+
+    return TRUE;
 }
 
 static BOOL compare_sha1(void *data, unsigned int pitch, unsigned int bpp,
@@ -1290,12 +1321,12 @@ static void test_path_geometry(void)
     ID3D10Device1 *device;
     IDXGISurface *surface;
     ID2D1Factory *factory;
+    BOOL match, contains;
     D2D1_COLOR_F color;
     ULONG refcount;
     UINT32 count;
     HWND window;
     HRESULT hr;
-    BOOL match;
 
     if (!(device = create_device()))
     {
@@ -1514,6 +1545,29 @@ static void test_path_geometry(void)
     ok(SUCCEEDED(hr), "Failed to end draw, hr %#x.\n", hr);
     match = compare_surface(surface, "3aace1b22aae111cb577614fed16e4eb1650dba5");
     ok(match, "Surface does not match.\n");
+
+    /* Edge test. */
+    set_point(&point, 94.0f, 620.0f);
+    contains = TRUE;
+    hr = ID2D1TransformedGeometry_FillContainsPoint(transformed_geometry, point, NULL, 0.0f, &contains);
+    ok(hr == S_OK, "FillContainsPoint failed, hr %#x.\n", hr);
+    ok(!contains, "Got unexpected contains %#x.\n", contains);
+
+    set_point(&point, 95.0f, 620.0f);
+    contains = FALSE;
+    hr = ID2D1TransformedGeometry_FillContainsPoint(transformed_geometry, point, NULL, 0.0f, &contains);
+    ok(hr == S_OK, "FillContainsPoint failed, hr %#x.\n", hr);
+    ok(contains == TRUE, "Got unexpected contains %#x.\n", contains);
+
+    /* With transformation matrix. */
+    set_matrix_identity(&matrix);
+    translate_matrix(&matrix, -10.0f, 0.0f);
+    set_point(&point, 85.0f, 620.0f);
+    contains = FALSE;
+    hr = ID2D1TransformedGeometry_FillContainsPoint(transformed_geometry, point, &matrix, 0.0f, &contains);
+    ok(hr == S_OK, "FillContainsPoint failed, hr %#x.\n", hr);
+    ok(contains == TRUE, "Got unexpected contains %#x.\n", contains);
+
     ID2D1TransformedGeometry_Release(transformed_geometry);
     ID2D1PathGeometry_Release(geometry);
 
@@ -1701,6 +1755,150 @@ static void test_path_geometry(void)
     IDXGISwapChain_Release(swapchain);
     ID3D10Device1_Release(device);
     DestroyWindow(window);
+}
+
+static void test_rectangle_geometry(void)
+{
+    ID2D1RectangleGeometry *geometry;
+    D2D1_RECT_F rect, rect2;
+    ID2D1Factory *factory;
+    D2D1_POINT_2F point;
+    BOOL contains;
+    HRESULT hr;
+
+    hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, NULL, (void **)&factory);
+    ok(SUCCEEDED(hr), "Failed to create factory, hr %#x.\n", hr);
+
+    set_rect(&rect, 0.0f, 0.0f, 0.0f, 0.0f);
+    hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
+    ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
+    ID2D1RectangleGeometry_GetRect(geometry, &rect2);
+    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect2.left, rect2.top, rect2.right, rect2.bottom);
+    ID2D1RectangleGeometry_Release(geometry);
+
+    set_rect(&rect, 50.0f, 0.0f, 40.0f, 100.0f);
+    hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
+    ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
+    ID2D1RectangleGeometry_GetRect(geometry, &rect2);
+    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect2.left, rect2.top, rect2.right, rect2.bottom);
+    ID2D1RectangleGeometry_Release(geometry);
+
+    set_rect(&rect, 0.0f, 100.0f, 40.0f, 50.0f);
+    hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
+    ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
+    ID2D1RectangleGeometry_GetRect(geometry, &rect2);
+    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect2.left, rect2.top, rect2.right, rect2.bottom);
+    ID2D1RectangleGeometry_Release(geometry);
+
+    set_rect(&rect, 50.0f, 100.0f, 40.0f, 50.0f);
+    hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
+    ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
+    ID2D1RectangleGeometry_GetRect(geometry, &rect2);
+    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect2.left, rect2.top, rect2.right, rect2.bottom);
+    ID2D1RectangleGeometry_Release(geometry);
+
+    set_rect(&rect, 0.0f, 0.0f, 10.0f, 20.0f);
+    hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
+    ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
+
+    /* Edge. */
+    contains = FALSE;
+    set_point(&point, 0.0f, 0.0f);
+    hr = ID2D1RectangleGeometry_FillContainsPoint(geometry, point, NULL, 0.0f, &contains);
+    ok(SUCCEEDED(hr), "FillContainsPoint() failed, hr %#x.\n", hr);
+    ok(!!contains, "Got wrong hit test result %d.\n", contains);
+
+    /* Within tolerance limit around corner. */
+    contains = TRUE;
+    set_point(&point, -D2D1_DEFAULT_FLATTENING_TOLERANCE, 0.0f);
+    hr = ID2D1RectangleGeometry_FillContainsPoint(geometry, point, NULL, 0.0f, &contains);
+    ok(SUCCEEDED(hr), "FillContainsPoint() failed, hr %#x.\n", hr);
+    ok(!contains, "Got wrong hit test result %d.\n", contains);
+
+    contains = FALSE;
+    set_point(&point, -D2D1_DEFAULT_FLATTENING_TOLERANCE + 0.01f, 0.0f);
+    hr = ID2D1RectangleGeometry_FillContainsPoint(geometry, point, NULL, 0.0f, &contains);
+    ok(SUCCEEDED(hr), "FillContainsPoint() failed, hr %#x.\n", hr);
+    ok(!!contains, "Got wrong hit test result %d.\n", contains);
+
+    contains = TRUE;
+    set_point(&point, -D2D1_DEFAULT_FLATTENING_TOLERANCE - 0.01f, 0.0f);
+    hr = ID2D1RectangleGeometry_FillContainsPoint(geometry, point, NULL, 0.0f, &contains);
+    ok(SUCCEEDED(hr), "FillContainsPoint() failed, hr %#x.\n", hr);
+    ok(!contains, "Got wrong hit test result %d.\n", contains);
+
+    contains = TRUE;
+    set_point(&point, -D2D1_DEFAULT_FLATTENING_TOLERANCE, -D2D1_DEFAULT_FLATTENING_TOLERANCE);
+    hr = ID2D1RectangleGeometry_FillContainsPoint(geometry, point, NULL, 0.0f, &contains);
+    ok(SUCCEEDED(hr), "FillContainsPoint() failed, hr %#x.\n", hr);
+    ok(!contains, "Got wrong hit test result %d.\n", contains);
+
+    /* Inside. */
+    contains = FALSE;
+    set_point(&point, 5.0f, 5.0f);
+    hr = ID2D1RectangleGeometry_FillContainsPoint(geometry, point, NULL, 0.0f, &contains);
+    ok(SUCCEEDED(hr), "FillContainsPoint() failed, hr %#x.\n", hr);
+    ok(!!contains, "Got wrong hit test result %d.\n", contains);
+
+    ID2D1RectangleGeometry_Release(geometry);
+
+    ID2D1Factory_Release(factory);
+}
+
+static void test_rounded_rectangle_geometry(void)
+{
+    ID2D1RoundedRectangleGeometry *geometry;
+    D2D1_ROUNDED_RECT rect, rect2;
+    ID2D1Factory *factory;
+    HRESULT hr;
+
+    hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, NULL, (void **)&factory);
+    ok(SUCCEEDED(hr), "Failed to create factory, hr %#x.\n", hr);
+
+    set_rounded_rect(&rect, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    hr = ID2D1Factory_CreateRoundedRectangleGeometry(factory, &rect, &geometry);
+todo_wine
+    ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
+    if (FAILED(hr))
+    {
+        ID2D1Factory_Release(factory);
+        return;
+    }
+
+    ID2D1RoundedRectangleGeometry_GetRoundedRect(geometry, &rect2);
+    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e, %.8e, %.8e}.\n",
+            rect2.rect.left, rect2.rect.top, rect2.rect.right, rect2.rect.bottom, rect2.radiusX, rect2.radiusY);
+    ID2D1RoundedRectangleGeometry_Release(geometry);
+
+    /* X radius larger than half width. */
+    set_rounded_rect(&rect, 0.0f, 0.0f, 50.0f, 40.0f, 30.0f, 5.0f);
+    hr = ID2D1Factory_CreateRoundedRectangleGeometry(factory, &rect, &geometry);
+    ID2D1RoundedRectangleGeometry_GetRoundedRect(geometry, &rect2);
+    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e, %.8e, %.8e}.\n",
+            rect2.rect.left, rect2.rect.top, rect2.rect.right, rect2.rect.bottom, rect2.radiusX, rect2.radiusY);
+    ID2D1RoundedRectangleGeometry_Release(geometry);
+
+    /* Y radius larger than half height. */
+    set_rounded_rect(&rect, 0.0f, 0.0f, 50.0f, 40.0f, 5.0f, 30.0f);
+    hr = ID2D1Factory_CreateRoundedRectangleGeometry(factory, &rect, &geometry);
+    ID2D1RoundedRectangleGeometry_GetRoundedRect(geometry, &rect2);
+    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e, %.8e, %.8e}.\n",
+            rect2.rect.left, rect2.rect.top, rect2.rect.right, rect2.rect.bottom, rect2.radiusX, rect2.radiusY);
+    ID2D1RoundedRectangleGeometry_Release(geometry);
+
+    /* Both exceed rectangle size. */
+    set_rounded_rect(&rect, 0.0f, 0.0f, 50.0f, 40.0f, 30.0f, 25.0f);
+    hr = ID2D1Factory_CreateRoundedRectangleGeometry(factory, &rect, &geometry);
+    ID2D1RoundedRectangleGeometry_GetRoundedRect(geometry, &rect2);
+    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e, %.8e, %.8e}.\n",
+            rect2.rect.left, rect2.rect.top, rect2.rect.right, rect2.rect.bottom, rect2.radiusX, rect2.radiusY);
+    ID2D1RoundedRectangleGeometry_Release(geometry);
+
+    ID2D1Factory_Release(factory);
 }
 
 static void test_bitmap_formats(void)
@@ -2023,8 +2221,10 @@ static void test_shared_bitmap(void)
     ID3D10Device1 *device1, *device2;
     IWICImagingFactory *wic_factory;
     ID2D1Bitmap *bitmap1, *bitmap2;
+    DXGI_SURFACE_DESC surface_desc;
     ID2D1RenderTarget *rt1, *rt2;
     D2D1_SIZE_U size = {4, 4};
+    IDXGISurface1 *surface3;
     HWND window1, window2;
     HRESULT hr;
 
@@ -2146,6 +2346,48 @@ static void test_shared_bitmap(void)
     hr = ID2D1RenderTarget_CreateSharedBitmap(rt2, &IID_ID2D1Bitmap, bitmap1, NULL, &bitmap2);
     ok(SUCCEEDED(hr), "Failed to create bitmap, hr %#x.\n", hr);
     ID2D1Bitmap_Release(bitmap2);
+    ID2D1RenderTarget_Release(rt2);
+
+    /* Shared DXGI surface. */
+    desc.type = D2D1_RENDER_TARGET_TYPE_DEFAULT;
+    desc.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+    desc.dpiX = 0.0f;
+    desc.dpiY = 0.0f;
+    desc.usage = D2D1_RENDER_TARGET_USAGE_NONE;
+    desc.minLevel = D2D1_FEATURE_LEVEL_DEFAULT;
+
+    hr = ID2D1Factory_CreateDxgiSurfaceRenderTarget(factory1, surface2, &desc, &rt2);
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+
+    bitmap_desc.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    bitmap_desc.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+    bitmap_desc.dpiX = 0.0f;
+    bitmap_desc.dpiY = 0.0f;
+
+    hr = ID2D1RenderTarget_CreateSharedBitmap(rt2, &IID_IDXGISurface, surface2, &bitmap_desc, &bitmap2);
+    ok(SUCCEEDED(hr) || broken(hr == E_INVALIDARG) /* vista */, "Failed to create bitmap, hr %#x.\n", hr);
+
+    if (SUCCEEDED(hr))
+    {
+        size = ID2D1Bitmap_GetPixelSize(bitmap2);
+        hr = IDXGISurface_GetDesc(surface2, &surface_desc);
+        ok(SUCCEEDED(hr), "Failed to get surface description, hr %#x.\n", hr);
+        ok(size.width == surface_desc.Width && size.height == surface_desc.Height, "Got wrong bitmap size.\n");
+
+        ID2D1Bitmap_Release(bitmap2);
+
+        /* IDXGISurface1 is supported too. */
+        if (IDXGISurface_QueryInterface(surface2, &IID_IDXGISurface1, (void **)&surface3) == S_OK)
+        {
+            hr = ID2D1RenderTarget_CreateSharedBitmap(rt2, &IID_IDXGISurface1, surface3, &bitmap_desc, &bitmap2);
+            ok(SUCCEEDED(hr), "Failed to create bitmap, hr %#x.\n", hr);
+
+            ID2D1Bitmap_Release(bitmap2);
+            IDXGISurface1_Release(surface3);
+        }
+    }
+
     ID2D1RenderTarget_Release(rt2);
 
     ID2D1Bitmap_Release(bitmap1);
@@ -2547,6 +2789,8 @@ static void test_draw_text_layout(void)
     DWRITE_TEXT_RANGE range;
     D2D1_COLOR_F color;
     ID2D1SolidColorBrush *brush, *brush2;
+    ID2D1RectangleGeometry *geometry;
+    D2D1_RECT_F rect;
 
     if (!(device = create_device()))
     {
@@ -2612,6 +2856,25 @@ static void test_draw_text_layout(void)
 todo_wine
     ok(hr == D2DERR_WRONG_FACTORY, "EndDraw failure expected, hr %#x.\n", hr);
 
+    /* Effect is d2d resource, but not a brush. */
+    set_rect(&rect, 0.0f, 0.0f, 10.0f, 10.0f);
+    hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
+    ok(SUCCEEDED(hr), "Failed to geometry, hr %#x.\n", hr);
+
+    range.startPosition = 0;
+    range.length = 4;
+    hr = IDWriteTextLayout_SetDrawingEffect(text_layout, (IUnknown*)geometry, range);
+    ok(SUCCEEDED(hr), "Failed to set drawing effect, hr %#x.\n", hr);
+    ID2D1RectangleGeometry_Release(geometry);
+
+    ID2D1RenderTarget_BeginDraw(rt);
+
+    origin.x = origin.y = 0.0f;
+    ID2D1RenderTarget_DrawTextLayout(rt, origin, text_layout, (ID2D1Brush*)brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
+
+    hr = ID2D1RenderTarget_EndDraw(rt, NULL, NULL);
+    ok(hr == S_OK, "EndDraw failure expected, hr %#x.\n", hr);
+
     IDWriteTextFormat_Release(text_format);
     IDWriteTextLayout_Release(text_layout);
     IDWriteFactory_Release(dwrite_factory);
@@ -2626,6 +2889,26 @@ todo_wine
     DestroyWindow(window);
 }
 
+static void create_target_dibsection(HDC hdc, UINT32 width, UINT32 height)
+{
+    char bmibuf[FIELD_OFFSET(BITMAPINFO, bmiColors[256])];
+    BITMAPINFO *bmi = (BITMAPINFO*)bmibuf;
+    HBITMAP hbm;
+
+    memset(bmi, 0, sizeof(bmibuf));
+    bmi->bmiHeader.biSize = sizeof(bmi->bmiHeader);
+    bmi->bmiHeader.biHeight = -height;
+    bmi->bmiHeader.biWidth = width;
+    bmi->bmiHeader.biBitCount = 32;
+    bmi->bmiHeader.biPlanes = 1;
+    bmi->bmiHeader.biCompression = BI_RGB;
+
+    hbm = CreateDIBSection(hdc, bmi, DIB_RGB_COLORS, NULL, NULL, 0);
+    ok(hbm != NULL, "Failed to create a dib section.\n");
+
+    DeleteObject(SelectObject(hdc, hbm));
+}
+
 static void test_dc_target(void)
 {
     static const D2D1_PIXEL_FORMAT invalid_formats[] =
@@ -2634,14 +2917,32 @@ static void test_dc_target(void)
         { DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_UNKNOWN },
         { DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED },
     };
+    D2D1_TEXT_ANTIALIAS_MODE text_aa_mode;
     D2D1_RENDER_TARGET_PROPERTIES desc;
+    D2D1_MATRIX_3X2_F matrix, matrix2;
+    D2D1_ANTIALIAS_MODE aa_mode;
     ID2D1SolidColorBrush *brush;
     ID2D1DCRenderTarget *rt;
     ID2D1Factory *factory;
+    ID3D10Device1 *device;
+    FLOAT dpi_x, dpi_y;
     D2D1_COLOR_F color;
+    D2D1_SIZE_U sizeu;
     D2D1_SIZE_F size;
+    D2D1_TAG t1, t2;
     unsigned int i;
+    HDC hdc, hdc2;
+    D2D_RECT_F r;
+    COLORREF clr;
     HRESULT hr;
+    RECT rect;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
+    ID3D10Device1_Release(device);
 
     hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, NULL, (void **)&factory);
     ok(SUCCEEDED(hr), "Failed to create factory, hr %#x.\n", hr);
@@ -2656,7 +2957,6 @@ static void test_dc_target(void)
         desc.minLevel = D2D1_FEATURE_LEVEL_DEFAULT;
 
         hr = ID2D1Factory_CreateDCRenderTarget(factory, &desc, &rt);
-    todo_wine
         ok(hr == D2DERR_UNSUPPORTED_PIXEL_FORMAT, "Got unexpected hr %#x.\n", hr);
     }
 
@@ -2668,13 +2968,15 @@ static void test_dc_target(void)
     desc.usage = D2D1_RENDER_TARGET_USAGE_NONE;
     desc.minLevel = D2D1_FEATURE_LEVEL_DEFAULT;
     hr = ID2D1Factory_CreateDCRenderTarget(factory, &desc, &rt);
-todo_wine
     ok(SUCCEEDED(hr), "Failed to create target, hr %#x.\n", hr);
-if (SUCCEEDED(hr))
-{
+
     size = ID2D1DCRenderTarget_GetSize(rt);
     ok(size.width == 0.0f, "got width %.08e.\n", size.width);
     ok(size.height == 0.0f, "got height %.08e.\n", size.height);
+
+    sizeu = ID2D1DCRenderTarget_GetPixelSize(rt);
+    ok(sizeu.width == 0, "got width %u.\n", sizeu.width);
+    ok(sizeu.height == 0, "got height %u.\n", sizeu.height);
 
     /* object creation methods work without BindDC() */
     set_color(&color, 0.0f, 0.0f, 0.0f, 0.0f);
@@ -2687,7 +2989,347 @@ if (SUCCEEDED(hr))
     ok(hr == D2DERR_WRONG_STATE, "Got unexpected hr %#x.\n", hr);
 
     ID2D1DCRenderTarget_Release(rt);
+
+    /* BindDC() */
+    hr = ID2D1Factory_CreateDCRenderTarget(factory, &desc, &rt);
+    ok(SUCCEEDED(hr), "Failed to create target, hr %#x.\n", hr);
+
+    aa_mode = ID2D1DCRenderTarget_GetAntialiasMode(rt);
+    ok(aa_mode == D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, "Got wrong default aa mode %d.\n", aa_mode);
+    text_aa_mode = ID2D1DCRenderTarget_GetTextAntialiasMode(rt);
+    ok(text_aa_mode == D2D1_TEXT_ANTIALIAS_MODE_DEFAULT, "Got wrong default text aa mode %d.\n", text_aa_mode);
+
+    ID2D1DCRenderTarget_GetDpi(rt, &dpi_x, &dpi_y);
+    ok(dpi_x == 96.0f && dpi_y == 96.0f, "Got dpi_x %f, dpi_y %f.\n", dpi_x, dpi_y);
+
+    hdc = CreateCompatibleDC(NULL);
+    ok(hdc != NULL, "Failed to create an HDC.\n");
+
+    create_target_dibsection(hdc, 16, 16);
+
+    SetRect(&rect, 0, 0, 32, 32);
+    hr = ID2D1DCRenderTarget_BindDC(rt, NULL, &rect);
+    ok(hr == E_INVALIDARG, "BindDC() returned %#x.\n", hr);
+
+    /* Target properties are retained during BindDC() */
+    ID2D1DCRenderTarget_SetTags(rt, 1, 2);
+    ID2D1DCRenderTarget_SetAntialiasMode(rt, D2D1_ANTIALIAS_MODE_ALIASED);
+    ID2D1DCRenderTarget_SetTextAntialiasMode(rt, D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE);
+
+    set_matrix_identity(&matrix);
+    translate_matrix(&matrix, 200.0f, 600.0f);
+    ID2D1DCRenderTarget_SetTransform(rt, &matrix);
+
+    hr = ID2D1DCRenderTarget_BindDC(rt, hdc, &rect);
+    ok(hr == S_OK, "BindDC() returned %#x.\n", hr);
+
+    ID2D1DCRenderTarget_GetTags(rt, &t1, &t2);
+    ok(t1 == 1 && t2 == 2, "Got wrong tags.\n");
+
+    aa_mode = ID2D1DCRenderTarget_GetAntialiasMode(rt);
+    ok(aa_mode == D2D1_ANTIALIAS_MODE_ALIASED, "Got wrong aa mode %d.\n", aa_mode);
+
+    text_aa_mode = ID2D1DCRenderTarget_GetTextAntialiasMode(rt);
+    ok(text_aa_mode == D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE, "Got wrong text aa mode %d.\n", text_aa_mode);
+
+    ID2D1DCRenderTarget_GetTransform(rt, &matrix2);
+    ok(!memcmp(&matrix, &matrix2, sizeof(matrix)), "Got wrong target transform.\n");
+
+    set_matrix_identity(&matrix);
+    ID2D1DCRenderTarget_SetTransform(rt, &matrix);
+
+    /* target size comes from specified dimensions, not from selected bitmap size */
+    size = ID2D1DCRenderTarget_GetSize(rt);
+    ok(size.width == 32.0f, "got width %.08e.\n", size.width);
+    ok(size.height == 32.0f, "got height %.08e.\n", size.height);
+
+    /* clear one HDC to red, switch to another one, partially fill it and test contents */
+    ID2D1DCRenderTarget_BeginDraw(rt);
+
+    set_color(&color, 1.0f, 0.0f, 0.0f, 1.0f);
+    ID2D1DCRenderTarget_Clear(rt, &color);
+
+    hr = ID2D1DCRenderTarget_EndDraw(rt, NULL, NULL);
+    ok(SUCCEEDED(hr), "EndDraw() failed, hr %#x.\n", hr);
+
+    clr = GetPixel(hdc, 0, 0);
+    ok(clr == RGB(255, 0, 0), "Got color %#x\n", clr);
+
+    hdc2 = CreateCompatibleDC(NULL);
+    ok(hdc2 != NULL, "Failed to create an HDC.\n");
+
+    create_target_dibsection(hdc2, 16, 16);
+
+    hr = ID2D1DCRenderTarget_BindDC(rt, hdc2, &rect);
+    ok(hr == S_OK, "BindDC() returned %#x.\n", hr);
+
+    clr = GetPixel(hdc2, 0, 0);
+    ok(clr == 0, "Got color %#x\n", clr);
+
+    set_color(&color, 0.0f, 1.0f, 0.0f, 1.0f);
+    hr = ID2D1DCRenderTarget_CreateSolidColorBrush(rt, &color, NULL, &brush);
+    ok(SUCCEEDED(hr), "Failed to create brush, hr %#x.\n", hr);
+
+    ID2D1DCRenderTarget_BeginDraw(rt);
+
+    r.left = r.top = 0.0f;
+    r.bottom = 16.0f;
+    r.right = 8.0f;
+    ID2D1DCRenderTarget_FillRectangle(rt, &r, (ID2D1Brush*)brush);
+
+    hr = ID2D1DCRenderTarget_EndDraw(rt, NULL, NULL);
+    ok(SUCCEEDED(hr), "EndDraw() failed, hr %#x.\n", hr);
+
+    ID2D1SolidColorBrush_Release(brush);
+
+    clr = GetPixel(hdc2, 0, 0);
+    ok(clr == RGB(0, 255, 0), "Got color %#x\n", clr);
+
+    clr = GetPixel(hdc2, 10, 0);
+    ok(clr == 0, "Got color %#x\n", clr);
+
+    DeleteDC(hdc);
+    DeleteDC(hdc2);
+    ID2D1DCRenderTarget_Release(rt);
+    ID2D1Factory_Release(factory);
 }
+
+static void test_hwnd_target(void)
+{
+    D2D1_HWND_RENDER_TARGET_PROPERTIES hwnd_rt_desc;
+    D2D1_RENDER_TARGET_PROPERTIES desc;
+    ID2D1HwndRenderTarget *rt;
+    ID2D1Factory *factory;
+    ID3D10Device1 *device;
+    HRESULT hr;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
+    ID3D10Device1_Release(device);
+
+    hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, NULL, (void **)&factory);
+    ok(SUCCEEDED(hr), "Failed to create factory, hr %#x.\n", hr);
+
+    desc.type = D2D1_RENDER_TARGET_TYPE_DEFAULT;
+    desc.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+    desc.dpiX = 0.0f;
+    desc.dpiY = 0.0f;
+    desc.usage = D2D1_RENDER_TARGET_USAGE_NONE;
+    desc.minLevel = D2D1_FEATURE_LEVEL_DEFAULT;
+
+    hwnd_rt_desc.hwnd = NULL;
+    hwnd_rt_desc.pixelSize.width = 64;
+    hwnd_rt_desc.pixelSize.height = 64;
+    hwnd_rt_desc.presentOptions = D2D1_PRESENT_OPTIONS_NONE;
+
+    hr = ID2D1Factory_CreateHwndRenderTarget(factory, &desc, &hwnd_rt_desc, &rt);
+    ok(FAILED(hr), "Target creation should fail, hr %#x.\n", hr);
+
+    hwnd_rt_desc.hwnd = (HWND)0xdeadbeef;
+    hr = ID2D1Factory_CreateHwndRenderTarget(factory, &desc, &hwnd_rt_desc, &rt);
+    ok(FAILED(hr), "Target creation should fail, hr %#x.\n", hr);
+
+    hwnd_rt_desc.hwnd = CreateWindowA("static", "d2d_test", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ok(!!hwnd_rt_desc.hwnd, "Failed to create target window.\n");
+    hr = ID2D1Factory_CreateHwndRenderTarget(factory, &desc, &hwnd_rt_desc, &rt);
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+
+    ID2D1HwndRenderTarget_Release(rt);
+
+    DestroyWindow(hwnd_rt_desc.hwnd);
+    ID2D1Factory_Release(factory);
+}
+
+static void test_bitmap_target(void)
+{
+    D2D1_HWND_RENDER_TARGET_PROPERTIES hwnd_rt_desc;
+    D2D1_SIZE_U pixel_size, pixel_size2;
+    D2D1_RENDER_TARGET_PROPERTIES desc;
+    ID2D1HwndRenderTarget *hwnd_rt;
+    ID2D1Bitmap *bitmap, *bitmap2;
+    ID2D1BitmapRenderTarget *rt;
+    ID2D1DCRenderTarget *dc_rt;
+    D2D1_SIZE_F size, size2;
+    ID2D1Factory *factory;
+    ID3D10Device1 *device;
+    float dpi[2], dpi2[2];
+    D2D1_COLOR_F color;
+    ULONG refcount;
+    HRESULT hr;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
+    ID3D10Device1_Release(device);
+
+    hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, NULL, (void **)&factory);
+    ok(SUCCEEDED(hr), "Failed to create factory, hr %#x.\n", hr);
+
+    desc.type = D2D1_RENDER_TARGET_TYPE_DEFAULT;
+    desc.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+    desc.dpiX = 96.0f;
+    desc.dpiY = 192.0f;
+    desc.usage = D2D1_RENDER_TARGET_USAGE_NONE;
+    desc.minLevel = D2D1_FEATURE_LEVEL_DEFAULT;
+
+    hwnd_rt_desc.hwnd = CreateWindowA("static", "d2d_test", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ok(!!hwnd_rt_desc.hwnd, "Failed to create target window.\n");
+    hwnd_rt_desc.pixelSize.width = 64;
+    hwnd_rt_desc.pixelSize.height = 64;
+    hwnd_rt_desc.presentOptions = D2D1_PRESENT_OPTIONS_NONE;
+
+    hr = ID2D1Factory_CreateHwndRenderTarget(factory, &desc, &hwnd_rt_desc, &hwnd_rt);
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+
+    hr = ID2D1HwndRenderTarget_CreateCompatibleRenderTarget(hwnd_rt, NULL, NULL, NULL,
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, &rt);
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+
+    /* See if parent target is referenced. */
+    ID2D1HwndRenderTarget_AddRef(hwnd_rt);
+    refcount = ID2D1HwndRenderTarget_Release(hwnd_rt);
+    ok(refcount == 1, "Target should not have been referenced, got %u.\n", refcount);
+
+    /* Size was not specified, should match parent. */
+    pixel_size = ID2D1HwndRenderTarget_GetPixelSize(hwnd_rt);
+    pixel_size2 = ID2D1BitmapRenderTarget_GetPixelSize(rt);
+    ok(!memcmp(&pixel_size, &pixel_size2, sizeof(pixel_size)), "Got target pixel size mismatch.\n");
+
+    size = ID2D1HwndRenderTarget_GetSize(hwnd_rt);
+    size2 = ID2D1BitmapRenderTarget_GetSize(rt);
+    ok(!memcmp(&size, &size2, sizeof(size)), "Got target DIP size mismatch.\n");
+
+    ID2D1HwndRenderTarget_GetDpi(hwnd_rt, dpi, dpi + 1);
+    ID2D1BitmapRenderTarget_GetDpi(rt, dpi2, dpi2 + 1);
+    ok(!memcmp(dpi, dpi2, sizeof(dpi)), "Got dpi mismatch.\n");
+
+    ID2D1BitmapRenderTarget_Release(rt);
+
+    /* Pixel size specified. */
+    set_size_u(&pixel_size, 32, 32);
+    hr = ID2D1HwndRenderTarget_CreateCompatibleRenderTarget(hwnd_rt, NULL, &pixel_size, NULL,
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, &rt);
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+
+    pixel_size2 = ID2D1BitmapRenderTarget_GetPixelSize(rt);
+    ok(!memcmp(&pixel_size, &pixel_size2, sizeof(pixel_size)), "Got target pixel size mismatch.\n");
+
+    ID2D1BitmapRenderTarget_GetDpi(rt, dpi2, dpi2 + 1);
+    ok(!memcmp(dpi, dpi2, sizeof(dpi)), "Got dpi mismatch.\n");
+
+    ID2D1BitmapRenderTarget_Release(rt);
+
+    /* Both pixel size and DIP size are specified. */
+    set_size_u(&pixel_size, 128, 128);
+    hr = ID2D1HwndRenderTarget_CreateCompatibleRenderTarget(hwnd_rt, &size, &pixel_size, NULL,
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, &rt);
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+
+    /* Doubled pixel size dimensions with the same DIP size give doubled dpi. */
+    ID2D1BitmapRenderTarget_GetDpi(rt, dpi2, dpi2 + 1);
+    ok(dpi[0] == dpi2[0] / 2.0f && dpi[1] == dpi2[1] / 2.0f, "Got dpi mismatch.\n");
+
+    ID2D1BitmapRenderTarget_Release(rt);
+
+    /* DIP size is specified, fractional. */
+    set_size_f(&size, 70.1f, 70.4f);
+    hr = ID2D1HwndRenderTarget_CreateCompatibleRenderTarget(hwnd_rt, &size, NULL, NULL,
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, &rt);
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+
+    ID2D1BitmapRenderTarget_GetDpi(rt, dpi2, dpi2 + 1);
+
+    pixel_size = ID2D1BitmapRenderTarget_GetPixelSize(rt);
+    ok(pixel_size.width == ceilf(size.width * dpi[0] / 96.0f)
+            && pixel_size.height == ceilf(size.height * dpi[1] / 96.0f), "Wrong pixel size %ux%u\n",
+            pixel_size.width, pixel_size.height);
+
+    dpi[0] *= (pixel_size.width / size.width) * (96.0f / dpi[0]);
+    dpi[1] *= (pixel_size.height / size.height) * (96.0f / dpi[1]);
+
+    ok(compare_float(dpi[0], dpi2[0], 1) && compare_float(dpi[1], dpi2[1], 1), "Got dpi mismatch.\n");
+
+    ID2D1HwndRenderTarget_Release(hwnd_rt);
+
+    /* Check if GetBitmap() returns same instance. */
+    hr = ID2D1BitmapRenderTarget_GetBitmap(rt, &bitmap);
+    ok(SUCCEEDED(hr), "GetBitmap() failed, hr %#x.\n", hr);
+    hr = ID2D1BitmapRenderTarget_GetBitmap(rt, &bitmap2);
+    ok(SUCCEEDED(hr), "GetBitmap() failed, hr %#x.\n", hr);
+    ok(bitmap == bitmap2, "Got different bitmap instances.\n");
+
+    /* Draw something, see if bitmap instance is retained. */
+    ID2D1BitmapRenderTarget_BeginDraw(rt);
+    set_color(&color, 1.0f, 1.0f, 0.0f, 1.0f);
+    ID2D1BitmapRenderTarget_Clear(rt, &color);
+    hr = ID2D1BitmapRenderTarget_EndDraw(rt, NULL, NULL);
+    ok(SUCCEEDED(hr), "EndDraw() failed, hr %#x.\n", hr);
+
+    ID2D1Bitmap_Release(bitmap2);
+    hr = ID2D1BitmapRenderTarget_GetBitmap(rt, &bitmap2);
+    ok(SUCCEEDED(hr), "GetBitmap() failed, hr %#x.\n", hr);
+    ok(bitmap == bitmap2, "Got different bitmap instances.\n");
+
+    ID2D1Bitmap_Release(bitmap);
+    ID2D1Bitmap_Release(bitmap2);
+
+    refcount = ID2D1BitmapRenderTarget_Release(rt);
+    ok(!refcount, "Target should be released, got %u.\n", refcount);
+
+    DestroyWindow(hwnd_rt_desc.hwnd);
+
+    /* Compatible target created from a DC target without associated HDC */
+    desc.type = D2D1_RENDER_TARGET_TYPE_DEFAULT;
+    desc.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+    desc.dpiX = 96.0f;
+    desc.dpiY = 96.0f;
+    desc.usage = D2D1_RENDER_TARGET_USAGE_NONE;
+    desc.minLevel = D2D1_FEATURE_LEVEL_DEFAULT;
+    hr = ID2D1Factory_CreateDCRenderTarget(factory, &desc, &dc_rt);
+    ok(SUCCEEDED(hr), "Failed to create target, hr %#x.\n", hr);
+
+    hr = ID2D1DCRenderTarget_CreateCompatibleRenderTarget(dc_rt, NULL, NULL, NULL,
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, &rt);
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+
+    pixel_size = ID2D1BitmapRenderTarget_GetPixelSize(rt);
+todo_wine
+    ok(pixel_size.width == 0 && pixel_size.height == 0, "Got wrong size\n");
+
+    hr = ID2D1BitmapRenderTarget_GetBitmap(rt, &bitmap);
+    ok(SUCCEEDED(hr), "GetBitmap() failed, hr %#x.\n", hr);
+    pixel_size = ID2D1Bitmap_GetPixelSize(bitmap);
+todo_wine
+    ok(pixel_size.width == 0 && pixel_size.height == 0, "Got wrong size\n");
+    ID2D1Bitmap_Release(bitmap);
+
+    ID2D1BitmapRenderTarget_Release(rt);
+    ID2D1DCRenderTarget_Release(dc_rt);
+
+    ID2D1Factory_Release(factory);
+}
+
+static void test_desktop_dpi(void)
+{
+    ID2D1Factory *factory;
+    float dpi_x, dpi_y;
+    HRESULT hr;
+
+    hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, NULL, (void **)&factory);
+    ok(SUCCEEDED(hr), "Failed to create factory, hr %#x.\n", hr);
+
+    dpi_x = dpi_y = 0.0f;
+    ID2D1Factory_GetDesktopDpi(factory, &dpi_x, &dpi_y);
+    ok(dpi_x > 0.0f && dpi_y > 0.0f, "Got wrong dpi %f x %f.\n", dpi_x, dpi_y);
+
     ID2D1Factory_Release(factory);
 }
 
@@ -2698,6 +3340,8 @@ START_TEST(d2d1)
     test_color_brush();
     test_bitmap_brush();
     test_path_geometry();
+    test_rectangle_geometry();
+    test_rounded_rectangle_geometry();
     test_bitmap_formats();
     test_alpha_mode();
     test_shared_bitmap();
@@ -2706,4 +3350,7 @@ START_TEST(d2d1)
     test_create_target();
     test_draw_text_layout();
     test_dc_target();
+    test_hwnd_target();
+    test_bitmap_target();
+    test_desktop_dpi();
 }

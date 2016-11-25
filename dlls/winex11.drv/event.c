@@ -405,7 +405,7 @@ static inline BOOL call_event_handler( Display *display, XEvent *event )
 /***********************************************************************
  *           process_events
  */
-static int process_events( Display *display, Bool (*filter)(Display*, XEvent*,XPointer), ULONG_PTR arg )
+static BOOL process_events( Display *display, Bool (*filter)(Display*, XEvent*,XPointer), ULONG_PTR arg )
 {
     XEvent event, prev_event;
     int count = 0;
@@ -468,7 +468,7 @@ static int process_events( Display *display, Bool (*filter)(Display*, XEvent*,XP
     if (prev_event.type) queued |= call_event_handler( display, &prev_event );
     free_event_data( &prev_event );
     XFlush( gdi_display );
-    if (count) TRACE( "%s %d events\n", queued ? "processed" : "ignored", count );
+    if (count) TRACE( "processed %d events, returning %d\n", count, queued );
     return queued;
 }
 

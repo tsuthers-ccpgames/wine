@@ -49,7 +49,7 @@ msgid "&Modify..."
 msgstr "変更(&M)..."
 
 #: appwiz.rc:69 appwiz.rc:45 cryptui.rc:346 msacm32.rc:40 winecfg.rc:200
-#: winecfg.rc:237 wordpad.rc:248
+#: winecfg.rc:237 wordpad.rc:256
 msgid "&Remove"
 msgstr "削除(&R)"
 
@@ -62,15 +62,15 @@ msgstr "サポート情報"
 #: cryptui.rc:263 cryptui.rc:275 cryptui.rc:365 dinput.rc:46 ieframe.rc:96
 #: localui.rc:44 localui.rc:57 mpr.rc:49 msacm32.rc:53 mshtml.rc:47
 #: mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62 oledlg.rc:94 serialui.rc:41
-#: setupapi.rc:59 shell32.rc:276 shell32.rc:300 shell32.rc:322 shell32.rc:340
+#: setupapi.rc:59 shell32.rc:276 shell32.rc:300 shell32.rc:322 shell32.rc:341
 #: shlwapi.rc:44 user32.rc:83 user32.rc:98 wininet.rc:51 wininet.rc:71
 #: winspool.rc:42 net.rc:47 notepad.rc:117 oleview.rc:162 oleview.rc:175
 #: progman.rc:106 progman.rc:124 progman.rc:142 progman.rc:158 progman.rc:180
 #: progman.rc:199 progman.rc:216 regedit.rc:247 regedit.rc:258 regedit.rc:271
 #: regedit.rc:287 regedit.rc:300 regedit.rc:313 taskmgr.rc:442 taskmgr.rc:517
-#: winecfg.rc:214 winecfg.rc:224 wineconsole.rc:135 winefile.rc:131
-#: winefile.rc:154 winefile.rc:184 winemine.rc:71 winemine.rc:81 winemine.rc:95
-#: wordpad.rc:207 wordpad.rc:218 wordpad.rc:236 wordpad.rc:249
+#: winecfg.rc:214 winecfg.rc:224 wineconsole.rc:135 winefile.rc:128
+#: winefile.rc:151 winefile.rc:181 winemine.rc:71 winemine.rc:81 winemine.rc:95
+#: wordpad.rc:215 wordpad.rc:226 wordpad.rc:244 wordpad.rc:257
 msgid "OK"
 msgstr "OK"
 
@@ -82,7 +82,7 @@ msgstr "以下の情報は %s に対する技術サポートを得るのに利�
 msgid "Publisher:"
 msgstr "発行元:"
 
-#: appwiz.rc:81 winefile.rc:169
+#: appwiz.rc:81 winefile.rc:166
 msgid "Version:"
 msgstr "バージョン:"
 
@@ -144,15 +144,15 @@ msgstr "インストール(&I)"
 #: cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81 localui.rc:45
 #: localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48 mshtml.rc:58
 #: msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42 setupapi.rc:42
-#: setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312 shell32.rc:341
+#: setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312 shell32.rc:342
 #: shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52 wininet.rc:72
 #: winspool.rc:43 notepad.rc:118 oleview.rc:163 oleview.rc:176 progman.rc:107
 #: progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181 progman.rc:200
 #: progman.rc:217 regedit.rc:248 regedit.rc:259 regedit.rc:272 regedit.rc:288
 #: regedit.rc:301 regedit.rc:314 taskmgr.rc:443 taskmgr.rc:518 wineboot.rc:34
-#: winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136 winefile.rc:132
-#: winefile.rc:155 winefile.rc:185 winemine.rc:96 wordpad.rc:208 wordpad.rc:219
-#: wordpad.rc:237 wordpad.rc:250
+#: winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136 winefile.rc:129
+#: winefile.rc:152 winefile.rc:182 winemine.rc:96 wordpad.rc:216 wordpad.rc:227
+#: wordpad.rc:245 wordpad.rc:258
 msgid "Cancel"
 msgstr "キャンセル"
 
@@ -306,7 +306,7 @@ msgstr "未圧縮"
 msgid "Canceling..."
 msgstr "キャンセル中..."
 
-#: comctl32.rc:52 winefile.rc:160
+#: comctl32.rc:52 winefile.rc:157
 msgid "Properties for %s"
 msgstr "%sのプロパティ"
 
@@ -353,7 +353,7 @@ msgstr "リセット(R&)"
 #: clock.rc:44 notepad.rc:60 notepad.rc:119 oleview.rc:72 progman.rc:55
 #: progman.rc:108 progman.rc:126 progman.rc:144 progman.rc:160 progman.rc:184
 #: progman.rc:202 progman.rc:219 regedit.rc:79 taskmgr.rc:87 winefile.rc:82
-#: winemine.rc:51 winhlp32.rc:57 wordpad.rc:94
+#: winemine.rc:51 winhlp32.rc:57 wordpad.rc:102
 msgid "&Help"
 msgstr "ヘルプ(&H)"
 
@@ -391,7 +391,7 @@ msgid "None"
 msgstr "なし"
 
 #: comctl32.rc:31 cryptui.rc:230 regedit.rc:237 taskmgr.rc:434 winedbg.rc:60
-#: winedbg.rc:75 wordpad.rc:172
+#: winedbg.rc:75 wordpad.rc:180
 msgid "Close"
 msgstr "閉じる"
 
@@ -424,7 +424,7 @@ msgstr "ファイルの種類(&T):"
 msgid "Dri&ves:"
 msgstr "ドライブ(&V):"
 
-#: comdlg32.rc:173 comdlg32.rc:195 winefile.rc:176
+#: comdlg32.rc:173 comdlg32.rc:195 winefile.rc:173
 msgid "&Read Only"
 msgstr "読み取り専用(&R)"
 
@@ -437,7 +437,7 @@ msgid "Save As"
 msgstr "名前を付けて保存"
 
 #: comdlg32.rc:201 comdlg32.rc:210 comdlg32.rc:356 comdlg32.rc:54 hhctrl.rc:49
-#: wordpad.rc:165
+#: wordpad.rc:173
 msgid "Print"
 msgstr "印刷"
 
@@ -676,7 +676,7 @@ msgstr "ファイルへ出力(&L)"
 msgid "&Properties"
 msgstr "プロパティ(&P)"
 
-#: comdlg32.rc:366 comdlg32.rc:404 msacm32.rc:34 winefile.rc:141
+#: comdlg32.rc:366 comdlg32.rc:404 msacm32.rc:34 winefile.rc:138
 msgid "&Name:"
 msgstr "名前(&N):"
 
@@ -884,67 +884,67 @@ msgstr "斜体"
 msgid "Bold Italic"
 msgstr "太字 斜体"
 
-#: comdlg32.rc:121 wordpad.rc:117
+#: comdlg32.rc:121 wordpad.rc:125
 msgid "Black"
 msgstr "黒"
 
-#: comdlg32.rc:122 wordpad.rc:118
+#: comdlg32.rc:122 wordpad.rc:126
 msgid "Maroon"
 msgstr "茶色"
 
-#: comdlg32.rc:123 wordpad.rc:119
+#: comdlg32.rc:123 wordpad.rc:127
 msgid "Green"
 msgstr "緑"
 
-#: comdlg32.rc:124 wordpad.rc:120
+#: comdlg32.rc:124 wordpad.rc:128
 msgid "Olive"
 msgstr "オリーブ"
 
-#: comdlg32.rc:125 wordpad.rc:121
+#: comdlg32.rc:125 wordpad.rc:129
 msgid "Navy"
 msgstr "紺"
 
-#: comdlg32.rc:126 wordpad.rc:122
+#: comdlg32.rc:126 wordpad.rc:130
 msgid "Purple"
 msgstr "紫"
 
-#: comdlg32.rc:127 wordpad.rc:123
+#: comdlg32.rc:127 wordpad.rc:131
 msgid "Teal"
 msgstr "青緑"
 
-#: comdlg32.rc:128 wordpad.rc:124
+#: comdlg32.rc:128 wordpad.rc:132
 msgid "Gray"
 msgstr "灰色"
 
-#: comdlg32.rc:129 wordpad.rc:125
+#: comdlg32.rc:129 wordpad.rc:133
 msgid "Silver"
 msgstr "銀色"
 
-#: comdlg32.rc:130 wordpad.rc:126
+#: comdlg32.rc:130 wordpad.rc:134
 msgid "Red"
 msgstr "赤"
 
-#: comdlg32.rc:131 wordpad.rc:127
+#: comdlg32.rc:131 wordpad.rc:135
 msgid "Lime"
 msgstr "黄緑"
 
-#: comdlg32.rc:132 wordpad.rc:128
+#: comdlg32.rc:132 wordpad.rc:136
 msgid "Yellow"
 msgstr "黄"
 
-#: comdlg32.rc:133 wordpad.rc:129
+#: comdlg32.rc:133 wordpad.rc:137
 msgid "Blue"
 msgstr "青"
 
-#: comdlg32.rc:134 wordpad.rc:130
+#: comdlg32.rc:134 wordpad.rc:138
 msgid "Fuchsia"
 msgstr "赤紫"
 
-#: comdlg32.rc:135 wordpad.rc:131
+#: comdlg32.rc:135 wordpad.rc:139
 msgid "Aqua"
 msgstr "水色"
 
-#: comdlg32.rc:136 wordpad.rc:132
+#: comdlg32.rc:136 wordpad.rc:140
 msgid "White"
 msgstr "白"
 
@@ -3136,13 +3136,13 @@ msgid "Proper&ties"
 msgstr "プロパティ(&T)"
 
 #: hhctrl.rc:87 shdoclc.rc:79 shdoclc.rc:93 shdoclc.rc:117 shdoclc.rc:159
-#: shdoclc.rc:183 user32.rc:60 wordpad.rc:104
+#: shdoclc.rc:183 user32.rc:60 wordpad.rc:112
 msgid "Cu&t"
 msgstr "切り取り(&T)"
 
 #: hhctrl.rc:88 shdoclc.rc:80 shdoclc.rc:94 shdoclc.rc:118 shdoclc.rc:133
 #: shdoclc.rc:160 shdoclc.rc:184 shell32.rc:102 user32.rc:61 wineconsole.rc:32
-#: winhlp32.rc:40 wordpad.rc:105
+#: winhlp32.rc:40 wordpad.rc:113
 msgid "&Copy"
 msgstr "コピー(&C)"
 
@@ -3207,7 +3207,7 @@ msgstr "ホーム"
 msgid "Sync"
 msgstr "同期"
 
-#: hhctrl.rc:50 wineconsole.rc:60 wordpad.rc:158
+#: hhctrl.rc:50 wineconsole.rc:60 wordpad.rc:166
 msgid "Options"
 msgstr "オプション"
 
@@ -7396,7 +7396,7 @@ msgid "Source:"
 msgstr "コピー元:"
 
 #: oledlg.rc:86 shdoclc.rc:50 shdoclc.rc:82 shdoclc.rc:95 shdoclc.rc:135
-#: shdoclc.rc:162 shdoclc.rc:186 user32.rc:62 wineconsole.rc:33 wordpad.rc:106
+#: shdoclc.rc:162 shdoclc.rc:186 user32.rc:62 wineconsole.rc:33 wordpad.rc:114
 msgid "&Paste"
 msgstr "貼り付け(&P)"
 
@@ -7933,7 +7933,7 @@ msgstr "等間隔に整列"
 msgid "Paste as Link"
 msgstr "ショートカットの貼り付け"
 
-#: shell32.rc:67 progman.rc:100 wordpad.rc:213
+#: shell32.rc:67 progman.rc:100 wordpad.rc:221
 msgid "New"
 msgstr "新規作成"
 
@@ -8027,7 +8027,13 @@ msgstr "%s 上で動作しています"
 msgid "Wine was brought to you by:"
 msgstr "Wine の提供:"
 
-#: shell32.rc:337
+#: shell32.rc:334
+#, fuzzy
+#| msgid "&Run..."
+msgid "Run"
+msgstr "実行(&R)..."
+
+#: shell32.rc:338
 msgid ""
 "Type the name of a program, folder, document, or Internet resource, and Wine "
 "will open it for you."
@@ -8035,12 +8041,12 @@ msgstr ""
 "実行するプログラムまたは、開くフォルダ名や ドキュメント名、 インターネット リ"
 "ソース名を入力してください。"
 
-#: shell32.rc:338
+#: shell32.rc:339
 msgid "&Open:"
 msgstr "名前(&O):"
 
-#: shell32.rc:342 progman.rc:182 progman.rc:201 progman.rc:218 winecfg.rc:243
-#: winefile.rc:133
+#: shell32.rc:343 progman.rc:182 progman.rc:201 progman.rc:218 winecfg.rc:243
+#: winefile.rc:130
 msgid "&Browse..."
 msgstr "参照(&B)..."
 
@@ -8056,7 +8062,7 @@ msgstr "型"
 msgid "Modified"
 msgstr "更新日時"
 
-#: shell32.rc:141 winefile.rc:175 winefile.rc:114
+#: shell32.rc:141 winefile.rc:172 winefile.rc:114
 msgid "Attributes"
 msgstr "属性"
 
@@ -10495,6 +10501,12 @@ msgstr "デフォルト ゲートウェイ"
 msgid "IPv6 address"
 msgstr "IPv6 アドレス"
 
+#: msinfo32.rc:28
+#, fuzzy
+#| msgid "System Configuration"
+msgid "System Information"
+msgstr "システム設定"
+
 #: net.rc:30
 msgid ""
 "The syntax of this command is:\n"
@@ -10846,42 +10858,42 @@ msgstr "上(&T):"
 msgid "Encoding:"
 msgstr "文字コード:"
 
-#: notepad.rc:132 wordpad.rc:281
+#: notepad.rc:132 wordpad.rc:289
 msgctxt "accelerator Select All"
 msgid "A"
 msgstr "A"
 
-#: notepad.rc:133 wordpad.rc:283
+#: notepad.rc:133 wordpad.rc:291
 msgctxt "accelerator Copy"
 msgid "C"
 msgstr "C"
 
-#: notepad.rc:134 regedit.rc:323 wordpad.rc:279
+#: notepad.rc:134 regedit.rc:323 wordpad.rc:287
 msgctxt "accelerator Find"
 msgid "F"
 msgstr "F"
 
-#: notepad.rc:135 wordpad.rc:280
+#: notepad.rc:135 wordpad.rc:288
 msgctxt "accelerator Replace"
 msgid "H"
 msgstr "H"
 
-#: notepad.rc:136 wordpad.rc:289
+#: notepad.rc:136 wordpad.rc:297
 msgctxt "accelerator New"
 msgid "N"
 msgstr "N"
 
-#: notepad.rc:137 wordpad.rc:290
+#: notepad.rc:137 wordpad.rc:298
 msgctxt "accelerator Open"
 msgid "O"
 msgstr "O"
 
-#: notepad.rc:138 regedit.rc:324 wordpad.rc:292
+#: notepad.rc:138 regedit.rc:324 wordpad.rc:300
 msgctxt "accelerator Print"
 msgid "P"
 msgstr "P"
 
-#: notepad.rc:139 wordpad.rc:291
+#: notepad.rc:139 wordpad.rc:299
 msgctxt "accelerator Save"
 msgid "S"
 msgstr "S"
@@ -10891,12 +10903,12 @@ msgctxt "accelerator Paste"
 msgid "V"
 msgstr "V"
 
-#: notepad.rc:141 wordpad.rc:282
+#: notepad.rc:141 wordpad.rc:290
 msgctxt "accelerator Cut"
 msgid "X"
 msgstr "X"
 
-#: notepad.rc:142 wordpad.rc:284
+#: notepad.rc:142 wordpad.rc:292
 msgctxt "accelerator Undo"
 msgid "Z"
 msgstr "Z"
@@ -11042,11 +11054,11 @@ msgstr "上級モード(&E)"
 msgid "&Hidden component categories"
 msgstr "隠されたコンポーネントのカテゴリ(&H)"
 
-#: oleview.rc:67 oleview.rc:89 winefile.rc:65 wordpad.rc:71 wordpad.rc:264
+#: oleview.rc:67 oleview.rc:89 winefile.rc:65 wordpad.rc:71 wordpad.rc:272
 msgid "&Toolbar"
 msgstr "ツール バー(&T)"
 
-#: oleview.rc:68 oleview.rc:90 winefile.rc:67 wordpad.rc:74 wordpad.rc:267
+#: oleview.rc:68 oleview.rc:90 winefile.rc:67 wordpad.rc:74 wordpad.rc:275
 msgid "&Status Bar"
 msgstr "ステータス バー(&S)"
 
@@ -14163,79 +14175,79 @@ msgstr "左右に並べて表示(&V)\tCtrl+F4"
 msgid "&About Wine File Manager"
 msgstr "バージョン情報(&A)"
 
-#: winefile.rc:125
+#: winefile.rc:122
 msgid "Select destination"
 msgstr "移動先を選択"
 
-#: winefile.rc:138
+#: winefile.rc:135
 msgid "By File Type"
 msgstr "ファイル タイプ"
 
-#: winefile.rc:143
+#: winefile.rc:140
 msgid "File type"
 msgstr "ファイルの種類"
 
-#: winefile.rc:144
+#: winefile.rc:141
 msgid "&Directories"
 msgstr "ディレクトリ(&D)"
 
-#: winefile.rc:146
+#: winefile.rc:143
 msgid "&Programs"
 msgstr "プログラム(&P)"
 
-#: winefile.rc:148
+#: winefile.rc:145
 msgid "Docu&ments"
 msgstr "文書(&M)"
 
-#: winefile.rc:150
+#: winefile.rc:147
 msgid "&Other files"
 msgstr "その他のファイル(&O)"
 
-#: winefile.rc:152
+#: winefile.rc:149
 msgid "Show Hidden/&System Files"
 msgstr "隠し/システム ファイルの表示(&S)"
 
-#: winefile.rc:163
+#: winefile.rc:160
 msgid "&File Name:"
 msgstr "ファイル名(&F):"
 
-#: winefile.rc:165
+#: winefile.rc:162
 msgid "Full &Path:"
 msgstr "フル パス(&P):"
 
-#: winefile.rc:167
+#: winefile.rc:164
 msgid "Last Change:"
 msgstr "最終変更日時:"
 
-#: winefile.rc:171
+#: winefile.rc:168
 msgid "Cop&yright:"
 msgstr "著作権(&Y):"
 
-#: winefile.rc:173
+#: winefile.rc:170
 msgid "Size:"
 msgstr "サイズ:"
 
-#: winefile.rc:177
+#: winefile.rc:174
 msgid "H&idden"
 msgstr "隠し(&I)"
 
-#: winefile.rc:178
+#: winefile.rc:175
 msgid "&Archive"
 msgstr "アーカイブ(&A)"
 
-#: winefile.rc:179
+#: winefile.rc:176
 msgid "&System"
 msgstr "システム(&S)"
 
-#: winefile.rc:180
+#: winefile.rc:177
 msgid "&Compressed"
 msgstr "圧縮済み(&C)"
 
-#: winefile.rc:181
+#: winefile.rc:178
 msgid "Version information"
 msgstr "バージョン情報"
 
-#: winefile.rc:197
+#: winefile.rc:194
 msgctxt "accelerator Fullscreen"
 msgid "S"
 msgstr "S"
@@ -14287,21 +14299,6 @@ msgstr "索引・Inode"
 #: winefile.rc:117
 msgid "%1 of %2 free"
 msgstr "全 %2 中、%1 の空き"
-
-#: winefile.rc:118
-msgctxt "unit kilobyte"
-msgid "kB"
-msgstr "kB"
-
-#: winefile.rc:119
-msgctxt "unit megabyte"
-msgid "MB"
-msgstr "MB"
-
-#: winefile.rc:120
-msgctxt "unit gigabyte"
-msgid "GB"
-msgstr "GB"
 
 #: winemine.rc:37
 msgid "&Game"
@@ -14499,6 +14496,12 @@ msgstr "別名が見つかりません。\n"
 msgid "Error: Invalid query\n"
 msgstr "エラー: クエリが無効です\n"
 
+#: wmic.rc:31
+#, fuzzy
+#| msgid "reg: Invalid syntax. "
+msgid "Error: Invalid syntax for PATH\n"
+msgstr "reg: 無効な構文です。"
+
 #: wordpad.rc:31
 msgid "&New...\tCtrl+N"
 msgstr "新規作成(&N)...\tCtrl+N"
@@ -14551,11 +14554,11 @@ msgstr "段落の書式(&H)"
 msgid "&Get text"
 msgstr "テキストの取得(&G)"
 
-#: wordpad.rc:72 wordpad.rc:265
+#: wordpad.rc:72 wordpad.rc:273
 msgid "&Format Bar"
 msgstr "書式バー(&F)"
 
-#: wordpad.rc:73 wordpad.rc:266
+#: wordpad.rc:73 wordpad.rc:274
 msgid "&Ruler"
 msgstr "ルーラー(&R)"
 
@@ -14571,257 +14574,285 @@ msgstr "日付と時刻(&D)..."
 msgid "F&ormat"
 msgstr "書式(&O)"
 
-#: wordpad.rc:85 wordpad.rc:108
+#: wordpad.rc:85
+#, fuzzy
+#| msgid "&List"
+msgid "&Lists"
+msgstr "一覧(&L)"
+
+#: wordpad.rc:87 wordpad.rc:116
 msgid "&Bullet points"
 msgstr "箇条書き(&B)"
 
-#: wordpad.rc:86 wordpad.rc:109
+#: wordpad.rc:88
+#, fuzzy
+#| msgid "CRL Number"
+msgid "Numbers"
+msgstr "CRL ナンバー"
+
+#: wordpad.rc:89
+msgid "Letters - lower case"
+msgstr ""
+
+#: wordpad.rc:90
+msgid "Letters - upper case"
+msgstr ""
+
+#: wordpad.rc:91
+msgid "Roman numerals - lower case"
+msgstr ""
+
+#: wordpad.rc:92
+msgid "Roman numerals - upper case"
+msgstr ""
+
+#: wordpad.rc:94 wordpad.rc:117
 msgid "&Paragraph..."
 msgstr "段落(&P)..."
 
-#: wordpad.rc:87
+#: wordpad.rc:95
 msgid "&Tabs..."
 msgstr "タブ(&T)..."
 
-#: wordpad.rc:88
+#: wordpad.rc:96
 msgid "Backgroun&d"
 msgstr "背景(&D)"
 
-#: wordpad.rc:90
+#: wordpad.rc:98
 msgid "&System\tCtrl+1"
 msgstr "システム(&S)\tCtrl+1"
 
-#: wordpad.rc:91
+#: wordpad.rc:99
 msgid "&Pale yellow\tCtrl+2"
 msgstr "薄黄色(&P)\tCtrl+2"
 
-#: wordpad.rc:96
+#: wordpad.rc:104
 msgid "&About Wine Wordpad"
 msgstr "Wine Wordpad について(&A)"
 
-#: wordpad.rc:133
+#: wordpad.rc:141
 msgid "Automatic"
 msgstr "自動"
 
-#: wordpad.rc:202
+#: wordpad.rc:210
 msgid "Date and time"
 msgstr "日付と時刻"
 
-#: wordpad.rc:205
+#: wordpad.rc:213
 msgid "Available formats"
 msgstr "利用できる形式"
 
-#: wordpad.rc:216
+#: wordpad.rc:224
 msgid "New document type"
 msgstr "新しい文書形式"
 
-#: wordpad.rc:224
+#: wordpad.rc:232
 msgid "Paragraph format"
 msgstr "段落の設定"
 
-#: wordpad.rc:227
+#: wordpad.rc:235
 msgid "Indentation"
 msgstr "インデント"
 
-#: wordpad.rc:228 wordpad.rc:151
+#: wordpad.rc:236 wordpad.rc:159
 msgid "Left"
 msgstr "左"
 
-#: wordpad.rc:230 wordpad.rc:152
+#: wordpad.rc:238 wordpad.rc:160
 msgid "Right"
 msgstr "右"
 
-#: wordpad.rc:232
+#: wordpad.rc:240
 msgid "First line"
 msgstr "最初の行"
 
-#: wordpad.rc:234
+#: wordpad.rc:242
 msgid "Alignment"
 msgstr "整列"
 
-#: wordpad.rc:242
+#: wordpad.rc:250
 msgid "Tabs"
 msgstr "タブの設定"
 
-#: wordpad.rc:245
+#: wordpad.rc:253
 msgid "Tab stops"
 msgstr "タブの停止位置"
 
-#: wordpad.rc:247
+#: wordpad.rc:255
 msgid "&Add"
 msgstr "追加(&A)"
 
-#: wordpad.rc:251
+#: wordpad.rc:259
 msgid "Remove al&l"
 msgstr "すべて削除(&L)"
 
-#: wordpad.rc:259
+#: wordpad.rc:267
 msgid "Line wrapping"
 msgstr "行の折り返し"
 
-#: wordpad.rc:260
+#: wordpad.rc:268
 msgid "&No line wrapping"
 msgstr "折り返ししない(&N)"
 
-#: wordpad.rc:261
+#: wordpad.rc:269
 msgid "Wrap text by the &window border"
 msgstr "ウィンドウの境界で折り返す(&W)"
 
-#: wordpad.rc:262
+#: wordpad.rc:270
 msgid "Wrap text by the &margin"
 msgstr "マージンで折り返す(&M)"
 
-#: wordpad.rc:263
+#: wordpad.rc:271
 msgid "Toolbars"
 msgstr "ツール バー"
 
-#: wordpad.rc:276
+#: wordpad.rc:284
 msgctxt "accelerator Align Left"
 msgid "L"
 msgstr "L"
 
-#: wordpad.rc:277
+#: wordpad.rc:285
 msgctxt "accelerator Align Center"
 msgid "E"
 msgstr "E"
 
-#: wordpad.rc:278
+#: wordpad.rc:286
 msgctxt "accelerator Align Right"
 msgid "R"
 msgstr "R"
 
-#: wordpad.rc:285
+#: wordpad.rc:293
 msgctxt "accelerator Redo"
 msgid "Y"
 msgstr "Y"
 
-#: wordpad.rc:286
+#: wordpad.rc:294
 msgctxt "accelerator Bold"
 msgid "B"
 msgstr "B"
 
-#: wordpad.rc:287
+#: wordpad.rc:295
 msgctxt "accelerator Italic"
 msgid "I"
 msgstr "I"
 
-#: wordpad.rc:288
+#: wordpad.rc:296
 msgctxt "accelerator Underline"
 msgid "U"
 msgstr "U"
 
-#: wordpad.rc:139
+#: wordpad.rc:147
 msgid "All documents (*.*)"
 msgstr "すべてのファイル (*.*)"
 
-#: wordpad.rc:140
+#: wordpad.rc:148
 msgid "Text documents (*.txt)"
 msgstr "テキスト文書 (*.txt)"
 
-#: wordpad.rc:141
+#: wordpad.rc:149
 msgid "Unicode text document (*.txt)"
 msgstr "Unicode テキスト文書 (*.txt)"
 
-#: wordpad.rc:142
+#: wordpad.rc:150
 msgid "Rich text format (*.rtf)"
 msgstr "リッチ テキスト形式 (*.rtf)"
 
-#: wordpad.rc:143
+#: wordpad.rc:151
 msgid "Rich text document"
 msgstr "リッチ テキスト文書"
 
-#: wordpad.rc:144
+#: wordpad.rc:152
 msgid "Text document"
 msgstr "テキスト文書"
 
-#: wordpad.rc:145
+#: wordpad.rc:153
 msgid "Unicode text document"
 msgstr "Unicode テキスト文書"
 
-#: wordpad.rc:146
+#: wordpad.rc:154
 msgid "Printer files (*.prn)"
 msgstr "プリンタ ファイル (*.prn)"
 
-#: wordpad.rc:153
+#: wordpad.rc:161
 msgid "Center"
 msgstr "中央"
 
-#: wordpad.rc:159
+#: wordpad.rc:167
 msgid "Text"
 msgstr "テキスト"
 
-#: wordpad.rc:160
+#: wordpad.rc:168
 msgid "Rich text"
 msgstr "リッチ テキスト"
 
-#: wordpad.rc:166
+#: wordpad.rc:174
 msgid "Next page"
 msgstr "次のページ"
 
-#: wordpad.rc:167
+#: wordpad.rc:175
 msgid "Previous page"
 msgstr "前のページ"
 
-#: wordpad.rc:168
+#: wordpad.rc:176
 msgid "Two pages"
 msgstr "2ページ"
 
-#: wordpad.rc:169
+#: wordpad.rc:177
 msgid "One page"
 msgstr "1ページ"
 
-#: wordpad.rc:170
+#: wordpad.rc:178
 msgid "Zoom in"
 msgstr "拡大"
 
-#: wordpad.rc:171
+#: wordpad.rc:179
 msgid "Zoom out"
 msgstr "縮小"
 
-#: wordpad.rc:173
+#: wordpad.rc:181
 msgid "Page"
 msgstr "ページ"
 
-#: wordpad.rc:174
+#: wordpad.rc:182
 msgid "Pages"
 msgstr "ページ"
 
-#: wordpad.rc:175
+#: wordpad.rc:183
 msgctxt "unit: centimeter"
 msgid "cm"
 msgstr "cm"
 
-#: wordpad.rc:176
+#: wordpad.rc:184
 msgctxt "unit: inch"
 msgid "in"
 msgstr "in"
 
-#: wordpad.rc:177
+#: wordpad.rc:185
 msgid "inch"
 msgstr "インチ"
 
-#: wordpad.rc:178
+#: wordpad.rc:186
 msgctxt "unit: point"
 msgid "pt"
 msgstr "pt"
 
-#: wordpad.rc:183
+#: wordpad.rc:191
 msgid "Document"
 msgstr "文書"
 
-#: wordpad.rc:184
+#: wordpad.rc:192
 msgid "Save changes to '%s'?"
 msgstr "'%s'への変更を保存しますか?"
 
-#: wordpad.rc:185
+#: wordpad.rc:193
 msgid "Finished searching the document."
 msgstr "文書の検索を完了。"
 
-#: wordpad.rc:186
+#: wordpad.rc:194
 msgid "Failed to load the RichEdit library."
 msgstr "RichEdit ライブラリの読み込みに失敗。"
 
-#: wordpad.rc:187
+#: wordpad.rc:195
 msgid ""
 "You have chosen to save in plain text format, which will cause all "
 "formatting to be lost. Are you sure that you wish to do this?"
@@ -14829,35 +14860,35 @@ msgstr ""
 "プレーン テキスト形式で保存すると、すべての書式が失われます。それでもよいです"
 "か?"
 
-#: wordpad.rc:190
+#: wordpad.rc:198
 msgid "Invalid number format."
 msgstr "数の書式が不正です。"
 
-#: wordpad.rc:191
+#: wordpad.rc:199
 msgid "OLE storage documents are not supported."
 msgstr "OLE ストレージ文書はサポートされていません。"
 
-#: wordpad.rc:192
+#: wordpad.rc:200
 msgid "Could not save the file."
 msgstr "ファイルを保存できません。"
 
-#: wordpad.rc:193
+#: wordpad.rc:201
 msgid "You do not have access to save the file."
 msgstr "ファイルに保存する権限がありません。"
 
-#: wordpad.rc:194
+#: wordpad.rc:202
 msgid "Could not open the file."
 msgstr "ファイルを開けません。"
 
-#: wordpad.rc:195
+#: wordpad.rc:203
 msgid "You do not have access to open the file."
 msgstr "ファイルを開く権限がありません。"
 
-#: wordpad.rc:196
+#: wordpad.rc:204
 msgid "Printing not implemented."
 msgstr "印刷は実装されていません。"
 
-#: wordpad.rc:197
+#: wordpad.rc:205
 msgid "Cannot add more than 32 tab stops."
 msgstr "32 を超えるタブ位置は追加できません。"
 

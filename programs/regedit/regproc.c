@@ -584,15 +584,6 @@ static void processSetValue(WCHAR* line, BOOL is_unicode)
  */
 static void processRegEntry(WCHAR* stdInput, BOOL isUnicode)
 {
-    /*
-     * We encountered the end of the file, make sure we
-     * close the opened key and exit
-     */
-    if (stdInput == NULL) {
-        closeKey();
-        return;
-    }
-
     if      ( stdInput[0] == '[')      /* We are reading a new key */
     {
         WCHAR* keyEnd;
@@ -614,12 +605,6 @@ static void processRegEntry(WCHAR* stdInput, BOOL isUnicode)
                 ( stdInput[0] == '\"'))) /* reading a new value=data pair */
     {
         processSetValue(stdInput, isUnicode);
-    } else
-    {
-        /* Since we are assuming that the file format is valid we must be
-         * reading a blank line which indicates the end of this key processing
-         */
-        closeKey();
     }
 }
 
@@ -727,7 +712,6 @@ static void processRegLinesA(FILE *in, char* first_chars)
 
                 MoveMemory(s_eol - 1, next_line, chars_in_buf - (next_line - s) + 1);
                 chars_in_buf -= next_line - s_eol + 1;
-                s_eol = 0;
                 continue;
             }
 
@@ -740,11 +724,9 @@ static void processRegLinesA(FILE *in, char* first_chars)
             processRegEntry(lineW, FALSE);
             HeapFree(GetProcessHeap(), 0, lineW);
             line = s_eol + 1;
-            s_eol = 0;
-            continue; /* That is the full virtual line */
         }
     }
-    processRegEntry(NULL, FALSE);
+    closeKey();
 
     HeapFree(GetProcessHeap(), 0, buf);
 }
@@ -847,7 +829,6 @@ static void processRegLinesW(FILE *in)
 
                 MoveMemory(s_eol - 1, NextLine, (CharsInBuf - (NextLine - s) + 1)*sizeof(WCHAR));
                 CharsInBuf -= NextLine - s_eol + 1;
-                s_eol = 0;
                 continue;
             }
 
@@ -858,12 +839,10 @@ static void processRegLinesW(FILE *in)
 
             processRegEntry(line, TRUE);
             line = s_eol + 1;
-            s_eol = 0;
-            continue; /* That is the full virtual line */
         }
     }
 
-    processRegEntry(NULL, TRUE);
+    closeKey();
 
     HeapFree(GetProcessHeap(), 0, buf);
 }

@@ -77,6 +77,7 @@ struct icon
     UINT           info_flags;      /* flags for info balloon */
     UINT           info_timeout;    /* timeout for info balloon */
     HICON          info_icon;       /* info balloon icon */
+    UINT           version;         /* notify icon api version */
 };
 
 static struct list icon_list = LIST_INIT( icon_list );
@@ -586,6 +587,13 @@ static BOOL handle_incoming(HWND hwndSource, COPYDATASTRUCT *cds)
     case NIM_MODIFY:
         if (icon) ret = modify_icon( icon, &nid );
         break;
+    case NIM_SETVERSION:
+        if (icon)
+        {
+            icon->version = nid.u.uVersion;
+            ret = TRUE;
+        }
+        break;
     default:
         WINE_FIXME("unhandled tray message: %ld\n", cds->dwData);
         break;
@@ -711,6 +719,29 @@ static void do_hide_systray(void)
                   0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE );
 }
 
+static BOOL notify_owner( struct icon *icon, UINT msg, POINT pt )
+{
+    WPARAM wp = icon->id;
+    LPARAM lp = msg;
+
+    if (icon->version >= NOTIFY_VERSION_4)
+    {
+        ClientToScreen( tray_window, &pt );
+        wp = MAKEWPARAM( pt.x, pt.y );
+        lp = MAKELPARAM( msg, icon->id );
+    }
+
+    TRACE( "relaying 0x%x\n", msg );
+    if (!PostMessageW( icon->owner, icon->callback_message, wp, lp ) &&
+        (GetLastError() == ERROR_INVALID_WINDOW_HANDLE))
+    {
+        WARN( "application window was destroyed, removing icon %u\n", icon->id );
+        delete_icon( icon );
+        return FALSE;
+    }
+    return TRUE;
+}
+
 static void do_show_systray(void)
 {
     SIZE size;
@@ -791,11 +822,9 @@ static LRESULT WINAPI tray_wndproc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
     case WM_MBUTTONDBLCLK:
         {
             MSG message;
-            struct icon *icon = icon_from_point( (short)LOWORD(lparam), (short)HIWORD(lparam) );
+            POINT pt = { (short)LOWORD(lparam), (short)HIWORD(lparam) };
+            struct icon *icon = icon_from_point( pt.x, pt.y );
             if (!icon) break;
-
-            /* notify the owner hwnd of the message */
-            WINE_TRACE("relaying 0x%x\n", msg);
 
             message.hwnd = hwnd;
             message.message = msg;
@@ -803,12 +832,19 @@ static LRESULT WINAPI tray_wndproc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM l
             message.lParam = lparam;
             SendMessageW( icon->tooltip, TTM_RELAYEVENT, 0, (LPARAM)&message );
 
-            if (!PostMessageW( icon->owner, icon->callback_message, (WPARAM) icon->id, (LPARAM) msg ) &&
-                GetLastError() == ERROR_INVALID_WINDOW_HANDLE)
+            if (!notify_owner( icon, msg, pt )) break;
+
+            if (icon->version > 0)
             {
-                WINE_WARN("application window was destroyed without removing "
-                          "notification icon, removing automatically\n");
-                delete_icon( icon );
+                switch (msg)
+                {
+                case WM_RBUTTONUP:
+                    notify_owner( icon, WM_CONTEXTMENU, pt );
+                    break;
+                case WM_LBUTTONUP:
+                    notify_owner( icon, NIN_SELECT, pt );
+                    break;
+                }
             }
             break;
         }

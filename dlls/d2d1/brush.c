@@ -373,7 +373,10 @@ static ULONG STDMETHODCALLTYPE d2d_linear_gradient_brush_Release(ID2D1LinearGrad
     TRACE("%p decreasing refcount to %u.\n", iface, refcount);
 
     if (!refcount)
+    {
+        ID2D1GradientStopCollection_Release(brush->u.linear.gradient);
         d2d_brush_destroy(brush);
+    }
 
     return refcount;
 }
@@ -423,41 +426,53 @@ static void STDMETHODCALLTYPE d2d_linear_gradient_brush_GetTransform(ID2D1Linear
 static void STDMETHODCALLTYPE d2d_linear_gradient_brush_SetStartPoint(ID2D1LinearGradientBrush *iface,
         D2D1_POINT_2F start_point)
 {
-    FIXME("iface %p, start_point {%.8e, %.8e} stub!\n", iface, start_point.x, start_point.y);
+    struct d2d_brush *brush = impl_from_ID2D1LinearGradientBrush(iface);
+
+    TRACE("iface %p, start_point {%.8e, %.8e}.\n", iface, start_point.x, start_point.y);
+
+    brush->u.linear.desc.startPoint = start_point;
 }
 
 static void STDMETHODCALLTYPE d2d_linear_gradient_brush_SetEndPoint(ID2D1LinearGradientBrush *iface,
         D2D1_POINT_2F end_point)
 {
-    FIXME("iface %p, end_point {%.8e, %.8e} stub!\n", iface, end_point.x, end_point.y);
+    struct d2d_brush *brush = impl_from_ID2D1LinearGradientBrush(iface);
+
+    TRACE("iface %p, end_point {%.8e, %.8e}.\n", iface, end_point.x, end_point.y);
+
+    brush->u.linear.desc.endPoint = end_point;
 }
 
 static D2D1_POINT_2F * STDMETHODCALLTYPE d2d_linear_gradient_brush_GetStartPoint(ID2D1LinearGradientBrush *iface,
         D2D1_POINT_2F *point)
 {
-    FIXME("iface %p, point %p stub!\n", iface, point);
+    struct d2d_brush *brush = impl_from_ID2D1LinearGradientBrush(iface);
 
-    point->x = 0.0f;
-    point->y = 0.0f;
+    TRACE("iface %p, point %p.\n", iface, point);
+
+    *point = brush->u.linear.desc.startPoint;
     return point;
 }
 
 static D2D1_POINT_2F * STDMETHODCALLTYPE d2d_linear_gradient_brush_GetEndPoint(ID2D1LinearGradientBrush *iface,
         D2D1_POINT_2F *point)
 {
-    FIXME("iface %p, point %p stub!\n", iface, point);
+    struct d2d_brush *brush = impl_from_ID2D1LinearGradientBrush(iface);
 
-    point->x = 0.0f;
-    point->y = 0.0f;
+    TRACE("iface %p, point %p.\n", iface, point);
+
+    *point = brush->u.linear.desc.endPoint;
     return point;
 }
 
 static void STDMETHODCALLTYPE d2d_linear_gradient_brush_GetGradientStopCollection(ID2D1LinearGradientBrush *iface,
         ID2D1GradientStopCollection **gradient)
 {
-    FIXME("iface %p, gradient %p stub!\n", iface, gradient);
+    struct d2d_brush *brush = impl_from_ID2D1LinearGradientBrush(iface);
 
-    *gradient = NULL;
+    TRACE("iface %p, gradient %p.\n", iface, gradient);
+
+    ID2D1GradientStopCollection_AddRef(*gradient = brush->u.linear.gradient);
 }
 
 static const struct ID2D1LinearGradientBrushVtbl d2d_linear_gradient_brush_vtbl =
@@ -483,10 +498,10 @@ HRESULT d2d_linear_gradient_brush_create(ID2D1Factory *factory, const D2D1_LINEA
     if (!(*brush = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(**brush))))
         return E_OUTOFMEMORY;
 
-    FIXME("Ignoring brush properties.\n");
-
     d2d_brush_init(*brush, factory, D2D_BRUSH_TYPE_LINEAR, brush_desc,
             (ID2D1BrushVtbl *)&d2d_linear_gradient_brush_vtbl);
+    (*brush)->u.linear.desc = *gradient_brush_desc;
+    ID2D1GradientStopCollection_AddRef((*brush)->u.linear.gradient = gradient);
 
     TRACE("Created brush %p.\n", *brush);
     return S_OK;
@@ -789,11 +804,11 @@ static BOOL d2d_brush_fill_cb(struct d2d_brush *brush, struct d2d_d3d_render_tar
 
         /* Scale for dpi. */
         w = render_target->drawing_state.transform;
-        dpi_scale = render_target->dpi_x / 96.0f;
+        dpi_scale = render_target->desc.dpiX / 96.0f;
         w._11 *= dpi_scale;
         w._21 *= dpi_scale;
         w._31 *= dpi_scale;
-        dpi_scale = render_target->dpi_y / 96.0f;
+        dpi_scale = render_target->desc.dpiY / 96.0f;
         w._12 *= dpi_scale;
         w._22 *= dpi_scale;
         w._32 *= dpi_scale;
@@ -866,7 +881,7 @@ HRESULT d2d_brush_get_ps_cb(struct d2d_brush *brush, struct d2d_brush *opacity_b
     {
         if (opacity_brush->type >= sizeof(brush_sizes) / sizeof(*brush_sizes))
         {
-            ERR("Unhandled opacity brush type %#x.\n", brush->type);
+            ERR("Unhandled opacity brush type %#x.\n", opacity_brush->type);
             return E_NOTIMPL;
         }
         buffer_desc.ByteWidth += brush_sizes[opacity_brush->type];

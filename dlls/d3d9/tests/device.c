@@ -11022,6 +11022,26 @@ static void test_check_device_format(void)
         ok(FAILED(hr), "Got unexpected hr %#x.\n", hr);
     }
 
+    hr = IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            0, D3DRTYPE_VERTEXBUFFER, D3DFMT_VERTEXDATA);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            0, D3DRTYPE_INDEXBUFFER, D3DFMT_VERTEXDATA);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            0, D3DRTYPE_INDEXBUFFER, D3DFMT_INDEX16);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+
+    hr = IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            D3DUSAGE_SOFTWAREPROCESSING, D3DRTYPE_VERTEXBUFFER, D3DFMT_VERTEXDATA);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            D3DUSAGE_SOFTWAREPROCESSING, D3DRTYPE_INDEXBUFFER, D3DFMT_VERTEXDATA);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3D9_CheckDeviceFormat(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, D3DFMT_X8R8G8B8,
+            D3DUSAGE_SOFTWAREPROCESSING, D3DRTYPE_INDEXBUFFER, D3DFMT_INDEX16);
+    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+
     IDirect3D9_Release(d3d);
 }
 
@@ -11046,9 +11066,11 @@ static void test_miptree_layout(void)
     }
     formats[] =
     {
-        {D3DFMT_A8R8G8B8, "D3DFMT_A8R8G8B8"},
-        {D3DFMT_A8,       "D3DFMT_A8"},
-        {D3DFMT_L8,       "D3DFMT_L8"},
+        {D3DFMT_A8R8G8B8,             "D3DFMT_A8R8G8B8"},
+        {D3DFMT_A8,                   "D3DFMT_A8"},
+        {D3DFMT_L8,                   "D3DFMT_L8"},
+        {MAKEFOURCC('A','T','I','1'), "D3DFMT_ATI1"},
+        {MAKEFOURCC('A','T','I','2'), "D3DFMT_ATI2"},
     };
     static const struct
     {

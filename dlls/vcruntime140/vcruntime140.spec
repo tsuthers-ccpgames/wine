@@ -32,16 +32,16 @@
 @ stub __TypeMatch
 @ stub __current_exception
 @ stub __current_exception_context
-@ stub __intrinsic_setjmp
+@ cdecl -arch=i386,x86_64,arm -norelay __intrinsic_setjmp(ptr) ucrtbase.__intrinsic_setjmp
 @ stub __intrinsic_setjmpex
 @ stub __processing_throw
 @ stub __report_gsfailure
 @ cdecl __std_exception_copy(ptr ptr) ucrtbase.__std_exception_copy
 @ cdecl __std_exception_destroy(ptr) ucrtbase.__std_exception_destroy
-@ stub __std_terminate
+@ cdecl __std_terminate() ucrtbase.terminate
 @ cdecl __std_type_info_compare(ptr ptr) ucrtbase.__std_type_info_compare
 @ cdecl __std_type_info_destroy_list(ptr) ucrtbase.__std_type_info_destroy_list
-@ stub __std_type_info_hash
+@ cdecl __std_type_info_hash(ptr) ucrtbase.__std_type_info_hash
 @ cdecl __std_type_info_name(ptr ptr) ucrtbase.__std_type_info_name
 @ cdecl __telemetry_main_invoke_trigger(ptr)
 @ cdecl __telemetry_main_return_trigger(ptr)

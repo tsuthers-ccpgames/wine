@@ -1590,14 +1590,14 @@
 @ cdecl -arch=win64 ?_Makewloc@_Locimp@locale@std@@CAXAEBV_Locinfo@3@HPEAV123@PEBV23@@Z(ptr long ptr ptr) msvcp120.?_Makewloc@_Locimp@locale@std@@CAXAEBV_Locinfo@3@HPEAV123@PEBV23@@Z
 @ cdecl -arch=win32 ?_Makexloc@_Locimp@locale@std@@CAXABV_Locinfo@3@HPAV123@PBV23@@Z(ptr long ptr ptr) msvcp120.?_Makexloc@_Locimp@locale@std@@CAXABV_Locinfo@3@HPAV123@PBV23@@Z
 @ cdecl -arch=win64 ?_Makexloc@_Locimp@locale@std@@CAXAEBV_Locinfo@3@HPEAV123@PEBV23@@Z(ptr long ptr ptr) msvcp120.?_Makexloc@_Locimp@locale@std@@CAXAEBV_Locinfo@3@HPEAV123@PEBV23@@Z
-@ stub -arch=win32 ?_Mtx_delete@threads@stdext@@YAXPAX@Z
-@ stub -arch=win64 ?_Mtx_delete@threads@stdext@@YAXPEAX@Z
-@ stub -arch=win32 ?_Mtx_lock@threads@stdext@@YAXPAX@Z
-@ stub -arch=win64 ?_Mtx_lock@threads@stdext@@YAXPEAX@Z
-@ stub -arch=win32 ?_Mtx_new@threads@stdext@@YAXAAPAX@Z
-@ stub -arch=win64 ?_Mtx_new@threads@stdext@@YAXAEAPEAX@Z
-@ stub -arch=win32 ?_Mtx_unlock@threads@stdext@@YAXPAX@Z
-@ stub -arch=win64 ?_Mtx_unlock@threads@stdext@@YAXPEAX@Z
+@ cdecl -arch=win32 ?_Mtx_delete@threads@stdext@@YAXPAX@Z(ptr) msvcp120.?_Mtx_delete@threads@stdext@@YAXPAX@Z
+@ cdecl -arch=win64 ?_Mtx_delete@threads@stdext@@YAXPEAX@Z(ptr) msvcp120.?_Mtx_delete@threads@stdext@@YAXPEAX@Z
+@ cdecl -arch=win32 ?_Mtx_lock@threads@stdext@@YAXPAX@Z(ptr) msvcp120.?_Mtx_lock@threads@stdext@@YAXPAX@Z
+@ cdecl -arch=win64 ?_Mtx_lock@threads@stdext@@YAXPEAX@Z(ptr) msvcp120.?_Mtx_lock@threads@stdext@@YAXPEAX@Z
+@ cdecl -arch=win32 ?_Mtx_new@threads@stdext@@YAXAAPAX@Z(ptr) msvcp120.?_Mtx_new@threads@stdext@@YAXAAPAX@Z
+@ cdecl -arch=win64 ?_Mtx_new@threads@stdext@@YAXAEAPEAX@Z(ptr) msvcp120.?_Mtx_new@threads@stdext@@YAXAEAPEAX@Z
+@ cdecl -arch=win32 ?_Mtx_unlock@threads@stdext@@YAXPAX@Z(ptr) msvcp120.?_Mtx_unlock@threads@stdext@@YAXPAX@Z
+@ cdecl -arch=win64 ?_Mtx_unlock@threads@stdext@@YAXPEAX@Z(ptr) msvcp120.?_Mtx_unlock@threads@stdext@@YAXPEAX@Z
 @ cdecl -arch=win32 ?_New_Locimp@_Locimp@locale@std@@CAPAV123@ABV123@@Z(ptr) msvcp120.?_New_Locimp@_Locimp@locale@std@@CAPAV123@ABV123@@Z
 @ cdecl -arch=win64 ?_New_Locimp@_Locimp@locale@std@@CAPEAV123@AEBV123@@Z(ptr) msvcp120.?_New_Locimp@_Locimp@locale@std@@CAPEAV123@AEBV123@@Z
 @ cdecl -arch=win32 ?_New_Locimp@_Locimp@locale@std@@CAPAV123@_N@Z(long) msvcp120.?_New_Locimp@_Locimp@locale@std@@CAPAV123@_N@Z
@@ -1876,9 +1876,9 @@
 @ stub -arch=i386 ?date_order@?$time_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QBE?AW4dateorder@time_base@2@XZ
 @ stub -arch=win64 ?date_order@?$time_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QEBA?AW4dateorder@time_base@2@XZ
 # extern ?defer_lock@std@@3Udefer_lock_t@1@B
-@ stub -arch=arm ?do_always_noconv@?$codecvt@DDH@std@@MBA_NXZ
-@ stub -arch=i386 ?do_always_noconv@?$codecvt@DDH@std@@MBE_NXZ
-@ stub -arch=win64 ?do_always_noconv@?$codecvt@DDH@std@@MEBA_NXZ
+@ cdecl -arch=arm ?do_always_noconv@?$codecvt@DDH@std@@MBA_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@DDH@std@@MBA_NXZ
+@ thiscall -arch=i386 ?do_always_noconv@?$codecvt@DDH@std@@MBE_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@DDH@std@@MBE_NXZ
+@ cdecl -arch=win64 ?do_always_noconv@?$codecvt@DDH@std@@MEBA_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@DDH@std@@MEBA_NXZ
 @ cdecl -arch=arm ?do_always_noconv@?$codecvt@GDH@std@@MBA_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@GDH@std@@MBA_NXZ
 @ thiscall -arch=i386 ?do_always_noconv@?$codecvt@GDH@std@@MBE_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@GDH@std@@MBE_NXZ
 @ cdecl -arch=win64 ?do_always_noconv@?$codecvt@GDH@std@@MEBA_NXZ(ptr) msvcp120.?do_always_noconv@?$codecvt@GDH@std@@MEBA_NXZ
@@ -3672,12 +3672,12 @@
 @ cdecl _Call_onceEx(ptr ptr ptr) msvcp120._Call_onceEx
 @ cdecl _Cnd_broadcast(ptr) msvcp120._Cnd_broadcast
 @ cdecl _Cnd_destroy(ptr) msvcp120._Cnd_destroy
-@ stub _Cnd_do_broadcast_at_thread_exit
+@ cdecl _Cnd_do_broadcast_at_thread_exit() msvcp120._Cnd_do_broadcast_at_thread_exit
 @ cdecl _Cnd_init(ptr) msvcp120._Cnd_init
-@ stub _Cnd_register_at_thread_exit
+@ cdecl _Cnd_register_at_thread_exit(ptr ptr ptr) msvcp120._Cnd_register_at_thread_exit
 @ cdecl _Cnd_signal(ptr) msvcp120._Cnd_signal
 @ cdecl _Cnd_timedwait(ptr ptr ptr) msvcp120._Cnd_timedwait
-@ stub _Cnd_unregister_at_thread_exit
+@ cdecl _Cnd_unregister_at_thread_exit(ptr) msvcp120._Cnd_unregister_at_thread_exit
 @ cdecl _Cnd_wait(ptr ptr) msvcp120._Cnd_wait
 @ stub _Cosh
 @ extern _Denorm msvcp120._Denorm

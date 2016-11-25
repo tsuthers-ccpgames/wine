@@ -3,9 +3,9 @@
 @ stub WsAbortChannel
 @ stub WsAbortListener
 @ stub WsAbortServiceHost
-@ stub WsAbortServiceProxy
+@ stdcall WsAbortServiceProxy(ptr ptr)
 @ stub WsAcceptChannel
-@ stub WsAddCustomHeader
+@ stdcall WsAddCustomHeader(ptr ptr long ptr long long ptr)
 @ stub WsAddErrorString
 @ stdcall WsAddMappedHeader(ptr ptr long long ptr long ptr)
 @ stdcall WsAddressMessage(ptr ptr ptr)
@@ -103,16 +103,16 @@
 @ stub WsPushBytes
 @ stub WsReadArray
 @ stub WsReadAttribute
-@ stub WsReadBody
-@ stub WsReadBytes
-@ stub WsReadChars
-@ stub WsReadCharsUtf8
+@ stdcall WsReadBody(ptr ptr long ptr ptr long ptr)
+@ stdcall WsReadBytes(ptr ptr long ptr ptr)
+@ stdcall WsReadChars(ptr ptr long ptr ptr)
+@ stdcall WsReadCharsUtf8(ptr ptr long ptr ptr)
 @ stdcall WsReadElement(ptr ptr long ptr ptr long ptr)
 @ stdcall WsReadEndAttribute(ptr ptr)
 @ stdcall WsReadEndElement(ptr ptr)
 @ stub WsReadEndpointAddressExtension
-@ stub WsReadEnvelopeEnd
-@ stub WsReadEnvelopeStart
+@ stdcall WsReadEnvelopeEnd(ptr ptr)
+@ stdcall WsReadEnvelopeStart(ptr ptr ptr ptr ptr)
 @ stub WsReadMessageEnd
 @ stub WsReadMessageStart
 @ stub WsReadMetadata
@@ -125,9 +125,9 @@
 @ stdcall WsReadValue(ptr long ptr long ptr)
 @ stub WsReadXmlBuffer
 @ stub WsReadXmlBufferFromBytes
-@ stub WsReceiveMessage
+@ stdcall WsReceiveMessage(ptr ptr ptr long long long ptr ptr long ptr ptr ptr)
 @ stub WsRegisterOperationForCancel
-@ stub WsRemoveCustomHeader
+@ stdcall WsRemoveCustomHeader(ptr ptr ptr ptr)
 @ stdcall WsRemoveHeader(ptr long ptr)
 @ stdcall WsRemoveMappedHeader(ptr ptr ptr)
 @ stub WsRemoveNode
@@ -143,7 +143,7 @@
 @ stub WsResetServiceProxy
 @ stub WsRevokeSecurityContext
 @ stub WsSendFaultMessageForError
-@ stub WsSendMessage
+@ stdcall WsSendMessage(ptr ptr ptr long ptr long ptr ptr)
 @ stub WsSendReplyMessage
 @ stdcall WsSetChannelProperty(ptr long ptr long ptr)
 @ stdcall WsSetErrorProperty(ptr long ptr long)
@@ -164,7 +164,7 @@
 @ stub WsStartWriterCanonicalization
 @ stub WsTrimXmlWhitespace
 @ stub WsVerifyXmlNCName
-@ stub WsWriteArray
+@ stdcall WsWriteArray(ptr ptr ptr long ptr long long long ptr)
 @ stdcall WsWriteAttribute(ptr ptr long ptr long ptr)
 @ stdcall WsWriteBody(ptr ptr long ptr long ptr)
 @ stub WsWriteBytes

@@ -33,6 +33,9 @@
 #include <stdlib.h>
 #include <sys/types.h>
 
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
+
 #if defined(__MINGW32__) || defined (_MSC_VER)
 # include <ws2tcpip.h>
 # ifndef EADDRINUSE
@@ -386,6 +389,7 @@ static void rpcrt4_conn_np_handoff(RpcConnection_np *old_npc, RpcConnection_np *
 
 static RPC_STATUS rpcrt4_ncacn_np_handoff(RpcConnection *old_conn, RpcConnection *new_conn)
 {
+  DWORD len = MAX_COMPUTERNAME_LENGTH + 1;
   RPC_STATUS status;
   LPSTR pname;
 
@@ -394,6 +398,15 @@ static RPC_STATUS rpcrt4_ncacn_np_handoff(RpcConnection *old_conn, RpcConnection
   pname = ncacn_pipe_name(old_conn->Endpoint);
   status = rpcrt4_conn_create_pipe(old_conn, pname);
   I_RpcFree(pname);
+
+  /* Store the local computer name as the NetworkAddr for ncacn_np as long as
+   * we don't support named pipes over the network. */
+  new_conn->NetworkAddr = HeapAlloc(GetProcessHeap(), 0, len);
+  if (!GetComputerNameA(new_conn->NetworkAddr, &len))
+  {
+    ERR("Failed to retrieve the computer name, error %u\n", GetLastError());
+    return RPC_S_OUT_OF_RESOURCES;
+  }
 
   return status;
 }
@@ -427,6 +440,7 @@ static RPC_STATUS rpcrt4_ncalrpc_np_is_server_listening(const char *endpoint)
 
 static RPC_STATUS rpcrt4_ncalrpc_handoff(RpcConnection *old_conn, RpcConnection *new_conn)
 {
+  DWORD len = MAX_COMPUTERNAME_LENGTH + 1;
   RPC_STATUS status;
   LPSTR pname;
 
@@ -437,7 +451,15 @@ static RPC_STATUS rpcrt4_ncalrpc_handoff(RpcConnection *old_conn, RpcConnection 
   pname = ncalrpc_pipe_name(old_conn->Endpoint);
   status = rpcrt4_conn_create_pipe(old_conn, pname);
   I_RpcFree(pname);
-    
+
+  /* Store the local computer name as the NetworkAddr for ncalrpc. */
+  new_conn->NetworkAddr = HeapAlloc(GetProcessHeap(), 0, len);
+  if (!GetComputerNameA(new_conn->NetworkAddr, &len))
+  {
+    ERR("Failed to retrieve the computer name, error %u\n", GetLastError());
+    return RPC_S_OUT_OF_RESOURCES;
+  }
+
   return status;
 }
 
@@ -445,22 +467,20 @@ static int rpcrt4_conn_np_read(RpcConnection *Connection,
                         void *buffer, unsigned int count)
 {
   RpcConnection_np *npc = (RpcConnection_np *) Connection;
+  IO_STATUS_BLOCK io_status;
   char *buf = buffer;
-  BOOL ret = TRUE;
   unsigned int bytes_left = count;
+  NTSTATUS status;
 
   while (bytes_left)
   {
-    DWORD bytes_read;
-    ret = ReadFile(npc->pipe, buf, bytes_left, &bytes_read, NULL);
-    if (!ret && GetLastError() == ERROR_MORE_DATA)
-        ret = TRUE;
-    if (!ret || !bytes_read)
-        break;
-    bytes_left -= bytes_read;
-    buf += bytes_read;
+    status = NtReadFile(npc->pipe, NULL, NULL, NULL, &io_status, buf, bytes_left, NULL, NULL);
+    if (status && status != STATUS_BUFFER_OVERFLOW)
+      return -1;
+    bytes_left -= io_status.Information;
+    buf += io_status.Information;
   }
-  return ret ? count : -1;
+  return count;
 }
 
 static int rpcrt4_conn_np_write(RpcConnection *Connection,
@@ -1479,10 +1499,20 @@ static RPC_STATUS rpcrt4_conn_tcp_handoff(RpcConnection *old_conn, RpcConnection
     ERR("Failed to accept a TCP connection: error %d\n", ret);
     return RPC_S_OUT_OF_RESOURCES;
   }
+
   nonblocking = 1;
   ioctlsocket(ret, FIONBIO, &nonblocking);
   client->sock = ret;
-  TRACE("Accepted a new TCP connection\n");
+
+  client->common.NetworkAddr = HeapAlloc(GetProcessHeap(), 0, INET6_ADDRSTRLEN);
+  ret = getnameinfo((struct sockaddr*)&address, addrsize, client->common.NetworkAddr, INET6_ADDRSTRLEN, NULL, 0, NI_NUMERICHOST);
+  if (ret != 0)
+  {
+    ERR("Failed to retrieve the IP address, error %d\n", ret);
+    return RPC_S_OUT_OF_RESOURCES;
+  }
+
+  TRACE("Accepted a new TCP connection from %s\n", client->common.NetworkAddr);
   return RPC_S_OK;
 }
 

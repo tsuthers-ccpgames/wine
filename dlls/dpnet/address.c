@@ -33,42 +33,10 @@
 #include "wine/unicode.h"
 #include "wine/debug.h"
 
-#include "dplay8.h"
 #include "dpnet_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(dpnet);
 
-
-static inline void *heap_alloc(size_t len)
-{
-    return HeapAlloc(GetProcessHeap(), 0, len);
-}
-
-static inline void *heap_realloc(void *mem, size_t len)
-{
-    return HeapReAlloc( GetProcessHeap(), 0, mem, len);
-}
-
-static inline BOOL heap_free(void *mem)
-{
-    return HeapFree(GetProcessHeap(), 0, mem);
-}
-
-static inline LPWSTR heap_strdupW(LPCWSTR str)
-{
-    LPWSTR ret = NULL;
-
-    if(str) {
-        DWORD size;
-
-        size = (strlenW(str)+1)*sizeof(WCHAR);
-        ret = heap_alloc(size);
-        if(ret)
-            memcpy(ret, str, size);
-    }
-
-    return ret;
-}
 
 static char *heap_strdupA( const char *str )
 {
@@ -377,9 +345,9 @@ static HRESULT WINAPI IDirectPlay8AddressImpl_GetComponentByName(IDirectPlay8Add
     struct component *entry;
     DWORD i;
 
-    TRACE("(%p)->(%p %p %p %p)\n", This, pwszName, pvBuffer, pdwBufferSize, pdwDataType);
+    TRACE("(%p)->(%s %p %p %p)\n", This, debugstr_w(pwszName), pvBuffer, pdwBufferSize, pdwDataType);
 
-    if(!pwszName || !pdwBufferSize || !pdwDataType || (!pvBuffer && pdwBufferSize))
+    if(!pwszName || !pdwBufferSize || !pdwDataType || (!pvBuffer && *pdwBufferSize))
         return E_POINTER;
 
     for(i=0; i < This->comp_count; i++)

@@ -80,13 +80,7 @@ typedef struct tagUSER_DRIVER {
     BOOL   (CDECL *pSetCursorPos)(INT,INT);
     BOOL   (CDECL *pClipCursor)(LPCRECT);
     /* clipboard functions */
-    BOOL   (CDECL *pCountClipboardFormats)(void);                /* Count available clipboard formats */
-    void   (CDECL *pEmptyClipboard)(void);                       /* Empty clipboard data */
-    void   (CDECL *pEndClipboardUpdate)(void);                   /* End clipboard update */
-    UINT   (CDECL *pEnumClipboardFormats)(UINT);                 /* Enumerate clipboard formats */
-    HANDLE (CDECL *pGetClipboardData)(UINT);                     /* Get specified selection data */
-    BOOL   (CDECL *pIsClipboardFormatAvailable)(UINT);           /* Check if specified format is available */
-    BOOL   (CDECL *pSetClipboardData)(UINT, HANDLE, BOOL);       /* Set specified selection data */
+    void   (CDECL *pUpdateClipboard)(void);
     /* display modes */
     LONG   (CDECL *pChangeDisplaySettingsEx)(LPCWSTR,LPDEVMODEW,HWND,DWORD,LPVOID);
     BOOL   (CDECL *pEnumDisplayMonitors)(HDC,LPRECT,MONITORENUMPROC,LPARAM);
@@ -117,6 +111,8 @@ typedef struct tagUSER_DRIVER {
     void   (CDECL *pWindowPosChanged)(HWND,HWND,UINT,const RECT *,const RECT *,const RECT *,const RECT *,struct window_surface*);
     /* system parameters */
     BOOL   (CDECL *pSystemParametersInfo)(UINT,UINT,void*,UINT);
+    /* thread management */
+    void   (CDECL *pThreadDetach)(void);
 } USER_DRIVER;
 
 extern const USER_DRIVER *USER_Driver DECLSPEC_HIDDEN;
@@ -194,6 +190,8 @@ struct user_thread_info
 C_ASSERT( sizeof(struct user_thread_info) <= sizeof(((TEB *)0)->Win32ClientInfo) );
 
 extern INT global_key_state_counter DECLSPEC_HIDDEN;
+extern BOOL (WINAPI *imm_register_window)(HWND) DECLSPEC_HIDDEN;
+extern void (WINAPI *imm_unregister_window)(HWND) DECLSPEC_HIDDEN;
 
 struct user_key_state_info
 {
@@ -339,6 +337,7 @@ typedef struct
 
 #include "poppack.h"
 
+extern int bitmap_info_size( const BITMAPINFO * info, WORD coloruse ) DECLSPEC_HIDDEN;
 extern BOOL get_icon_size( HICON handle, SIZE *size ) DECLSPEC_HIDDEN;
 
 /* Mingw's assert() imports MessageBoxA and gets confused by user32 exporting it */

@@ -18,16 +18,10 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include <assert.h>
-#include "wine/debug.h"
-
-#define COBJMACROS
-
-#include "winbase.h"
-#include "wingdi.h"
+#include "config.h"
+#include "wine/port.h"
 
 #include "d3drm_private.h"
-#include "initguid.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3drm);
 
@@ -165,7 +159,7 @@ HRESULT d3drm_device_init(struct d3drm_device *device, UINT version, IDirectDraw
         surface_desc.dwSize = sizeof(surface_desc);
         surface_desc.dwFlags = DDSD_CAPS | DDSD_ZBUFFERBITDEPTH | DDSD_WIDTH | DDSD_HEIGHT;
         surface_desc.ddsCaps.dwCaps = DDSCAPS_ZBUFFER;
-        surface_desc.dwZBufferBitDepth = 16;
+        surface_desc.u2.dwZBufferBitDepth = 16;
         surface_desc.dwWidth = desc.dwWidth;
         surface_desc.dwHeight = desc.dwHeight;
         hr = IDirectDraw_CreateSurface(ddraw, &surface_desc, &ds, NULL);
@@ -1146,7 +1140,7 @@ static D3DCOLORMODEL WINAPI d3drm_device1_GetColorModel(IDirect3DRMDevice *iface
 {
     struct d3drm_device *device = impl_from_IDirect3DRMDevice(iface);
 
-    TRACE("iface %p stub!\n", iface);
+    TRACE("iface %p.\n", iface);
 
     return d3drm_device3_GetColorModel(&device->IDirect3DRMDevice3_iface);
 }
@@ -1580,7 +1574,7 @@ static HRESULT WINAPI d3drm_device_win_GetName(IDirect3DRMWinDevice *iface, DWOR
 {
     struct d3drm_device *device = impl_from_IDirect3DRMWinDevice(iface);
 
-    TRACE("iface %p, size %p, name %p stub!\n", iface, size, name);
+    TRACE("iface %p, size %p, name %p.\n", iface, size, name);
 
     return d3drm_device3_GetName(&device->IDirect3DRMDevice3_iface, size, name);
 }

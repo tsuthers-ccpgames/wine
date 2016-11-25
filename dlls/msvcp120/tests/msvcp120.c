@@ -257,6 +257,9 @@ static int (__cdecl *p__Cnd_wait)(_Cnd_t*, _Mtx_t*);
 static int (__cdecl *p__Cnd_timedwait)(_Cnd_t*, _Mtx_t*, const xtime*);
 static int (__cdecl *p__Cnd_broadcast)(_Cnd_t*);
 static int (__cdecl *p__Cnd_signal)(_Cnd_t*);
+static void (__cdecl *p__Cnd_register_at_thread_exit)(_Cnd_t*, _Mtx_t*, int*);
+static void (__cdecl *p__Cnd_unregister_at_thread_exit)(_Mtx_t*);
+static void (__cdecl *p__Cnd_do_broadcast_at_thread_exit)(void);
 
 /* _Pad */
 typedef void (*vtable_ptr)(void);
@@ -275,6 +278,11 @@ static void (__thiscall *p__Pad_dtor)(_Pad*);
 static _Pad* (__thiscall *p__Pad_op_assign)(_Pad*, const _Pad*);
 static void (__thiscall *p__Pad__Launch)(_Pad*, _Thrd_t*);
 static void (__thiscall *p__Pad__Release)(_Pad*);
+
+static void (__cdecl *p_threads__Mtx_new)(void **mtx);
+static void (__cdecl *p_threads__Mtx_delete)(void *mtx);
+static void (__cdecl *p_threads__Mtx_lock)(void *mtx);
+static void (__cdecl *p_threads__Mtx_unlock)(void *mtx);
 
 static BOOLEAN (WINAPI *pCreateSymbolicLinkA)(LPCSTR,LPCSTR,DWORD);
 
@@ -385,6 +393,14 @@ static BOOL init(void)
                 "?_Launch@_Pad@std@@QEAAXPEAU_Thrd_imp_t@@@Z");
         SET(p__Pad__Release,
                 "?_Release@_Pad@std@@QEAAXXZ");
+        SET(p_threads__Mtx_new,
+                "?_Mtx_new@threads@stdext@@YAXAEAPEAX@Z");
+        SET(p_threads__Mtx_delete,
+                "?_Mtx_delete@threads@stdext@@YAXPEAX@Z");
+        SET(p_threads__Mtx_lock,
+                "?_Mtx_lock@threads@stdext@@YAXPEAX@Z");
+        SET(p_threads__Mtx_unlock,
+                "?_Mtx_unlock@threads@stdext@@YAXPEAX@Z");
     } else {
         SET(p_tr2_sys__File_size,
                 "?_File_size@sys@tr2@std@@YA_KPBD@Z");
@@ -446,6 +462,14 @@ static BOOL init(void)
                 "?_Symlink@sys@tr2@std@@YAHPBD0@Z");
         SET(p_tr2_sys__Unlink,
                 "?_Unlink@sys@tr2@std@@YAHPBD@Z");
+        SET(p_threads__Mtx_new,
+                "?_Mtx_new@threads@stdext@@YAXAAPAX@Z");
+        SET(p_threads__Mtx_delete,
+                "?_Mtx_delete@threads@stdext@@YAXPAX@Z");
+        SET(p_threads__Mtx_lock,
+                "?_Mtx_lock@threads@stdext@@YAXPAX@Z");
+        SET(p_threads__Mtx_unlock,
+                "?_Mtx_unlock@threads@stdext@@YAXPAX@Z");
 #ifdef __i386__
         SET(p_i386_Thrd_current,
                 "_Thrd_current");
@@ -513,6 +537,12 @@ static BOOL init(void)
             "_Cnd_broadcast");
     SET(p__Cnd_signal,
             "_Cnd_signal");
+    SET(p__Cnd_register_at_thread_exit,
+            "_Cnd_register_at_thread_exit");
+    SET(p__Cnd_unregister_at_thread_exit,
+            "_Cnd_unregister_at_thread_exit");
+    SET(p__Cnd_do_broadcast_at_thread_exit,
+            "_Cnd_do_broadcast_at_thread_exit");
 
     hdll = GetModuleHandleA("msvcr120.dll");
     p_setlocale = (void*)GetProcAddress(hdll, "setlocale");
@@ -1885,10 +1915,36 @@ static void test_cnd(void)
     ok(!r, "failed to signal\n");
     p__Thrd_join(threads[0], NULL);
 
+    /* test _Cnd_do_broadcast_at_thread_exit */
+    cm.started = 0;
+    cm.timed_wait = FALSE;
+    p__Thrd_create(&threads[0], cnd_wait_thread, (void*)&cm);
+
+    WaitForSingleObject(cm.initialized, INFINITE);
+    p__Mtx_lock(&mtx);
+
+    r = 0xcafe;
+    p__Cnd_unregister_at_thread_exit((_Mtx_t*)0xdeadbeef);
+    p__Cnd_register_at_thread_exit(&cnd, &mtx, &r);
+    ok(r == 0xcafe, "r = %x\n", r);
+    p__Cnd_register_at_thread_exit(&cnd, &mtx, &r);
+    p__Cnd_unregister_at_thread_exit(&mtx);
+    p__Cnd_do_broadcast_at_thread_exit();
+    ok(mtx->count == 1, "mtx.count = %d\n", mtx->count);
+
+    p__Cnd_register_at_thread_exit(&cnd, &mtx, &r);
+    ok(r == 0xcafe, "r = %x\n", r);
+
+    p__Cnd_do_broadcast_at_thread_exit();
+    ok(r == 1, "r = %x\n", r);
+    p__Thrd_join(threads[0], NULL);
+
+    /* crash if _Cnd_do_broadcast_at_thread_exit is called on exit */
+    p__Cnd_register_at_thread_exit((_Cnd_t*)0xdeadbeef, (_Mtx_t*)0xdeadbeef, (int*)0xdeadbeef);
+
     /* test _Cnd_broadcast */
     cm.started = 0;
     cm.thread_no = NUM_THREADS;
-    cm.timed_wait = FALSE;
 
     for(i = 0; i < cm.thread_no; i++)
         p__Thrd_create(&threads[i], cnd_wait_thread, (void*)&cm);
@@ -2030,6 +2086,22 @@ static void test__Pad(void)
     CloseHandle(_Pad__Launch_returned);
 }
 
+static void test_threads__Mtx(void)
+{
+    void *mtx = NULL;
+
+    p_threads__Mtx_new(&mtx);
+    ok(mtx != NULL, "mtx == NULL\n");
+
+    p_threads__Mtx_lock(mtx);
+    p_threads__Mtx_lock(mtx);
+    p_threads__Mtx_unlock(mtx);
+    p_threads__Mtx_unlock(mtx);
+    p_threads__Mtx_unlock(mtx);
+
+    p_threads__Mtx_delete(mtx);
+}
+
 START_TEST(msvcp120)
 {
     if(!init()) return;
@@ -2061,6 +2133,7 @@ START_TEST(msvcp120)
     test_thrd();
     test_cnd();
     test__Pad();
+    test_threads__Mtx();
 
     test_vbtable_size_exports();
 

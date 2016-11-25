@@ -19,16 +19,8 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#define NONAMELESSUNION
-
-#define COBJMACROS
-
-#include "wine/debug.h"
-
-#include "winbase.h"
-#include "wingdi.h"
-#include "dxfile.h"
-#include "rmxfguid.h"
+#include "config.h"
+#include "wine/port.h"
 
 #include "d3drm_private.h"
 
@@ -1235,8 +1227,7 @@ HRESULT load_mesh_data(IDirect3DRMMeshBuilder3 *iface, IDirectXFileData *pData,
 
                 values = (float*)ptr;
 
-                This->materials[i].color = RGBA_MAKE((BYTE)(values[0] * 255.0f), (BYTE)(values[1] * 255.0f),
-                        (BYTE)(values[2] * 255.0f), (BYTE)(values[3] * 255.0f));
+                d3drm_set_color(&This->materials[i].color, values[0], values[1], values[2], values[3]);
 
                 IDirect3DRMMaterial2_SetAmbient(This->materials[i].material, values[0], values [1], values[2]); /* Alpha ignored */
                 IDirect3DRMMaterial2_SetPower(This->materials[i].material, values[4]);
@@ -1694,7 +1685,7 @@ static HRESULT WINAPI d3drm_mesh_builder3_SetColorRGB(IDirect3DRMMeshBuilder3 *i
 
     TRACE("iface %p, red %.8e, green %.8e, blue %.8e.\n", iface, red, green, blue);
 
-    mesh_builder->color = RGBA_MAKE((BYTE)(red * 255.0f), (BYTE)(green * 255.0f), (BYTE)(blue * 255.0f), 0xff);
+    d3drm_set_color(&mesh_builder->color, red, green, blue, 1.0f);
 
     return D3DRM_OK;
 }
@@ -2211,7 +2202,7 @@ static HRESULT WINAPI d3drm_mesh_builder3_GetNormals(IDirect3DRMMeshBuilder3 *if
     struct d3drm_mesh_builder *mesh_builder = impl_from_IDirect3DRMMeshBuilder3(iface);
     DWORD count = mesh_builder->nb_normals - start_idx;
 
-    TRACE("iface %p, start_idx %u, normal_count %p, normals %p stub!\n",
+    TRACE("iface %p, start_idx %u, normal_count %p, normals %p.\n",
             iface, start_idx, normal_count, normals);
 
     if (normal_count)
@@ -2595,7 +2586,7 @@ static HRESULT WINAPI d3drm_mesh_SetGroupColorRGB(IDirect3DRMMesh *iface,
     if (id >= mesh->nb_groups)
         return D3DRMERR_BADVALUE;
 
-    mesh->groups[id].color = RGBA_MAKE((BYTE)(red * 255.0f), (BYTE)(green * 255.0f), (BYTE)(blue * 255.0f), 0xff);
+    d3drm_set_color(&mesh->groups[id].color, red, green, blue, 1.0f);
 
     return D3DRM_OK;
 }

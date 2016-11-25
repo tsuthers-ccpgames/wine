@@ -1629,14 +1629,14 @@
 @ cdecl -arch=win64 ?_Makewloc@_Locimp@locale@std@@CAXAEBV_Locinfo@3@HPEAV123@PEBV23@@Z(ptr long ptr ptr) locale__Locimp__Makewloc
 @ cdecl -arch=win32 ?_Makexloc@_Locimp@locale@std@@CAXABV_Locinfo@3@HPAV123@PBV23@@Z(ptr long ptr ptr) locale__Locimp__Makexloc
 @ cdecl -arch=win64 ?_Makexloc@_Locimp@locale@std@@CAXAEBV_Locinfo@3@HPEAV123@PEBV23@@Z(ptr long ptr ptr) locale__Locimp__Makexloc
-@ stub -arch=win32 ?_Mtx_delete@threads@stdext@@YAXPAX@Z
-@ stub -arch=win64 ?_Mtx_delete@threads@stdext@@YAXPEAX@Z
-@ stub -arch=win32 ?_Mtx_lock@threads@stdext@@YAXPAX@Z
-@ stub -arch=win64 ?_Mtx_lock@threads@stdext@@YAXPEAX@Z
-@ stub -arch=win32 ?_Mtx_new@threads@stdext@@YAXAAPAX@Z
-@ stub -arch=win64 ?_Mtx_new@threads@stdext@@YAXAEAPEAX@Z
-@ stub -arch=win32 ?_Mtx_unlock@threads@stdext@@YAXPAX@Z
-@ stub -arch=win64 ?_Mtx_unlock@threads@stdext@@YAXPEAX@Z
+@ cdecl -arch=win32 ?_Mtx_delete@threads@stdext@@YAXPAX@Z(ptr) threads__Mtx_delete
+@ cdecl -arch=win64 ?_Mtx_delete@threads@stdext@@YAXPEAX@Z(ptr) threads__Mtx_delete
+@ cdecl -arch=win32 ?_Mtx_lock@threads@stdext@@YAXPAX@Z(ptr) threads__Mtx_lock
+@ cdecl -arch=win64 ?_Mtx_lock@threads@stdext@@YAXPEAX@Z(ptr) threads__Mtx_lock
+@ cdecl -arch=win32 ?_Mtx_new@threads@stdext@@YAXAAPAX@Z(ptr) threads__Mtx_new
+@ cdecl -arch=win64 ?_Mtx_new@threads@stdext@@YAXAEAPEAX@Z(ptr) threads__Mtx_new
+@ cdecl -arch=win32 ?_Mtx_unlock@threads@stdext@@YAXPAX@Z(ptr) threads__Mtx_unlock
+@ cdecl -arch=win64 ?_Mtx_unlock@threads@stdext@@YAXPEAX@Z(ptr) threads__Mtx_unlock
 @ cdecl -arch=win32 ?_New_Locimp@_Locimp@locale@std@@CAPAV123@ABV123@@Z(ptr) locale__Locimp__New_Locimp
 @ cdecl -arch=win64 ?_New_Locimp@_Locimp@locale@std@@CAPEAV123@AEBV123@@Z(ptr) locale__Locimp__New_Locimp
 @ cdecl -arch=win32 ?_New_Locimp@_Locimp@locale@std@@CAPAV123@_N@Z(long) locale__Locimp__New_Locimp_transparent
@@ -1916,9 +1916,9 @@
 @ stub -arch=i386 ?date_order@?$time_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QBE?AW4dateorder@time_base@2@XZ
 @ stub -arch=win64 ?date_order@?$time_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QEBA?AW4dateorder@time_base@2@XZ
 # extern ?defer_lock@std@@3Udefer_lock_t@1@B
-@ stub -arch=arm ?do_always_noconv@?$codecvt@DDH@std@@MBA_NXZ
-@ stub -arch=i386 ?do_always_noconv@?$codecvt@DDH@std@@MBE_NXZ
-@ stub -arch=win64 ?do_always_noconv@?$codecvt@DDH@std@@MEBA_NXZ
+@ cdecl -arch=arm ?do_always_noconv@?$codecvt@DDH@std@@MBA_NXZ(ptr) codecvt_char_do_always_noconv
+@ thiscall -arch=i386 ?do_always_noconv@?$codecvt@DDH@std@@MBE_NXZ(ptr) codecvt_char_do_always_noconv
+@ cdecl -arch=win64 ?do_always_noconv@?$codecvt@DDH@std@@MEBA_NXZ(ptr) codecvt_char_do_always_noconv
 @ cdecl -arch=arm ?do_always_noconv@?$codecvt@GDH@std@@MBA_NXZ(ptr) codecvt_wchar_do_always_noconv
 @ thiscall -arch=i386 ?do_always_noconv@?$codecvt@GDH@std@@MBE_NXZ(ptr) codecvt_wchar_do_always_noconv
 @ cdecl -arch=win64 ?do_always_noconv@?$codecvt@GDH@std@@MEBA_NXZ(ptr) codecvt_wchar_do_always_noconv
@@ -3731,12 +3731,12 @@
 @ cdecl _Call_onceEx(ptr ptr ptr)
 @ cdecl _Cnd_broadcast(ptr)
 @ cdecl _Cnd_destroy(ptr)
-@ stub _Cnd_do_broadcast_at_thread_exit
+@ cdecl _Cnd_do_broadcast_at_thread_exit()
 @ cdecl  _Cnd_init(ptr)
-@ stub _Cnd_register_at_thread_exit
+@ cdecl _Cnd_register_at_thread_exit(ptr ptr ptr)
 @ cdecl _Cnd_signal(ptr)
 @ cdecl _Cnd_timedwait(ptr ptr ptr)
-@ stub _Cnd_unregister_at_thread_exit
+@ cdecl _Cnd_unregister_at_thread_exit(ptr)
 @ cdecl _Cnd_wait(ptr ptr)
 @ stub _Cosh
 @ extern _Denorm

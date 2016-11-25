@@ -17,15 +17,15 @@
 @ stub HidD_SetConfiguration
 @ stdcall HidD_SetFeature(long ptr long)
 @ stdcall HidD_SetNumInputBuffers(long long)
-@ stub HidD_SetOutputReport
+@ stdcall HidD_SetOutputReport(long ptr long)
 @ stdcall HidP_GetButtonCaps(long ptr ptr ptr)
 @ stdcall HidP_GetCaps(ptr ptr)
 @ stub HidP_GetData
 @ stub HidP_GetExtendedAttributes
 @ stub HidP_GetLinkCollectionNodes
 @ stdcall HidP_GetScaledUsageValue(long long long long ptr ptr ptr long)
-@ stub HidP_GetSpecificButtonCaps
-@ stub HidP_GetSpecificValueCaps
+@ stdcall HidP_GetSpecificButtonCaps(long long long long ptr ptr ptr)
+@ stdcall HidP_GetSpecificValueCaps(long long long long ptr ptr ptr)
 @ stdcall HidP_GetUsageValue(long long long long ptr ptr ptr long)
 @ stub HidP_GetUsageValueArray
 @ stdcall HidP_GetUsages(long long long ptr ptr ptr ptr long)
@@ -39,6 +39,6 @@
 @ stub HidP_SetUsageValue
 @ stub HidP_SetUsageValueArray
 @ stub HidP_SetUsages
-@ stub HidP_TranslateUsagesToI8042ScanCodes
+@ stdcall HidP_TranslateUsagesToI8042ScanCodes(ptr long long ptr ptr ptr)
 @ stub HidP_UnsetUsages
 @ stub HidP_UsageListDifference
