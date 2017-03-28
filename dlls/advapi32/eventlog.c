@@ -815,20 +815,6 @@ ULONG WINAPI TraceEvent( TRACEHANDLE SessionHandle, PEVENT_TRACE_HEADER EventTra
 }
 
 /******************************************************************************
- * UnregisterTraceGuids [ADVAPI32.@]
- *
- * See RegisterTraceGuids
- *
- * FIXME
- *  Stub.
- */
-ULONG WINAPI UnregisterTraceGuids( TRACEHANDLE RegistrationHandle )
-{
-    FIXME("%s: stub\n", wine_dbgstr_longlong(RegistrationHandle));
-    return ERROR_CALL_NOT_IMPLEMENTED;
-}
-
-/******************************************************************************
  * EventEnabled [ADVAPI32.@]
  *
  */
@@ -876,16 +862,6 @@ ULONG WINAPI EventWriteTransfer( REGHANDLE handle, PCEVENT_DESCRIPTOR descriptor
 {
     FIXME("%s, %p, %s, %s, %u, %p: stub\n", wine_dbgstr_longlong(handle), descriptor,
           debugstr_guid(activity), debugstr_guid(related), count, data);
-    return ERROR_SUCCESS;
-}
-
-/******************************************************************************
- * EventSetInformation [ADVAPI32.@]
- */
-ULONG WINAPI EventSetInformation( REGHANDLE handle, EVENT_INFO_CLASS class, PVOID info,
-                                  ULONG length )
-{
-    FIXME("%u, %p, %u\n", class, info, length);
     return ERROR_SUCCESS;
 }
 

@@ -1268,6 +1268,74 @@ void CDECL _fpreset(void)
 }
 
 /*********************************************************************
+ *              fesetenv (MSVCR120.@)
+ */
+int CDECL MSVCRT_fesetenv(const MSVCRT_fenv_t *env)
+{
+#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
+    struct {
+        WORD control_word;
+        WORD unused1;
+        WORD status_word;
+        WORD unused2;
+        WORD tag_word;
+        WORD unused3;
+        DWORD instruction_pointer;
+        WORD code_segment;
+        WORD unused4;
+        DWORD operand_addr;
+        WORD data_segment;
+        WORD unused5;
+    } fenv;
+
+    TRACE( "(%p)\n", env );
+
+    if (!env->control && !env->status) {
+        _fpreset();
+        return 0;
+    }
+
+    __asm__ __volatile__( "fnstenv %0" : "=m" (fenv) );
+
+    fenv.control_word &= ~0x3d;
+    if (env->control & MSVCRT__EM_INVALID) fenv.control_word |= 0x1;
+    if (env->control & MSVCRT__EM_ZERODIVIDE) fenv.control_word |= 0x4;
+    if (env->control & MSVCRT__EM_OVERFLOW) fenv.control_word |= 0x8;
+    if (env->control & MSVCRT__EM_UNDERFLOW) fenv.control_word |= 0x10;
+    if (env->control & MSVCRT__EM_INEXACT) fenv.control_word |= 0x20;
+
+    fenv.status_word &= ~0x3d;
+    if (env->status & MSVCRT__SW_INVALID) fenv.status_word |= 0x1;
+    if (env->status & MSVCRT__SW_ZERODIVIDE) fenv.status_word |= 0x4;
+    if (env->status & MSVCRT__SW_OVERFLOW) fenv.status_word |= 0x8;
+    if (env->status & MSVCRT__SW_UNDERFLOW) fenv.status_word |= 0x10;
+    if (env->status & MSVCRT__SW_INEXACT) fenv.status_word |= 0x20;
+
+    __asm__ __volatile__( "fldenv %0" : : "m" (fenv) : "st", "st(1)",
+            "st(2)", "st(3)", "st(4)", "st(5)", "st(6)", "st(7)" );
+
+    if (sse2_supported)
+    {
+        DWORD fpword;
+
+        __asm__ __volatile__( "stmxcsr %0" : "=m" (fpword) );
+        fpword &= ~0x1e80;
+        if (env->control & MSVCRT__EM_INVALID) fpword |= 0x80;
+        if (env->control & MSVCRT__EM_ZERODIVIDE) fpword |= 0x200;
+        if (env->control & MSVCRT__EM_OVERFLOW) fpword |= 0x400;
+        if (env->control & MSVCRT__EM_UNDERFLOW) fpword |= 0x800;
+        if (env->control & MSVCRT__EM_INEXACT) fpword |= 0x1000;
+        __asm__ __volatile__( "ldmxcsr %0" : : "m" (fpword) );
+    }
+
+    return 0;
+#else
+    FIXME( "not implemented\n" );
+#endif
+    return 1;
+}
+
+/*********************************************************************
  *		_isnan (MSVCRT.@)
  */
 INT CDECL MSVCRT__isnan(double num)
@@ -1351,6 +1419,30 @@ double CDECL MSVCRT__yn(int order, double num)
     retval = sqrt(-1);
   }
   return retval;
+}
+
+/*********************************************************************
+ *		_nearbyint (MSVCRT.@)
+ */
+double CDECL MSVCRT_nearbyint(double num)
+{
+#ifdef HAVE_NEARBYINT
+    return nearbyint(num);
+#else
+    return num >= 0 ? floor(num + 0.5) : ceil(num - 0.5);
+#endif
+}
+
+/*********************************************************************
+ *		_nearbyintf (MSVCRT.@)
+ */
+float CDECL MSVCRT_nearbyintf(float num)
+{
+#ifdef HAVE_NEARBYINTF
+    return nearbyintf(num);
+#else
+    return MSVCRT_nearbyint(num);
+#endif
 }
 
 /*********************************************************************
@@ -1488,7 +1580,7 @@ char * CDECL MSVCRT__fcvt( double number, int ndigits, int *decpt, int *sign )
 	number = -number;
     } else *sign = 0;
 
-    snprintf(buf, 80, "%.*f", ndigits < 0 ? 0 : ndigits, number);
+    stop = snprintf(buf, 80, "%.*f", ndigits < 0 ? 0 : ndigits, number);
     ptr1 = buf;
     ptr2 = data->efcvt_buffer;
     first = NULL;
@@ -1505,9 +1597,7 @@ char * CDECL MSVCRT__fcvt( double number, int ndigits, int *decpt, int *sign )
     /* If requested digits is zero or less, we will need to truncate
      * the returned string */
     if (ndigits < 1) {
-	stop = strlen(buf) + ndigits;
-    } else {
-	stop = strlen(buf);
+	stop += ndigits;
     }
 
     while (*ptr1 == '0') ptr1++; /* Skip leading zeroes */
@@ -1573,7 +1663,7 @@ int CDECL MSVCRT__fcvt_s(char* outbuffer, MSVCRT_size_t size, double number, int
 	number = -number;
     } else *sign = 0;
 
-    snprintf(buf, 80, "%.*f", ndigits < 0 ? 0 : ndigits, number);
+    stop = snprintf(buf, 80, "%.*f", ndigits < 0 ? 0 : ndigits, number);
     ptr1 = buf;
     ptr2 = outbuffer;
     first = NULL;
@@ -1590,9 +1680,7 @@ int CDECL MSVCRT__fcvt_s(char* outbuffer, MSVCRT_size_t size, double number, int
     /* If requested digits is zero or less, we will need to truncate
      * the returned string */
     if (ndigits < 1) {
-	stop = strlen(buf) + ndigits;
-    } else {
-	stop = strlen(buf);
+	stop += ndigits;
     }
 
     while (*ptr1 == '0') ptr1++; /* Skip leading zeroes */
@@ -1751,6 +1839,19 @@ MSVCRT_ldiv_t CDECL MSVCRT_ldiv(MSVCRT_long num, MSVCRT_long denom)
   return ret;
 }
 #endif /* ifdef __i386__ */
+
+/*********************************************************************
+ *		lldiv (MSVCRT.@)
+ */
+MSVCRT_lldiv_t CDECL MSVCRT_lldiv(MSVCRT_longlong num, MSVCRT_longlong denom)
+{
+  MSVCRT_lldiv_t ret;
+
+  ret.quot = num / denom;
+  ret.rem = num % denom;
+
+  return ret;
+}
 
 #ifdef __i386__
 
@@ -2876,4 +2977,113 @@ float CDECL MSVCR120_lgammaf(float x)
 LDOUBLE CDECL MSVCR120_lgammal(LDOUBLE x)
 {
     return MSVCR120_lgamma(x);
+}
+
+/*********************************************************************
+ *      nan (MSVCR120.@)
+ */
+double CDECL MSVCR120_nan(const char *tagp)
+{
+    /* Windows ignores input (MSDN) */
+    return NAN;
+}
+
+/*********************************************************************
+ *      nanf (MSVCR120.@)
+ */
+float CDECL MSVCR120_nanf(const char *tagp)
+{
+    return NAN;
+}
+
+/*********************************************************************
+ *      _except1 (MSVCR120.@)
+ *  TODO:
+ *   - find meaning of ignored cw and operation bits
+ *   - unk parameter
+ */
+double CDECL _except1(DWORD fpe, _FP_OPERATION_CODE op, double arg, double res, DWORD cw, void *unk)
+{
+    ULONG_PTR exception_arg;
+    DWORD exception = 0;
+    MSVCRT_fenv_t env;
+    DWORD fpword = 0;
+    WORD operation;
+
+    TRACE("(%x %x %lf %lf %x %p)\n", fpe, op, arg, res, cw, unk);
+
+#ifdef _WIN64
+    cw = ((cw >> 7) & 0x3f) | ((cw >> 3) & 0xc00);
+#endif
+    operation = op << 5;
+    exception_arg = (ULONG_PTR)&operation;
+
+    MSVCRT_fegetenv(&env);
+
+    if (fpe & 0x1) { /* overflow */
+        if ((fpe == 0x1 && (cw & 0x8)) || (fpe==0x11 && (cw & 0x28))) {
+            /* 32-bit version also sets SW_INEXACT here */
+            env.status |= MSVCRT__SW_OVERFLOW;
+            if (fpe & 0x10) env.status |= MSVCRT__SW_INEXACT;
+            res = signbit(res) ? -INFINITY : INFINITY;
+        } else {
+            exception = EXCEPTION_FLT_OVERFLOW;
+        }
+    } else if (fpe & 0x2) { /* underflow */
+        if ((fpe == 0x2 && (cw & 0x10)) || (fpe==0x12 && (cw & 0x30))) {
+            env.status |= MSVCRT__SW_UNDERFLOW;
+            if (fpe & 0x10) env.status |= MSVCRT__SW_INEXACT;
+            res = signbit(res) ? -0.0 : 0.0;
+        } else {
+            exception = EXCEPTION_FLT_UNDERFLOW;
+        }
+    } else if (fpe & 0x4) { /* zerodivide */
+        if ((fpe == 0x4 && (cw & 0x4)) || (fpe==0x14 && (cw & 0x24))) {
+            env.status |= MSVCRT__SW_ZERODIVIDE;
+            if (fpe & 0x10) env.status |= MSVCRT__SW_INEXACT;
+        } else {
+            exception = EXCEPTION_FLT_DIVIDE_BY_ZERO;
+        }
+    } else if (fpe & 0x8) { /* invalid */
+        if (fpe == 0x8 && (cw & 0x1)) {
+            env.status |= MSVCRT__SW_INVALID;
+        } else {
+            exception = EXCEPTION_FLT_INVALID_OPERATION;
+        }
+    } else if (fpe & 0x10) { /* inexact */
+        if (fpe == 0x10 && (cw & 0x20)) {
+            env.status |= MSVCRT__SW_INEXACT;
+        } else {
+            exception = EXCEPTION_FLT_INEXACT_RESULT;
+        }
+    }
+
+    if (exception)
+        env.status = 0;
+    MSVCRT_fesetenv(&env);
+    if (exception)
+        RaiseException(exception, 0, 1, &exception_arg);
+
+    if (cw & 0x1) fpword |= MSVCRT__EM_INVALID;
+    if (cw & 0x2) fpword |= MSVCRT__EM_DENORMAL;
+    if (cw & 0x4) fpword |= MSVCRT__EM_ZERODIVIDE;
+    if (cw & 0x8) fpword |= MSVCRT__EM_OVERFLOW;
+    if (cw & 0x10) fpword |= MSVCRT__EM_UNDERFLOW;
+    if (cw & 0x20) fpword |= MSVCRT__EM_INEXACT;
+    switch (cw & 0xc00)
+    {
+        case 0xc00: fpword |= MSVCRT__RC_UP|MSVCRT__RC_DOWN; break;
+        case 0x800: fpword |= MSVCRT__RC_UP; break;
+        case 0x400: fpword |= MSVCRT__RC_DOWN; break;
+    }
+    switch (cw & 0x300)
+    {
+        case 0x0:   fpword |= MSVCRT__PC_24; break;
+        case 0x200: fpword |= MSVCRT__PC_53; break;
+        case 0x300: fpword |= MSVCRT__PC_64; break;
+    }
+    if (cw & 0x1000) fpword |= MSVCRT__IC_AFFINE;
+    _control87(fpword, 0xffffffff);
+
+    return res;
 }

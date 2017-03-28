@@ -528,6 +528,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
         NSUInteger nextFloatingIndex = 0;
         __block NSInteger maxLevel = NSIntegerMin;
         __block NSInteger maxNonfloatingLevel = NSNormalWindowLevel;
+        __block NSInteger minFloatingLevel = NSFloatingWindowLevel;
         __block WineWindow* prev = nil;
         WineWindow* window;
 
@@ -563,6 +564,14 @@ static NSString* WineLocalizedString(unsigned int stringID)
             WineWindow* window = (WineWindow*)obj;
             NSInteger origLevel = [window level];
             NSInteger newLevel = [window minimumLevelForActive:active];
+
+            if (window.floating)
+            {
+                if (minFloatingLevel <= maxNonfloatingLevel)
+                    minFloatingLevel = maxNonfloatingLevel + 1;
+                if (newLevel < minFloatingLevel)
+                    newLevel = minFloatingLevel;
+            }
 
             if (newLevel < maxLevel)
                 newLevel = maxLevel;
@@ -2318,6 +2327,19 @@ static NSString* WineLocalizedString(unsigned int stringID)
         macdrv_release_event(event);
 
         return ret;
+    }
+
+    - (void)applicationWillBecomeActive:(NSNotification *)notification
+    {
+        macdrv_event* event = macdrv_create_event(APP_ACTIVATED, nil);
+        event->deliver = 1;
+
+        [eventQueuesLock lock];
+        for (WineEventQueue* queue in eventQueues)
+            [queue postEvent:event];
+        [eventQueuesLock unlock];
+
+        macdrv_release_event(event);
     }
 
     - (void)applicationWillResignActive:(NSNotification *)notification

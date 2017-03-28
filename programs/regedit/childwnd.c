@@ -174,6 +174,15 @@ static void OnTreeSelectionChanged(HWND hwndTV, HWND hwndLV, HTREEITEM hItem, BO
     if (bRefreshLV) {
         LPWSTR keyPath;
         HKEY hRootKey = NULL;
+        HTREEITEM rootitem;
+
+        rootitem = (HTREEITEM)SendMessageW(hwndTV, TVM_GETNEXTITEM, TVGN_ROOT, 0);
+        if (rootitem == hItem)
+        {
+            SendMessageW(hwndLV, LVM_DELETEALLITEMS, 0, 0);
+            return;
+        }
+
         keyPath = GetItemPath(hwndTV, hItem, &hRootKey);
         RefreshListView(hwndLV, hRootKey, keyPath, NULL);
         HeapFree(GetProcessHeap(), 0, keyPath);
@@ -419,7 +428,12 @@ LRESULT CALLBACK ChildWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
             }
             case TVN_BEGINLABELEDITW: {
                 HKEY hRootKey;
-                LPWSTR path = GetItemPath(g_pChildWnd->hTreeWnd, 0, &hRootKey);
+                LPWSTR path;
+
+                if (!GetWindowLongPtrW(g_pChildWnd->hTreeWnd, GWLP_USERDATA))
+                    return 1;
+
+                path = GetItemPath(g_pChildWnd->hTreeWnd, 0, &hRootKey);
                 if (!path || !*path) return 1;
                 return 0;
             }
@@ -440,6 +454,7 @@ LRESULT CALLBACK ChildWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
                     HeapFree(GetProcessHeap(), 0, fullPath);
 		}
                 HeapFree(GetProcessHeap(), 0, path);
+                SetWindowLongPtrW(g_pChildWnd->hTreeWnd, GWLP_USERDATA, 0);
 		return res;
 	    }
             default:

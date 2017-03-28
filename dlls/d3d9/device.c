@@ -239,6 +239,8 @@ static BOOL wined3d_swapchain_desc_from_present_parameters(struct wined3d_swapch
             = wined3dformat_from_d3dformat(present_parameters->AutoDepthStencilFormat);
     swapchain_desc->flags
             = (present_parameters->Flags & D3DPRESENTFLAGS_MASK) | WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH;
+    if (is_gdi_compat_wined3dformat(swapchain_desc->backbuffer_format))
+        swapchain_desc->flags |= WINED3D_SWAPCHAIN_GDI_COMPATIBLE;
     swapchain_desc->refresh_rate = present_parameters->FullScreen_RefreshRateInHz;
     swapchain_desc->swap_interval = present_parameters->PresentationInterval;
     swapchain_desc->auto_restore_display_mode = TRUE;
@@ -247,6 +249,168 @@ static BOOL wined3d_swapchain_desc_from_present_parameters(struct wined3d_swapch
         FIXME("Unhandled flags %#x.\n", present_parameters->Flags & ~D3DPRESENTFLAGS_MASK);
 
     return TRUE;
+}
+
+void d3dcaps_from_wined3dcaps(D3DCAPS9 *caps, const WINED3DCAPS *wined3d_caps)
+{
+    static const DWORD ps_minor_version[] = {0, 4, 0, 0};
+    static const DWORD vs_minor_version[] = {0, 1, 0, 0};
+    static const DWORD texture_filter_caps =
+        D3DPTFILTERCAPS_MINFPOINT      | D3DPTFILTERCAPS_MINFLINEAR    | D3DPTFILTERCAPS_MINFANISOTROPIC |
+        D3DPTFILTERCAPS_MINFPYRAMIDALQUAD                              | D3DPTFILTERCAPS_MINFGAUSSIANQUAD|
+        D3DPTFILTERCAPS_MIPFPOINT      | D3DPTFILTERCAPS_MIPFLINEAR    | D3DPTFILTERCAPS_MAGFPOINT       |
+        D3DPTFILTERCAPS_MAGFLINEAR     |D3DPTFILTERCAPS_MAGFANISOTROPIC|D3DPTFILTERCAPS_MAGFPYRAMIDALQUAD|
+        D3DPTFILTERCAPS_MAGFGAUSSIANQUAD;
+
+    caps->DeviceType                        = (D3DDEVTYPE)wined3d_caps->DeviceType;
+    caps->AdapterOrdinal                    = wined3d_caps->AdapterOrdinal;
+    caps->Caps                              = wined3d_caps->Caps;
+    caps->Caps2                             = wined3d_caps->Caps2;
+    caps->Caps3                             = wined3d_caps->Caps3;
+    caps->PresentationIntervals             = wined3d_caps->PresentationIntervals;
+    caps->CursorCaps                        = wined3d_caps->CursorCaps;
+    caps->DevCaps                           = wined3d_caps->DevCaps;
+    caps->PrimitiveMiscCaps                 = wined3d_caps->PrimitiveMiscCaps;
+    caps->RasterCaps                        = wined3d_caps->RasterCaps;
+    caps->ZCmpCaps                          = wined3d_caps->ZCmpCaps;
+    caps->SrcBlendCaps                      = wined3d_caps->SrcBlendCaps;
+    caps->DestBlendCaps                     = wined3d_caps->DestBlendCaps;
+    caps->AlphaCmpCaps                      = wined3d_caps->AlphaCmpCaps;
+    caps->ShadeCaps                         = wined3d_caps->ShadeCaps;
+    caps->TextureCaps                       = wined3d_caps->TextureCaps;
+    caps->TextureFilterCaps                 = wined3d_caps->TextureFilterCaps;
+    caps->CubeTextureFilterCaps             = wined3d_caps->CubeTextureFilterCaps;
+    caps->VolumeTextureFilterCaps           = wined3d_caps->VolumeTextureFilterCaps;
+    caps->TextureAddressCaps                = wined3d_caps->TextureAddressCaps;
+    caps->VolumeTextureAddressCaps          = wined3d_caps->VolumeTextureAddressCaps;
+    caps->LineCaps                          = wined3d_caps->LineCaps;
+    caps->MaxTextureWidth                   = wined3d_caps->MaxTextureWidth;
+    caps->MaxTextureHeight                  = wined3d_caps->MaxTextureHeight;
+    caps->MaxVolumeExtent                   = wined3d_caps->MaxVolumeExtent;
+    caps->MaxTextureRepeat                  = wined3d_caps->MaxTextureRepeat;
+    caps->MaxTextureAspectRatio             = wined3d_caps->MaxTextureAspectRatio;
+    caps->MaxAnisotropy                     = wined3d_caps->MaxAnisotropy;
+    caps->MaxVertexW                        = wined3d_caps->MaxVertexW;
+    caps->GuardBandLeft                     = wined3d_caps->GuardBandLeft;
+    caps->GuardBandTop                      = wined3d_caps->GuardBandTop;
+    caps->GuardBandRight                    = wined3d_caps->GuardBandRight;
+    caps->GuardBandBottom                   = wined3d_caps->GuardBandBottom;
+    caps->ExtentsAdjust                     = wined3d_caps->ExtentsAdjust;
+    caps->StencilCaps                       = wined3d_caps->StencilCaps;
+    caps->FVFCaps                           = wined3d_caps->FVFCaps;
+    caps->TextureOpCaps                     = wined3d_caps->TextureOpCaps;
+    caps->MaxTextureBlendStages             = wined3d_caps->MaxTextureBlendStages;
+    caps->MaxSimultaneousTextures           = wined3d_caps->MaxSimultaneousTextures;
+    caps->VertexProcessingCaps              = wined3d_caps->VertexProcessingCaps;
+    caps->MaxActiveLights                   = wined3d_caps->MaxActiveLights;
+    caps->MaxUserClipPlanes                 = wined3d_caps->MaxUserClipPlanes;
+    caps->MaxVertexBlendMatrices            = wined3d_caps->MaxVertexBlendMatrices;
+    caps->MaxVertexBlendMatrixIndex         = wined3d_caps->MaxVertexBlendMatrixIndex;
+    caps->MaxPointSize                      = wined3d_caps->MaxPointSize;
+    caps->MaxPrimitiveCount                 = wined3d_caps->MaxPrimitiveCount;
+    caps->MaxVertexIndex                    = wined3d_caps->MaxVertexIndex;
+    caps->MaxStreams                        = wined3d_caps->MaxStreams;
+    caps->MaxStreamStride                   = wined3d_caps->MaxStreamStride;
+    caps->VertexShaderVersion               = wined3d_caps->VertexShaderVersion;
+    caps->MaxVertexShaderConst              = wined3d_caps->MaxVertexShaderConst;
+    caps->PixelShaderVersion                = wined3d_caps->PixelShaderVersion;
+    caps->PixelShader1xMaxValue             = wined3d_caps->PixelShader1xMaxValue;
+    caps->DevCaps2                          = wined3d_caps->DevCaps2;
+    caps->MaxNpatchTessellationLevel        = wined3d_caps->MaxNpatchTessellationLevel;
+    caps->MasterAdapterOrdinal              = wined3d_caps->MasterAdapterOrdinal;
+    caps->AdapterOrdinalInGroup             = wined3d_caps->AdapterOrdinalInGroup;
+    caps->NumberOfAdaptersInGroup           = wined3d_caps->NumberOfAdaptersInGroup;
+    caps->DeclTypes                         = wined3d_caps->DeclTypes;
+    caps->NumSimultaneousRTs                = wined3d_caps->NumSimultaneousRTs;
+    caps->StretchRectFilterCaps             = wined3d_caps->StretchRectFilterCaps;
+    caps->VS20Caps.Caps                     = wined3d_caps->VS20Caps.caps;
+    caps->VS20Caps.DynamicFlowControlDepth  = wined3d_caps->VS20Caps.dynamic_flow_control_depth;
+    caps->VS20Caps.NumTemps                 = wined3d_caps->VS20Caps.temp_count;
+    caps->VS20Caps.StaticFlowControlDepth   = wined3d_caps->VS20Caps.static_flow_control_depth;
+    caps->PS20Caps.Caps                     = wined3d_caps->PS20Caps.caps;
+    caps->PS20Caps.DynamicFlowControlDepth  = wined3d_caps->PS20Caps.dynamic_flow_control_depth;
+    caps->PS20Caps.NumTemps                 = wined3d_caps->PS20Caps.temp_count;
+    caps->PS20Caps.StaticFlowControlDepth   = wined3d_caps->PS20Caps.static_flow_control_depth;
+    caps->PS20Caps.NumInstructionSlots      = wined3d_caps->PS20Caps.instruction_slot_count;
+    caps->VertexTextureFilterCaps           = wined3d_caps->VertexTextureFilterCaps;
+    caps->MaxVShaderInstructionsExecuted    = wined3d_caps->MaxVShaderInstructionsExecuted;
+    caps->MaxPShaderInstructionsExecuted    = wined3d_caps->MaxPShaderInstructionsExecuted;
+    caps->MaxVertexShader30InstructionSlots = wined3d_caps->MaxVertexShader30InstructionSlots;
+    caps->MaxPixelShader30InstructionSlots  = wined3d_caps->MaxPixelShader30InstructionSlots;
+
+    /* Some functionality is implemented in d3d9.dll, not wined3d.dll. Add the needed caps. */
+    caps->DevCaps2 |= D3DDEVCAPS2_CAN_STRETCHRECT_FROM_TEXTURES;
+
+    /* Filter wined3d caps. */
+    caps->TextureFilterCaps &= texture_filter_caps;
+    caps->CubeTextureFilterCaps &= texture_filter_caps;
+    caps->VolumeTextureFilterCaps &= texture_filter_caps;
+
+    caps->DevCaps &=
+        D3DDEVCAPS_EXECUTESYSTEMMEMORY | D3DDEVCAPS_EXECUTEVIDEOMEMORY | D3DDEVCAPS_TLVERTEXSYSTEMMEMORY |
+        D3DDEVCAPS_TLVERTEXVIDEOMEMORY | D3DDEVCAPS_TEXTURESYSTEMMEMORY| D3DDEVCAPS_TEXTUREVIDEOMEMORY   |
+        D3DDEVCAPS_DRAWPRIMTLVERTEX    | D3DDEVCAPS_CANRENDERAFTERFLIP | D3DDEVCAPS_TEXTURENONLOCALVIDMEM|
+        D3DDEVCAPS_DRAWPRIMITIVES2     | D3DDEVCAPS_SEPARATETEXTUREMEMORIES                              |
+        D3DDEVCAPS_DRAWPRIMITIVES2EX   | D3DDEVCAPS_HWTRANSFORMANDLIGHT| D3DDEVCAPS_CANBLTSYSTONONLOCAL  |
+        D3DDEVCAPS_HWRASTERIZATION     | D3DDEVCAPS_PUREDEVICE         | D3DDEVCAPS_QUINTICRTPATCHES     |
+        D3DDEVCAPS_RTPATCHES           | D3DDEVCAPS_RTPATCHHANDLEZERO  | D3DDEVCAPS_NPATCHES;
+
+    caps->ShadeCaps &=
+        D3DPSHADECAPS_COLORGOURAUDRGB  | D3DPSHADECAPS_SPECULARGOURAUDRGB |
+        D3DPSHADECAPS_ALPHAGOURAUDBLEND | D3DPSHADECAPS_FOGGOURAUD;
+
+    caps->RasterCaps &=
+        D3DPRASTERCAPS_DITHER          | D3DPRASTERCAPS_ZTEST          | D3DPRASTERCAPS_FOGVERTEX        |
+        D3DPRASTERCAPS_FOGTABLE        | D3DPRASTERCAPS_MIPMAPLODBIAS  | D3DPRASTERCAPS_ZBUFFERLESSHSR   |
+        D3DPRASTERCAPS_FOGRANGE        | D3DPRASTERCAPS_ANISOTROPY     | D3DPRASTERCAPS_WBUFFER          |
+        D3DPRASTERCAPS_WFOG            | D3DPRASTERCAPS_ZFOG           | D3DPRASTERCAPS_COLORPERSPECTIVE |
+        D3DPRASTERCAPS_SCISSORTEST     | D3DPRASTERCAPS_SLOPESCALEDEPTHBIAS                              |
+        D3DPRASTERCAPS_DEPTHBIAS       | D3DPRASTERCAPS_MULTISAMPLE_TOGGLE;
+
+    caps->DevCaps2 &=
+        D3DDEVCAPS2_STREAMOFFSET       | D3DDEVCAPS2_DMAPNPATCH        | D3DDEVCAPS2_ADAPTIVETESSRTPATCH |
+        D3DDEVCAPS2_ADAPTIVETESSNPATCH | D3DDEVCAPS2_CAN_STRETCHRECT_FROM_TEXTURES                       |
+        D3DDEVCAPS2_PRESAMPLEDDMAPNPATCH| D3DDEVCAPS2_VERTEXELEMENTSCANSHARESTREAMOFFSET;
+
+    caps->Caps2 &=
+        D3DCAPS2_FULLSCREENGAMMA       | D3DCAPS2_CANCALIBRATEGAMMA    | D3DCAPS2_RESERVED               |
+        D3DCAPS2_CANMANAGERESOURCE     | D3DCAPS2_DYNAMICTEXTURES      | D3DCAPS2_CANAUTOGENMIPMAP;
+
+    caps->VertexProcessingCaps &=
+        D3DVTXPCAPS_TEXGEN             | D3DVTXPCAPS_MATERIALSOURCE7   | D3DVTXPCAPS_DIRECTIONALLIGHTS   |
+        D3DVTXPCAPS_POSITIONALLIGHTS   | D3DVTXPCAPS_LOCALVIEWER       | D3DVTXPCAPS_TWEENING            |
+        D3DVTXPCAPS_TEXGEN_SPHEREMAP   | D3DVTXPCAPS_NO_TEXGEN_NONLOCALVIEWER;
+
+    caps->TextureCaps &=
+        D3DPTEXTURECAPS_PERSPECTIVE    | D3DPTEXTURECAPS_POW2          | D3DPTEXTURECAPS_ALPHA           |
+        D3DPTEXTURECAPS_SQUAREONLY     | D3DPTEXTURECAPS_TEXREPEATNOTSCALEDBYSIZE                        |
+        D3DPTEXTURECAPS_ALPHAPALETTE   | D3DPTEXTURECAPS_NONPOW2CONDITIONAL                              |
+        D3DPTEXTURECAPS_PROJECTED      | D3DPTEXTURECAPS_CUBEMAP       | D3DPTEXTURECAPS_VOLUMEMAP       |
+        D3DPTEXTURECAPS_MIPMAP         | D3DPTEXTURECAPS_MIPVOLUMEMAP  | D3DPTEXTURECAPS_MIPCUBEMAP      |
+        D3DPTEXTURECAPS_CUBEMAP_POW2   | D3DPTEXTURECAPS_VOLUMEMAP_POW2| D3DPTEXTURECAPS_NOPROJECTEDBUMPENV;
+
+    caps->MaxVertexShaderConst = min(D3D9_MAX_VERTEX_SHADER_CONSTANTF, caps->MaxVertexShaderConst);
+    caps->NumSimultaneousRTs = min(D3D9_MAX_SIMULTANEOUS_RENDERTARGETS, caps->NumSimultaneousRTs);
+
+    if (caps->PixelShaderVersion > 3)
+    {
+        caps->PixelShaderVersion = D3DPS_VERSION(3, 0);
+    }
+    else
+    {
+        DWORD major = caps->PixelShaderVersion;
+        caps->PixelShaderVersion = D3DPS_VERSION(major, ps_minor_version[major]);
+    }
+
+    if (caps->VertexShaderVersion > 3)
+    {
+        caps->VertexShaderVersion = D3DVS_VERSION(3, 0);
+    }
+    else
+    {
+        DWORD major = caps->VertexShaderVersion;
+        caps->VertexShaderVersion = D3DVS_VERSION(major, vs_minor_version[major]);
+    }
 }
 
 static HRESULT WINAPI d3d9_device_QueryInterface(IDirect3DDevice9Ex *iface, REFIID riid, void **out)
@@ -404,7 +568,7 @@ static HRESULT WINAPI d3d9_device_GetDirect3D(IDirect3DDevice9Ex *iface, IDirect
 static HRESULT WINAPI d3d9_device_GetDeviceCaps(IDirect3DDevice9Ex *iface, D3DCAPS9 *caps)
 {
     struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
-    WINED3DCAPS *wined3d_caps;
+    WINED3DCAPS wined3d_caps;
     HRESULT hr;
 
     TRACE("iface %p, caps %p.\n", iface, caps);
@@ -412,22 +576,13 @@ static HRESULT WINAPI d3d9_device_GetDeviceCaps(IDirect3DDevice9Ex *iface, D3DCA
     if (!caps)
         return D3DERR_INVALIDCALL;
 
-    if (!(wined3d_caps = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*wined3d_caps))))
-        return D3DERR_INVALIDCALL; /* well this is what MSDN says to return */
-
     memset(caps, 0, sizeof(*caps));
 
     wined3d_mutex_lock();
-    hr = wined3d_device_get_device_caps(device->wined3d_device, wined3d_caps);
+    hr = wined3d_device_get_device_caps(device->wined3d_device, &wined3d_caps);
     wined3d_mutex_unlock();
 
-    WINECAPSTOD3D9CAPS(caps, wined3d_caps)
-    HeapFree(GetProcessHeap(), 0, wined3d_caps);
-
-    /* Some functionality is implemented in d3d9.dll, not wined3d.dll. Add the needed caps */
-    caps->DevCaps2 |= D3DDEVCAPS2_CAN_STRETCHRECT_FROM_TEXTURES;
-
-    filter_caps(caps);
+    d3dcaps_from_wined3dcaps(caps, &wined3d_caps);
 
     return hr;
 }
@@ -922,9 +1077,9 @@ static HRESULT WINAPI d3d9_device_CreateVolumeTexture(IDirect3DDevice9Ex *iface,
     struct d3d9_texture *object;
     HRESULT hr;
 
-    TRACE("iface %p, width %u, height %u, depth %u, levels %u\n",
-            iface, width, height, depth, levels);
-    TRACE("usage %#x, format %#x, pool %#x, texture %p, shared_handle %p.\n",
+    TRACE("iface %p, width %u, height %u, depth %u, levels %u, "
+            "usage %#x, format %#x, pool %#x, texture %p, shared_handle %p.\n",
+            iface, width, height, depth, levels,
             usage, format, pool, texture, shared_handle);
 
     *texture = NULL;
@@ -1123,7 +1278,7 @@ static HRESULT d3d9_device_create_surface(struct d3d9_device *device, UINT width
     desc.depth = 1;
     desc.size = 0;
 
-    if (is_gdi_compat_format(format))
+    if (is_gdi_compat_wined3dformat(desc.format))
         flags |= WINED3D_TEXTURE_CREATE_GET_DC;
 
     wined3d_mutex_lock();
@@ -1154,16 +1309,16 @@ static HRESULT d3d9_device_create_surface(struct d3d9_device *device, UINT width
     return D3D_OK;
 }
 
-BOOL is_gdi_compat_format(D3DFORMAT format)
+BOOL is_gdi_compat_wined3dformat(enum wined3d_format_id format)
 {
     switch (format)
     {
-        case D3DFMT_A8R8G8B8:
-        case D3DFMT_X8R8G8B8:
-        case D3DFMT_R5G6B5:
-        case D3DFMT_X1R5G5B5:
-        case D3DFMT_A1R5G5B5:
-        case D3DFMT_R8G8B8:
+        case WINED3DFMT_B8G8R8A8_UNORM:
+        case WINED3DFMT_B8G8R8X8_UNORM:
+        case WINED3DFMT_B5G6R5_UNORM:
+        case WINED3DFMT_B5G5R5X1_UNORM:
+        case WINED3DFMT_B5G5R5A1_UNORM:
+        case WINED3DFMT_B8G8R8_UNORM:
             return TRUE;
         default:
             return FALSE;
@@ -1421,6 +1576,7 @@ static HRESULT WINAPI d3d9_device_ColorFill(IDirect3DDevice9Ex *iface,
     struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
     struct d3d9_surface *surface_impl = unsafe_impl_from_IDirect3DSurface9(surface);
     struct wined3d_sub_resource_desc desc;
+    struct wined3d_rendertarget_view *rtv;
     HRESULT hr;
 
     TRACE("iface %p, surface %p, rect %p, color 0x%08x.\n", iface, surface, rect, color);
@@ -1453,9 +1609,10 @@ static HRESULT WINAPI d3d9_device_ColorFill(IDirect3DDevice9Ex *iface,
         return D3DERR_INVALIDCALL;
     }
 
+    rtv = d3d9_surface_acquire_rendertarget_view(surface_impl);
     hr = wined3d_device_clear_rendertarget_view(device->wined3d_device,
-            d3d9_surface_get_rendertarget_view(surface_impl), rect,
-            WINED3DCLEAR_TARGET, &c, 0.0f, 0);
+            rtv, rect, WINED3DCLEAR_TARGET, &c, 0.0f, 0);
+    d3d9_surface_release_rendertarget_view(surface_impl, rtv);
 
     wined3d_mutex_unlock();
 
@@ -1511,6 +1668,7 @@ static HRESULT WINAPI d3d9_device_SetRenderTarget(IDirect3DDevice9Ex *iface, DWO
 {
     struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
     struct d3d9_surface *surface_impl = unsafe_impl_from_IDirect3DSurface9(surface);
+    struct wined3d_rendertarget_view *rtv;
     HRESULT hr;
 
     TRACE("iface %p, idx %u, surface %p.\n", iface, idx, surface);
@@ -1523,13 +1681,20 @@ static HRESULT WINAPI d3d9_device_SetRenderTarget(IDirect3DDevice9Ex *iface, DWO
 
     if (!idx && !surface_impl)
     {
-         WARN("Trying to set render target 0 to NULL.\n");
-         return D3DERR_INVALIDCALL;
+        WARN("Trying to set render target 0 to NULL.\n");
+        return D3DERR_INVALIDCALL;
+    }
+
+    if (surface_impl && d3d9_surface_get_device(surface_impl) != device)
+    {
+        WARN("Render target surface does not match device.\n");
+        return D3DERR_INVALIDCALL;
     }
 
     wined3d_mutex_lock();
-    hr = wined3d_device_set_rendertarget_view(device->wined3d_device, idx,
-            surface_impl ? d3d9_surface_get_rendertarget_view(surface_impl) : NULL, TRUE);
+    rtv = surface_impl ? d3d9_surface_acquire_rendertarget_view(surface_impl) : NULL;
+    hr = wined3d_device_set_rendertarget_view(device->wined3d_device, idx, rtv, TRUE);
+    d3d9_surface_release_rendertarget_view(surface_impl, rtv);
     wined3d_mutex_unlock();
 
     return hr;
@@ -1576,12 +1741,14 @@ static HRESULT WINAPI d3d9_device_SetDepthStencilSurface(IDirect3DDevice9Ex *ifa
 {
     struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
     struct d3d9_surface *ds_impl = unsafe_impl_from_IDirect3DSurface9(depth_stencil);
+    struct wined3d_rendertarget_view *rtv;
 
     TRACE("iface %p, depth_stencil %p.\n", iface, depth_stencil);
 
     wined3d_mutex_lock();
-    wined3d_device_set_depth_stencil_view(device->wined3d_device,
-            ds_impl ? d3d9_surface_get_rendertarget_view(ds_impl) : NULL);
+    rtv = ds_impl ? d3d9_surface_acquire_rendertarget_view(ds_impl) : NULL;
+    wined3d_device_set_depth_stencil_view(device->wined3d_device, rtv);
+    d3d9_surface_release_rendertarget_view(ds_impl, rtv);
     wined3d_mutex_unlock();
 
     return D3D_OK;
@@ -1953,7 +2120,7 @@ static HRESULT WINAPI d3d9_device_EndStateBlock(IDirect3DDevice9Ex *iface, IDire
     wined3d_mutex_unlock();
     if (FAILED(hr))
     {
-       WARN("IWineD3DDevice_EndStateBlock() failed, hr %#x.\n", hr);
+       WARN("Failed to end the state block, hr %#x.\n", hr);
        return hr;
     }
 
@@ -2473,18 +2640,16 @@ static HRESULT WINAPI d3d9_device_DrawIndexedPrimitiveUP(IDirect3DDevice9Ex *ifa
         UINT primitive_count, const void *index_data, D3DFORMAT index_format,
         const void *vertex_data, UINT vertex_stride)
 {
-    struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
-    HRESULT hr;
     UINT idx_count = vertex_count_from_primitive_count(primitive_type, primitive_count);
+    struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
     UINT idx_fmt_size = index_format == D3DFMT_INDEX16 ? 2 : 4;
+    UINT vtx_size = vertex_count * vertex_stride;
     UINT idx_size = idx_count * idx_fmt_size;
     struct wined3d_map_desc wined3d_map_desc;
     struct wined3d_box wined3d_box = {0};
     struct wined3d_resource *ib, *vb;
-    UINT ib_pos;
-
-    UINT vtx_size = vertex_count * vertex_stride;
-    UINT vb_pos, align;
+    UINT vb_pos, ib_pos, align;
+    HRESULT hr;
 
     TRACE("iface %p, primitive_type %#x, min_vertex_idx %u, vertex_count %u, primitive_count %u, "
             "index_data %p, index_format %#x, vertex_data %p, vertex_stride %u.\n",
@@ -2524,7 +2689,7 @@ static HRESULT WINAPI d3d9_device_DrawIndexedPrimitiveUP(IDirect3DDevice9Ex *ifa
     if (FAILED(hr = wined3d_resource_map(vb, 0, &wined3d_map_desc, &wined3d_box,
             vb_pos ? WINED3D_MAP_NOOVERWRITE : WINED3D_MAP_DISCARD)))
         goto done;
-    memcpy(wined3d_map_desc.data, vertex_data, vtx_size);
+    memcpy(wined3d_map_desc.data, (char *)vertex_data + min_vertex_idx * vertex_stride, vtx_size);
     wined3d_resource_unmap(vb, 0);
     device->vertex_buffer_pos = vb_pos + vtx_size;
 
@@ -2556,7 +2721,7 @@ static HRESULT WINAPI d3d9_device_DrawIndexedPrimitiveUP(IDirect3DDevice9Ex *ifa
 
     wined3d_device_set_index_buffer(device->wined3d_device, device->index_buffer,
             wined3dformat_from_d3dformat(index_format), 0);
-    wined3d_device_set_base_vertex_index(device->wined3d_device, vb_pos / vertex_stride);
+    wined3d_device_set_base_vertex_index(device->wined3d_device, vb_pos / vertex_stride - min_vertex_idx);
 
     wined3d_device_set_primitive_type(device->wined3d_device, primitive_type);
     hr = wined3d_device_draw_indexed_primitive(device->wined3d_device, ib_pos / idx_fmt_size, idx_count);
@@ -3464,6 +3629,7 @@ static HRESULT WINAPI d3d9_device_CreateDepthStencilSurfaceEx(IDirect3DDevice9Ex
     if (discard)
         flags |= WINED3D_TEXTURE_CREATE_DISCARD;
 
+    *surface = NULL;
     return d3d9_device_create_surface(device, width, height, format, flags, surface,
             D3DUSAGE_DEPTHSTENCIL | usage, D3DPOOL_DEFAULT, multisample_type, multisample_quality, NULL);
 }
@@ -3736,24 +3902,22 @@ static HRESULT CDECL device_parent_volume_created(struct wined3d_device_parent *
 }
 
 static HRESULT CDECL device_parent_create_swapchain_texture(struct wined3d_device_parent *device_parent,
-        void *container_parent, const struct wined3d_resource_desc *desc, struct wined3d_texture **texture)
+        void *container_parent, const struct wined3d_resource_desc *desc, DWORD texture_flags,
+        struct wined3d_texture **texture)
 {
     struct d3d9_device *device = device_from_device_parent(device_parent);
-    DWORD flags = WINED3D_TEXTURE_CREATE_MAPPABLE;
     struct d3d9_surface *d3d_surface;
     HRESULT hr;
 
-    TRACE("device_parent %p, container_parent %p, desc %p, texture %p.\n",
-            device_parent, container_parent, desc, texture);
+    TRACE("device_parent %p, container_parent %p, desc %p, texture flags %#x, texture %p.\n",
+            device_parent, container_parent, desc, texture_flags, texture);
 
     if (container_parent == device_parent)
         container_parent = &device->IDirect3DDevice9Ex_iface;
 
-    if (is_gdi_compat_format(d3dformat_from_wined3dformat(desc->format)))
-        flags |= WINED3D_TEXTURE_CREATE_GET_DC;
-
     if (FAILED(hr = wined3d_texture_create(device->wined3d_device, desc, 1, 1,
-            flags, NULL, container_parent, &d3d9_null_wined3d_parent_ops, texture)))
+            texture_flags | WINED3D_TEXTURE_CREATE_MAPPABLE, NULL, container_parent,
+            &d3d9_null_wined3d_parent_ops, texture)))
     {
         WARN("Failed to create texture, hr %#x.\n", hr);
         return hr;

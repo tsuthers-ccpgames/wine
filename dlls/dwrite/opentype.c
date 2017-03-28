@@ -113,7 +113,8 @@ enum OPENTYPE_CMAP_TABLE_FORMAT
 #include "pshpack2.h"
 typedef struct
 {
-    ULONG version;
+    USHORT majorVersion;
+    USHORT minorVersion;
     ULONG revision;
     ULONG checksumadj;
     ULONG magic;
@@ -204,7 +205,8 @@ typedef struct
 } TT_OS2_V2;
 
 typedef struct {
-    ULONG  version;
+    USHORT majorVersion;
+    USHORT minorVersion;
     SHORT  ascender;
     SHORT  descender;
     SHORT  linegap;
@@ -1243,17 +1245,10 @@ void opentype_get_font_metrics(struct file_stream_desc *stream_desc, DWRITE_FONT
         metrics->underlineThickness = GET_BE_WORD(tt_post->underlineThickness);
     }
 
-    /* use any of thickness values if another one is zero, if both are zero use estimate */
-    if (metrics->strikethroughThickness || metrics->underlineThickness) {
-        if (!metrics->strikethroughThickness)
-            metrics->strikethroughThickness = metrics->underlineThickness;
-        if (!metrics->underlineThickness)
-            metrics->underlineThickness = metrics->strikethroughThickness;
-    }
-    else {
-        metrics->strikethroughThickness = metrics->designUnitsPerEm / 14;
+    if (metrics->underlineThickness == 0)
         metrics->underlineThickness = metrics->designUnitsPerEm / 14;
-    }
+    if (metrics->strikethroughThickness == 0)
+        metrics->strikethroughThickness = metrics->underlineThickness;
 
     /* estimate missing metrics */
     if (metrics->xHeight == 0)
@@ -1285,6 +1280,7 @@ void opentype_get_font_properties(struct file_stream_desc *stream_desc, struct d
     props->weight = DWRITE_FONT_WEIGHT_NORMAL;
     props->style = DWRITE_FONT_STYLE_NORMAL;
     memset(&props->panose, 0, sizeof(props->panose));
+    memset(&props->lf, 0, sizeof(props->lf));
 
     /* DWRITE_FONT_STRETCH enumeration values directly match font data values */
     if (tt_os2) {
@@ -1308,6 +1304,7 @@ void opentype_get_font_properties(struct file_stream_desc *stream_desc, struct d
             props->style = DWRITE_FONT_STYLE_OBLIQUE;
         else if (fsSelection & OS2_FSSELECTION_ITALIC)
             props->style = DWRITE_FONT_STYLE_ITALIC;
+
         memcpy(&props->panose, &tt_os2->panose, sizeof(props->panose));
     }
     else if (tt_head) {
@@ -1324,6 +1321,9 @@ void opentype_get_font_properties(struct file_stream_desc *stream_desc, struct d
         if (macStyle & TT_HEAD_MACSTYLE_ITALIC)
             props->style = DWRITE_FONT_STYLE_ITALIC;
     }
+
+    props->lf.lfWeight = props->weight;
+    props->lf.lfItalic = props->style == DWRITE_FONT_STYLE_ITALIC;
 
     TRACE("stretch=%d, weight=%d, style %d\n", props->stretch, props->weight, props->style);
 
@@ -1607,10 +1607,11 @@ HRESULT opentype_get_font_familyname(struct file_stream_desc *stream_desc, IDWri
 
 /* FaceName locating order is WWS Face Name -> Preferred Face Name -> Face Name. If font claims to
    have 'Preferred Face Name' in WWS format, then WWS name is not used. */
-HRESULT opentype_get_font_facename(struct file_stream_desc *stream_desc, IDWriteLocalizedStrings **names)
+HRESULT opentype_get_font_facename(struct file_stream_desc *stream_desc, WCHAR *lfname, IDWriteLocalizedStrings **names)
 {
-    const TT_OS2_V2 *tt_os2;
+    IDWriteLocalizedStrings *lfnames;
     void *os2_context, *name_context;
+    const TT_OS2_V2 *tt_os2;
     const void *name_table;
     HRESULT hr;
 
@@ -1629,6 +1630,27 @@ HRESULT opentype_get_font_facename(struct file_stream_desc *stream_desc, IDWrite
         hr = opentype_get_font_strings_from_id(name_table, OPENTYPE_STRING_PREFERRED_SUBFAMILY_NAME, names);
     if (FAILED(hr))
         hr = opentype_get_font_strings_from_id(name_table, OPENTYPE_STRING_SUBFAMILY_NAME, names);
+
+    /* User locale is preferred, with fallback to en-us. */
+    *lfname = 0;
+    if (SUCCEEDED(opentype_get_font_strings_from_id(name_table, OPENTYPE_STRING_FAMILY_NAME, &lfnames))) {
+        static const WCHAR enusW[] = {'e','n','-','u','s',0};
+        WCHAR localeW[LOCALE_NAME_MAX_LENGTH];
+        UINT32 index;
+        BOOL exists;
+
+        exists = FALSE;
+        if (GetSystemDefaultLocaleName(localeW, sizeof(localeW)/sizeof(WCHAR)))
+            IDWriteLocalizedStrings_FindLocaleName(lfnames, localeW, &index, &exists);
+
+        if (!exists)
+            IDWriteLocalizedStrings_FindLocaleName(lfnames, enusW, &index, &exists);
+
+        if (exists)
+            IDWriteLocalizedStrings_GetString(lfnames, index, lfname, LF_FACESIZE);
+
+        IDWriteLocalizedStrings_Release(lfnames);
+    }
 
     if (tt_os2)
         IDWriteFontFileStream_ReleaseFileFragment(stream_desc->stream, os2_context);
@@ -1923,8 +1945,14 @@ HRESULT opentype_get_font_signature(struct file_stream_desc *stream_desc, FONTSI
         fontsig->fsUsb[2] = GET_BE_DWORD(tt_os2->ulUnicodeRange3);
         fontsig->fsUsb[3] = GET_BE_DWORD(tt_os2->ulUnicodeRange4);
 
-        fontsig->fsCsb[0] = GET_BE_DWORD(tt_os2->ulCodePageRange1);
-        fontsig->fsCsb[1] = GET_BE_DWORD(tt_os2->ulCodePageRange2);
+        if (GET_BE_WORD(tt_os2->version) == 0) {
+            fontsig->fsCsb[0] = 0;
+            fontsig->fsCsb[1] = 0;
+        }
+        else {
+            fontsig->fsCsb[0] = GET_BE_DWORD(tt_os2->ulCodePageRange1);
+            fontsig->fsCsb[1] = GET_BE_DWORD(tt_os2->ulCodePageRange2);
+        }
 
         IDWriteFontFileStream_ReleaseFileFragment(stream_desc->stream, os2_context);
     }

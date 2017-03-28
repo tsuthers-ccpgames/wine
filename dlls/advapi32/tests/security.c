@@ -65,6 +65,7 @@
 static BOOL (WINAPI *pAddAccessAllowedAceEx)(PACL, DWORD, DWORD, DWORD, PSID);
 static BOOL (WINAPI *pAddAccessDeniedAceEx)(PACL, DWORD, DWORD, DWORD, PSID);
 static BOOL (WINAPI *pAddAuditAccessAceEx)(PACL, DWORD, DWORD, DWORD, PSID, BOOL, BOOL);
+static BOOL (WINAPI *pAddMandatoryAce)(PACL,DWORD,DWORD,DWORD,PSID);
 static VOID (WINAPI *pBuildTrusteeWithSidA)( PTRUSTEEA pTrustee, PSID pSid );
 static VOID (WINAPI *pBuildTrusteeWithNameA)( PTRUSTEEA pTrustee, LPSTR pName );
 static VOID (WINAPI *pBuildTrusteeWithObjectsAndNameA)( PTRUSTEEA pTrustee,
@@ -199,6 +200,7 @@ static void init(void)
     pAddAccessAllowedAceEx = (void *)GetProcAddress(hmod, "AddAccessAllowedAceEx");
     pAddAccessDeniedAceEx = (void *)GetProcAddress(hmod, "AddAccessDeniedAceEx");
     pAddAuditAccessAceEx = (void *)GetProcAddress(hmod, "AddAuditAccessAceEx");
+    pAddMandatoryAce = (void *)GetProcAddress(hmod, "AddMandatoryAce");
     pCheckTokenMembership = (void *)GetProcAddress(hmod, "CheckTokenMembership");
     pConvertStringSecurityDescriptorToSecurityDescriptorA =
         (void *)GetProcAddress(hmod, "ConvertStringSecurityDescriptorToSecurityDescriptorA" );
@@ -1374,6 +1376,12 @@ static void test_AccessCheck(void)
                       PrivSet, &PrivSetLen, &Access, &AccessStatus);
     ok(ret, "AccessCheck failed with error %d\n", GetLastError());
     ok(AccessStatus && (Access == KEY_READ),
+        "AccessCheck failed to grant access with error %d\n",
+        GetLastError());
+    ret = AccessCheck(SecurityDescriptor, Token, MAXIMUM_ALLOWED, &Mapping,
+                      PrivSet, &PrivSetLen, &Access, &AccessStatus);
+    ok(ret, "AccessCheck failed with error %d\n", GetLastError());
+    ok(AccessStatus && (Access == KEY_ALL_ACCESS),
         "AccessCheck failed to grant access with error %d\n",
         GetLastError());
 
@@ -4033,10 +4041,14 @@ static void test_GetNamedSecurityInfoA(void)
         ok(bret, "Failed to get Builtin Users ACE.\n");
         flags = ((ACE_HEADER *)ace)->AceFlags;
         ok(flags == (INHERIT_ONLY_ACE|CONTAINER_INHERIT_ACE)
-           || broken(flags == (INHERIT_ONLY_ACE|CONTAINER_INHERIT_ACE|INHERITED_ACE)) /* w2k8 */,
+           || broken(flags == (INHERIT_ONLY_ACE|CONTAINER_INHERIT_ACE|INHERITED_ACE)) /* w2k8 */
+           || broken(flags == (CONTAINER_INHERIT_ACE|INHERITED_ACE)) /* win 10 wow64 */
+           || broken(flags == CONTAINER_INHERIT_ACE), /* win 10 */
            "Builtin Users ACE has unexpected flags (0x%x != 0x%x)\n", flags,
            INHERIT_ONLY_ACE|CONTAINER_INHERIT_ACE);
-        ok(ace->Mask == GENERIC_READ, "Builtin Users ACE has unexpected mask (0x%x != 0x%x)\n",
+        ok(ace->Mask == GENERIC_READ
+           || broken(ace->Mask == KEY_READ), /* win 10 */
+           "Builtin Users ACE has unexpected mask (0x%x != 0x%x)\n",
                                       ace->Mask, GENERIC_READ);
     }
     ok(admins_ace_id != -1, "Bultin Admins ACE not found.\n");
@@ -4048,7 +4060,9 @@ static void test_GetNamedSecurityInfoA(void)
         ok(flags == 0x0
            || broken(flags == (INHERIT_ONLY_ACE|CONTAINER_INHERIT_ACE|INHERITED_ACE)) /* w2k8 */
            || broken(flags == (OBJECT_INHERIT_ACE|CONTAINER_INHERIT_ACE)) /* win7 */
-           || broken(flags == (INHERIT_ONLY_ACE|CONTAINER_INHERIT_ACE)), /* win8+ */
+           || broken(flags == (INHERIT_ONLY_ACE|CONTAINER_INHERIT_ACE)) /* win8+ */
+           || broken(flags == (CONTAINER_INHERIT_ACE|INHERITED_ACE)) /* win 10 wow64 */
+           || broken(flags == CONTAINER_INHERIT_ACE), /* win 10 */
            "Builtin Admins ACE has unexpected flags (0x%x != 0x0)\n", flags);
         ok(ace->Mask == KEY_ALL_ACCESS || broken(ace->Mask == GENERIC_ALL) /* w2k8 */,
            "Builtin Admins ACE has unexpected mask (0x%x != 0x%x)\n", ace->Mask, KEY_ALL_ACCESS);
@@ -6144,6 +6158,48 @@ static void test_AddAce(void)
     ok(GetLastError() == ERROR_INVALID_PARAMETER, "GetLastError() = %d\n", GetLastError());
 }
 
+static void test_AddMandatoryAce(void)
+{
+    static SID low_level = {SID_REVISION, 1, {SECURITY_MANDATORY_LABEL_AUTHORITY},
+                            {SECURITY_MANDATORY_LOW_RID}};
+    SYSTEM_MANDATORY_LABEL_ACE *ace;
+    char buffer_acl[256];
+    ACL *pAcl = (ACL *)&buffer_acl;
+    BOOL ret, found;
+    DWORD index;
+
+    if (!pAddMandatoryAce)
+    {
+        win_skip("AddMandatoryAce not supported, skipping test\n");
+        return;
+    }
+
+    ret = InitializeAcl(pAcl, 256, ACL_REVISION);
+    ok(ret, "InitializeAcl failed with %u\n", GetLastError());
+
+    SetLastError(0xdeadbeef);
+    ret = pAddMandatoryAce(pAcl, ACL_REVISION, 0, 0x1234, &low_level);
+    ok(!ret, "AddMandatoryAce succeeded\n");
+    ok(GetLastError() == ERROR_INVALID_PARAMETER,
+       "Expected ERROR_INVALID_PARAMETER got %u\n", GetLastError());
+
+    ret = pAddMandatoryAce(pAcl, ACL_REVISION, 0, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, &low_level);
+    ok(ret, "AddMandatoryAce failed with %u\n", GetLastError());
+
+    index = 0;
+    found = FALSE;
+    while (pGetAce( pAcl, index++, (void **)&ace ))
+    {
+        if (ace->Header.AceType != SYSTEM_MANDATORY_LABEL_ACE_TYPE) continue;
+        ok(ace->Header.AceFlags == 0, "Expected flags 0, got %x\n", ace->Header.AceFlags);
+        ok(ace->Mask == SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+           "Expected mask SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, got %x\n", ace->Mask);
+        ok(EqualSid(&ace->SidStart, &low_level), "Expected low integrity level\n");
+        found = TRUE;
+    }
+    ok(found, "Could not find mandatory label ace\n");
+}
+
 static void test_system_security_access(void)
 {
     static const WCHAR testkeyW[] =
@@ -6402,6 +6458,43 @@ static void test_pseudo_tokens(void)
                  "Expected ERROR_NO_TOKEN, got %u\n", GetLastError());
 }
 
+static void test_maximum_allowed(void)
+{
+    HANDLE (WINAPI *pCreateEventExA)(SECURITY_ATTRIBUTES *, LPCSTR, DWORD, DWORD);
+    char buffer_sd[SECURITY_DESCRIPTOR_MIN_LENGTH], buffer_acl[256];
+    SECURITY_DESCRIPTOR *sd = (SECURITY_DESCRIPTOR *)&buffer_sd;
+    SECURITY_ATTRIBUTES sa;
+    ACL *acl = (ACL *)&buffer_acl;
+    HMODULE hkernel32 = GetModuleHandleA("kernel32.dll");
+    ACCESS_MASK mask;
+    HANDLE handle;
+    BOOL ret;
+
+    pCreateEventExA = (void *)GetProcAddress(hkernel32, "CreateEventExA");
+    if (!pCreateEventExA)
+    {
+        win_skip("CreateEventExA is not available\n");
+        return;
+    }
+
+    ret = InitializeSecurityDescriptor(sd, SECURITY_DESCRIPTOR_REVISION);
+    ok(ret, "InitializeSecurityDescriptor failed with %u\n", GetLastError());
+    ret = InitializeAcl(acl, 256, ACL_REVISION);
+    ok(ret, "InitializeAcl failed with %u\n", GetLastError());
+    ret = SetSecurityDescriptorDacl(sd, TRUE, acl, FALSE);
+    ok(ret, "SetSecurityDescriptorDacl failed with %u\n", GetLastError());
+
+    sa.nLength              = sizeof(SECURITY_ATTRIBUTES);
+    sa.lpSecurityDescriptor = sd;
+    sa.bInheritHandle       = FALSE;
+
+    handle = pCreateEventExA(&sa, NULL, 0, MAXIMUM_ALLOWED | 0x4);
+    ok(handle != NULL, "CreateEventExA failed with error %u\n", GetLastError());
+    mask = get_obj_access(handle);
+    ok(mask == EVENT_ALL_ACCESS, "Expected %x, got %x\n", EVENT_ALL_ACCESS, mask);
+    CloseHandle(handle);
+}
+
 START_TEST(security)
 {
     init();
@@ -6446,7 +6539,9 @@ START_TEST(security)
     test_default_dacl_owner_sid();
     test_AdjustTokenPrivileges();
     test_AddAce();
+    test_AddMandatoryAce();
     test_system_security_access();
     test_GetSidIdentifierAuthority();
     test_pseudo_tokens();
+    test_maximum_allowed();
 }

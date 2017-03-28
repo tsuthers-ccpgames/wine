@@ -949,7 +949,7 @@
 @ extern ??_7?$time_put@DV?$ostreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@6B@ msvcp120.??_7?$time_put@DV?$ostreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@6B@
 @ extern ??_7?$time_put@GV?$ostreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@6B@ msvcp120.??_7?$time_put@GV?$ostreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@6B@
 @ extern ??_7?$time_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@6B@ msvcp120.??_7?$time_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@6B@
-# extern ??_7_Facet_base@std@@6B@
+@ extern ??_7_Facet_base@std@@6B@ msvcp120.??_7_Facet_base@std@@6B@
 @ extern ??_7_Locimp@locale@std@@6B@ msvcp120.??_7_Locimp@locale@std@@6B@
 @ extern ??_7_Pad@std@@6B@ msvcp120.??_7_Pad@std@@6B@
 @ extern ??_7codecvt_base@std@@6B@ msvcp120.??_7codecvt_base@std@@6B@
@@ -2774,7 +2774,7 @@
 @ cdecl -arch=arm ?is@?$ctype@_W@std@@QBA_NF_W@Z(ptr long long) msvcp120.?is@?$ctype@_W@std@@QBA_NF_W@Z
 @ thiscall -arch=i386 ?is@?$ctype@_W@std@@QBE_NF_W@Z(ptr long long) msvcp120.?is@?$ctype@_W@std@@QBE_NF_W@Z
 @ cdecl -arch=win64 ?is@?$ctype@_W@std@@QEBA_NF_W@Z(ptr long long) msvcp120.?is@?$ctype@_W@std@@QEBA_NF_W@Z
-@ stub ?is_current_task_group_canceling@Concurrency@@YA_NXZ
+@ cdecl ?is_current_task_group_canceling@Concurrency@@YA_NXZ() msvcp120.?is_current_task_group_canceling@Concurrency@@YA_NXZ
 @ cdecl -arch=arm ?isfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QAAXXZ(ptr) msvcp120.?isfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QAAXXZ
 @ thiscall -arch=i386 ?isfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QAEXXZ(ptr) msvcp120.?isfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QAEXXZ
 @ cdecl -arch=win64 ?isfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAXXZ(ptr) msvcp120.?isfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAXXZ
@@ -3760,7 +3760,7 @@
 @ stub _LXp_sqrtx
 @ stub _LXp_subx
 @ extern _LZero msvcp120._LZero
-@ stub _Lock_shared_ptr_spin_lock
+@ cdecl _Lock_shared_ptr_spin_lock() msvcp120._Lock_shared_ptr_spin_lock
 @ cdecl _Mbrtowc(ptr ptr long ptr ptr) msvcp120._Mbrtowc
 @ stub _Mtx_clear_owner
 @ cdecl _Mtx_current_owns(ptr) msvcp120._Mtx_current_owns
@@ -3821,7 +3821,7 @@
 @ stub _Tss_delete
 @ stub _Tss_get
 @ stub _Tss_set
-@ stub _Unlock_shared_ptr_spin_lock
+@ cdecl _Unlock_shared_ptr_spin_lock() msvcp120._Unlock_shared_ptr_spin_lock
 @ cdecl _Wcrtomb(ptr long ptr ptr) msvcp120._Wcrtomb
 @ cdecl _Wcscoll(ptr ptr ptr ptr ptr) msvcp120._Wcscoll
 @ stub _Wcsxfrm

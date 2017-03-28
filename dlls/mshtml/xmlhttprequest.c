@@ -252,6 +252,7 @@ static ULONG WINAPI HTMLXMLHttpRequest_Release(IHTMLXMLHttpRequest *iface)
     if(!ref) {
         if(This->event_listener)
             detach_xhr_event_listener(This->event_listener);
+        release_event_target(&This->event_target);
         release_dispex(&This->event_target.dispex);
         nsIXMLHttpRequest_Release(This->nsxhr);
         heap_free(This);
@@ -850,6 +851,7 @@ static HRESULT WINAPI HTMLXMLHttpRequestFactory_create(IHTMLXMLHttpRequestFactor
     ret->nsxhr = nsxhr;
 
     ret->IHTMLXMLHttpRequest_iface.lpVtbl = &HTMLXMLHttpRequestVtbl;
+    init_event_target(&ret->event_target);
     init_dispex(&ret->event_target.dispex, (IUnknown*)&ret->IHTMLXMLHttpRequest_iface,
             &HTMLXMLHttpRequest_dispex);
     ret->ref = 1;

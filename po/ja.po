@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2016-08-20 14:33+0900\n"
+"PO-Revision-Date: 2016-12-04 21:37+0900\n"
 "Last-Translator: Akihiro Sagawa <sagawa.aki@gmail.com>\n"
 "Language-Team: Japanese\n"
 "Language: ja\n"
@@ -57,20 +57,21 @@ msgstr "削除(&R)"
 msgid "Support Information"
 msgstr "サポート情報"
 
-#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:55 comdlg32.rc:232 comdlg32.rc:262
-#: comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398 comdlg32.rc:452 credui.rc:52
-#: cryptui.rc:263 cryptui.rc:275 cryptui.rc:365 dinput.rc:46 ieframe.rc:96
-#: localui.rc:44 localui.rc:57 mpr.rc:49 msacm32.rc:53 mshtml.rc:47
-#: mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62 oledlg.rc:94 serialui.rc:41
-#: setupapi.rc:59 shell32.rc:276 shell32.rc:300 shell32.rc:322 shell32.rc:341
-#: shlwapi.rc:44 user32.rc:83 user32.rc:98 wininet.rc:51 wininet.rc:71
-#: winspool.rc:42 net.rc:47 notepad.rc:117 oleview.rc:162 oleview.rc:175
-#: progman.rc:106 progman.rc:124 progman.rc:142 progman.rc:158 progman.rc:180
-#: progman.rc:199 progman.rc:216 regedit.rc:247 regedit.rc:258 regedit.rc:271
-#: regedit.rc:287 regedit.rc:300 regedit.rc:313 taskmgr.rc:442 taskmgr.rc:517
-#: winecfg.rc:214 winecfg.rc:224 wineconsole.rc:135 winefile.rc:128
-#: winefile.rc:151 winefile.rc:181 winemine.rc:71 winemine.rc:81 winemine.rc:95
-#: wordpad.rc:215 wordpad.rc:226 wordpad.rc:244 wordpad.rc:257
+#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:65 comctl32.rc:55 comdlg32.rc:232
+#: comdlg32.rc:262 comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398
+#: comdlg32.rc:452 credui.rc:52 cryptui.rc:263 cryptui.rc:275 cryptui.rc:365
+#: dinput.rc:46 ieframe.rc:96 localui.rc:44 localui.rc:57 mpr.rc:49
+#: msacm32.rc:53 mshtml.rc:47 mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62
+#: oledlg.rc:94 serialui.rc:41 setupapi.rc:59 shell32.rc:276 shell32.rc:300
+#: shell32.rc:322 shell32.rc:341 shlwapi.rc:44 user32.rc:83 user32.rc:98
+#: wininet.rc:51 wininet.rc:71 winspool.rc:42 net.rc:47 notepad.rc:117
+#: oleview.rc:161 oleview.rc:174 progman.rc:106 progman.rc:124 progman.rc:142
+#: progman.rc:158 progman.rc:180 progman.rc:199 progman.rc:216 regedit.rc:263
+#: regedit.rc:274 regedit.rc:287 regedit.rc:303 regedit.rc:316 regedit.rc:329
+#: taskmgr.rc:442 taskmgr.rc:517 winecfg.rc:214 winecfg.rc:224
+#: wineconsole.rc:135 winefile.rc:128 winefile.rc:151 winefile.rc:181
+#: winemine.rc:71 winemine.rc:81 winemine.rc:95 wordpad.rc:215 wordpad.rc:226
+#: wordpad.rc:244 wordpad.rc:257
 msgid "OK"
 msgstr "OK"
 
@@ -136,23 +137,23 @@ msgstr ""
 msgid "&Install"
 msgstr "インストール(&I)"
 
-#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:56
-#: comctl32.rc:71 comdlg32.rc:171 comdlg32.rc:193 comdlg32.rc:211
-#: comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306 comdlg32.rc:328
-#: comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399 comdlg32.rc:453
-#: comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264 cryptui.rc:276
-#: cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81 localui.rc:45
-#: localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48 mshtml.rc:58
-#: msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42 setupapi.rc:42
-#: setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312 shell32.rc:342
-#: shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52 wininet.rc:72
-#: winspool.rc:43 notepad.rc:118 oleview.rc:163 oleview.rc:176 progman.rc:107
-#: progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181 progman.rc:200
-#: progman.rc:217 regedit.rc:248 regedit.rc:259 regedit.rc:272 regedit.rc:288
-#: regedit.rc:301 regedit.rc:314 taskmgr.rc:443 taskmgr.rc:518 wineboot.rc:34
-#: winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136 winefile.rc:129
-#: winefile.rc:152 winefile.rc:182 winemine.rc:96 wordpad.rc:216 wordpad.rc:227
-#: wordpad.rc:245 wordpad.rc:258
+#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:66
+#: comctl32.rc:81 comctl32.rc:56 comdlg32.rc:171 comdlg32.rc:193
+#: comdlg32.rc:211 comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306
+#: comdlg32.rc:328 comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399
+#: comdlg32.rc:453 comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264
+#: cryptui.rc:276 cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81
+#: localui.rc:45 localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48
+#: mshtml.rc:58 msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42
+#: setupapi.rc:42 setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312
+#: shell32.rc:342 shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52
+#: wininet.rc:72 winspool.rc:43 notepad.rc:118 oleview.rc:162 oleview.rc:175
+#: progman.rc:107 progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181
+#: progman.rc:200 progman.rc:217 regedit.rc:264 regedit.rc:275 regedit.rc:288
+#: regedit.rc:304 regedit.rc:317 regedit.rc:330 taskmgr.rc:443 taskmgr.rc:518
+#: wineboot.rc:34 winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136
+#: winefile.rc:129 winefile.rc:152 winefile.rc:182 winemine.rc:96
+#: wordpad.rc:216 wordpad.rc:227 wordpad.rc:245 wordpad.rc:258
 msgid "Cancel"
 msgstr "キャンセル"
 
@@ -226,7 +227,7 @@ msgid "Programs (*.exe)"
 msgstr "プログラム (*.exe)"
 
 #: appwiz.rc:43 avifil32.rc:33 cryptui.rc:83 shell32.rc:199 notepad.rc:76
-#: oleview.rc:104 progman.rc:82 regedit.rc:198 winedbg.rc:42 winhlp32.rc:90
+#: oleview.rc:103 progman.rc:82 regedit.rc:200 winedbg.rc:42 winhlp32.rc:90
 msgid "All files (*.*)"
 msgstr "すべてのファイル (*.*)"
 
@@ -306,48 +307,48 @@ msgstr "未圧縮"
 msgid "Canceling..."
 msgstr "キャンセル中..."
 
-#: comctl32.rc:52 winefile.rc:157
+#: comctl32.rc:62 winefile.rc:157
 msgid "Properties for %s"
 msgstr "%sのプロパティ"
 
-#: comctl32.rc:57 comdlg32.rc:264
+#: comctl32.rc:67 comdlg32.rc:264
 msgid "&Apply"
 msgstr "適用(&A)"
 
-#: comctl32.rc:58 comctl32.rc:72 comdlg32.rc:307 user32.rc:88
+#: comctl32.rc:68 comctl32.rc:82 comdlg32.rc:307 user32.rc:88
 msgid "Help"
 msgstr "ヘルプ"
 
-#: comctl32.rc:65
+#: comctl32.rc:75
 msgid "Wizard"
 msgstr "ウィザード"
 
-#: comctl32.rc:68
+#: comctl32.rc:78
 msgid "< &Back"
 msgstr "< 戻る(&B)"
 
-#: comctl32.rc:69
+#: comctl32.rc:79
 msgid "&Next >"
 msgstr "次へ(&N) >"
 
-#: comctl32.rc:70
+#: comctl32.rc:80
 msgid "Finish"
 msgstr "完了"
 
-#: comctl32.rc:81
+#: comctl32.rc:91
 msgid "Customize Toolbar"
 msgstr "ツール バーのカスタマイズ"
 
-#: comctl32.rc:84 cryptui.rc:351 ieframe.rc:43 oleview.rc:83 oleview.rc:188
-#: oleview.rc:201 oleview.rc:213 taskmgr.rc:139
+#: comctl32.rc:94 comctl32.rc:57 cryptui.rc:351 ieframe.rc:43 oleview.rc:83
+#: oleview.rc:187 oleview.rc:200 oleview.rc:212 taskmgr.rc:139
 msgid "&Close"
 msgstr "閉じる(&C)"
 
-#: comctl32.rc:85
+#: comctl32.rc:95
 msgid "R&eset"
 msgstr "リセット(R&)"
 
-#: comctl32.rc:86 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
+#: comctl32.rc:96 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
 #: comdlg32.rc:329 comdlg32.rc:349 comdlg32.rc:361 comdlg32.rc:479
 #: comdlg32.rc:502 ieframe.rc:58 msacm32.rc:52 oledlg.rc:96 shell32.rc:128
 #: clock.rc:44 notepad.rc:60 notepad.rc:119 oleview.rc:72 progman.rc:55
@@ -357,27 +358,27 @@ msgstr "リセット(R&)"
 msgid "&Help"
 msgstr "ヘルプ(&H)"
 
-#: comctl32.rc:87
+#: comctl32.rc:97
 msgid "Move &Up"
 msgstr "上へ(&U)"
 
-#: comctl32.rc:88
+#: comctl32.rc:98
 msgid "Move &Down"
 msgstr "下へ(&D)"
 
-#: comctl32.rc:89
+#: comctl32.rc:99
 msgid "A&vailable buttons:"
 msgstr "利用可能なボタン(&V):"
 
-#: comctl32.rc:91
+#: comctl32.rc:101
 msgid "&Add ->"
 msgstr "追加(&A) ->"
 
-#: comctl32.rc:92
+#: comctl32.rc:102
 msgid "<- &Remove"
 msgstr "<- 削除(&R)"
 
-#: comctl32.rc:93
+#: comctl32.rc:103
 msgid "&Toolbar buttons:"
 msgstr "ツール バーのボタン(&T):"
 
@@ -390,7 +391,19 @@ msgctxt "hotkey"
 msgid "None"
 msgstr "なし"
 
-#: comctl32.rc:31 cryptui.rc:230 regedit.rc:237 taskmgr.rc:434 winedbg.rc:60
+#: comctl32.rc:52 shell32.rc:309 shlwapi.rc:46 user32.rc:79
+msgid "&Yes"
+msgstr "はい(&Y)"
+
+#: comctl32.rc:53 shell32.rc:311 shlwapi.rc:47 user32.rc:80
+msgid "&No"
+msgstr "いいえ(&N)"
+
+#: comctl32.rc:54 user32.rc:82
+msgid "&Retry"
+msgstr "再試行(&R)"
+
+#: comctl32.rc:31 cryptui.rc:230 regedit.rc:253 taskmgr.rc:434 winedbg.rc:60
 #: winedbg.rc:75 wordpad.rc:180
 msgid "Close"
 msgstr "閉じる"
@@ -404,7 +417,7 @@ msgid "Go to today"
 msgstr "今日へ移動"
 
 #: comdlg32.rc:157 comdlg32.rc:170 comdlg32.rc:459 comdlg32.rc:485
-#: shell32.rc:167 oleview.rc:102
+#: shell32.rc:167 oleview.rc:101
 msgid "Open"
 msgstr "開く"
 
@@ -449,7 +462,7 @@ msgstr "使用するプリンタ:"
 msgid "Print range"
 msgstr "印刷範囲"
 
-#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:219
+#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:235
 msgid "&All"
 msgstr "すべて(&A)"
 
@@ -619,7 +632,7 @@ msgstr "色の追加(&A)"
 msgid "&Define Custom Colors >>"
 msgstr "色の作成(&D) >>"
 
-#: comdlg32.rc:316 regedit.rc:226 regedit.rc:236
+#: comdlg32.rc:316 regedit.rc:242 regedit.rc:252
 msgid "Find"
 msgstr "検索"
 
@@ -3049,7 +3062,7 @@ msgstr "シンボル"
 msgid "OEM/DOS"
 msgstr "OEM/DOS"
 
-#: gdi32.rc:45 wldap32.rc:110
+#: gdi32.rc:45 wldap32.rc:112
 msgid "Other"
 msgstr "その他"
 
@@ -3677,6 +3690,14 @@ msgstr "配列の長さは有限の正整数でなければなりません"
 #: jscript.rc:68
 msgid "Array object expected"
 msgstr "配列オブジェクトを期待していました"
+
+#: ../../include/wine/wine_common_ver.rc:129
+msgid "Wine kernel DLL"
+msgstr ""
+
+#: ../../include/wine/wine_common_ver.rc:134 winemac.rc:32 wineboot.rc:42
+msgid "Wine"
+msgstr "Wine"
 
 #: winerror.mc:26
 msgid "Success.\n"
@@ -7331,11 +7352,11 @@ msgctxt "object state"
 msgid "has popup"
 msgstr "has popup"
 
-#: oleaut32.rc:30 oleview.rc:147
+#: oleaut32.rc:30 oleview.rc:146
 msgid "True"
 msgstr "真"
 
-#: oleaut32.rc:31 oleview.rc:148
+#: oleaut32.rc:31 oleview.rc:147
 msgid "False"
 msgstr "偽"
 
@@ -7999,17 +8020,9 @@ msgstr "新しいフォルダの作成(&M)"
 msgid "Message"
 msgstr "メッセージ"
 
-#: shell32.rc:309 shlwapi.rc:46 user32.rc:79
-msgid "&Yes"
-msgstr "はい(&Y)"
-
 #: shell32.rc:310
 msgid "Yes to &all"
 msgstr "すべてはい(&A)"
-
-#: shell32.rc:311 shlwapi.rc:47 user32.rc:80
-msgid "&No"
-msgstr "いいえ(&N)"
 
 #: shell32.rc:319
 msgid "About %s"
@@ -8028,10 +8041,8 @@ msgid "Wine was brought to you by:"
 msgstr "Wine の提供:"
 
 #: shell32.rc:334
-#, fuzzy
-#| msgid "&Run..."
 msgid "Run"
-msgstr "実行(&R)..."
+msgstr "実行"
 
 #: shell32.rc:338
 msgid ""
@@ -8095,7 +8106,7 @@ msgctxt "display name"
 msgid "Desktop"
 msgstr "デスクトップ"
 
-#: shell32.rc:157 regedit.rc:203
+#: shell32.rc:157 regedit.rc:205
 msgid "My Computer"
 msgstr "マイ コンピュータ"
 
@@ -8350,7 +8361,9 @@ msgid "Wine Control Panel"
 msgstr "Wine コントロール パネル"
 
 #: shell32.rc:195
-msgid "Unable to display Run File dialog box (internal error)"
+#, fuzzy
+#| msgid "Unable to display Run File dialog box (internal error)"
+msgid "Unable to display Run dialog box (internal error)"
 msgstr "[ファイルを指定して実行]ダイアログを表示できません (内部エラー)"
 
 #: shell32.rc:196
@@ -8544,10 +8557,6 @@ msgstr "次のウィンドウ(&T)\tCtrl+F6"
 msgid "&Abort"
 msgstr "中止(&A)"
 
-#: user32.rc:82
-msgid "&Retry"
-msgstr "再試行(&R)"
-
 #: user32.rc:85
 msgid "&Ignore"
 msgstr "無視(&I)"
@@ -8567,10 +8576,6 @@ msgstr "ウィンドウの選択"
 #: user32.rc:72
 msgid "&More Windows..."
 msgstr "ウィンドウの一覧(&M)..."
-
-#: winemac.rc:32 wineboot.rc:42
-msgid "Wine"
-msgstr "Wine"
 
 #: winemac.rc:33
 msgid "Hide %@"
@@ -9280,239 +9285,245 @@ msgstr ""
 msgid "Unable to create the output file."
 msgstr "出力ファイルを作成できませんでした。"
 
-#: wldap32.rc:30
+#: wldap32.rc:32
 msgid "Success"
 msgstr "成功"
 
-#: wldap32.rc:31
+#: wldap32.rc:33
 msgid "Operations Error"
 msgstr "操作エラー"
 
-#: wldap32.rc:32
+#: wldap32.rc:34
 msgid "Protocol Error"
 msgstr "プロトコル エラー"
 
-#: wldap32.rc:33
+#: wldap32.rc:35
 msgid "Time Limit Exceeded"
 msgstr "時間制限を超過"
 
-#: wldap32.rc:34
+#: wldap32.rc:36
 msgid "Size Limit Exceeded"
 msgstr "サイズ制限を超過"
 
-#: wldap32.rc:35
+#: wldap32.rc:37
 msgid "Compare False"
 msgstr "比較結果 False"
 
-#: wldap32.rc:36
+#: wldap32.rc:38
 msgid "Compare True"
 msgstr "比較結果 True"
 
-#: wldap32.rc:37
+#: wldap32.rc:39
 msgid "Authentication Method Not Supported"
 msgstr "認証方法が未サポート"
 
-#: wldap32.rc:38
+#: wldap32.rc:40
 msgid "Strong Authentication Required"
 msgstr "強力な認証が必要"
 
-#: wldap32.rc:39
+#: wldap32.rc:41
 msgid "Referral (v2)"
 msgstr "紹介 (v2)"
 
-#: wldap32.rc:40
+#: wldap32.rc:42
 msgid "Referral"
 msgstr "紹介"
 
-#: wldap32.rc:41
+#: wldap32.rc:43
 msgid "Administration Limit Exceeded"
 msgstr "管理制限を超過"
 
-#: wldap32.rc:42
+#: wldap32.rc:44
 msgid "Unavailable Critical Extension"
 msgstr "必須拡張が利用不可"
 
-#: wldap32.rc:43
+#: wldap32.rc:45
 msgid "Confidentiality Required"
 msgstr "機密性が必要"
 
 #: wldap32.rc:46
+#, fuzzy
+#| msgid "Shutdown in progress.\n"
+msgid "SASL Bind in Progress"
+msgstr "シャットダウン中です。\n"
+
+#: wldap32.rc:48
 msgid "No Such Attribute"
 msgstr "該当属性なし"
 
-#: wldap32.rc:47
+#: wldap32.rc:49
 msgid "Undefined Type"
 msgstr "未定義の型"
 
-#: wldap32.rc:48
+#: wldap32.rc:50
 msgid "Inappropriate Matching"
 msgstr "一致方法が不適切"
 
-#: wldap32.rc:49
+#: wldap32.rc:51
 msgid "Constraint Violation"
 msgstr "制約に違反"
 
-#: wldap32.rc:50
+#: wldap32.rc:52
 msgid "Attribute Or Value Exists"
 msgstr "属性または値は存在"
 
-#: wldap32.rc:51
+#: wldap32.rc:53
 msgid "Invalid Syntax"
 msgstr "構文が無効"
 
-#: wldap32.rc:62
+#: wldap32.rc:64
 msgid "No Such Object"
 msgstr "該当オブジェクトなし"
 
-#: wldap32.rc:63
+#: wldap32.rc:65
 msgid "Alias Problem"
 msgstr "エイリアスの問題"
 
-#: wldap32.rc:64
+#: wldap32.rc:66
 msgid "Invalid DN Syntax"
 msgstr "識別名(DN)の構文が無効"
 
-#: wldap32.rc:65
+#: wldap32.rc:67
 msgid "Is Leaf"
 msgstr "リーフです"
 
-#: wldap32.rc:66
+#: wldap32.rc:68
 msgid "Alias Dereference Problem"
 msgstr "エイリアスの逆参照に問題"
 
-#: wldap32.rc:78
+#: wldap32.rc:80
 msgid "Inappropriate Authentication"
 msgstr "認証が不適切"
 
-#: wldap32.rc:79
+#: wldap32.rc:81
 msgid "Invalid Credentials"
 msgstr "資格情報が無効"
 
-#: wldap32.rc:80
+#: wldap32.rc:82
 msgid "Insufficient Rights"
 msgstr "権限が不十分"
 
-#: wldap32.rc:81
+#: wldap32.rc:83
 msgid "Busy"
 msgstr "ビジー状態"
 
-#: wldap32.rc:82
+#: wldap32.rc:84
 msgid "Unavailable"
 msgstr "利用不可"
 
-#: wldap32.rc:83
+#: wldap32.rc:85
 msgid "Unwilling To Perform"
 msgstr "実行したがらない"
 
-#: wldap32.rc:84
+#: wldap32.rc:86
 msgid "Loop Detected"
 msgstr "ループを検出"
 
-#: wldap32.rc:90
+#: wldap32.rc:92
 msgid "Sort Control Missing"
 msgstr "ソート コントロールがない"
 
-#: wldap32.rc:91
+#: wldap32.rc:93
 msgid "Index range error"
 msgstr "インデックス範囲エラー"
 
-#: wldap32.rc:94
+#: wldap32.rc:96
 msgid "Naming Violation"
 msgstr "名前付け違反"
 
-#: wldap32.rc:95
+#: wldap32.rc:97
 msgid "Object Class Violation"
 msgstr "オブジェクト クラス違反"
 
-#: wldap32.rc:96
+#: wldap32.rc:98
 msgid "Not allowed on Non-leaf"
 msgstr "非リーフでは不許可"
 
-#: wldap32.rc:97
+#: wldap32.rc:99
 msgid "Not allowed on RDN"
 msgstr "相対識別名(RDN)では不許可"
 
-#: wldap32.rc:98
+#: wldap32.rc:100
 msgid "Already Exists"
 msgstr "すでに存在"
 
-#: wldap32.rc:99
+#: wldap32.rc:101
 msgid "No Object Class Mods"
 msgstr "オブジェクト クラス変更不可"
 
-#: wldap32.rc:100
+#: wldap32.rc:102
 msgid "Results Too Large"
 msgstr "結果が大きすぎる"
 
-#: wldap32.rc:101
+#: wldap32.rc:103
 msgid "Affects Multiple DSAs"
 msgstr "複数のディレクトリ サービス エージェント(DSA)に影響"
 
-#: wldap32.rc:111
+#: wldap32.rc:113
 msgid "Server Down"
 msgstr "サーバ ダウン"
 
-#: wldap32.rc:112
+#: wldap32.rc:114
 msgid "Local Error"
 msgstr "ローカル エラー"
 
-#: wldap32.rc:113
+#: wldap32.rc:115
 msgid "Encoding Error"
 msgstr "エンコード エラー"
 
-#: wldap32.rc:114
+#: wldap32.rc:116
 msgid "Decoding Error"
 msgstr "デコード エラー"
 
-#: wldap32.rc:115
+#: wldap32.rc:117
 msgid "Timeout"
 msgstr "時間切れ"
 
-#: wldap32.rc:116
+#: wldap32.rc:118
 msgid "Auth Unknown"
 msgstr "認証不明"
 
-#: wldap32.rc:117
+#: wldap32.rc:119
 msgid "Filter Error"
 msgstr "フィルタ エラー"
 
-#: wldap32.rc:118
+#: wldap32.rc:120
 msgid "User Canceled"
 msgstr "ユーザがキャンセル"
 
-#: wldap32.rc:119
+#: wldap32.rc:121
 msgid "Parameter Error"
 msgstr "パラメータ エラー"
 
-#: wldap32.rc:120
+#: wldap32.rc:122
 msgid "No Memory"
 msgstr "メモリ不足"
 
-#: wldap32.rc:121
+#: wldap32.rc:123
 msgid "Can't connect to the LDAP server"
 msgstr "LDAP サーバに接続できません"
 
-#: wldap32.rc:122
+#: wldap32.rc:124
 msgid "Operation not supported by this version of the LDAP protocol"
 msgstr "操作はこのバージョンの LDAP プロトコルでサポートされていません"
 
-#: wldap32.rc:123
+#: wldap32.rc:125
 msgid "Specified control was not found in message"
 msgstr "指定されたコントロールはメッセージ中に見つかりませんでした"
 
-#: wldap32.rc:124
+#: wldap32.rc:126
 msgid "No result present in message"
 msgstr "メッセージ中に結果がありません"
 
-#: wldap32.rc:125
+#: wldap32.rc:127
 msgid "More results returned"
 msgstr "さらに結果が返されました"
 
-#: wldap32.rc:126
+#: wldap32.rc:128
 msgid "Loop while handling referrals"
 msgstr "紹介の取り扱い中にループです"
 
-#: wldap32.rc:127
+#: wldap32.rc:129
 msgid "Referral hop limit exceeded"
 msgstr "紹介のホップ数が限界を超えました"
 
@@ -10502,10 +10513,8 @@ msgid "IPv6 address"
 msgstr "IPv6 アドレス"
 
 #: msinfo32.rc:28
-#, fuzzy
-#| msgid "System Configuration"
 msgid "System Information"
-msgstr "システム設定"
+msgstr "システム情報"
 
 #: net.rc:30
 msgid ""
@@ -10868,7 +10877,7 @@ msgctxt "accelerator Copy"
 msgid "C"
 msgstr "C"
 
-#: notepad.rc:134 regedit.rc:323 wordpad.rc:287
+#: notepad.rc:134 regedit.rc:339 wordpad.rc:287
 msgctxt "accelerator Find"
 msgid "F"
 msgstr "F"
@@ -10888,7 +10897,7 @@ msgctxt "accelerator Open"
 msgid "O"
 msgstr "O"
 
-#: notepad.rc:138 regedit.rc:324 wordpad.rc:300
+#: notepad.rc:138 regedit.rc:340 wordpad.rc:300
 msgctxt "accelerator Print"
 msgid "P"
 msgstr "P"
@@ -11078,31 +11087,31 @@ msgstr "名前を付けて保存(&S)..."
 msgid "&Group by type kind"
 msgstr "タイプの種類で分類(&G)"
 
-#: oleview.rc:157
+#: oleview.rc:156
 msgid "Connect to another machine"
 msgstr "他のマシンに接続"
 
-#: oleview.rc:160
+#: oleview.rc:159
 msgid "&Machine name:"
 msgstr "マシン名(&M):"
 
-#: oleview.rc:168
+#: oleview.rc:167
 msgid "System Configuration"
 msgstr "システム設定"
 
-#: oleview.rc:171
+#: oleview.rc:170
 msgid "System Settings"
 msgstr "システム設定"
 
-#: oleview.rc:172
+#: oleview.rc:171
 msgid "&Enable Distributed COM"
 msgstr "分散 COM を有効にする(&E)"
 
-#: oleview.rc:173
+#: oleview.rc:172
 msgid "Enable &Remote Connections (Win95 only)"
 msgstr "リモート接続を有効にする(Win95 のみ)(&R)"
 
-#: oleview.rc:174
+#: oleview.rc:173
 msgid ""
 "These settings change only registry values.\n"
 "They have no effect on Wine performance."
@@ -11110,35 +11119,35 @@ msgstr ""
 "これらの設定はレジストリの値のみを変えます。\n"
 "Wine のパフォーマンスには影響しません。"
 
-#: oleview.rc:181
+#: oleview.rc:180
 msgid "Default Interface Viewer"
 msgstr "既定のインターフェイス ビュアー"
 
-#: oleview.rc:184
+#: oleview.rc:183
 msgid "Interface"
 msgstr "インターフェイス"
 
-#: oleview.rc:186
+#: oleview.rc:185
 msgid "IID:"
 msgstr "IID:"
 
-#: oleview.rc:189
+#: oleview.rc:188
 msgid "&View Type Info"
 msgstr "タイプ情報を表示(&V)"
 
-#: oleview.rc:194
+#: oleview.rc:193
 msgid "IPersist Interface Viewer"
 msgstr "IPersist インターフェイス ビュアー"
 
-#: oleview.rc:197 oleview.rc:209
+#: oleview.rc:196 oleview.rc:208
 msgid "Class Name:"
 msgstr "クラス名:"
 
-#: oleview.rc:199 oleview.rc:211
+#: oleview.rc:198 oleview.rc:210
 msgid "CLSID:"
 msgstr "CLSID:"
 
-#: oleview.rc:206
+#: oleview.rc:205
 msgid "IPersistStream Interface Viewer"
 msgstr "IPersistStream インターフェイス ビュアー"
 
@@ -11146,7 +11155,7 @@ msgstr "IPersistStream インターフェイス ビュアー"
 msgid "OleView"
 msgstr "OleView"
 
-#: oleview.rc:101
+#: oleview.rc:100
 msgid "ITypeLib viewer"
 msgstr "ITypeLib ビュアー"
 
@@ -11154,172 +11163,168 @@ msgstr "ITypeLib ビュアー"
 msgid "OleView - OLE/COM Object Viewer"
 msgstr "OleView - OLE/COM オブジェクト ビュアー"
 
-#: oleview.rc:100
-msgid "version 1.0"
-msgstr "バージョン 1.0"
-
-#: oleview.rc:103
+#: oleview.rc:102
 msgid "TypeLib files (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 msgstr "TypeLib ファイル (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 
-#: oleview.rc:106
+#: oleview.rc:105
 msgid "Bind to file via a File Moniker"
 msgstr "File Moniker を通じてファイルにバインドします"
 
-#: oleview.rc:107
+#: oleview.rc:106
 msgid "Open a TypeLib file and view the contents"
 msgstr "TypeLib ファイルを開いて中身を表示します"
 
-#: oleview.rc:108
+#: oleview.rc:107
 msgid "Change machine wide Distributed COM settings"
 msgstr "マシン全体の分散 COM の設定を変更します"
 
-#: oleview.rc:109
+#: oleview.rc:108
 msgid "Run the Wine registry editor"
 msgstr "Wine レジストリ エディタを実行します"
 
-#: oleview.rc:110
+#: oleview.rc:109
 msgid "Quit the application. Prompts to save changes"
 msgstr "アプリケーションを終了します。変更を保存するように促します"
 
-#: oleview.rc:111
+#: oleview.rc:110
 msgid "Create an instance of the selected object"
 msgstr "選択されたオブジェクトのインスタンスを作成します"
 
-#: oleview.rc:112
+#: oleview.rc:111
 msgid "Create an instance of the selected object on a specific machine"
 msgstr "特定のマシン上に選択されたオブジェクトのインスタンスを作成します"
 
-#: oleview.rc:113
+#: oleview.rc:112
 msgid "Release the currently selected object instance"
 msgstr "現在選択されたオブジェクトのインスタンスを開放します"
 
-#: oleview.rc:114
+#: oleview.rc:113
 msgid "Copy the GUID of the currently selected item to the clipboard"
 msgstr "現在選択された項目の GUID をクリップボードにコピーします"
 
-#: oleview.rc:115
+#: oleview.rc:114
 msgid "Display the viewer for the selected item"
 msgstr "選択された項目のビュアーを表示します"
 
-#: oleview.rc:120
+#: oleview.rc:119
 msgid "Toggle between expert and novice display mode"
 msgstr "上級と初級表示モードを切り替えます"
 
-#: oleview.rc:121
+#: oleview.rc:120
 msgid ""
 "Toggle the display of component categories that are not meant to be visible"
 msgstr "表示するようになっていないコンポーネントのカテゴリの表示を切り替えます"
 
-#: oleview.rc:122
+#: oleview.rc:121
 msgid "Show or hide the toolbar"
 msgstr "ツール バーの表示/非表示を切り替えます"
 
-#: oleview.rc:123
+#: oleview.rc:122
 msgid "Show or hide the status bar"
 msgstr "ステータス バーの表示/非表示を切り替えます"
 
-#: oleview.rc:124
+#: oleview.rc:123
 msgid "Refresh all lists"
 msgstr "すべてのリストを更新します"
 
-#: oleview.rc:125
+#: oleview.rc:124
 msgid "Display program information, version number and copyright"
 msgstr "プログラム情報、バージョン番号と著作権を表示します"
 
-#: oleview.rc:116
+#: oleview.rc:115
 msgid "Ask for an in-process server when calling CoGetClassObject"
 msgstr "CoGetClassObject 呼び出し時にイン プロセス サーバに問い合せます"
 
-#: oleview.rc:117
+#: oleview.rc:116
 msgid "Ask for an in-process handler when calling CoGetClassObject"
 msgstr "CoGetClassObject 呼び出し時にイン プロセス ハンドラに問い合せます"
 
-#: oleview.rc:118
+#: oleview.rc:117
 msgid "Ask for a local server when calling CoGetClassObject"
 msgstr "CoGetClassObject の呼び出し時にローカル サーバに問い合せます"
 
-#: oleview.rc:119
+#: oleview.rc:118
 msgid "Ask for a remote server when calling CoGetClassObject"
 msgstr "CoGetClassObject の呼び出し時にリモート サーバに問い合せます"
 
-#: oleview.rc:131
+#: oleview.rc:130
 msgid "ObjectClasses"
 msgstr "オブジェクト クラス"
 
-#: oleview.rc:132
+#: oleview.rc:131
 msgid "Grouped by Component Category"
 msgstr "コンポーネントのカテゴリで分類"
 
-#: oleview.rc:133
+#: oleview.rc:132
 msgid "OLE 1.0 Objects"
 msgstr "OLE 1.0 オブジェクト"
 
-#: oleview.rc:134
+#: oleview.rc:133
 msgid "COM Library Objects"
 msgstr "COM ライブラリ オブジェクト"
 
-#: oleview.rc:135
+#: oleview.rc:134
 msgid "All Objects"
 msgstr "すべてのオブジェクト"
 
-#: oleview.rc:136
+#: oleview.rc:135
 msgid "Application IDs"
 msgstr "アプリケーション ID"
 
-#: oleview.rc:137
+#: oleview.rc:136
 msgid "Type Libraries"
 msgstr "タイプ ライブラリ"
 
-#: oleview.rc:138
+#: oleview.rc:137
 msgid "ver."
 msgstr "バージョン"
 
-#: oleview.rc:139
+#: oleview.rc:138
 msgid "Interfaces"
 msgstr "インターフェイス"
 
-#: oleview.rc:141
+#: oleview.rc:140
 msgid "Registry"
 msgstr "レジストリ"
 
-#: oleview.rc:142
+#: oleview.rc:141
 msgid "Implementation"
 msgstr "実装"
 
-#: oleview.rc:143
+#: oleview.rc:142
 msgid "Activation"
 msgstr "発動"
 
-#: oleview.rc:145
+#: oleview.rc:144
 msgid "CoGetClassObject failed."
 msgstr "CoGetClassObject が失敗しました。"
 
-#: oleview.rc:146
+#: oleview.rc:145
 msgid "Unknown error"
 msgstr "不明なエラー"
 
-#: oleview.rc:149
+#: oleview.rc:148
 msgid "bytes"
 msgstr "バイト"
 
-#: oleview.rc:151
+#: oleview.rc:150
 msgid "LoadTypeLib( %1 ) failed ($%2!x!)"
 msgstr "LoadTypeLib( %1 ) が失敗しました ($%2!x!)"
 
-#: oleview.rc:152
+#: oleview.rc:151
 msgid "Inherited Interfaces"
 msgstr "継承されたインターフェイス"
 
-#: oleview.rc:127
+#: oleview.rc:126
 msgid "Save as an .IDL or .H file"
 msgstr ".IDL または .H ファイルとして保存します"
 
-#: oleview.rc:128
+#: oleview.rc:127
 msgid "Close window"
 msgstr "ウィンドウを閉じます"
 
-#: oleview.rc:129
+#: oleview.rc:128
 msgid "Group typeinfos by kind"
 msgstr "種類でタイプ情報を分類します"
 
@@ -11617,11 +11622,11 @@ msgstr "レジストリ値 '%1' はすでに存在します。上書きします
 msgid "The registry operation was cancelled\n"
 msgstr "レジストリ操作は取り消されました\n"
 
-#: reg.rc:53 regedit.rc:204
+#: reg.rc:53 regedit.rc:206
 msgid "(Default)"
 msgstr "(既定)"
 
-#: reg.rc:54
+#: reg.rc:54 regedit.rc:185
 msgid "Are you sure you want to delete the registry value '%1'?"
 msgstr "本当にレジストリ値 '%1' を削除しますか?"
 
@@ -11673,7 +11678,7 @@ msgstr "ヘルプは \"REG /?\" と入力してください。\n"
 msgid "Type \"REG %1 /?\" for help.\n"
 msgstr "ヘルプは \"REG %1 /?\" と入力してください。\n"
 
-#: reg.rc:65 regedit.rc:205
+#: reg.rc:65 regedit.rc:207
 msgid "(value not set)"
 msgstr "(値の設定なし)"
 
@@ -11749,83 +11754,83 @@ msgstr "バージョン情報(&A)"
 msgid "Modify Binary Data..."
 msgstr "バイナリ データを変更..."
 
-#: regedit.rc:218
+#: regedit.rc:234
 msgid "Export registry"
 msgstr "レジストリのエクスポート"
 
-#: regedit.rc:220
+#: regedit.rc:236
 msgid "S&elected branch:"
 msgstr "選択された部分(&E):"
 
-#: regedit.rc:229
+#: regedit.rc:245
 msgid "Find:"
 msgstr "検索:"
 
-#: regedit.rc:231
+#: regedit.rc:247
 msgid "Find in:"
 msgstr "検索対象:"
 
-#: regedit.rc:232
+#: regedit.rc:248
 msgid "Keys"
 msgstr "キー"
 
-#: regedit.rc:233
+#: regedit.rc:249
 msgid "Value names"
 msgstr "値の名前"
 
-#: regedit.rc:234
+#: regedit.rc:250
 msgid "Value content"
 msgstr "値の中身"
 
-#: regedit.rc:235
+#: regedit.rc:251
 msgid "Whole string only"
 msgstr "完全に一致する文字列のみ"
 
-#: regedit.rc:242
+#: regedit.rc:258
 msgid "Add Favorite"
 msgstr "お気に入りに追加"
 
-#: regedit.rc:245 regedit.rc:256
+#: regedit.rc:261 regedit.rc:272
 msgid "Name:"
 msgstr "名前:"
 
-#: regedit.rc:253
+#: regedit.rc:269
 msgid "Remove Favorite"
 msgstr "お気に入りの削除"
 
-#: regedit.rc:264
+#: regedit.rc:280
 msgid "Edit String"
 msgstr "文字列の編集"
 
-#: regedit.rc:267 regedit.rc:280 regedit.rc:296 regedit.rc:309
+#: regedit.rc:283 regedit.rc:296 regedit.rc:312 regedit.rc:325
 msgid "Value name:"
 msgstr "値の名前:"
 
-#: regedit.rc:269 regedit.rc:282 regedit.rc:298 regedit.rc:311
+#: regedit.rc:285 regedit.rc:298 regedit.rc:314 regedit.rc:327
 msgid "Value data:"
 msgstr "データ:"
 
-#: regedit.rc:277
+#: regedit.rc:293
 msgid "Edit DWORD"
 msgstr "DWORD の編集"
 
-#: regedit.rc:284
+#: regedit.rc:300
 msgid "Base"
 msgstr "基数"
 
-#: regedit.rc:285
+#: regedit.rc:301
 msgid "Hexadecimal"
 msgstr "16進数"
 
-#: regedit.rc:286
+#: regedit.rc:302
 msgid "Decimal"
 msgstr "10進数"
 
-#: regedit.rc:293
+#: regedit.rc:309
 msgid "Edit Binary"
 msgstr "バイナリ値の編集"
 
-#: regedit.rc:306
+#: regedit.rc:322
 msgid "Edit Multi-String"
 msgstr "複数文字列の編集"
 
@@ -11862,31 +11867,93 @@ msgstr "データ"
 msgid "Registry Editor"
 msgstr "レジストリ エディタ"
 
-#: regedit.rc:194
+#: regedit.rc:196
 msgid "Import Registry File"
 msgstr "レジストリ ファイルのインポート"
 
-#: regedit.rc:195
+#: regedit.rc:197
 msgid "Export Registry File"
 msgstr "レジストリ ファイルのエクスポート"
 
-#: regedit.rc:196
+#: regedit.rc:198
 msgid "Registry files (*.reg)"
 msgstr "登録ファイル (*.reg)"
 
-#: regedit.rc:197
+#: regedit.rc:199
 msgid "Win9x/NT4 Registry files (REGEDIT4)"
 msgstr "Win9x/NT4 登録ファイル (REGEDIT4)"
 
-#: regedit.rc:206
+#: regedit.rc:208
 msgid "(cannot display value)"
 msgstr "(値を表示できません)"
 
-#: regedit.rc:207
+#: regedit.rc:209
 msgid "(unknown %d)"
 msgstr "(不明 %d)"
 
-#: regedit.rc:359
+#: regedit.rc:214
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to modify the selected registry value."
+msgstr "regedit: レジストリ キー '%1' を開けません。\n"
+
+#: regedit.rc:215
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to create a new registry key."
+msgstr "regedit: レジストリ キー '%1' を開けません。\n"
+
+#: regedit.rc:216
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to create a new registry value."
+msgstr "regedit: レジストリ キー '%1' を開けません。\n"
+
+#: regedit.rc:217
+msgid ""
+"Unable to rename the key '%1'.\n"
+"The specified key name already exists."
+msgstr ""
+
+#: regedit.rc:218
+msgid ""
+"Unable to rename the value '%1'.\n"
+"The specified value name already exists."
+msgstr ""
+
+#: regedit.rc:219
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to delete the selected registry key."
+msgstr "regedit: レジストリ キー '%1' を開けません。\n"
+
+#: regedit.rc:220
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to rename the selected registry key."
+msgstr "regedit: レジストリ キー '%1' を開けません。\n"
+
+#: regedit.rc:221
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to rename the selected registry value."
+msgstr "regedit: レジストリ キー '%1' を開けません。\n"
+
+#: regedit.rc:222
+msgid ""
+"The keys and values contained in %1 were successfully added to the registry."
+msgstr ""
+
+#: regedit.rc:223
+#, fuzzy
+#| msgid ""
+#| "regedit: Unable to export '%1'. The specified registry key was not "
+#| "found.\n"
+msgid "Unable to import %1. The specified file is not a valid registry file."
+msgstr ""
+"regedit: '%1' をエクスポートできません。指定されたキーが見つかりません。\n"
+
+#: regedit.rc:375
 msgid ""
 "Usage:\n"
 "  regedit [options] [filename] [reg_key]\n"
@@ -11944,43 +12011,43 @@ msgstr ""
 "  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
 "  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
 
-#: regedit.rc:360
+#: regedit.rc:376
 msgid "regedit: Invalid or unrecognized switch [%1]\n"
 msgstr "regedit: 無効または認識できないスイッチです [%1]\n"
 
-#: regedit.rc:361
+#: regedit.rc:377
 msgid "Type \"regedit /?\" for help.\n"
 msgstr "ヘルプは \"regedit /?\" と入力してください。\n"
 
-#: regedit.rc:362
+#: regedit.rc:378
 msgid "regedit: No filename was specified.\n"
 msgstr "regedit: ファイル名が指定されていません。\n"
 
-#: regedit.rc:363
+#: regedit.rc:379
 msgid "regedit: No registry key was specified for removal.\n"
 msgstr "regedit: 削除するレジストリ キーが指定されていません。\n"
 
-#: regedit.rc:364
+#: regedit.rc:380
 msgid "regedit: The file '%1' was not found.\n"
 msgstr "regedit: ファイル '%1' が見つかりません。\n"
 
-#: regedit.rc:365
+#: regedit.rc:381
 msgid "regedit: Unable to open the file '%1'.\n"
 msgstr "regedit: ファイル '%1' をオープンできません。\n"
 
-#: regedit.rc:366
+#: regedit.rc:382
 msgid "regedit: Unhandled action.\n"
 msgstr "regedit: 処理されない操作。\n"
 
-#: regedit.rc:367
+#: regedit.rc:383
 msgid "regedit: Out of memory! (%1!S!, line %2!u!)\n"
 msgstr "regedit: メモリ不足です! (%1!S!, %2!u! 行目)\n"
 
-#: regedit.rc:368
+#: regedit.rc:384
 msgid "regedit: Invalid hexadecimal value.\n"
 msgstr "regedit: 16進数値が正しくありません。\n"
 
-#: regedit.rc:369
+#: regedit.rc:385
 msgid ""
 "regedit: Unable to convert hexadecimal data. An invalid value was "
 "encountered at '%1'.\n"
@@ -11988,51 +12055,51 @@ msgstr ""
 "regedit: 16進数のデータを変換できませんでした。正しくない値が\n"
 "'%1' にあります。\n"
 
-#: regedit.rc:370
+#: regedit.rc:386
 msgid "regedit: Unrecognized escape sequence [\\%1!c!]\n"
 msgstr "regedit: 認識できないエスケープ シーケンスです [%1!c!]\n"
 
-#: regedit.rc:371
+#: regedit.rc:387
 msgid "regedit: Unsupported registry data type [%1]\n"
 msgstr "regedit: サポートされていないレジストリ データ型 [%1]\n"
 
-#: regedit.rc:372
+#: regedit.rc:388
 msgid "regedit: Unexpected end of line in '%1'.\n"
 msgstr "regedit: 予期していない行末です '%1'。\n"
 
-#: regedit.rc:373
+#: regedit.rc:389
 msgid "regedit: The line '%1' was not recognized.\n"
 msgstr "regedit: '%1' は認識できない行です。\n"
 
-#: regedit.rc:374
+#: regedit.rc:390
 msgid "regedit: Unable to add the registry value '%1' to '%2'.\n"
 msgstr "regedit: レジストリ値 '%1' を '%2' に加えられません。\n"
 
-#: regedit.rc:375
+#: regedit.rc:391
 msgid "regedit: Unable to open the registry key '%1'.\n"
 msgstr "regedit: レジストリ キー '%1' を開けません。\n"
 
-#: regedit.rc:376
+#: regedit.rc:392
 msgid "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
 msgstr ""
 "regedit: サポートされていないレジストリ データ型 [%1] が '%2' にあります。\n"
 
-#: regedit.rc:377
+#: regedit.rc:393
 msgid "regedit: The registry value '%1' will be exported as binary data.\n"
 msgstr ""
 "regedit: レジストリ値 '%1' はバイナリデータとしてエクスポートされます。\n"
 
-#: regedit.rc:378
+#: regedit.rc:394
 msgid "regedit: Incorrect registry class specification in '%1'.\n"
 msgstr "regedit: レジストリ クラス指定の誤りが '%1' にあります。\n"
 
-#: regedit.rc:379
+#: regedit.rc:395
 msgid ""
 "regedit: Unable to export '%1'. The specified registry key was not found.\n"
 msgstr ""
 "regedit: '%1' をエクスポートできません。指定されたキーが見つかりません。\n"
 
-#: regedit.rc:380
+#: regedit.rc:396
 msgid "regedit: Unable to delete the registry class '%1'.\n"
 msgstr "regedit: レジストリ クラス '%1' を削除できません。\n"
 
@@ -12117,44 +12184,50 @@ msgid "Displays program information, version number and copyright"
 msgstr "プログラムの情報、バージョン、著作者を表示"
 
 #: regedit.rc:181
-msgid "Can't query value '%s'"
-msgstr "値 '%s' を削除できません"
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to query the registry value '%1'."
+msgstr "regedit: レジストリ キー '%1' を開けません。\n"
 
 #: regedit.rc:182
-msgid "Can't edit keys of this type (%u)"
+#, fuzzy
+#| msgid "Can't edit keys of this type (%u)"
+msgid "Unable to edit registry keys of this type (%1!u!)."
 msgstr "このタイプのキーは編集できません (%u)"
 
 #: regedit.rc:183
-msgid "Value is too big (%u)"
+#, fuzzy
+#| msgid "Value is too big (%u)"
+msgid "The value is too big (%1!u!)."
 msgstr "値が大きすぎます (%u)"
 
 #: regedit.rc:184
 msgid "Confirm Value Delete"
 msgstr "値の削除確認"
 
-#: regedit.rc:185
-msgid "Are you sure you want to delete value '%s'?"
-msgstr "本当に '%s'を削除しますか?"
-
-#: regedit.rc:189
-msgid "Search string '%s' not found"
+#: regedit.rc:191
+#, fuzzy
+#| msgid "Search string '%s' not found"
+msgid "Search complete. The string '%1' was not found."
 msgstr "検索文字列 '%s'が見つかりません"
 
 #: regedit.rc:186
 msgid "Are you sure you want to delete these values?"
 msgstr "これらの値を削除しますか?"
 
-#: regedit.rc:187
+#: regedit.rc:189
 msgid "New Key #%d"
 msgstr "新しいキー #%d"
 
-#: regedit.rc:188
+#: regedit.rc:190
 msgid "New Value #%d"
 msgstr "新しい値 #%d"
 
 #: regedit.rc:180
-msgid "Can't query key '%s'"
-msgstr "キー '%s' を削除できません"
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to query the registry key '%1'."
+msgstr "regedit: レジストリ キー '%1' を開けません。\n"
 
 #: regedit.rc:152
 msgid "Adds a new multi-string value"
@@ -12163,6 +12236,19 @@ msgstr "新しい複数文字列値を追加"
 #: regedit.rc:174
 msgid "Exports selected branch of the registry to a text file"
 msgstr "選択したレジストリ キー以下をテキスト ファイルに出力"
+
+#: regedit.rc:187
+#, fuzzy
+#| msgid "Confirm Value Delete"
+msgid "Confirm Key Delete"
+msgstr "値の削除確認"
+
+#: regedit.rc:188
+#, fuzzy
+#| msgid "Are you sure you want to delete the registry key '%1'?"
+msgid ""
+"Are you sure you want to delete the registry key '%1' and all of its subkeys?"
+msgstr "本当にレジストリ キー '%1' を削除しますか?"
 
 #: regsvr32.rc:32
 msgid ""
@@ -14497,10 +14583,8 @@ msgid "Error: Invalid query\n"
 msgstr "エラー: クエリが無効です\n"
 
 #: wmic.rc:31
-#, fuzzy
-#| msgid "reg: Invalid syntax. "
 msgid "Error: Invalid syntax for PATH\n"
-msgstr "reg: 無効な構文です。"
+msgstr "エラー: PATH の構文が無効です\n"
 
 #: wordpad.rc:31
 msgid "&New...\tCtrl+N"
@@ -14575,36 +14659,32 @@ msgid "F&ormat"
 msgstr "書式(&O)"
 
 #: wordpad.rc:85
-#, fuzzy
-#| msgid "&List"
 msgid "&Lists"
-msgstr "一覧(&L)"
+msgstr "箇条書きと段落番号(&L)"
 
 #: wordpad.rc:87 wordpad.rc:116
 msgid "&Bullet points"
 msgstr "箇条書き(&B)"
 
 #: wordpad.rc:88
-#, fuzzy
-#| msgid "CRL Number"
 msgid "Numbers"
-msgstr "CRL ナンバー"
+msgstr "段落番号"
 
 #: wordpad.rc:89
 msgid "Letters - lower case"
-msgstr ""
+msgstr "アルファベット - 小文字"
 
 #: wordpad.rc:90
 msgid "Letters - upper case"
-msgstr ""
+msgstr "アルファベット - 大文字"
 
 #: wordpad.rc:91
 msgid "Roman numerals - lower case"
-msgstr ""
+msgstr "ローマ数字 - 小文字"
 
 #: wordpad.rc:92
 msgid "Roman numerals - upper case"
-msgstr ""
+msgstr "ローマ数字 - 大文字"
 
 #: wordpad.rc:94 wordpad.rc:117
 msgid "&Paragraph..."

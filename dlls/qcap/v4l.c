@@ -604,7 +604,12 @@ static DWORD WINAPI ReadThread(LPVOID lParam)
 
     hr = V4l_Prepare(capBox);
     if (FAILED(hr))
-        goto fail;
+    {
+        ERR("Stop IFilterGraph: %x\n", hr);
+        capBox->thread = 0;
+        capBox->stopped = TRUE;
+        return 0;
+    }
 
     pOutput = CoTaskMemAlloc(capBox->width * capBox->height * capBox->bitDepth / 8);
     capBox->curframe = 0;
@@ -641,27 +646,19 @@ static DWORD WINAPI ReadThread(LPVOID lParam)
             IMediaSample_Release(pSample);
             V4l_FreeFrame(capBox);
         }
-        LeaveCriticalSection(&capBox->CritSect);
         if (FAILED(hr) && hr != VFW_E_NOT_CONNECTED)
         {
-            ERR("Received error: %x\n", hr);
-            goto cfail;
+            TRACE("Return %x, stop IFilterGraph\n", hr);
+            V4l_Unprepare(capBox);
+            capBox->thread = 0;
+            capBox->stopped = TRUE;
+            break;
         }
+        LeaveCriticalSection(&capBox->CritSect);
     }
+
     LeaveCriticalSection(&capBox->CritSect);
     CoTaskMemFree(pOutput);
-
-    return 0;
-
-cfail:
-    CoTaskMemFree(pOutput);
-    V4l_Unprepare(capBox);
-    LeaveCriticalSection(&capBox->CritSect);
-
-fail:
-    capBox->thread = 0;
-    capBox->stopped = TRUE;
-    FIXME("Stop IFilterGraph\n");
     return 0;
 }
 
@@ -802,7 +799,7 @@ Capture * qcap_driver_init( IPin *pOut, USHORT card )
 
     sprintf(device, "/dev/video%i", card);
     TRACE("opening %s\n", device);
-    capBox->fd = video_open(device, O_RDWR | O_NONBLOCK);
+    capBox->fd = video_open(device, O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (capBox->fd == -1)
     {
         WARN("open failed (%d)\n", errno);

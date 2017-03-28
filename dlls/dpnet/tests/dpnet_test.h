@@ -1,6 +1,5 @@
 /*
- * The Wine project - Xinput Joystick Library
- * Copyright 2008 Andrew Fenn
+ * Copyright 2016 Alistair Leslie-Hughes
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -16,22 +15,18 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
+#ifndef __DPNET_PRIVATE_H__
+#define __DPNET_PRIVATE_H__
 
-#include "config.h"
-#include <stdarg.h>
-
-#include "windef.h"
-#include "winbase.h"
-
-BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
+enum firewall_op
 {
-    switch(reason)
-    {
-    case DLL_WINE_PREATTACH:
-        return FALSE; /* prefer native version */
-    case DLL_PROCESS_ATTACH:
-        DisableThreadLibraryCalls(inst);
-        break;
-    }
-    return TRUE;
-}
+    APP_ADD,
+    APP_REMOVE
+};
+
+extern BOOL is_firewall_enabled(void) DECLSPEC_HIDDEN;
+extern BOOL is_process_elevated(void) DECLSPEC_HIDDEN;
+extern HRESULT set_firewall( enum firewall_op op ) DECLSPEC_HIDDEN;
+extern BOOL is_stub_dll(const char *filename) DECLSPEC_HIDDEN;
+
+#endif

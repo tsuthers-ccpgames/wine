@@ -213,6 +213,7 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateStrokeStyle(ID2D1Factory *ifa
         ID2D1StrokeStyle **stroke_style)
 {
     struct d2d_stroke_style *object;
+    HRESULT hr;
 
     TRACE("iface %p, desc %p, dashes %p, dash_count %u, stroke_style %p.\n",
             iface, desc, dashes, dash_count, stroke_style);
@@ -220,7 +221,12 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateStrokeStyle(ID2D1Factory *ifa
     if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    d2d_stroke_style_init(object, iface, desc, dashes, dash_count);
+    if (FAILED(hr = d2d_stroke_style_init(object, iface, desc, dashes, dash_count)))
+    {
+        WARN("Failed to initialize stroke style, hr %#x.\n", hr);
+        HeapFree(GetProcessHeap(), 0, object);
+        return hr;
+    }
 
     TRACE("Created stroke style %p.\n", object);
     *stroke_style = &object->ID2D1StrokeStyle_iface;
@@ -325,25 +331,9 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateHwndRenderTarget(ID2D1Factory
 static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDxgiSurfaceRenderTarget(ID2D1Factory *iface,
         IDXGISurface *surface, const D2D1_RENDER_TARGET_PROPERTIES *desc, ID2D1RenderTarget **render_target)
 {
-    struct d2d_d3d_render_target *object;
-    HRESULT hr;
-
     TRACE("iface %p, surface %p, desc %p, render_target %p.\n", iface, surface, desc, render_target);
 
-    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
-        return E_OUTOFMEMORY;
-
-    if (FAILED(hr = d2d_d3d_render_target_init(object, iface, surface, desc)))
-    {
-        WARN("Failed to initialize render target, hr %#x.\n", hr);
-        HeapFree(GetProcessHeap(), 0, object);
-        return hr;
-    }
-
-    TRACE("Created render target %p.\n", object);
-    *render_target = &object->ID2D1RenderTarget_iface;
-
-    return S_OK;
+    return d2d_d3d_create_render_target(iface, surface, NULL, desc, render_target);
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDCRenderTarget(ID2D1Factory *iface,

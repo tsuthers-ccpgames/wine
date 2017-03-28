@@ -1711,10 +1711,13 @@ BOOL WINAPI AddAce(
     return set_ntstatus(RtlAddAce(pAcl, dwAceRevision, dwStartingAceIndex, pAceList, nAceListLength));
 }
 
+/******************************************************************************
+ *  AddMandatoryAce [ADVAPI32.@]
+ */
 BOOL WINAPI AddMandatoryAce(ACL *acl, DWORD ace_revision, DWORD ace_flags, DWORD mandatory_policy, PSID label_sid)
 {
-    FIXME("%p %x %x %x %p - stub\n", acl, ace_revision, ace_flags, mandatory_policy, label_sid);
-    return FALSE;
+    return set_ntstatus(RtlAddMandatoryAce(acl, ace_revision, ace_flags, mandatory_policy,
+                                           SYSTEM_MANDATORY_LABEL_ACE_TYPE, label_sid));
 }
 
 /******************************************************************************
@@ -2688,7 +2691,7 @@ BOOL WINAPI AddAuditAccessAce(
 }
 
 /******************************************************************************
- *  AddAuditAccessAce [ADVAPI32.@]
+ *  AddAuditAccessAceEx [ADVAPI32.@]
  */
 BOOL WINAPI AddAuditAccessAceEx(
     IN OUT PACL pAcl,
@@ -6055,6 +6058,9 @@ BOOL WINAPI SaferCloseLevel(SAFER_LEVEL_HANDLE handle)
     return TRUE;
 }
 
+/******************************************************************************
+ * TreeResetNamedSecurityInfoW   [ADVAPI32.@]
+ */
 DWORD WINAPI TreeResetNamedSecurityInfoW( LPWSTR pObjectName,
                 SE_OBJECT_TYPE ObjectType, SECURITY_INFORMATION SecurityInfo,
                 PSID pOwner, PSID pGroup, PACL pDacl, PACL pSacl,
@@ -6086,4 +6092,28 @@ BOOL WINAPI SaferSetLevelInformation(SAFER_LEVEL_HANDLE handle, SAFER_OBJECT_INF
 {
     FIXME("(%p %u %p %u) stub\n", handle, infotype, buffer, size);
     return FALSE;
+}
+
+/******************************************************************************
+ * LookupSecurityDescriptorPartsA   [ADVAPI32.@]
+ */
+DWORD WINAPI LookupSecurityDescriptorPartsA(TRUSTEEA *owner, TRUSTEEA *group, ULONG *access_count,
+                                            EXPLICIT_ACCESSA *access_list, ULONG *audit_count,
+                                            EXPLICIT_ACCESSA *audit_list, SECURITY_DESCRIPTOR *descriptor)
+{
+    FIXME("(%p %p %p %p %p %p %p) stub\n", owner, group, access_count,
+          access_list, audit_count, audit_list, descriptor);
+    return ERROR_CALL_NOT_IMPLEMENTED;
+}
+
+/******************************************************************************
+ * LookupSecurityDescriptorPartsW   [ADVAPI32.@]
+ */
+DWORD WINAPI LookupSecurityDescriptorPartsW(TRUSTEEW *owner, TRUSTEEW *group, ULONG *access_count,
+                                            EXPLICIT_ACCESSW *access_list, ULONG *audit_count,
+                                            EXPLICIT_ACCESSW *audit_list, SECURITY_DESCRIPTOR *descriptor)
+{
+    FIXME("(%p %p %p %p %p %p %p) stub\n", owner, group, access_count,
+          access_list, audit_count, audit_list, descriptor);
+    return ERROR_CALL_NOT_IMPLEMENTED;
 }

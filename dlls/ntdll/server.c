@@ -1211,7 +1211,7 @@ static int server_connect(void)
 
     /* retrieve the current directory */
     fd_cwd = open( ".", O_RDONLY );
-    if (fd_cwd != -1) fcntl( fd_cwd, F_SETFD, 1 ); /* set close on exec flag */
+    if (fd_cwd != -1) fcntl( fd_cwd, F_SETFD, FD_CLOEXEC );
 
     setup_config_dir();
     serverdir = wine_get_server_dir();
@@ -1274,7 +1274,7 @@ static int server_connect(void)
                 fchdir( fd_cwd );
                 close( fd_cwd );
             }
-            fcntl( s, F_SETFD, 1 ); /* set close on exec flag */
+            fcntl( s, F_SETFD, FD_CLOEXEC );
             return s;
         }
         close( s );
@@ -1371,11 +1371,19 @@ void server_init_process(void)
     if (env_socket)
     {
         fd_socket = atoi( env_socket );
-        if (fcntl( fd_socket, F_SETFD, 1 ) == -1)
+        if (fcntl( fd_socket, F_SETFD, FD_CLOEXEC ) == -1)
             fatal_perror( "Bad server socket %d", fd_socket );
         unsetenv( "WINESERVERSOCKET" );
     }
-    else fd_socket = server_connect();
+    else
+    {
+        const char *arch = getenv( "WINEARCH" );
+
+        if (arch && strcmp( arch, "win32" ) && strcmp( arch, "win64" ))
+            fatal_error( "WINEARCH set to invalid value '%s', it must be either win32 or win64.\n", arch );
+
+        fd_socket = server_connect();
+    }
 
     /* setup the signal mask */
     sigemptyset( &server_block_set );

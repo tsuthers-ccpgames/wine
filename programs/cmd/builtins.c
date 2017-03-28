@@ -444,7 +444,7 @@ static BOOL WCMD_AppendEOF(WCHAR *filename)
     h = CreateFileW(filename, GENERIC_WRITE, 0, NULL,
                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
-    if (h == NULL) {
+    if (h == INVALID_HANDLE_VALUE) {
       WINE_ERR("Failed to open %s (%d)\n", wine_dbgstr_w(filename), GetLastError());
       return FALSE;
     } else {
@@ -457,6 +457,36 @@ static BOOL WCMD_AppendEOF(WCHAR *filename)
       CloseHandle(h);
     }
     return TRUE;
+}
+
+/****************************************************************************
+ * WCMD_IsSameFile
+ *
+ * Checks if the two paths reference to the same file
+ */
+static BOOL WCMD_IsSameFile(const WCHAR *name1, const WCHAR *name2)
+{
+  BOOL ret = FALSE;
+  HANDLE file1 = INVALID_HANDLE_VALUE, file2 = INVALID_HANDLE_VALUE;
+  BY_HANDLE_FILE_INFORMATION info1, info2;
+
+  file1 = CreateFileW(name1, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, 0);
+  if (file1 == INVALID_HANDLE_VALUE || !GetFileInformationByHandle(file1, &info1))
+    goto end;
+
+  file2 = CreateFileW(name2, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, 0);
+  if (file2 == INVALID_HANDLE_VALUE || !GetFileInformationByHandle(file2, &info2))
+    goto end;
+
+  ret = info1.dwVolumeSerialNumber == info2.dwVolumeSerialNumber
+    && info1.nFileIndexHigh == info2.nFileIndexHigh
+    && info1.nFileIndexLow == info2.nFileIndexLow;
+end:
+  if (file1 != INVALID_HANDLE_VALUE)
+    CloseHandle(file1);
+  if (file2 != INVALID_HANDLE_VALUE)
+    CloseHandle(file2);
+  return ret;
 }
 
 /****************************************************************************
@@ -478,7 +508,7 @@ static BOOL WCMD_ManualCopy(WCHAR *srcname, WCHAR *dstname, BOOL ascii, BOOL app
 
     in  = CreateFileW(srcname, GENERIC_READ, 0, NULL,
                       OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (in == NULL) {
+    if (in == INVALID_HANDLE_VALUE) {
       WINE_ERR("Failed to open %s (%d)\n", wine_dbgstr_w(srcname), GetLastError());
       return FALSE;
     }
@@ -486,7 +516,7 @@ static BOOL WCMD_ManualCopy(WCHAR *srcname, WCHAR *dstname, BOOL ascii, BOOL app
     /* Open the output file, overwriting if not appending */
     out = CreateFileW(dstname, GENERIC_WRITE, 0, NULL,
                       append?OPEN_EXISTING:CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (out == NULL) {
+    if (out == INVALID_HANDLE_VALUE) {
       WINE_ERR("Failed to open %s (%d)\n", wine_dbgstr_w(dstname), GetLastError());
       CloseHandle(in);
       return FALSE;
@@ -922,6 +952,7 @@ void WCMD_copy(WCHAR * args) {
       do {
         WCHAR outname[MAX_PATH];
         BOOL  overwrite;
+        BOOL  appendtofirstfile = FALSE;
 
         /* Skip . and .., and directories */
         if (!srcisdevice && fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
@@ -946,8 +977,14 @@ void WCMD_copy(WCHAR * args) {
           WINE_TRACE("Flags: srcbinary(%d), dstbinary(%d), over(%d), prompt(%d)\n",
                      thiscopy->binarycopy, destination->binarycopy, overwrite, prompt);
 
+          if (!writtenoneconcat) {
+            appendtofirstfile = anyconcats && WCMD_IsSameFile(srcpath, outname);
+          }
+
           /* Prompt before overwriting */
-          if (!overwrite) {
+          if (appendtofirstfile) {
+            overwrite = TRUE;
+          } else if (!overwrite) {
             DWORD attributes = GetFileAttributesW(outname);
             if (attributes != INVALID_FILE_ATTRIBUTES) {
               WCHAR* question;
@@ -969,7 +1006,10 @@ void WCMD_copy(WCHAR * args) {
 
           /* Do the copy as appropriate */
           if (overwrite) {
-            if (anyconcats && writtenoneconcat) {
+            if (anyconcats && WCMD_IsSameFile(srcpath, outname)) {
+              /* Silently skip if the destination file is also a source file */
+              status = TRUE;
+            } else if (anyconcats && writtenoneconcat) {
               if (thiscopy->binarycopy) {
                 status = WCMD_ManualCopy(srcpath, outname, FALSE, TRUE);
               } else {
@@ -3649,7 +3689,7 @@ static WCHAR WCMD_popoperator(OPSTACK **opstack) {
  * Returns non-zero on error.
  */
 static int WCMD_reduce(OPSTACK **opstack, VARSTACK **varstack) {
-  OPSTACK *thisop;
+  WCHAR thisop;
   int var1,var2;
   int rc = 0;
 
@@ -3659,13 +3699,12 @@ static int WCMD_reduce(OPSTACK **opstack, VARSTACK **varstack) {
   }
 
   /* Remove the top operator */
-  thisop = *opstack;
-  *opstack = (*opstack)->next;
-  WINE_TRACE("Reducing the stacks - processing operator %c\n", thisop->op);
+  thisop = WCMD_popoperator(opstack);
+  WINE_TRACE("Reducing the stacks - processing operator %c\n", thisop);
 
   /* One variable operators */
   var1 = WCMD_popnumber(varstack);
-  switch (thisop->op) {
+  switch (thisop) {
   case '!': WCMD_pushnumber(NULL, !var1, varstack);
             break;
   case '~': WCMD_pushnumber(NULL, ~var1, varstack);
@@ -3681,7 +3720,7 @@ static int WCMD_reduce(OPSTACK **opstack, VARSTACK **varstack) {
     WINE_TRACE("No operands left for the reduce?\n");
     return WCMD_NOOPERAND;
   }
-  switch (thisop->op) {
+  switch (thisop) {
   case '!':
   case '~':
   case OP_POSITIVE:
@@ -3752,11 +3791,11 @@ static int WCMD_reduce(OPSTACK **opstack, VARSTACK **varstack) {
           /* Make the operand stack grow by pushing the assign operator plus the
              operator to perform                                                 */
           while (calcassignments[i].op != ' ' &&
-                 calcassignments[i].calculatedop != thisop->op) {
+                 calcassignments[i].calculatedop != thisop) {
             i++;
           }
           if (calcassignments[i].calculatedop == ' ') {
-            WINE_ERR("Unexpected operator %c\n", thisop->op);
+            WINE_ERR("Unexpected operator %c\n", thisop);
             return WCMD_NOOPERATOR;
           }
           WCMD_pushoperator('=', WCMD_getprecedence('='), opstack);
@@ -3780,10 +3819,9 @@ static int WCMD_reduce(OPSTACK **opstack, VARSTACK **varstack) {
           break;
         }
 
-  default:  WINE_ERR("Unrecognized operator %c\n", thisop->op);
+  default:  WINE_ERR("Unrecognized operator %c\n", thisop);
   }
 
-  heap_free(thisop);
   return rc;
 }
 
@@ -4071,7 +4109,7 @@ void WCMD_setshow_env (WCHAR *s) {
       if (string[count-2] == '\r') string[count-2] = '\0'; /* Under Windoze we get CRLF! */
       WINE_TRACE("set /p: Setting var '%s' to '%s'\n", wine_dbgstr_w(s),
                  wine_dbgstr_w(string));
-      status = SetEnvironmentVariableW(s, string);
+      SetEnvironmentVariableW(s, string);
     }
 
   /* See if /A supplied, and if so calculate the results of all the expressions */

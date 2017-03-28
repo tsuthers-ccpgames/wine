@@ -32,6 +32,7 @@
 #include "winbase.h"
 #include "wingdi.h"
 #include "winuser.h"
+#include "winreg.h"
 
 #include "wine/test.h"
 
@@ -753,6 +754,7 @@ static void test_enum_thread_windows(void)
 static struct wm_gettext_override_data
 {
     BOOL   enabled; /* when 1 bypasses default procedure */
+    BOOL   dont_terminate; /* don't null terminate returned string in WM_GETTEXT handler */
     char  *buff;    /* expected text buffer pointer */
     WCHAR *buffW;   /* same, for W test */
 } g_wm_gettext_override;
@@ -803,10 +805,7 @@ static LRESULT WINAPI main_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LPAR
             GetWindowRect(hwnd, &rc1);
             SetRect(&rc2, winpos->x, winpos->y, winpos->x + winpos->cx, winpos->y + winpos->cy);
             /* note: winpos coordinates are relative to parent */
-            MapWindowPoints(GetParent(hwnd), 0, (LPPOINT)&rc2, 2);
-            if (0)
-            {
-            /* Uncomment this once the test succeeds in all cases */
+            MapWindowPoints(GetAncestor(hwnd,GA_PARENT), 0, (LPPOINT)&rc2, 2);
             ok(EqualRect(&rc1, &rc2), "rects do not match %s / %s\n", wine_dbgstr_rect(&rc1),
                wine_dbgstr_rect(&rc2));
 
@@ -815,7 +814,6 @@ static LRESULT WINAPI main_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LPAR
             MapWindowPoints(0, hwnd, (LPPOINT)&rc1, 2);
             ok(EqualRect(&rc1, &rc2), "rects do not match %s / %s\n", wine_dbgstr_rect(&rc1),
                wine_dbgstr_rect(&rc2));
-            }
 	    break;
 	}
 	case WM_NCCREATE:
@@ -845,6 +843,16 @@ static LRESULT WINAPI main_window_procA(HWND hwnd, UINT msg, WPARAM wparam, LPAR
                 ok(*text == 0, "expected empty string buffer %x\n", *text);
                 return 0;
             }
+            else if (g_wm_gettext_override.dont_terminate)
+            {
+                char *text = (char *)lparam;
+                if (text)
+                {
+                    memcpy(text, "text", 4);
+                    return 4;
+                }
+                return 0;
+            }
             break;
         case WM_SETTEXT:
             num_settext_msgs++;
@@ -869,6 +877,17 @@ static LRESULT WINAPI main_window_procW(HWND hwnd, UINT msg, WPARAM wparam, LPAR
                 WCHAR *text = (WCHAR*)lparam;
                 ok(g_wm_gettext_override.buffW == text, "expected buffer %p, got %p\n", g_wm_gettext_override.buffW, text);
                 ok(*text == 0, "expected empty string buffer %x\n", *text);
+                return 0;
+            }
+            else if (g_wm_gettext_override.dont_terminate)
+            {
+                static const WCHAR textW[] = {'t','e','x','t'};
+                WCHAR *text = (WCHAR *)lparam;
+                if (text)
+                {
+                    memcpy(text, textW, sizeof(textW));
+                    return 4;
+                }
                 return 0;
             }
             break;
@@ -1239,10 +1258,42 @@ static LRESULT CALLBACK cbt_hook_proc(int nCode, WPARAM wParam, LPARAM lParam)
     return CallNextHookEx(hhook, nCode, wParam, lParam);
 }
 
+static const WCHAR winlogonW[] =
+    {'S','o','f','t','w','a','r','e','\\','M','i','c','r','o','s','o','f','t','\\',
+     'W','i','n','d','o','w','s',' ','N','T','\\','C','u','r','r','e','n','t','V','e','r','s','i','o','n','\\',
+     'W','i','n','l','o','g','o','n',0};
+static const WCHAR autorestartshellW[] =
+    {'A','u','t','o','R','e','s','t','a','r','t','S','h','e','l','l',0};
+
+static DWORD get_autorestart(void)
+{
+    DWORD type, val, len = sizeof(val);
+    REGSAM access = KEY_ALL_ACCESS|KEY_WOW64_64KEY;
+    HKEY hkey;
+    LONG res;
+
+    if (RegCreateKeyExW( HKEY_LOCAL_MACHINE, winlogonW, 0, 0, 0, access, NULL, &hkey, 0 )) return 0;
+    res = RegQueryValueExW( hkey, autorestartshellW, NULL, &type, (BYTE *)&val, &len );
+    RegCloseKey( hkey );
+    return (!res && type == REG_DWORD) ? val : 0;
+}
+
+static BOOL set_autorestart( DWORD val )
+{
+    REGSAM access = KEY_ALL_ACCESS|KEY_WOW64_64KEY;
+    HKEY hkey;
+    LONG res;
+
+    if (RegCreateKeyExW( HKEY_LOCAL_MACHINE, winlogonW, 0, 0, 0, access, NULL, &hkey, 0 )) return FALSE;
+    res = RegSetValueExW( hkey, autorestartshellW, 0, REG_DWORD, (BYTE *)&val, sizeof(val) );
+    RegCloseKey( hkey );
+    return !res;
+}
+
 static void test_shell_window(void)
 {
     BOOL ret;
-    DWORD error;
+    DWORD error, restart = get_autorestart();
     HMODULE hinst, hUser32;
     BOOL (WINAPI*SetShellWindow)(HWND);
     HWND hwnd1, hwnd2, hwnd3, hwnd4, hwnd5;
@@ -1251,6 +1302,12 @@ static void test_shell_window(void)
     if (is_win9x)
     {
         win_skip("Skipping shell window test on Win9x\n");
+        return;
+    }
+
+    if (restart && !set_autorestart(0))
+    {
+        skip("cannot disable automatic shell restart (needs admin rights\n");
         return;
     }
 
@@ -1271,6 +1328,7 @@ static void test_shell_window(void)
         if (!hProcess)
         {
             skip( "cannot get access to shell process\n" );
+            set_autorestart(restart);
             return;
         }
 
@@ -1367,6 +1425,7 @@ static void test_shell_window(void)
     DestroyWindow(hwnd3);
     DestroyWindow(hwnd4);
     DestroyWindow(hwnd5);
+    set_autorestart(restart);
 }
 
 /************** MDI test ****************/
@@ -3032,7 +3091,9 @@ static void test_SetFocus(HWND hwnd)
     ShowWindow(child, SW_SHOW);
     SetFocus(child);
     ok( GetFocus() == child, "Focus should be on child %p\n", child );
+    SetLastError(0xdeadbeef);
     EnableWindow(hwnd, FALSE);
+    ok(GetLastError() == 0xdeadbeef, "got error %u in EnableWindow call\n", GetLastError());
     ok( GetFocus() == child, "Focus should still be on child %p\n", child );
     EnableWindow(hwnd, TRUE);
 
@@ -6526,6 +6587,7 @@ static DWORD CALLBACK settext_msg_thread( LPVOID arg )
 
 static void test_gettext(void)
 {
+    static const WCHAR textW[] = {'t','e','x','t'};
     DWORD tid, num_msgs;
     WCHAR bufW[32];
     HANDLE thread;
@@ -6678,6 +6740,48 @@ static void test_gettext(void)
     ok( buf_len != 0, "expected a nonempty window text\n" );
     ok( !strcmp(buf, "thread_caption"), "got wrong window text '%s'\n", buf );
     ok( num_gettext_msgs == 1, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    /* WM_GETTEXT does not terminate returned string */
+    memset( buf, 0x1c, sizeof(buf) );
+    g_wm_gettext_override.dont_terminate = TRUE;
+    buf_len = GetWindowTextA( hwnd, buf, sizeof(buf) );
+    ok( buf_len == 4, "Unexpected text length, %d\n", buf_len );
+    ok( !memcmp(buf, "text", 4), "Unexpected window text, '%s'\n", buf );
+    ok( buf[4] == 0x1c, "Unexpected buffer contents\n" );
+    g_wm_gettext_override.dont_terminate = FALSE;
+
+    memset( bufW, 0x1c, sizeof(bufW) );
+    g_wm_gettext_override.dont_terminate = TRUE;
+    buf_len = GetWindowTextW( hwnd, bufW, sizeof(bufW)/sizeof(bufW[0]) );
+todo_wine
+    ok( buf_len == 4, "Unexpected text length, %d\n", buf_len );
+    ok( !memcmp(bufW, textW, 4 * sizeof(WCHAR)), "Unexpected window text, %s\n", wine_dbgstr_w(bufW) );
+todo_wine
+    ok( bufW[4] == 0, "Unexpected buffer contents, %#x\n", bufW[4] );
+    g_wm_gettext_override.dont_terminate = FALSE;
+
+    hwnd2 = CreateWindowExW( 0, mainclassW, NULL, WS_POPUP, 0, 0, 0, 0, 0, 0, 0, NULL );
+    ok( hwnd2 != 0, "CreateWindowExA error %d\n", GetLastError() );
+
+    memset( buf, 0x1c, sizeof(buf) );
+    g_wm_gettext_override.dont_terminate = TRUE;
+    buf_len = GetWindowTextA( hwnd2, buf, sizeof(buf) );
+todo_wine
+    ok( buf_len == 4, "Unexpected text length, %d\n", buf_len );
+    ok( !memcmp(buf, "text", 4), "Unexpected window text, '%s'\n", buf );
+todo_wine
+    ok( buf[4] == 0, "Unexpected buffer contents, %#x\n", buf[4] );
+    g_wm_gettext_override.dont_terminate = FALSE;
+
+    memset( bufW, 0x1c, sizeof(bufW) );
+    g_wm_gettext_override.dont_terminate = TRUE;
+    buf_len = GetWindowTextW( hwnd2, bufW, sizeof(bufW)/sizeof(bufW[0]) );
+    ok( buf_len == 4, "Unexpected text length, %d\n", buf_len );
+    ok( !memcmp(bufW, textW, 4 * sizeof(WCHAR)), "Unexpected window text, %s\n", wine_dbgstr_w(bufW) );
+    ok( bufW[4] == 0x1c1c, "Unexpected buffer contents, %#x\n", bufW[4] );
+    g_wm_gettext_override.dont_terminate = FALSE;
+
+    DestroyWindow(hwnd2);
 
     /* seems to crash on every modern Windows version */
     if (0)
@@ -7037,6 +7141,25 @@ static void test_hwnd_message(void)
 
     HWND parent = 0, hwnd, found;
     RECT rect;
+    static const struct
+    {
+        int offset;
+        ULONG_PTR expect;
+        DWORD error;
+    }
+    tests[] =
+    {
+        { GWLP_USERDATA,   0, 0 },
+        { GWL_STYLE,       WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0 },
+        { GWL_EXSTYLE,     0, 0 },
+        { GWLP_ID,         0, 0 },
+        /* GWLP_HWNDPARENT - returns random values */
+        /* GWLP_HINSTANCE  - not useful and not consistent between Windows versions */
+        { GWLP_WNDPROC,    0, ERROR_ACCESS_DENIED },
+        { DWLP_MSGRESULT,  0, ERROR_INVALID_INDEX }
+    };
+    DWORD_PTR result;
+    int i;
 
     /* HWND_MESSAGE is not supported below w2k, but win9x return != 0
        on CreateWindowExA and crash later in the test.
@@ -7060,7 +7183,7 @@ static void test_hwnd_message(void)
         ok(parent != desktop, "GetAncestor(GA_PARENT) should not return desktop for message windows\n");
         root = pGetAncestor(hwnd, GA_ROOT);
         ok(root == hwnd, "GetAncestor(GA_ROOT) should return hwnd for message windows\n");
-        ok( !pGetAncestor(parent, GA_PARENT) || broken(pGetAncestor(parent, GA_PARENT) != 0), /* win2k */
+        ok( !pGetAncestor(parent, GA_PARENT),
             "parent shouldn't have parent %p\n", pGetAncestor(parent, GA_PARENT) );
         trace("parent %p root %p desktop %p\n", parent, root, desktop);
         if (!GetClassNameA( parent, buffer, sizeof(buffer) )) buffer[0] = 0;
@@ -7095,6 +7218,21 @@ static void test_hwnd_message(void)
 
     ok( !IsWindowVisible( hwnd ), "HWND_MESSAGE window is visible\n" );
     if (parent) ok( !IsWindowVisible( parent ), "HWND_MESSAGE parent is visible\n" );
+
+    /* GetWindowLong */
+    for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        result = GetWindowLongPtrW( parent, tests[i].offset );
+        ok( result == tests[i].expect, "offset %d, got %08lx expect %08lx\n",
+            tests[i].offset, result, tests[i].expect );
+        if (tests[i].error)
+            ok( GetLastError() == tests[i].error, "offset %d: error %d expect %d\n",
+                tests[i].offset, GetLastError(), tests[i].error );
+        else
+            ok( GetLastError() == 0xdeadbeef, "offset %d: error %d expect unchanged\n",
+                tests[i].offset, GetLastError() );
+    }
 
     DestroyWindow(hwnd);
 }
@@ -7825,14 +7963,16 @@ static void test_FlashWindow(void)
 
     SetLastError( 0xdeadbeef );
     ret = pFlashWindow( NULL, TRUE );
-    ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+    ok( !ret && (GetLastError() == ERROR_INVALID_PARAMETER ||
+                 GetLastError() == ERROR_INVALID_WINDOW_HANDLE),
         "FlashWindow returned with %d\n", GetLastError() );
 
     DestroyWindow( hwnd );
 
     SetLastError( 0xdeadbeef );
     ret = pFlashWindow( hwnd, TRUE );
-    ok( !ret && GetLastError() == ERROR_INVALID_PARAMETER,
+    ok( !ret && (GetLastError() == ERROR_INVALID_PARAMETER ||
+                 GetLastError() == ERROR_INVALID_WINDOW_HANDLE),
         "FlashWindow returned with %d\n", GetLastError() );
 }
 
@@ -7859,7 +7999,8 @@ static void test_FlashWindowEx(void)
     finfo.hwnd = NULL;
     SetLastError(0xdeadbeef);
     ret = pFlashWindowEx(&finfo);
-    ok(!ret && GetLastError() == ERROR_INVALID_PARAMETER,
+    ok(!ret && (GetLastError() == ERROR_INVALID_PARAMETER ||
+                GetLastError() == ERROR_INVALID_WINDOW_HANDLE),
        "FlashWindowEx returned with %d\n", GetLastError());
 
     finfo.hwnd = hwnd;
@@ -7889,7 +8030,8 @@ static void test_FlashWindowEx(void)
 
     SetLastError(0xdeadbeef);
     ret = pFlashWindowEx(&finfo);
-    ok(!ret && GetLastError() == ERROR_INVALID_PARAMETER,
+    ok(!ret && (GetLastError() == ERROR_INVALID_PARAMETER ||
+                GetLastError() == ERROR_INVALID_WINDOW_HANDLE),
        "FlashWindowEx returned with %d\n", GetLastError());
 
     ok(finfo.cbSize == sizeof(FLASHWINFO), "FlashWindowEx modified cdSize to %x\n", finfo.cbSize);
@@ -7933,6 +8075,16 @@ static void test_FindWindowEx(void)
     ok( hwnd != 0, "CreateWindowExA error %d\n", GetLastError() );
 
     num_gettext_msgs = 0;
+    found = FindWindowExA( 0, 0, "ClassThatDoesntExist", "" );
+    ok( found == NULL, "expected a NULL hwnd\n" );
+    ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    num_gettext_msgs = 0;
+    found = FindWindowExA( 0, 0, "ClassThatDoesntExist", NULL );
+    ok( found == NULL, "expected a NULL hwnd\n" );
+    ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    num_gettext_msgs = 0;
     found = FindWindowExA( 0, 0, "MainWindowClass", "" );
     ok( found == NULL, "expected a NULL hwnd\n" );
     ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
@@ -7968,6 +8120,62 @@ static void test_FindWindowEx(void)
     found = FindWindowExA( 0, 0, "Shell_TrayWnd", "" );
     ok( found != NULL, "found is NULL, expected a valid hwnd\n" );
     found = FindWindowExA( 0, 0, "Shell_TrayWnd", NULL );
+    ok( found != NULL, "found is NULL, expected a valid hwnd\n" );
+}
+
+static void test_FindWindow(void)
+{
+    HWND hwnd, found;
+
+    hwnd = CreateWindowExA( 0, "MainWindowClass", "caption", WS_POPUP, 0,0,0,0, 0, 0, 0, NULL );
+    ok( hwnd != 0, "CreateWindowExA error %d\n", GetLastError() );
+
+    num_gettext_msgs = 0;
+    found = FindWindowA( "ClassThatDoesntExist", "" );
+    ok( found == NULL, "expected a NULL hwnd\n" );
+    ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    num_gettext_msgs = 0;
+    found = FindWindowA( "ClassThatDoesntExist", NULL );
+    ok( found == NULL, "expected a NULL hwnd\n" );
+    ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    num_gettext_msgs = 0;
+    found = FindWindowA( "MainWindowClass", "" );
+    ok( found == NULL, "expected a NULL hwnd\n" );
+    ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    num_gettext_msgs = 0;
+    found = FindWindowA( "MainWindowClass", NULL );
+    ok( found == hwnd, "found is %p, expected a valid hwnd\n", found );
+    ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    num_gettext_msgs = 0;
+    found = FindWindowA( "MainWindowClass", "caption" );
+    ok( found == hwnd, "found is %p, expected a valid hwnd\n", found );
+    ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    DestroyWindow( hwnd );
+
+    hwnd = CreateWindowExA( 0, "MainWindowClass", NULL, WS_POPUP, 0,0,0,0, 0, 0, 0, NULL );
+    ok( hwnd != 0, "CreateWindowExA error %d\n", GetLastError() );
+
+    num_gettext_msgs = 0;
+    found = FindWindowA( "MainWindowClass", "" );
+    ok( found == hwnd, "found is %p, expected a valid hwnd\n", found );
+    ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    num_gettext_msgs = 0;
+    found = FindWindowA( "MainWindowClass", NULL );
+    ok( found == hwnd, "found is %p, expected a valid hwnd\n", found );
+    ok( num_gettext_msgs == 0, "got %u WM_GETTEXT messages\n", num_gettext_msgs );
+
+    DestroyWindow( hwnd );
+
+    /* test behaviour with a window title that is an empty character */
+    found = FindWindowA( "Shell_TrayWnd", "" );
+    ok( found != NULL, "found is NULL, expected a valid hwnd\n" );
+    found = FindWindowA( "Shell_TrayWnd", NULL );
     ok( found != NULL, "found is NULL, expected a valid hwnd\n" );
 }
 
@@ -9290,6 +9498,7 @@ static void test_winproc_limit(void)
 static void test_deferwindowpos(void)
 {
     HDWP hdwp, hdwp2;
+    HWND hwnd;
     BOOL ret;
 
     hdwp = BeginDeferWindowPos(0);
@@ -9319,6 +9528,125 @@ todo_wine
 
     ret = EndDeferWindowPos(hdwp);
     ok(ret, "got %d\n", ret);
+    hdwp = BeginDeferWindowPos(0);
+    ok(hdwp != NULL, "got %p\n", hdwp);
+
+    hwnd = create_tool_window(WS_POPUP, 0);
+    hdwp2 = DeferWindowPos(hdwp, hwnd, NULL, 0, 0, 10, 10, 0);
+    ok(hdwp2 != NULL, "got %p, error %d\n", hdwp2, GetLastError());
+    DestroyWindow(hwnd);
+
+    ret = EndDeferWindowPos(hdwp);
+    ok(ret, "got %d\n", ret);
+}
+
+static void test_LockWindowUpdate(HWND parent)
+{
+    typedef struct
+    {
+        HWND hwnd_lock, hwnd_draw;
+        BOOL allow_drawing;
+        BOOL expect_valid;
+    } TEST;
+
+    int i;
+    HWND child = CreateWindowA("static", 0, WS_CHILD | WS_VISIBLE, 0, 0, 20, 20, parent, 0, 0, 0);
+
+    TEST tests[] = {
+        {child, child, 0, 0},
+        {child, child, 1, 1},
+        {child, parent, 0, 1},
+        {child, parent, 1, 1},
+        {parent, child, 0, 0},
+        {parent, child, 1, 1},
+        {parent, parent, 0, 0},
+        {parent, parent, 1, 1}
+    };
+
+    if (!child)
+    {
+        skip("CreateWindow failed, skipping LockWindowUpdate tests\n");
+        return;
+    }
+
+    ShowWindow(parent, SW_SHOW);
+    UpdateWindow(parent);
+    flush_events(TRUE);
+
+    for (i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i)
+    {
+        HDC hdc;
+        POINT p = {10, 10};
+        BOOL ret;
+        const DWORD dc_flags = DCX_USESTYLE | (tests[i].allow_drawing ? DCX_LOCKWINDOWUPDATE : 0);
+        const COLORREF c1 = 0x111100, c2 = 0x222200;
+
+        trace("hwnd_lock = %s, hwnd_draw = %s, allow_drawing = %d\n",
+            tests[i].hwnd_lock == parent ? "parent" : "child",
+            tests[i].hwnd_draw == parent ? "parent" : "child",
+            tests[i].allow_drawing);
+
+        hdc = GetDCEx(tests[i].hwnd_draw, 0, dc_flags);
+
+#define TEST_PIXEL(c_valid, c_invalid) \
+            do { \
+                COLORREF c = GetPixel(hdc, p.x, p.y); \
+                COLORREF e = tests[i].expect_valid ? (c_valid) : (c_invalid); \
+                todo_wine_if(!tests[i].expect_valid) \
+                ok(c == e, "GetPixel: got %08x, expected %08x\n", c, e); \
+            } while (0)
+
+        SetPixel(hdc, p.x, p.y, c1);
+        ret = LockWindowUpdate(tests[i].hwnd_lock);
+        ok(ret, "LockWindowUpdate failed\n");
+        TEST_PIXEL(c1, CLR_INVALID);
+        SetPixel(hdc, p.x, p.y, c2);
+        TEST_PIXEL(c2, CLR_INVALID);
+        LockWindowUpdate(0);
+        TEST_PIXEL(c2, c1);
+        ReleaseDC(tests[i].hwnd_draw, hdc);
+#undef TEST_PIXEL
+    }
+    DestroyWindow(child);
+}
+
+static void test_desktop( void )
+{
+    HWND desktop = GetDesktopWindow();
+    /* GetWindowLong Desktop window tests */
+    static const struct
+    {
+        int offset;
+        ULONG_PTR expect;
+        DWORD error;
+    }
+    tests[] =
+    {
+        { GWLP_USERDATA,   0, 0 },
+        { GWL_STYLE,       WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0 },
+        { GWL_EXSTYLE,     0, 0 },
+        { GWLP_ID,         0, 0 },
+        { GWLP_HWNDPARENT, 0, 0 },
+        /* GWLP_HINSTANCE - not useful and not consistent between Windows versions */
+        { GWLP_WNDPROC,    0, ERROR_ACCESS_DENIED },
+        { DWLP_MSGRESULT,  0, ERROR_INVALID_INDEX }
+    };
+    DWORD_PTR result;
+    int i;
+
+    for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++)
+    {
+        SetLastError( 0xdeadbeef );
+        result = GetWindowLongPtrW( desktop, tests[i].offset );
+        ok( result == tests[i].expect, "offset %d, got %08lx expect %08lx\n",
+            tests[i].offset, result, tests[i].expect );
+        if (tests[i].error)
+            ok( GetLastError() == tests[i].error, "offset %d: error %d expect %d\n",
+                tests[i].offset, GetLastError(), tests[i].error );
+        else
+            ok( GetLastError() == 0xdeadbeef, "offset %d: error %d expect unchanged\n",
+                tests[i].offset, GetLastError() );
+    }
 }
 
 START_TEST(win)
@@ -9385,6 +9713,7 @@ START_TEST(win)
 
     /* make sure that these tests are executed first */
     test_FindWindowEx();
+    test_FindWindow();
     test_SetParent();
 
     hwndMain2 = CreateWindowExA(/*WS_EX_TOOLWINDOW*/ 0, "MainWindowClass", "Main window 2",
@@ -9466,6 +9795,8 @@ START_TEST(win)
     test_activateapp(hwndMain);
     test_winproc_handles(argv[0]);
     test_deferwindowpos();
+    test_LockWindowUpdate(hwndMain);
+    test_desktop();
 
     /* add the tests above this line */
     if (hhook) UnhookWindowsHookEx(hhook);

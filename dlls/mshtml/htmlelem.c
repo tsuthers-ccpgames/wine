@@ -3865,15 +3865,19 @@ static HRESULT WINAPI HTMLElement4_removeAttributeNode(IHTMLElement4 *iface, IHT
 static HRESULT WINAPI HTMLElement4_put_onbeforeactivate(IHTMLElement4 *iface, VARIANT v)
 {
     HTMLElement *This = impl_from_IHTMLElement4(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_variant(&v));
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%s)\n", This, debugstr_variant(&v));
+
+    return set_node_event(&This->node, EVENTID_BEFOREACTIVATE, &v);
 }
 
 static HRESULT WINAPI HTMLElement4_get_onbeforeactivate(IHTMLElement4 *iface, VARIANT *p)
 {
     HTMLElement *This = impl_from_IHTMLElement4(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    return get_node_event(&This->node, EVENTID_BEFOREACTIVATE, p);
 }
 
 static HRESULT WINAPI HTMLElement4_put_onfocusin(IHTMLElement4 *iface, VARIANT v)
@@ -5074,12 +5078,12 @@ static HRESULT HTMLElement_populate_props(DispatchEx *dispex)
     return S_OK;
 }
 
-static event_target_t **HTMLElement_get_event_target_ptr(DispatchEx *dispex)
+static EventTarget *HTMLElement_get_event_target(DispatchEx *dispex)
 {
     HTMLElement *This = impl_from_DispatchEx(dispex);
-    return This->node.vtbl->get_event_target_ptr
-        ? This->node.vtbl->get_event_target_ptr(&This->node)
-        : &This->node.event_target.ptr;
+    return This->node.vtbl->get_event_target
+        ? This->node.vtbl->get_event_target(&This->node)
+        : &This->node.event_target;
 }
 
 static void HTMLElement_bind_event(DispatchEx *dispex, int eid)
@@ -5113,7 +5117,7 @@ static dispex_static_data_vtbl_t HTMLElement_dispex_vtbl = {
     HTMLElement_get_dispid,
     HTMLElement_invoke,
     HTMLElement_populate_props,
-    HTMLElement_get_event_target_ptr,
+    HTMLElement_get_event_target,
     HTMLElement_bind_event
 };
 

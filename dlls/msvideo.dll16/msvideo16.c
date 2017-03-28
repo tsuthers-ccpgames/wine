@@ -121,6 +121,15 @@ UINT16 VFWAPI DrawDibRealize16(HDRAWDIB16 hdd, HDC16 hdc,
 }
 
 /*************************************************************************
+ *      DrawDibProfileDisplay     [MSVIDEO.114]
+ */
+BOOL16 VFWAPI DrawDibProfileDisplay16(LPBITMAPINFOHEADER lpbi)
+{
+    TRACE("(%p)\n", lpbi);
+    return DrawDibProfileDisplay(lpbi);
+}
+
+/*************************************************************************
  *		DrawDibStart		[MSVIDEO.118]
  */
 BOOL16 VFWAPI DrawDibStart16(HDRAWDIB16 hdd, DWORD rate)
@@ -761,6 +770,9 @@ static struct msvideo_thunk*      MSVIDEO_AddThunk(DWORD pfn16)
 static struct msvideo_thunk*    MSVIDEO_HasThunk(HIC16 hic)
 {
     struct msvideo_thunk* thunk;
+
+    if (!MSVIDEO_Thunks)
+        return NULL;
 
     for (thunk = MSVIDEO_Thunks; thunk < &MSVIDEO_Thunks[MAX_THUNKS]; thunk++)
     {

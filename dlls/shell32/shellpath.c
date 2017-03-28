@@ -3209,8 +3209,8 @@ static HRESULT _SHGetUserShellFolderPath(HKEY rootKey, LPCWSTR userPrefix,
     HRESULT hr;
     WCHAR shellFolderPath[MAX_PATH], userShellFolderPath[MAX_PATH];
     LPCWSTR pShellFolderPath, pUserShellFolderPath;
-    DWORD dwType, dwPathLen = MAX_PATH;
     HKEY userShellFolderKey, shellFolderKey;
+    DWORD dwType, dwPathLen;
 
     TRACE("%p,%s,%s,%p\n",rootKey, debugstr_w(userPrefix), debugstr_w(value),
      path);
@@ -3245,6 +3245,7 @@ static HRESULT _SHGetUserShellFolderPath(HKEY rootKey, LPCWSTR userPrefix,
         return E_FAIL;
     }
 
+    dwPathLen = MAX_PATH * sizeof(WCHAR);
     if (!RegQueryValueExW(userShellFolderKey, value, NULL, &dwType,
      (LPBYTE)path, &dwPathLen) && (dwType == REG_EXPAND_SZ || dwType == REG_SZ))
     {
@@ -4704,45 +4705,139 @@ static int csidl_from_id( const KNOWNFOLDERID *id )
 /*************************************************************************
  * SHGetKnownFolderPath           [SHELL32.@]
  */
-HRESULT WINAPI SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD flags, HANDLE token, PWSTR *path)
+HRESULT WINAPI SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD flags, HANDLE token, WCHAR **ret_path)
 {
-    HRESULT hr;
-    WCHAR folder[MAX_PATH];
-    int index = csidl_from_id( rfid );
+    WCHAR pathW[MAX_PATH], tempW[MAX_PATH];
+    HRESULT    hr;
+    CSIDL_Type type;
+    int        ret;
+    int folder = csidl_from_id(rfid), shgfp_flags;
 
-    TRACE("%s, 0x%08x, %p, %p\n", debugstr_guid(rfid), flags, token, path);
+    TRACE("%s, 0x%08x, %p, %p\n", debugstr_guid(rfid), flags, token, ret_path);
 
-    *path = NULL;
+    *ret_path = NULL;
 
-    if (index < 0)
+    if (folder < 0)
         return HRESULT_FROM_WIN32( ERROR_FILE_NOT_FOUND );
 
-    if (flags & KF_FLAG_CREATE)
-        index |= CSIDL_FLAG_CREATE;
-
-    if (flags & KF_FLAG_DONT_VERIFY)
-        index |= CSIDL_FLAG_DONT_VERIFY;
-
-    if (flags & KF_FLAG_NO_ALIAS)
-        index |= CSIDL_FLAG_NO_ALIAS;
-
-    if (flags & KF_FLAG_INIT)
-        index |= CSIDL_FLAG_PER_USER_INIT;
-
-    if (flags & ~(KF_FLAG_CREATE|KF_FLAG_DONT_VERIFY|KF_FLAG_NO_ALIAS|KF_FLAG_INIT))
+    if (flags & ~(KF_FLAG_CREATE|KF_FLAG_DONT_VERIFY|KF_FLAG_NO_ALIAS|
+        KF_FLAG_INIT|KF_FLAG_DEFAULT_PATH))
     {
         FIXME("flags 0x%08x not supported\n", flags);
         return E_INVALIDARG;
     }
 
-    hr = SHGetFolderPathW( NULL, index, token, 0, folder );
-    if (SUCCEEDED(hr))
+    shgfp_flags = flags & KF_FLAG_DEFAULT_PATH ? SHGFP_TYPE_DEFAULT : SHGFP_TYPE_CURRENT;
+
+    type = CSIDL_Data[folder].type;
+    switch (type)
     {
-        *path = CoTaskMemAlloc( (strlenW( folder ) + 1) * sizeof(WCHAR) );
-        if (!*path)
-            return E_OUTOFMEMORY;
-        strcpyW( *path, folder );
+        case CSIDL_Type_Disallowed:
+            hr = E_INVALIDARG;
+            break;
+        case CSIDL_Type_NonExistent:
+            *tempW = 0;
+            hr = S_FALSE;
+            break;
+        case CSIDL_Type_WindowsPath:
+            GetWindowsDirectoryW(tempW, MAX_PATH);
+            if (CSIDL_Data[folder].szDefaultPath &&
+             !IS_INTRESOURCE(CSIDL_Data[folder].szDefaultPath) &&
+             *CSIDL_Data[folder].szDefaultPath)
+            {
+                PathAddBackslashW(tempW);
+                strcatW(tempW, CSIDL_Data[folder].szDefaultPath);
+            }
+            hr = S_OK;
+            break;
+        case CSIDL_Type_SystemPath:
+            GetSystemDirectoryW(tempW, MAX_PATH);
+            if (CSIDL_Data[folder].szDefaultPath &&
+             !IS_INTRESOURCE(CSIDL_Data[folder].szDefaultPath) &&
+             *CSIDL_Data[folder].szDefaultPath)
+            {
+                PathAddBackslashW(tempW);
+                strcatW(tempW, CSIDL_Data[folder].szDefaultPath);
+            }
+            hr = S_OK;
+            break;
+        case CSIDL_Type_SystemX86Path:
+            if (!GetSystemWow64DirectoryW(tempW, MAX_PATH)) GetSystemDirectoryW(tempW, MAX_PATH);
+            if (CSIDL_Data[folder].szDefaultPath &&
+             !IS_INTRESOURCE(CSIDL_Data[folder].szDefaultPath) &&
+             *CSIDL_Data[folder].szDefaultPath)
+            {
+                PathAddBackslashW(tempW);
+                strcatW(tempW, CSIDL_Data[folder].szDefaultPath);
+            }
+            hr = S_OK;
+            break;
+        case CSIDL_Type_CurrVer:
+            hr = _SHGetCurrentVersionPath(shgfp_flags, folder, tempW);
+            break;
+        case CSIDL_Type_User:
+            hr = _SHGetUserProfilePath(token, shgfp_flags, folder, tempW);
+            break;
+        case CSIDL_Type_AllUsers:
+            hr = _SHGetAllUsersProfilePath(shgfp_flags, folder, tempW);
+            break;
+        default:
+            FIXME("bogus type %d, please fix\n", type);
+            hr = E_INVALIDARG;
+            break;
     }
+
+    if (FAILED(hr))
+        goto failed;
+
+    /* Expand environment strings if necessary */
+    if (*tempW == '%')
+    {
+        hr = _SHExpandEnvironmentStrings(tempW, pathW);
+        if (FAILED(hr))
+            goto failed;
+    }
+    else
+        strcpyW(pathW, tempW);
+
+    /* if we don't care about existing directories we are ready */
+    if (flags & KF_FLAG_DONT_VERIFY) goto done;
+
+    if (PathFileExistsW(pathW)) goto done;
+
+    /* Does not exist but we are not allowed to create it. The return value
+     * is verified against shell32 version 6.0.
+     */
+    if (!(flags & KF_FLAG_CREATE))
+    {
+        hr = HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND);
+        goto done;
+    }
+
+    /* create directory/directories */
+    ret = SHCreateDirectoryExW(NULL, pathW, NULL);
+    if (ret && ret != ERROR_ALREADY_EXISTS)
+    {
+        ERR("Failed to create directory %s.\n", debugstr_w(pathW));
+        hr = E_FAIL;
+        goto failed;
+    }
+
+    TRACE("Created missing system directory %s\n", debugstr_w(pathW));
+
+done:
+    TRACE("Final path is %s, %#x\n", debugstr_w(pathW), hr);
+
+    *ret_path = CoTaskMemAlloc((strlenW(pathW) + 1) * sizeof(WCHAR));
+    if (!*ret_path)
+        return E_OUTOFMEMORY;
+    strcpyW(*ret_path, pathW);
+
+    return hr;
+
+failed:
+    TRACE("Failed to get folder path, %#x.\n", hr);
+
     return hr;
 }
 
@@ -5549,8 +5644,49 @@ static HRESULT WINAPI foldermanager_GetFolderByName(
     LPCWSTR pszCanonicalName,
     IKnownFolder **ppkf)
 {
-    FIXME("%s, %p\n", debugstr_w(pszCanonicalName), ppkf);
-    return E_NOTIMPL;
+    struct foldermanager *fm = impl_from_IKnownFolderManager( iface );
+    struct knownfolder *kf;
+    BOOL found = FALSE;
+    HRESULT hr;
+    UINT i;
+
+    TRACE( "%s, %p\n", debugstr_w(pszCanonicalName), ppkf );
+
+    for (i = 0; i < fm->num_ids; i++)
+    {
+        WCHAR *path, *name;
+        hr = get_known_folder_registry_path( &fm->ids[i], NULL, &path );
+        if (FAILED( hr )) return hr;
+
+        hr = get_known_folder_wstr( path, szName, &name );
+        HeapFree( GetProcessHeap(), 0, path );
+        if (FAILED( hr )) return hr;
+
+        found = !strcmpiW( pszCanonicalName, name );
+        CoTaskMemFree( name );
+        if (found) break;
+    }
+
+    if (found)
+    {
+        hr = knownfolder_create( &kf );
+        if (FAILED( hr )) return hr;
+
+        hr = knownfolder_set_id( kf, &fm->ids[i] );
+        if (FAILED( hr ))
+        {
+            IKnownFolder_Release( &kf->IKnownFolder_iface );
+            return hr;
+        }
+        *ppkf = &kf->IKnownFolder_iface;
+    }
+    else
+    {
+        hr = HRESULT_FROM_WIN32( ERROR_FILE_NOT_FOUND );
+        *ppkf = NULL;
+    }
+
+    return hr;
 }
 
 static HRESULT register_folder(const KNOWNFOLDERID *rfid, const KNOWNFOLDER_DEFINITION *pKFD)

@@ -163,8 +163,7 @@ static const struct fd_ops thread_fd_ops =
     NULL,                       /* get_fd_type */
     NULL,                       /* ioctl */
     NULL,                       /* queue_async */
-    NULL,                       /* reselect_async */
-    NULL                        /* cancel_async */
+    NULL                        /* reselect_async */
 };
 
 static struct list thread_list = LIST_INIT(thread_list);
@@ -1221,7 +1220,7 @@ int is_cpu_supported( enum cpu_type cpu )
 {
     unsigned int prefix_cpu_mask = get_prefix_cpu_mask();
 
-    if (CPU_FLAG(cpu) && (supported_cpus & prefix_cpu_mask & CPU_FLAG(cpu))) return 1;
+    if (supported_cpus & prefix_cpu_mask & CPU_FLAG(cpu)) return 1;
     if (!(supported_cpus & prefix_cpu_mask))
         set_error( STATUS_NOT_SUPPORTED );
     else if (supported_cpus & CPU_FLAG(cpu))

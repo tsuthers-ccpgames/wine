@@ -90,6 +90,12 @@ static ULONG WINAPI d3d8_surface_Release(IDirect3DSurface8 *iface)
         return IDirect3DBaseTexture8_Release(&surface->texture->IDirect3DBaseTexture8_iface);
     }
 
+    if (!surface->resource.refcount)
+    {
+        WARN("Surface does not have any references.\n");
+        return 0;
+    }
+
     refcount = InterlockedDecrement(&surface->resource.refcount);
     TRACE("%p decreasing refcount to %u.\n", iface, refcount);
 
@@ -271,11 +277,16 @@ static HRESULT WINAPI d3d8_surface_UnlockRect(IDirect3DSurface8 *iface)
     hr = wined3d_resource_unmap(wined3d_texture_get_resource(surface->wined3d_texture), surface->sub_resource_idx);
     wined3d_mutex_unlock();
 
-    switch(hr)
+    if (hr == WINEDDERR_NOTLOCKED)
     {
-        case WINEDDERR_NOTLOCKED:       return D3DERR_INVALIDCALL;
-        default:                        return hr;
+        D3DRESOURCETYPE type;
+        if (surface->texture)
+            type = IDirect3DBaseTexture8_GetType(&surface->texture->IDirect3DBaseTexture8_iface);
+        else
+            type = D3DRTYPE_SURFACE;
+        hr = type == D3DRTYPE_TEXTURE ? D3D_OK : D3DERR_INVALIDCALL;
     }
+    return hr;
 }
 
 static const IDirect3DSurface8Vtbl d3d8_surface_vtbl =
@@ -353,9 +364,21 @@ static const struct wined3d_parent_ops d3d8_view_wined3d_parent_ops =
     view_wined3d_object_destroyed,
 };
 
-struct wined3d_rendertarget_view *d3d8_surface_get_rendertarget_view(struct d3d8_surface *surface)
+struct d3d8_device *d3d8_surface_get_device(const struct d3d8_surface *surface)
+{
+    IDirect3DDevice8 *device;
+    device = surface->texture ? surface->texture->parent_device : surface->parent_device;
+    return impl_from_IDirect3DDevice8(device);
+}
+
+struct wined3d_rendertarget_view *d3d8_surface_acquire_rendertarget_view(struct d3d8_surface *surface)
 {
     HRESULT hr;
+
+    /* The surface reference count can be equal to 0 when this function is
+     * called. In order to properly manage the render target view reference
+     * count, we temporarily increment the surface reference count. */
+    d3d8_surface_AddRef(&surface->IDirect3DSurface8_iface);
 
     if (surface->wined3d_rtv)
         return surface->wined3d_rtv;
@@ -364,6 +387,7 @@ struct wined3d_rendertarget_view *d3d8_surface_get_rendertarget_view(struct d3d8
             surface->sub_resource_idx, surface, &d3d8_view_wined3d_parent_ops, &surface->wined3d_rtv)))
     {
         ERR("Failed to create rendertarget view, hr %#x.\n", hr);
+        d3d8_surface_Release(&surface->IDirect3DSurface8_iface);
         return NULL;
     }
 
@@ -371,6 +395,13 @@ struct wined3d_rendertarget_view *d3d8_surface_get_rendertarget_view(struct d3d8
         list_add_head(&surface->texture->rtv_list, &surface->rtv_entry);
 
     return surface->wined3d_rtv;
+}
+
+void d3d8_surface_release_rendertarget_view(struct d3d8_surface *surface,
+        struct wined3d_rendertarget_view *rtv)
+{
+    if (rtv)
+        d3d8_surface_Release(&surface->IDirect3DSurface8_iface);
 }
 
 struct d3d8_surface *unsafe_impl_from_IDirect3DSurface8(IDirect3DSurface8 *iface)

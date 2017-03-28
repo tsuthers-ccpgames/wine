@@ -1,7 +1,7 @@
 /*
  * IXmlReader implementation
  *
- * Copyright 2010, 2012-2013 Nikolay Sivov
+ * Copyright 2010, 2012-2013, 2016-2017 Nikolay Sivov
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -93,6 +93,8 @@ static const WCHAR gtW[] = {'>',0};
 static const WCHAR commentW[] = {'<','!','-','-',0};
 static const WCHAR piW[] = {'<','?',0};
 
+static BOOL is_namestartchar(WCHAR ch);
+
 static const char *debugstr_nodetype(XmlNodeType nodetype)
 {
     static const char * const type_names[] =
@@ -176,6 +178,7 @@ typedef struct
     UINT  cur;
     unsigned int allocated;
     unsigned int written;
+    BOOL prev_cr;
 } encoded_buffer;
 
 typedef struct input_buffer input_buffer;
@@ -216,20 +219,50 @@ typedef struct
 } strval;
 
 static WCHAR emptyW[] = {0};
+static WCHAR xmlW[] = {'x','m','l',0};
+static WCHAR xmlnsW[] = {'x','m','l','n','s',0};
 static const strval strval_empty = { emptyW };
+static const strval strval_xml = { xmlW, 3 };
+static const strval strval_xmlns = { xmlnsW, 5 };
+
+struct reader_position
+{
+    UINT line_number;
+    UINT line_position;
+};
+
+enum attribute_flags
+{
+    ATTRIBUTE_NS_DEFINITION = 0x1,
+    ATTRIBUTE_DEFAULT_NS_DEFINITION = 0x2,
+};
 
 struct attribute
 {
     struct list entry;
+    strval prefix;
     strval localname;
+    strval qname;
     strval value;
+    struct reader_position position;
+    unsigned int flags;
 };
 
 struct element
 {
     struct list entry;
-    strval qname;
+    strval prefix;
     strval localname;
+    strval qname;
+    struct reader_position position;
+};
+
+struct ns
+{
+    struct list entry;
+    strval prefix;
+    strval uri;
+    struct element *element;
 };
 
 typedef struct
@@ -239,21 +272,26 @@ typedef struct
     xmlreaderinput *input;
     IMalloc *imalloc;
     XmlReadState state;
+    HRESULT error; /* error set on XmlReadState_Error */
     XmlReaderInternalState instate;
     XmlReaderResumeState resumestate;
     XmlNodeType nodetype;
     DtdProcessing dtdmode;
     IXmlResolver *resolver;
     IUnknown *mlang;
-    UINT line, pos;           /* reader position in XML stream */
+    struct reader_position position;
     struct list attrs; /* attributes list for current node */
     struct attribute *attr; /* current attribute */
     UINT attr_count;
+    struct list nsdef;
+    struct list ns;
     struct list elements;
     strval strvalues[StringValue_Last];
     UINT depth;
     UINT max_depth;
-    BOOL empty_element;
+    BOOL is_empty_element;
+    struct element empty_element; /* used for empty elements without end tag <a />,
+                                     and to keep <?xml reader position */
     UINT resume[XmlReadResume_Last]; /* offsets used to resume reader */
 } xmlreader;
 
@@ -279,6 +317,14 @@ static inline xmlreaderinput *impl_from_IXmlReaderInput(IXmlReaderInput *iface)
 static inline void *reader_alloc(xmlreader *reader, size_t len)
 {
     return m_alloc(reader->imalloc, len);
+}
+
+static inline void *reader_alloc_zero(xmlreader *reader, size_t len)
+{
+    void *ret = reader_alloc(reader, len);
+    if (ret)
+        memset(ret, 0, len);
+    return ret;
 }
 
 static inline void reader_free(xmlreader *reader, void *mem)
@@ -359,19 +405,36 @@ static void reader_clear_attrs(xmlreader *reader)
 
 /* attribute data holds pointers to buffer data, so buffer shrink is not possible
    while we are on a node with attributes */
-static HRESULT reader_add_attr(xmlreader *reader, strval *localname, strval *value)
+static HRESULT reader_add_attr(xmlreader *reader, strval *prefix, strval *localname, strval *qname,
+    strval *value, const struct reader_position *position, unsigned int flags)
 {
     struct attribute *attr;
 
     attr = reader_alloc(reader, sizeof(*attr));
     if (!attr) return E_OUTOFMEMORY;
 
+    if (prefix)
+        attr->prefix = *prefix;
+    else
+        memset(&attr->prefix, 0, sizeof(attr->prefix));
     attr->localname = *localname;
+    attr->qname = qname ? *qname : *localname;
     attr->value = *value;
+    attr->position = *position;
+    attr->flags = flags;
     list_add_tail(&reader->attrs, &attr->entry);
     reader->attr_count++;
 
     return S_OK;
+}
+
+/* Returns current element, doesn't check if reader is actually positioned on it. */
+static struct element *reader_get_element(xmlreader *reader)
+{
+    if (reader->is_empty_element)
+        return &reader->empty_element;
+
+    return LIST_ENTRY(list_head(&reader->elements), struct element, entry);
 }
 
 /* This one frees stored string value if needed */
@@ -429,72 +492,149 @@ static void reader_clear_elements(xmlreader *reader)
     struct element *elem, *elem2;
     LIST_FOR_EACH_ENTRY_SAFE(elem, elem2, &reader->elements, struct element, entry)
     {
+        reader_free_strvalued(reader, &elem->prefix);
+        reader_free_strvalued(reader, &elem->localname);
         reader_free_strvalued(reader, &elem->qname);
         reader_free(reader, elem);
     }
     list_init(&reader->elements);
-    reader->empty_element = FALSE;
+    reader_free_strvalued(reader, &reader->empty_element.localname);
+    reader_free_strvalued(reader, &reader->empty_element.qname);
+    reader->is_empty_element = FALSE;
 }
 
 static HRESULT reader_inc_depth(xmlreader *reader)
 {
-    if (++reader->depth > reader->max_depth) return SC_E_MAXELEMENTDEPTH;
-    return S_OK;
+    return (++reader->depth >= reader->max_depth && reader->max_depth) ? SC_E_MAXELEMENTDEPTH : S_OK;
 }
 
 static void reader_dec_depth(xmlreader *reader)
 {
-    if (reader->depth > 1) reader->depth--;
+    if (reader->depth)
+        reader->depth--;
 }
 
-static HRESULT reader_push_element(xmlreader *reader, strval *qname, strval *localname)
+static HRESULT reader_push_ns(xmlreader *reader, const strval *prefix, const strval *uri, BOOL def)
 {
-    struct element *elem;
+    struct ns *ns;
     HRESULT hr;
 
-    elem = reader_alloc(reader, sizeof(*elem));
-    if (!elem) return E_OUTOFMEMORY;
+    ns = reader_alloc(reader, sizeof(*ns));
+    if (!ns) return E_OUTOFMEMORY;
 
-    hr = reader_strvaldup(reader, qname, &elem->qname);
-    if (FAILED(hr)) {
-        reader_free(reader, elem);
-        return hr;
-    }
-
-    hr = reader_strvaldup(reader, localname, &elem->localname);
-    if (FAILED(hr))
-    {
-        reader_free_strvalued(reader, &elem->qname);
-        reader_free(reader, elem);
-        return hr;
-    }
-
-    if (!list_empty(&reader->elements))
-    {
-        hr = reader_inc_depth(reader);
+    if (def)
+        memset(&ns->prefix, 0, sizeof(ns->prefix));
+    else {
+        hr = reader_strvaldup(reader, prefix, &ns->prefix);
         if (FAILED(hr)) {
-             reader_free(reader, elem);
-             return hr;
+            reader_free(reader, ns);
+            return hr;
         }
     }
 
-    list_add_head(&reader->elements, &elem->entry);
-    reader->empty_element = FALSE;
+    hr = reader_strvaldup(reader, uri, &ns->uri);
+    if (FAILED(hr)) {
+        reader_free_strvalued(reader, &ns->prefix);
+        reader_free(reader, ns);
+        return hr;
+    }
+
+    ns->element = NULL;
+    list_add_head(def ? &reader->nsdef : &reader->ns, &ns->entry);
     return hr;
+}
+
+static void reader_free_element(xmlreader *reader, struct element *element)
+{
+    reader_free_strvalued(reader, &element->prefix);
+    reader_free_strvalued(reader, &element->localname);
+    reader_free_strvalued(reader, &element->qname);
+    reader_free(reader, element);
+}
+
+static void reader_mark_ns_nodes(xmlreader *reader, struct element *element)
+{
+    struct ns *ns;
+
+    LIST_FOR_EACH_ENTRY(ns, &reader->ns, struct ns, entry) {
+        if (ns->element)
+            break;
+        ns->element = element;
+    }
+
+    LIST_FOR_EACH_ENTRY(ns, &reader->nsdef, struct ns, entry) {
+        if (ns->element)
+            break;
+        ns->element = element;
+    }
+}
+
+static HRESULT reader_push_element(xmlreader *reader, strval *prefix, strval *localname,
+    strval *qname, const struct reader_position *position)
+{
+    struct element *element;
+    HRESULT hr;
+
+    element = reader_alloc_zero(reader, sizeof(*element));
+    if (!element)
+        return E_OUTOFMEMORY;
+
+    if ((hr = reader_strvaldup(reader, prefix, &element->prefix)) == S_OK &&
+            (hr = reader_strvaldup(reader, localname, &element->localname)) == S_OK &&
+            (hr = reader_strvaldup(reader, qname, &element->qname)) == S_OK)
+    {
+        list_add_head(&reader->elements, &element->entry);
+        reader_mark_ns_nodes(reader, element);
+        reader->is_empty_element = FALSE;
+        element->position = *position;
+    }
+    else
+        reader_free_element(reader, element);
+
+    return hr;
+}
+
+static void reader_pop_ns_nodes(xmlreader *reader, struct element *element)
+{
+    struct ns *ns, *ns2;
+
+    LIST_FOR_EACH_ENTRY_SAFE_REV(ns, ns2, &reader->ns, struct ns, entry) {
+        if (ns->element != element)
+            break;
+
+        list_remove(&ns->entry);
+        reader_free_strvalued(reader, &ns->prefix);
+        reader_free_strvalued(reader, &ns->uri);
+        reader_free(reader, ns);
+    }
+
+    if (!list_empty(&reader->nsdef)) {
+        ns = LIST_ENTRY(list_head(&reader->nsdef), struct ns, entry);
+        if (ns->element == element) {
+            list_remove(&ns->entry);
+            reader_free_strvalued(reader, &ns->prefix);
+            reader_free_strvalued(reader, &ns->uri);
+            reader_free(reader, ns);
+        }
+    }
 }
 
 static void reader_pop_element(xmlreader *reader)
 {
-    struct element *elem = LIST_ENTRY(list_head(&reader->elements), struct element, entry);
+    struct element *element;
 
-    if (elem)
-    {
-        list_remove(&elem->entry);
-        reader_free_strvalued(reader, &elem->qname);
-        reader_free_strvalued(reader, &elem->localname);
-        reader_free(reader, elem);
-        reader_dec_depth(reader);
-    }
+    if (list_empty(&reader->elements))
+        return;
+
+    element = LIST_ENTRY(list_head(&reader->elements), struct element, entry);
+    list_remove(&element->entry);
+
+    reader_pop_ns_nodes(reader, element);
+    reader_free_element(reader, element);
+
+    /* It was a root element, the rest is expected as Misc */
+    if (list_empty(&reader->elements))
+        reader->instate = XmlReadInState_MiscEnd;
 }
 
 /* Always make a copy, cause strings are supposed to be null terminated. Null pointer for 'value'
@@ -548,6 +688,7 @@ static HRESULT init_encoded_buffer(xmlreaderinput *input, encoded_buffer *buffer
     buffer->cur = 0;
     buffer->allocated = initial_len;
     buffer->written = 0;
+    buffer->prev_cr = FALSE;
 
     return S_OK;
 }
@@ -724,10 +865,9 @@ static inline BOOL readerinput_is_utf8(xmlreaderinput *readerinput)
 static HRESULT readerinput_detectencoding(xmlreaderinput *readerinput, xml_encoding *enc)
 {
     encoded_buffer *buffer = &readerinput->buffer->encoded;
-    static const WCHAR startW[] = {'<','?'};
-    static const WCHAR commentW[] = {'<','!'};
     static const char utf8bom[] = {0xef,0xbb,0xbf};
     static const char utf16lebom[] = {0xff,0xfe};
+    WCHAR *ptrW;
 
     *enc = XmlEncoding_Unknown;
 
@@ -738,13 +878,17 @@ static HRESULT readerinput_detectencoding(xmlreaderinput *readerinput, xml_encod
         if (buffer->written <= 3) return MX_E_INPUTEND;
     }
 
+    ptrW = (WCHAR *)buffer->data;
     /* try start symbols if we have enough data to do that, input buffer should contain
        first chunk already */
     if (readerinput_is_utf8(readerinput))
         *enc = XmlEncoding_UTF8;
-    else if (!memcmp(buffer->data, startW, sizeof(startW)) ||
-             !memcmp(buffer->data, commentW, sizeof(commentW)))
-        *enc = XmlEncoding_UTF16;
+    else if (*ptrW == '<')
+    {
+        ptrW++;
+        if (*ptrW == '?' || *ptrW == '!' || is_namestartchar(*ptrW))
+            *enc = XmlEncoding_UTF16;
+    }
     /* try with BOM now */
     else if (!memcmp(buffer->data, utf8bom, sizeof(utf8bom)))
     {
@@ -810,6 +954,34 @@ static void readerinput_shrinkraw(xmlreaderinput *readerinput, int len)
     buffer->cur = 0;
 }
 
+static void fixup_buffer_cr(encoded_buffer *buffer, int off)
+{
+    BOOL prev_cr = buffer->prev_cr;
+    const WCHAR *src;
+    WCHAR *dest;
+
+    src = dest = (WCHAR*)buffer->data + off;
+    while ((const char*)src < buffer->data + buffer->written)
+    {
+        if (*src == '\r')
+        {
+            *dest++ = '\n';
+            src++;
+            prev_cr = TRUE;
+            continue;
+        }
+        if(prev_cr && *src == '\n')
+            src++;
+        else
+            *dest++ = *src++;
+        prev_cr = FALSE;
+    }
+
+    buffer->written = (char*)dest - buffer->data;
+    buffer->prev_cr = prev_cr;
+    *dest = 0;
+}
+
 /* note that raw buffer content is kept */
 static void readerinput_switchencoding(xmlreaderinput *readerinput, xml_encoding enc)
 {
@@ -834,15 +1006,18 @@ static void readerinput_switchencoding(xmlreaderinput *readerinput, xml_encoding
         readerinput_grow(readerinput, len);
         memcpy(dest->data, src->data + src->cur, len);
         dest->written += len*sizeof(WCHAR);
-        return;
+    }
+    else
+    {
+        dest_len = MultiByteToWideChar(cp, 0, src->data + src->cur, len, NULL, 0);
+        readerinput_grow(readerinput, dest_len);
+        ptr = (WCHAR*)dest->data;
+        MultiByteToWideChar(cp, 0, src->data + src->cur, len, ptr, dest_len);
+        ptr[dest_len] = 0;
+        dest->written += dest_len*sizeof(WCHAR);
     }
 
-    dest_len = MultiByteToWideChar(cp, 0, src->data + src->cur, len, NULL, 0);
-    readerinput_grow(readerinput, dest_len);
-    ptr = (WCHAR*)dest->data;
-    MultiByteToWideChar(cp, 0, src->data + src->cur, len, ptr, dest_len);
-    ptr[dest_len] = 0;
-    dest->written += dest_len*sizeof(WCHAR);
+    fixup_buffer_cr(dest, 0);
 }
 
 /* shrinks parsed data a buffer begins with */
@@ -868,13 +1043,14 @@ static HRESULT reader_more(xmlreader *reader)
     encoded_buffer *src = &readerinput->buffer->encoded;
     encoded_buffer *dest = &readerinput->buffer->utf16;
     UINT cp = readerinput->buffer->code_page;
-    int len, dest_len;
+    int len, dest_len, prev_len;
     HRESULT hr;
     WCHAR *ptr;
 
     /* get some raw data from stream first */
     hr = readerinput_growraw(readerinput);
     len = readerinput_get_convlen(readerinput);
+    prev_len = dest->written / sizeof(WCHAR);
 
     /* just copy for UTF-16 case */
     if (cp == ~0)
@@ -882,18 +1058,20 @@ static HRESULT reader_more(xmlreader *reader)
         readerinput_grow(readerinput, len);
         memcpy(dest->data + dest->written, src->data + src->cur, len);
         dest->written += len*sizeof(WCHAR);
-        return hr;
+    }
+    else
+    {
+        dest_len = MultiByteToWideChar(cp, 0, src->data + src->cur, len, NULL, 0);
+        readerinput_grow(readerinput, dest_len);
+        ptr = (WCHAR*)(dest->data + dest->written);
+        MultiByteToWideChar(cp, 0, src->data + src->cur, len, ptr, dest_len);
+        ptr[dest_len] = 0;
+        dest->written += dest_len*sizeof(WCHAR);
+        /* get rid of processed data */
+        readerinput_shrinkraw(readerinput, len);
     }
 
-    dest_len = MultiByteToWideChar(cp, 0, src->data + src->cur, len, NULL, 0);
-    readerinput_grow(readerinput, dest_len);
-    ptr = (WCHAR*)(dest->data + dest->written);
-    MultiByteToWideChar(cp, 0, src->data + src->cur, len, ptr, dest_len);
-    ptr[dest_len] = 0;
-    dest->written += dest_len*sizeof(WCHAR);
-    /* get rid of processed data */
-    readerinput_shrinkraw(readerinput, len);
-
+    fixup_buffer_cr(dest, prev_len);
     return hr;
 }
 
@@ -928,16 +1106,29 @@ static int reader_cmp(xmlreader *reader, const WCHAR *str)
     return 0;
 }
 
+static void reader_update_position(xmlreader *reader, WCHAR ch)
+{
+    if (ch == '\r')
+        reader->position.line_position = 1;
+    else if (ch == '\n')
+    {
+        reader->position.line_number++;
+        reader->position.line_position = 1;
+    }
+    else
+        reader->position.line_position++;
+}
+
 /* moves cursor n WCHARs forward */
 static void reader_skipn(xmlreader *reader, int n)
 {
     encoded_buffer *buffer = &reader->input->buffer->utf16;
-    const WCHAR *ptr = reader_get_ptr(reader);
+    const WCHAR *ptr;
 
-    while (*ptr++ && n--)
+    while (*(ptr = reader_get_ptr(reader)) && n--)
     {
+        reader_update_position(reader, *ptr);
         buffer->cur++;
-        reader->pos++;
     }
 }
 
@@ -949,23 +1140,12 @@ static inline BOOL is_wchar_space(WCHAR ch)
 /* [3] S ::= (#x20 | #x9 | #xD | #xA)+ */
 static int reader_skipspaces(xmlreader *reader)
 {
-    encoded_buffer *buffer = &reader->input->buffer->utf16;
     const WCHAR *ptr = reader_get_ptr(reader);
     UINT start = reader_get_cur(reader);
 
     while (is_wchar_space(*ptr))
     {
-        if (*ptr == '\r')
-            reader->pos = 0;
-        else if (*ptr == '\n')
-        {
-            reader->line++;
-            reader->pos = 0;
-        }
-        else
-            reader->pos++;
-
-        buffer->cur++;
+        reader_skipn(reader, 1);
         ptr = reader_get_ptr(reader);
     }
 
@@ -1014,11 +1194,13 @@ static HRESULT reader_parse_eq(xmlreader *reader)
 static HRESULT reader_parse_versioninfo(xmlreader *reader)
 {
     static const WCHAR versionW[] = {'v','e','r','s','i','o','n',0};
+    struct reader_position position;
     strval val, name;
     HRESULT hr;
 
     if (!reader_skipspaces(reader)) return WC_E_WHITESPACE;
 
+    position = reader->position;
     if (reader_cmp(reader, versionW)) return WC_E_XMLDECL;
     reader_init_strvalue(reader_get_cur(reader), 7, &name);
     /* skip 'version' */
@@ -1041,7 +1223,7 @@ static HRESULT reader_parse_versioninfo(xmlreader *reader)
     /* skip "'"|'"' */
     reader_skipn(reader, 1);
 
-    return reader_add_attr(reader, &name, &val);
+    return reader_add_attr(reader, NULL, &name, NULL, &val, &position, 0);
 }
 
 /* ([A-Za-z0-9._] | '-') */
@@ -1088,11 +1270,13 @@ static HRESULT reader_parse_encname(xmlreader *reader, strval *val)
 static HRESULT reader_parse_encdecl(xmlreader *reader)
 {
     static const WCHAR encodingW[] = {'e','n','c','o','d','i','n','g',0};
+    struct reader_position position;
     strval name, val;
     HRESULT hr;
 
     if (!reader_skipspaces(reader)) return S_FALSE;
 
+    position = reader->position;
     if (reader_cmp(reader, encodingW)) return S_FALSE;
     name.str = reader_get_ptr(reader);
     name.start = reader_get_cur(reader);
@@ -1117,7 +1301,7 @@ static HRESULT reader_parse_encdecl(xmlreader *reader)
     /* skip "'"|'"' */
     reader_skipn(reader, 1);
 
-    return reader_add_attr(reader, &name, &val);
+    return reader_add_attr(reader, NULL, &name, NULL, &val, &position, 0);
 }
 
 /* [32] SDDecl ::= S 'standalone' Eq (("'" ('yes' | 'no') "'") | ('"' ('yes' | 'no') '"')) */
@@ -1126,12 +1310,14 @@ static HRESULT reader_parse_sddecl(xmlreader *reader)
     static const WCHAR standaloneW[] = {'s','t','a','n','d','a','l','o','n','e',0};
     static const WCHAR yesW[] = {'y','e','s',0};
     static const WCHAR noW[] = {'n','o',0};
+    struct reader_position position;
     strval name, val;
     UINT start;
     HRESULT hr;
 
     if (!reader_skipspaces(reader)) return S_FALSE;
 
+    position = reader->position;
     if (reader_cmp(reader, standaloneW)) return S_FALSE;
     reader_init_strvalue(reader_get_cur(reader), 10, &name);
     /* skip 'standalone' */
@@ -1159,7 +1345,7 @@ static HRESULT reader_parse_sddecl(xmlreader *reader)
     /* skip "'"|'"' */
     reader_skipn(reader, 1);
 
-    return reader_add_attr(reader, &name, &val);
+    return reader_add_attr(reader, NULL, &name, NULL, &val, &position, 0);
 }
 
 /* [23] XMLDecl ::= '<?xml' VersionInfo EncodingDecl? SDDecl? S? '?>' */
@@ -1167,12 +1353,16 @@ static HRESULT reader_parse_xmldecl(xmlreader *reader)
 {
     static const WCHAR xmldeclW[] = {'<','?','x','m','l',' ',0};
     static const WCHAR declcloseW[] = {'?','>',0};
+    struct reader_position position;
     HRESULT hr;
 
     /* check if we have "<?xml " */
-    if (reader_cmp(reader, xmldeclW)) return S_FALSE;
+    if (reader_cmp(reader, xmldeclW))
+        return S_FALSE;
 
-    reader_skipn(reader, 5);
+    reader_skipn(reader, 2);
+    position = reader->position;
+    reader_skipn(reader, 3);
     hr = reader_parse_versioninfo(reader);
     if (FAILED(hr))
         return hr;
@@ -1186,14 +1376,16 @@ static HRESULT reader_parse_xmldecl(xmlreader *reader)
         return hr;
 
     reader_skipspaces(reader);
-    if (reader_cmp(reader, declcloseW)) return WC_E_XMLDECL;
+    if (reader_cmp(reader, declcloseW))
+        return WC_E_XMLDECL;
+
+    /* skip '?>' */
     reader_skipn(reader, 2);
 
-    reader_inc_depth(reader);
     reader->nodetype = XmlNodeType_XmlDeclaration;
-    reader_set_strvalue(reader, StringValue_LocalName, &strval_empty);
-    reader_set_strvalue(reader, StringValue_QualifiedName, &strval_empty);
-    reader_set_strvalue(reader, StringValue_Value, &strval_empty);
+    reader->empty_element.position = position;
+    reader_set_strvalue(reader, StringValue_LocalName, &strval_xml);
+    reader_set_strvalue(reader, StringValue_QualifiedName, &strval_xml);
 
     return S_OK;
 }
@@ -1219,8 +1411,6 @@ static HRESULT reader_parse_comment(xmlreader *reader)
         reader->nodetype = XmlNodeType_Comment;
         reader->resume[XmlReadResume_Body] = start;
         reader->resumestate = XmlReadResumeState_Comment;
-        reader_set_strvalue(reader, StringValue_LocalName, NULL);
-        reader_set_strvalue(reader, StringValue_QualifiedName, NULL);
         reader_set_strvalue(reader, StringValue_Value, NULL);
     }
 
@@ -1242,8 +1432,6 @@ static HRESULT reader_parse_comment(xmlreader *reader)
                     /* skip rest of markup '->' */
                     reader_skipn(reader, 3);
 
-                    reader_set_strvalue(reader, StringValue_LocalName, &strval_empty);
-                    reader_set_strvalue(reader, StringValue_QualifiedName, &strval_empty);
                     reader_set_strvalue(reader, StringValue_Value, &value);
                     reader->resume[XmlReadResume_Body] = 0;
                     reader->resumestate = XmlReadResumeState_Initial;
@@ -1601,8 +1789,9 @@ static HRESULT reader_parse_pub_literal(xmlreader *reader, strval *literal)
         reader_skipn(reader, 1);
         cur = reader_get_ptr(reader);
     }
-
     reader_init_strvalue(start, reader_get_cur(reader)-start, literal);
+    if (*cur == quote) reader_skipn(reader, 1);
+
     TRACE("%s\n", debug_strval(reader, literal));
     return S_OK;
 }
@@ -1612,34 +1801,39 @@ static HRESULT reader_parse_externalid(xmlreader *reader)
 {
     static WCHAR systemW[] = {'S','Y','S','T','E','M',0};
     static WCHAR publicW[] = {'P','U','B','L','I','C',0};
-    strval name;
+    struct reader_position position = reader->position;
+    strval name, sys;
     HRESULT hr;
     int cnt;
 
-    if (reader_cmp(reader, systemW))
-    {
-        if (reader_cmp(reader, publicW))
-            return S_FALSE;
-        else
-        {
-            strval pub;
+    if (!reader_cmp(reader, publicW)) {
+        strval pub;
 
-            /* public id */
-            reader_skipn(reader, 6);
-            cnt = reader_skipspaces(reader);
-            if (!cnt) return WC_E_WHITESPACE;
+        /* public id */
+        reader_skipn(reader, 6);
+        cnt = reader_skipspaces(reader);
+        if (!cnt) return WC_E_WHITESPACE;
 
-            hr = reader_parse_pub_literal(reader, &pub);
-            if (FAILED(hr)) return hr;
+        hr = reader_parse_pub_literal(reader, &pub);
+        if (FAILED(hr)) return hr;
 
-            reader_init_cstrvalue(publicW, strlenW(publicW), &name);
-            return reader_add_attr(reader, &name, &pub);
-        }
-    }
-    else
-    {
-        strval sys;
+        reader_init_cstrvalue(publicW, strlenW(publicW), &name);
+        hr = reader_add_attr(reader, NULL, &name, NULL, &pub, &position, 0);
+        if (FAILED(hr)) return hr;
 
+        cnt = reader_skipspaces(reader);
+        if (!cnt) return S_OK;
+
+        /* optional system id */
+        hr = reader_parse_sys_literal(reader, &sys);
+        if (FAILED(hr)) return S_OK;
+
+        reader_init_cstrvalue(systemW, strlenW(systemW), &name);
+        hr = reader_add_attr(reader, NULL, &name, NULL, &sys, &position, 0);
+        if (FAILED(hr)) return hr;
+
+        return S_OK;
+    } else if (!reader_cmp(reader, systemW)) {
         /* system id */
         reader_skipn(reader, 6);
         cnt = reader_skipspaces(reader);
@@ -1649,10 +1843,10 @@ static HRESULT reader_parse_externalid(xmlreader *reader)
         if (FAILED(hr)) return hr;
 
         reader_init_cstrvalue(systemW, strlenW(systemW), &name);
-        return reader_add_attr(reader, &name, &sys);
+        return reader_add_attr(reader, NULL, &name, NULL, &sys, &position, 0);
     }
 
-    return hr;
+    return S_FALSE;
 }
 
 /* [28] doctypedecl ::= '<!DOCTYPE' S Name (S ExternalID)? S? ('[' intSubset ']' S?)? '>' */
@@ -1702,7 +1896,7 @@ static HRESULT reader_parse_dtd(xmlreader *reader)
 }
 
 /* [11 NS] LocalPart ::= NCName */
-static HRESULT reader_parse_local(xmlreader *reader, strval *local)
+static HRESULT reader_parse_local(xmlreader *reader, strval *local, BOOL check_for_separator)
 {
     WCHAR *ptr;
     UINT start;
@@ -1723,6 +1917,9 @@ static HRESULT reader_parse_local(xmlreader *reader, strval *local)
         reader_skipn(reader, 1);
         ptr = reader_get_ptr(reader);
     }
+
+    if (check_for_separator && *ptr == ':')
+        return NC_E_QNAMECOLON;
 
     if (is_reader_pending(reader))
     {
@@ -1762,7 +1959,7 @@ static HRESULT reader_parse_qname(xmlreader *reader, strval *prefix, strval *loc
 
     if (reader->resume[XmlReadResume_Local])
     {
-        hr = reader_parse_local(reader, local);
+        hr = reader_parse_local(reader, local, FALSE);
         if (FAILED(hr)) return hr;
 
         reader_init_strvalue(reader->resume[XmlReadResume_Name],
@@ -1787,7 +1984,7 @@ static HRESULT reader_parse_qname(xmlreader *reader, strval *prefix, strval *loc
 
             /* skip ':' */
             reader_skipn(reader, 1);
-            hr = reader_parse_local(reader, local);
+            hr = reader_parse_local(reader, local, TRUE);
             if (FAILED(hr)) return hr;
         }
         else
@@ -1796,8 +1993,6 @@ static HRESULT reader_parse_qname(xmlreader *reader, strval *prefix, strval *loc
             reader_init_strvalue(0, 0, prefix);
         }
     }
-
-    reader_init_strvalue(start, reader_get_cur(reader)-start, local);
 
     if (prefix->len)
         TRACE("qname %s:%s\n", debug_strval(reader, prefix), debug_strval(reader, local));
@@ -1813,28 +2008,6 @@ static HRESULT reader_parse_qname(xmlreader *reader, strval *prefix, strval *loc
     reader->resume[XmlReadResume_Local] = 0;
 
     return S_OK;
-}
-
-/* Applies normalization rules to a single char, used for attribute values.
-
-   Rules include 2 steps:
-
-   1) replacing \r\n with a single \n;
-   2) replacing all whitespace chars with ' '.
-
- */
-static void reader_normalize_space(xmlreader *reader, WCHAR *ptr)
-{
-    encoded_buffer *buffer = &reader->input->buffer->utf16;
-
-    if (!is_wchar_space(*ptr)) return;
-
-    if (*ptr == '\r' && *(ptr+1) == '\n')
-    {
-        int len = buffer->written - ((char*)ptr - buffer->data) - 2*sizeof(WCHAR);
-        memmove(ptr+1, ptr+2, len);
-    }
-    *ptr = ' ';
 }
 
 static WCHAR get_predefined_entity(const xmlreader *reader, const strval *name)
@@ -1935,8 +2108,12 @@ static HRESULT reader_parse_reference(xmlreader *reader)
         /* normalize */
         if (is_wchar_space(ch)) ch = ' ';
 
-        len = buffer->written - ((char*)ptr - buffer->data) - sizeof(WCHAR);
-        memmove(start+1, ptr+1, len);
+        ptr = reader_get_ptr(reader);
+        start = reader_get_ptr2(reader, cur);
+        len = buffer->written - ((char *)ptr - buffer->data);
+        memmove(start + 1, ptr + 1, len);
+
+        buffer->written -= (reader_get_cur(reader) - cur) * sizeof(WCHAR);
         buffer->cur = cur + 1;
 
         *start = ch;
@@ -1959,6 +2136,7 @@ static HRESULT reader_parse_reference(xmlreader *reader)
             len = buffer->written - ((char*)ptr - buffer->data) - sizeof(WCHAR);
             memmove(start+1, ptr+1, len);
             buffer->cur = cur + 1;
+            buffer->written -= (ptr - start) * sizeof(WCHAR);
 
             *start = ch;
         }
@@ -2007,7 +2185,8 @@ static HRESULT reader_parse_attvalue(xmlreader *reader, strval *value)
         }
         else
         {
-            reader_normalize_space(reader, ptr);
+            /* replace all whitespace chars with ' ' */
+            if (is_wchar_space(*ptr)) *ptr = ' ';
             reader_skipn(reader, 1);
         }
         ptr = reader_get_ptr(reader);
@@ -2022,23 +2201,19 @@ static HRESULT reader_parse_attvalue(xmlreader *reader, strval *value)
    [15 NS] Attribute ::= NSAttName Eq AttValue | QName Eq AttValue */
 static HRESULT reader_parse_attribute(xmlreader *reader)
 {
-    static const WCHAR xmlnsW[] = {'x','m','l','n','s',0};
-    strval prefix, local, qname, xmlns, value;
+    struct reader_position position = reader->position;
+    strval prefix, local, qname, value;
+    enum attribute_flags flags = 0;
     HRESULT hr;
 
     hr = reader_parse_qname(reader, &prefix, &local, &qname);
     if (FAILED(hr)) return hr;
 
-    reader_init_cstrvalue((WCHAR*)xmlnsW, 5, &xmlns);
+    if (strval_eq(reader, &prefix, &strval_xmlns))
+        flags |= ATTRIBUTE_NS_DEFINITION;
 
-    if (strval_eq(reader, &prefix, &xmlns))
-    {
-        FIXME("namespace definitions not supported\n");
-        return E_NOTIMPL;
-    }
-
-    if (strval_eq(reader, &qname, &xmlns))
-        FIXME("default namespace definitions not supported\n");
+    if (strval_eq(reader, &qname, &strval_xmlns))
+        flags |= ATTRIBUTE_DEFAULT_NS_DEFINITION;
 
     hr = reader_parse_eq(reader);
     if (FAILED(hr)) return hr;
@@ -2046,31 +2221,45 @@ static HRESULT reader_parse_attribute(xmlreader *reader)
     hr = reader_parse_attvalue(reader, &value);
     if (FAILED(hr)) return hr;
 
+    if (flags & (ATTRIBUTE_NS_DEFINITION | ATTRIBUTE_DEFAULT_NS_DEFINITION))
+        reader_push_ns(reader, &local, &value, !!(flags & ATTRIBUTE_DEFAULT_NS_DEFINITION));
+
     TRACE("%s=%s\n", debug_strval(reader, &local), debug_strval(reader, &value));
-    return reader_add_attr(reader, &local, &value);
+    return reader_add_attr(reader, &prefix, &local, &qname, &value, &position, flags);
 }
 
 /* [12 NS] STag ::= '<' QName (S Attribute)* S? '>'
    [14 NS] EmptyElemTag ::= '<' QName (S Attribute)* S? '/>' */
-static HRESULT reader_parse_stag(xmlreader *reader, strval *prefix, strval *local, strval *qname, int *empty)
+static HRESULT reader_parse_stag(xmlreader *reader, strval *prefix, strval *local, strval *qname)
 {
+    struct reader_position position = reader->position;
     HRESULT hr;
 
     hr = reader_parse_qname(reader, prefix, local, qname);
     if (FAILED(hr)) return hr;
 
-    while (1)
+    for (;;)
     {
         static const WCHAR endW[] = {'/','>',0};
 
         reader_skipspaces(reader);
 
         /* empty element */
-        if ((*empty = !reader_cmp(reader, endW)))
+        if ((reader->is_empty_element = !reader_cmp(reader, endW)))
         {
+            struct element *element = &reader->empty_element;
+
             /* skip '/>' */
             reader_skipn(reader, 2);
-            reader->empty_element = TRUE;
+
+            reader_free_strvalued(reader, &element->qname);
+            reader_free_strvalued(reader, &element->localname);
+
+            element->prefix = *prefix;
+            reader_strvaldup(reader, qname, &element->qname);
+            reader_strvaldup(reader, local, &element->localname);
+            element->position = position;
+            reader_mark_ns_nodes(reader, element);
             return S_OK;
         }
 
@@ -2079,7 +2268,7 @@ static HRESULT reader_parse_stag(xmlreader *reader, strval *prefix, strval *loca
         {
             /* skip '>' */
             reader_skipn(reader, 1);
-            return reader_push_element(reader, qname, local);
+            return reader_push_element(reader, prefix, local, qname, &position);
         }
 
         hr = reader_parse_attribute(reader);
@@ -2108,27 +2297,25 @@ static HRESULT reader_parse_element(xmlreader *reader)
     case XmlReadResumeState_STag:
     {
         strval qname, prefix, local;
-        int empty = 0;
 
         /* this handles empty elements too */
-        hr = reader_parse_stag(reader, &prefix, &local, &qname, &empty);
+        hr = reader_parse_stag(reader, &prefix, &local, &qname);
         if (FAILED(hr)) return hr;
 
-        /* FIXME: need to check for defined namespace to reject invalid prefix,
-           currently reject all prefixes */
-        if (prefix.len) return NC_E_UNDECLAREDPREFIX;
+        /* FIXME: need to check for defined namespace to reject invalid prefix */
 
         /* if we got empty element and stack is empty go straight to Misc */
-        if (empty && list_empty(&reader->elements))
+        if (reader->is_empty_element && list_empty(&reader->elements))
             reader->instate = XmlReadInState_MiscEnd;
         else
             reader->instate = XmlReadInState_Content;
 
         reader->nodetype = XmlNodeType_Element;
         reader->resumestate = XmlReadResumeState_Initial;
-        reader_set_strvalue(reader, StringValue_LocalName, &local);
         reader_set_strvalue(reader, StringValue_Prefix, &prefix);
+        reader_set_strvalue(reader, StringValue_LocalName, &local);
         reader_set_strvalue(reader, StringValue_QualifiedName, &qname);
+        reader_set_strvalue(reader, StringValue_Value, &strval_empty);
         break;
     }
     default:
@@ -2141,13 +2328,15 @@ static HRESULT reader_parse_element(xmlreader *reader)
 /* [13 NS] ETag ::= '</' QName S? '>' */
 static HRESULT reader_parse_endtag(xmlreader *reader)
 {
+    struct reader_position position;
     strval prefix, local, qname;
-    struct element *elem;
+    struct element *element;
     HRESULT hr;
 
     /* skip '</' */
     reader_skipn(reader, 2);
 
+    position = reader->position;
     hr = reader_parse_qname(reader, &prefix, &local, &qname);
     if (FAILED(hr)) return hr;
 
@@ -2160,18 +2349,15 @@ static HRESULT reader_parse_endtag(xmlreader *reader)
 
     /* Element stack should never be empty at this point, cause we shouldn't get to
        content parsing if it's empty. */
-    elem = LIST_ENTRY(list_head(&reader->elements), struct element, entry);
-    if (!strval_eq(reader, &elem->qname, &qname)) return WC_E_ELEMENTMATCH;
+    element = LIST_ENTRY(list_head(&reader->elements), struct element, entry);
+    if (!strval_eq(reader, &element->qname, &qname)) return WC_E_ELEMENTMATCH;
 
-    reader_pop_element(reader);
-
-    /* It was a root element, the rest is expected as Misc */
-    if (list_empty(&reader->elements))
-        reader->instate = XmlReadInState_MiscEnd;
+    /* update position stored for start tag, we won't be using it */
+    element->position = position;
 
     reader->nodetype = XmlNodeType_EndElement;
-    reader_set_strvalue(reader, StringValue_LocalName, &local);
-    reader_set_strvalue(reader, StringValue_QualifiedName, &qname);
+    reader->is_empty_element = FALSE;
+    reader_set_strvalue(reader, StringValue_Prefix, &prefix);
 
     return S_OK;
 }
@@ -2200,8 +2386,6 @@ static HRESULT reader_parse_cdata(xmlreader *reader)
         reader->nodetype = XmlNodeType_CDATA;
         reader->resume[XmlReadResume_Body] = start;
         reader->resumestate = XmlReadResumeState_CDATA;
-        reader_set_strvalue(reader, StringValue_LocalName, NULL);
-        reader_set_strvalue(reader, StringValue_QualifiedName, NULL);
         reader_set_strvalue(reader, StringValue_Value, NULL);
     }
 
@@ -2217,8 +2401,6 @@ static HRESULT reader_parse_cdata(xmlreader *reader)
             reader_skipn(reader, 3);
             TRACE("%s\n", debug_strval(reader, &value));
 
-            reader_set_strvalue(reader, StringValue_LocalName, &strval_empty);
-            reader_set_strvalue(reader, StringValue_QualifiedName, &strval_empty);
             reader_set_strvalue(reader, StringValue_Value, &value);
             reader->resume[XmlReadResume_Body] = 0;
             reader->resumestate = XmlReadResumeState_Initial;
@@ -2226,12 +2408,6 @@ static HRESULT reader_parse_cdata(xmlreader *reader)
         }
         else
         {
-            /* Value normalization is not fully implemented, rules are:
-
-               - single '\r' -> '\n';
-               - sequence '\r\n' -> '\n', in this case value length changes;
-            */
-            if (*ptr == '\r') *ptr = '\n';
             reader_skipn(reader, 1);
             ptr++;
         }
@@ -2243,6 +2419,7 @@ static HRESULT reader_parse_cdata(xmlreader *reader)
 /* [14] CharData ::= [^<&]* - ([^<&]* ']]>' [^<&]*) */
 static HRESULT reader_parse_chardata(xmlreader *reader)
 {
+    struct reader_position position;
     WCHAR *ptr;
     UINT start;
 
@@ -2261,13 +2438,14 @@ static HRESULT reader_parse_chardata(xmlreader *reader)
         reader->nodetype = is_wchar_space(*ptr) ? XmlNodeType_Whitespace : XmlNodeType_Text;
         reader->resume[XmlReadResume_Body] = start;
         reader->resumestate = XmlReadResumeState_CharData;
-        reader_set_strvalue(reader, StringValue_LocalName, &strval_empty);
-        reader_set_strvalue(reader, StringValue_QualifiedName, &strval_empty);
         reader_set_strvalue(reader, StringValue_Value, NULL);
     }
 
+    position = reader->position;
     while (*ptr)
     {
+        static const WCHAR ampW[] = {'&',0};
+
         /* CDATA closing sequence ']]>' is not allowed */
         if (ptr[0] == ']' && ptr[1] == ']' && ptr[2] == '>')
             return WC_E_CDSECTEND;
@@ -2277,6 +2455,7 @@ static HRESULT reader_parse_chardata(xmlreader *reader)
         {
             strval value;
 
+            reader->empty_element.position = position;
             reader_init_strvalue(start, reader_get_cur(reader)-start, &value);
             reader_set_strvalue(reader, StringValue_Value, &value);
             reader->resume[XmlReadResume_Body] = 0;
@@ -2284,11 +2463,15 @@ static HRESULT reader_parse_chardata(xmlreader *reader)
             return S_OK;
         }
 
-        reader_skipn(reader, 1);
-
         /* this covers a case when text has leading whitespace chars */
         if (!is_wchar_space(*ptr)) reader->nodetype = XmlNodeType_Text;
-        ptr++;
+
+        if (!reader_cmp(reader, ampW))
+            reader_parse_reference(reader);
+        else
+            reader_skipn(reader, 1);
+
+        ptr = reader_get_ptr(reader);
     }
 
     return S_OK;
@@ -2299,7 +2482,6 @@ static HRESULT reader_parse_content(xmlreader *reader)
 {
     static const WCHAR cdstartW[] = {'<','!','[','C','D','A','T','A','[',0};
     static const WCHAR etagW[] = {'<','/',0};
-    static const WCHAR ampW[] = {'&',0};
 
     if (reader->resumestate != XmlReadResumeState_Initial)
     {
@@ -2334,9 +2516,6 @@ static HRESULT reader_parse_content(xmlreader *reader)
     if (!reader_cmp(reader, cdstartW))
         return reader_parse_cdata(reader);
 
-    if (!reader_cmp(reader, ampW))
-        return reader_parse_reference(reader);
-
     if (!reader_cmp(reader, ltW))
         return reader_parse_element(reader);
 
@@ -2346,12 +2525,33 @@ static HRESULT reader_parse_content(xmlreader *reader)
 
 static HRESULT reader_parse_nextnode(xmlreader *reader)
 {
+    XmlNodeType nodetype = reader_get_nodetype(reader);
     HRESULT hr;
 
     if (!is_reader_pending(reader))
         reader_clear_attrs(reader);
 
-    while (1)
+    /* When moving from EndElement or empty element, pop its own namespace definitions */
+    switch (nodetype)
+    {
+    case XmlNodeType_Attribute:
+        reader_dec_depth(reader);
+        /* fallthrough */
+    case XmlNodeType_Element:
+        if (reader->is_empty_element)
+            reader_pop_ns_nodes(reader, &reader->empty_element);
+        else if (FAILED(hr = reader_inc_depth(reader)))
+            return hr;
+        break;
+    case XmlNodeType_EndElement:
+        reader_pop_element(reader);
+        reader_dec_depth(reader);
+        break;
+    default:
+        ;
+    }
+
+    for (;;)
     {
         switch (reader->instate)
         {
@@ -2363,9 +2563,13 @@ static HRESULT reader_parse_nextnode(xmlreader *reader)
                 hr = readerinput_growraw(reader->input);
                 if (FAILED(hr)) return hr;
 
+                reader->position.line_number = 1;
+                reader->position.line_position = 1;
+
                 /* try to detect encoding by BOM or data and set input code page */
                 hr = readerinput_detectencoding(reader->input, &enc);
-                TRACE("detected encoding %s, 0x%08x\n", debugstr_w(xml_encoding_map[enc].name), hr);
+                TRACE("detected encoding %s, 0x%08x\n", enc == XmlEncoding_Unknown ? "(unknown)" :
+                        debugstr_w(xml_encoding_map[enc].name), hr);
                 if (FAILED(hr)) return hr;
 
                 /* always switch first time cause we have to put something in */
@@ -2416,10 +2620,17 @@ static HRESULT reader_parse_nextnode(xmlreader *reader)
             return reader_parse_content(reader);
         case XmlReadInState_MiscEnd:
             hr = reader_parse_misc(reader);
-            if (FAILED(hr)) return hr;
+            if (hr != S_FALSE) return hr;
 
-            if (hr == S_FALSE)
-                reader->instate = XmlReadInState_Eof;
+            if (*reader_get_ptr(reader))
+            {
+                WARN("found garbage in the end of XML\n");
+                return WC_E_SYNTAX;
+            }
+
+            reader->instate = XmlReadInState_Eof;
+            reader->state = XmlReadState_EndOfFile;
+            reader->nodetype = XmlNodeType_None;
             return hr;
         case XmlReadInState_Eof:
             return S_FALSE;
@@ -2463,6 +2674,22 @@ static ULONG WINAPI xmlreader_AddRef(IXmlReader *iface)
     return ref;
 }
 
+static void reader_clear_ns(xmlreader *reader)
+{
+    struct ns *ns, *ns2;
+
+    LIST_FOR_EACH_ENTRY_SAFE(ns, ns2, &reader->ns, struct ns, entry) {
+        reader_free_strvalued(reader, &ns->prefix);
+        reader_free_strvalued(reader, &ns->uri);
+        reader_free(reader, ns);
+    }
+
+    LIST_FOR_EACH_ENTRY_SAFE(ns, ns2, &reader->nsdef, struct ns, entry) {
+        reader_free_strvalued(reader, &ns->uri);
+        reader_free(reader, ns);
+    }
+}
+
 static ULONG WINAPI xmlreader_Release(IXmlReader *iface)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
@@ -2477,6 +2704,7 @@ static ULONG WINAPI xmlreader_Release(IXmlReader *iface)
         if (This->resolver) IXmlResolver_Release(This->resolver);
         if (This->mlang) IUnknown_Release(This->mlang);
         reader_clear_attrs(This);
+        reader_clear_ns(This);
         reader_clear_elements(This);
         reader_free_strvalues(This);
         reader_free(This, This);
@@ -2501,9 +2729,11 @@ static HRESULT WINAPI xmlreader_SetInput(IXmlReader* iface, IUnknown *input)
         This->input = NULL;
     }
 
-    This->line = This->pos = 0;
+    This->position.line_number = 0;
+    This->position.line_position = 0;
     reader_clear_elements(This);
     This->depth = 0;
+    This->nodetype = XmlNodeType_None;
     This->resumestate = XmlReadResumeState_Initial;
     memset(This->resume, 0, sizeof(This->resume));
 
@@ -2576,6 +2806,9 @@ static HRESULT WINAPI xmlreader_GetProperty(IXmlReader* iface, UINT property, LO
         case XmlReaderProperty_ReadState:
             *value = This->state;
             break;
+        case XmlReaderProperty_MaxElementDepth:
+            *value = This->max_depth;
+            break;
         default:
             FIXME("Unimplemented property (%u)\n", property);
             return E_NOTIMPL;
@@ -2613,7 +2846,7 @@ static HRESULT WINAPI xmlreader_SetProperty(IXmlReader* iface, UINT property, LO
             This->dtdmode = value;
             break;
         case XmlReaderProperty_MaxElementDepth:
-            FIXME("Ignoring MaxElementDepth %ld\n", value);
+            This->max_depth = value;
             break;
         default:
             FIXME("Unimplemented property (%u)\n", property);
@@ -2627,20 +2860,38 @@ static HRESULT WINAPI xmlreader_Read(IXmlReader* iface, XmlNodeType *nodetype)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
     XmlNodeType oldtype = This->nodetype;
+    XmlNodeType type;
     HRESULT hr;
 
     TRACE("(%p)->(%p)\n", This, nodetype);
 
-    if (This->state == XmlReadState_Closed) return S_FALSE;
+    if (!nodetype)
+        nodetype = &type;
 
-    hr = reader_parse_nextnode(This);
-    if (oldtype == XmlNodeType_None && This->nodetype != oldtype)
-        This->state = XmlReadState_Interactive;
-    if (hr == S_OK)
+    switch (This->state)
     {
-        TRACE("node type %s\n", debugstr_nodetype(This->nodetype));
-        *nodetype = This->nodetype;
+    case XmlReadState_Closed:
+        hr = S_FALSE;
+        break;
+    case XmlReadState_Error:
+        hr = This->error;
+        break;
+    default:
+        hr = reader_parse_nextnode(This);
+        if (SUCCEEDED(hr) && oldtype == XmlNodeType_None && This->nodetype != oldtype)
+            This->state = XmlReadState_Interactive;
+
+        if (FAILED(hr))
+        {
+            This->state = XmlReadState_Error;
+            This->nodetype = XmlNodeType_None;
+            This->depth = 0;
+            This->error = hr;
+        }
     }
+
+    TRACE("node type %s\n", debugstr_nodetype(This->nodetype));
+    *nodetype = This->nodetype;
 
     return hr;
 }
@@ -2648,10 +2899,31 @@ static HRESULT WINAPI xmlreader_Read(IXmlReader* iface, XmlNodeType *nodetype)
 static HRESULT WINAPI xmlreader_GetNodeType(IXmlReader* iface, XmlNodeType *node_type)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
+
     TRACE("(%p)->(%p)\n", This, node_type);
+
+    if (!node_type)
+        return E_INVALIDARG;
 
     *node_type = reader_get_nodetype(This);
     return This->state == XmlReadState_Closed ? S_FALSE : S_OK;
+}
+
+static HRESULT reader_move_to_first_attribute(xmlreader *reader)
+{
+    if (!reader->attr_count)
+        return S_FALSE;
+
+    if (!reader->attr)
+        reader_inc_depth(reader);
+
+    reader->attr = LIST_ENTRY(list_head(&reader->attrs), struct attribute, entry);
+    reader_set_strvalue(reader, StringValue_Prefix, &reader->attr->prefix);
+    reader_set_strvalue(reader, StringValue_LocalName, &reader->attr->localname);
+    reader_set_strvalue(reader, StringValue_QualifiedName, &reader->attr->qname);
+    reader_set_strvalue(reader, StringValue_Value, &reader->attr->value);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlreader_MoveToFirstAttribute(IXmlReader* iface)
@@ -2660,12 +2932,7 @@ static HRESULT WINAPI xmlreader_MoveToFirstAttribute(IXmlReader* iface)
 
     TRACE("(%p)\n", This);
 
-    if (!This->attr_count) return S_FALSE;
-    This->attr = LIST_ENTRY(list_head(&This->attrs), struct attribute, entry);
-    reader_set_strvalue(This, StringValue_LocalName, &This->attr->localname);
-    reader_set_strvalue(This, StringValue_Value, &This->attr->value);
-
-    return S_OK;
+    return reader_move_to_first_attribute(This);
 }
 
 static HRESULT WINAPI xmlreader_MoveToNextAttribute(IXmlReader* iface)
@@ -2678,13 +2945,15 @@ static HRESULT WINAPI xmlreader_MoveToNextAttribute(IXmlReader* iface)
     if (!This->attr_count) return S_FALSE;
 
     if (!This->attr)
-        return IXmlReader_MoveToFirstAttribute(iface);
+        return reader_move_to_first_attribute(This);
 
     next = list_next(&This->attrs, &This->attr->entry);
     if (next)
     {
         This->attr = LIST_ENTRY(next, struct attribute, entry);
+        reader_set_strvalue(This, StringValue_Prefix, &This->attr->prefix);
         reader_set_strvalue(This, StringValue_LocalName, &This->attr->localname);
+        reader_set_strvalue(This, StringValue_QualifiedName, &This->attr->qname);
         reader_set_strvalue(This, StringValue_Value, &This->attr->value);
     }
 
@@ -2702,20 +2971,31 @@ static HRESULT WINAPI xmlreader_MoveToAttributeByName(IXmlReader* iface,
 static HRESULT WINAPI xmlreader_MoveToElement(IXmlReader* iface)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
-    struct element *elem;
 
     TRACE("(%p)\n", This);
 
     if (!This->attr_count) return S_FALSE;
+
+    if (This->attr)
+        reader_dec_depth(This);
+
     This->attr = NULL;
 
     /* FIXME: support other node types with 'attributes' like DTD */
-    elem = LIST_ENTRY(list_head(&This->elements), struct element, entry);
-    if (elem)
-    {
-        reader_set_strvalue(This, StringValue_QualifiedName, &elem->qname);
-        reader_set_strvalue(This, StringValue_LocalName, &elem->localname);
+    if (This->is_empty_element) {
+        reader_set_strvalue(This, StringValue_Prefix, &This->empty_element.prefix);
+        reader_set_strvalue(This, StringValue_LocalName, &This->empty_element.localname);
+        reader_set_strvalue(This, StringValue_QualifiedName, &This->empty_element.qname);
     }
+    else {
+        struct element *element = LIST_ENTRY(list_head(&This->elements), struct element, entry);
+        if (element) {
+            reader_set_strvalue(This, StringValue_Prefix, &element->prefix);
+            reader_set_strvalue(This, StringValue_LocalName, &element->localname);
+            reader_set_strvalue(This, StringValue_QualifiedName, &element->qname);
+        }
+    }
+    reader_set_strvalue(This, StringValue_Value, &strval_empty);
 
     return S_OK;
 }
@@ -2723,38 +3003,263 @@ static HRESULT WINAPI xmlreader_MoveToElement(IXmlReader* iface)
 static HRESULT WINAPI xmlreader_GetQualifiedName(IXmlReader* iface, LPCWSTR *name, UINT *len)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
+    struct attribute *attribute = This->attr;
+    struct element *element;
+    UINT length;
 
     TRACE("(%p)->(%p %p)\n", This, name, len);
-    *name = This->strvalues[StringValue_QualifiedName].str;
-    if (len) *len  = This->strvalues[StringValue_QualifiedName].len;
+
+    if (!len)
+        len = &length;
+
+    switch (reader_get_nodetype(This))
+    {
+    case XmlNodeType_Text:
+    case XmlNodeType_CDATA:
+    case XmlNodeType_Comment:
+    case XmlNodeType_Whitespace:
+        *name = emptyW;
+        *len = 0;
+        break;
+    case XmlNodeType_Element:
+    case XmlNodeType_EndElement:
+        element = reader_get_element(This);
+        if (element->prefix.len)
+        {
+            *name = element->qname.str;
+            *len = element->qname.len;
+        }
+        else
+        {
+            *name = element->localname.str;
+            *len = element->localname.len;
+        }
+        break;
+    case XmlNodeType_Attribute:
+        if (attribute->flags & ATTRIBUTE_DEFAULT_NS_DEFINITION)
+        {
+            *name = xmlnsW;
+            *len = 5;
+        } else if (attribute->prefix.len)
+        {
+            *name = This->strvalues[StringValue_QualifiedName].str;
+            *len = This->strvalues[StringValue_QualifiedName].len;
+        }
+        else
+        {
+            *name = This->strvalues[StringValue_LocalName].str;
+            *len = This->strvalues[StringValue_LocalName].len;
+        }
+        break;
+    default:
+        *name = This->strvalues[StringValue_QualifiedName].str;
+        *len = This->strvalues[StringValue_QualifiedName].len;
+        break;
+    }
+
     return S_OK;
 }
 
-static HRESULT WINAPI xmlreader_GetNamespaceUri(IXmlReader* iface,
-                                                LPCWSTR *namespaceUri,
-                                                UINT *namespaceUri_length)
+static struct ns *reader_lookup_ns(xmlreader *reader, const strval *prefix)
 {
-    FIXME("(%p %p %p): stub\n", iface, namespaceUri, namespaceUri_length);
-    return E_NOTIMPL;
+    struct list *nslist = prefix ? &reader->ns : &reader->nsdef;
+    struct ns *ns;
+
+    LIST_FOR_EACH_ENTRY_REV(ns, nslist, struct ns, entry) {
+        if (strval_eq(reader, prefix, &ns->prefix))
+            return ns;
+    }
+
+    return NULL;
+}
+
+static struct ns *reader_lookup_nsdef(xmlreader *reader)
+{
+    if (list_empty(&reader->nsdef))
+        return NULL;
+
+    return LIST_ENTRY(list_head(&reader->nsdef), struct ns, entry);
+}
+
+static HRESULT WINAPI xmlreader_GetNamespaceUri(IXmlReader* iface, const WCHAR **uri, UINT *len)
+{
+    xmlreader *This = impl_from_IXmlReader(iface);
+    const strval *prefix = &This->strvalues[StringValue_Prefix];
+    XmlNodeType nodetype;
+    struct ns *ns;
+    UINT length;
+
+    TRACE("(%p %p %p)\n", iface, uri, len);
+
+    if (!len)
+        len = &length;
+
+    *uri = NULL;
+    *len = 0;
+
+    switch ((nodetype = reader_get_nodetype(This)))
+    {
+    case XmlNodeType_Attribute:
+        {
+            static const WCHAR xmlns_uriW[] = {'h','t','t','p',':','/','/','w','w','w','.','w','3','.','o','r','g','/',
+                '2','0','0','0','/','x','m','l','n','s','/',0};
+            static const WCHAR xml_uriW[] = {'h','t','t','p',':','/','/','w','w','w','.','w','3','.','o','r','g','/',
+                'X','M','L','/','1','9','9','8','/','n','a','m','e','s','p','a','c','e',0};
+            const strval *local = &This->strvalues[StringValue_LocalName];
+
+            /* check for reserved prefixes first */
+            if ((strval_eq(This, prefix, &strval_empty) && strval_eq(This, local, &strval_xmlns)) ||
+                    strval_eq(This, prefix, &strval_xmlns))
+            {
+                *uri = xmlns_uriW;
+                *len = sizeof(xmlns_uriW)/sizeof(xmlns_uriW[0]) - 1;
+            }
+            else if (strval_eq(This, prefix, &strval_xml)) {
+                *uri = xml_uriW;
+                *len = sizeof(xml_uriW)/sizeof(xml_uriW[0]) - 1;
+            }
+
+            if (!*uri) {
+                ns = reader_lookup_ns(This, prefix);
+                if (ns) {
+                   *uri = ns->uri.str;
+                   *len = ns->uri.len;
+                }
+                else {
+                    *uri = emptyW;
+                    *len = 0;
+                }
+            }
+        }
+        break;
+    case XmlNodeType_Element:
+    case XmlNodeType_EndElement:
+        {
+            ns = reader_lookup_ns(This, prefix);
+
+            /* pick top default ns if any */
+            if (!ns)
+                ns = reader_lookup_nsdef(This);
+
+            if (ns) {
+                *uri = ns->uri.str;
+                *len = ns->uri.len;
+            }
+            else {
+                *uri = emptyW;
+                *len = 0;
+            }
+        }
+        break;
+    case XmlNodeType_Text:
+    case XmlNodeType_CDATA:
+    case XmlNodeType_ProcessingInstruction:
+    case XmlNodeType_Comment:
+    case XmlNodeType_Whitespace:
+    case XmlNodeType_XmlDeclaration:
+        *uri = emptyW;
+        *len = 0;
+        break;
+    default:
+        FIXME("Unhandled node type %d\n", nodetype);
+        return E_NOTIMPL;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlreader_GetLocalName(IXmlReader* iface, LPCWSTR *name, UINT *len)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
+    struct element *element;
+    UINT length;
 
     TRACE("(%p)->(%p %p)\n", This, name, len);
-    *name = This->strvalues[StringValue_LocalName].str;
-    if (len) *len = This->strvalues[StringValue_LocalName].len;
+
+    if (!len)
+        len = &length;
+
+    switch (reader_get_nodetype(This))
+    {
+    case XmlNodeType_Text:
+    case XmlNodeType_CDATA:
+    case XmlNodeType_Comment:
+    case XmlNodeType_Whitespace:
+        *name = emptyW;
+        *len = 0;
+        break;
+    case XmlNodeType_Element:
+    case XmlNodeType_EndElement:
+        element = reader_get_element(This);
+        *name = element->localname.str;
+        *len = element->localname.len;
+        break;
+    case XmlNodeType_Attribute:
+        if (This->attr->flags & ATTRIBUTE_DEFAULT_NS_DEFINITION)
+        {
+            *name = xmlnsW;
+            *len = 5;
+        }
+        else
+        {
+            *name = This->strvalues[StringValue_LocalName].str;
+            *len = This->strvalues[StringValue_LocalName].len;
+        }
+        break;
+    default:
+        *name = This->strvalues[StringValue_LocalName].str;
+        *len = This->strvalues[StringValue_LocalName].len;
+        break;
+    }
+
     return S_OK;
 }
 
-static HRESULT WINAPI xmlreader_GetPrefix(IXmlReader* iface, LPCWSTR *prefix, UINT *len)
+static HRESULT WINAPI xmlreader_GetPrefix(IXmlReader* iface, const WCHAR **ret, UINT *len)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
+    XmlNodeType nodetype;
+    UINT length;
 
-    TRACE("(%p)->(%p %p)\n", This, prefix, len);
-    *prefix = This->strvalues[StringValue_Prefix].str;
-    if (len) *len = This->strvalues[StringValue_Prefix].len;
+    TRACE("(%p)->(%p %p)\n", This, ret, len);
+
+    if (!len)
+        len = &length;
+
+    *ret = emptyW;
+    *len = 0;
+
+    switch ((nodetype = reader_get_nodetype(This)))
+    {
+    case XmlNodeType_Element:
+    case XmlNodeType_EndElement:
+    case XmlNodeType_Attribute:
+    {
+        const strval *prefix = &This->strvalues[StringValue_Prefix];
+        struct ns *ns;
+
+        if (strval_eq(This, prefix, &strval_xml))
+        {
+            *ret = xmlW;
+            *len = 3;
+        }
+        else if (strval_eq(This, prefix, &strval_xmlns))
+        {
+            *ret = xmlnsW;
+            *len = 5;
+        }
+        else if ((ns = reader_lookup_ns(This, prefix)))
+        {
+            *ret = ns->prefix.str;
+            *len = ns->prefix.len;
+        }
+
+        break;
+    }
+    default:
+        ;
+    }
+
     return S_OK;
 }
 
@@ -2762,12 +3267,15 @@ static HRESULT WINAPI xmlreader_GetValue(IXmlReader* iface, const WCHAR **value,
 {
     xmlreader *reader = impl_from_IXmlReader(iface);
     strval *val = &reader->strvalues[StringValue_Value];
+    UINT length;
 
     TRACE("(%p)->(%p %p)\n", reader, value, len);
 
     *value = NULL;
+    if (!len)
+        len = &length;
 
-    if ((reader->nodetype == XmlNodeType_Comment && !val->str) || is_reader_pending(reader))
+    if ((reader->nodetype == XmlNodeType_Comment && !val->str && !val->len) || is_reader_pending(reader))
     {
         XmlNodeType type;
         HRESULT hr;
@@ -2779,17 +3287,46 @@ static HRESULT WINAPI xmlreader_GetValue(IXmlReader* iface, const WCHAR **value,
         if (is_reader_pending(reader)) return E_PENDING;
     }
 
-    if (!val->str)
+    switch (reader_get_nodetype(reader))
     {
-        WCHAR *ptr = reader_alloc(reader, (val->len+1)*sizeof(WCHAR));
-        if (!ptr) return E_OUTOFMEMORY;
-        memcpy(ptr, reader_get_strptr(reader, val), val->len*sizeof(WCHAR));
-        ptr[val->len] = 0;
-        val->str = ptr;
+    case XmlNodeType_XmlDeclaration:
+    case XmlNodeType_EndElement:
+    case XmlNodeType_None:
+        *value = emptyW;
+        *len = 0;
+        break;
+    case XmlNodeType_Attribute:
+        {
+            const strval *local = &reader->strvalues[StringValue_LocalName];
+
+            /* For namespace definition attributes return values from namespace list */
+            if (reader->attr->flags & (ATTRIBUTE_NS_DEFINITION | ATTRIBUTE_DEFAULT_NS_DEFINITION))
+            {
+                struct ns *ns;
+
+                if (!(ns = reader_lookup_ns(reader, local)))
+                    ns = reader_lookup_nsdef(reader);
+
+                *value = ns->uri.str;
+                *len = ns->uri.len;
+                break;
+            }
+        }
+        /* fallthrough */
+    default:
+        if (!val->str)
+        {
+            WCHAR *ptr = reader_alloc(reader, (val->len+1)*sizeof(WCHAR));
+            if (!ptr) return E_OUTOFMEMORY;
+            memcpy(ptr, reader_get_strptr(reader, val), val->len*sizeof(WCHAR));
+            ptr[val->len] = 0;
+            val->str = ptr;
+        }
+        *value = val->str;
+        *len = val->len;
+        break;
     }
 
-    *value = val->str;
-    if (len) *len = val->len;
     return S_OK;
 }
 
@@ -2802,18 +3339,17 @@ static HRESULT WINAPI xmlreader_ReadValueChunk(IXmlReader* iface, WCHAR *buffer,
     TRACE("(%p)->(%p %u %p)\n", reader, buffer, chunk_size, read);
 
     /* Value is already allocated, chunked reads are not possible. */
-    if (val->str) return S_FALSE;
+    len = !val->str && val->len ? min(chunk_size, val->len) : 0;
+    if (read) *read = len;
 
-    if (val->len)
+    if (len)
     {
-        len = min(chunk_size, val->len);
-        memcpy(buffer, reader_get_ptr2(reader, val->start), len);
+        memcpy(buffer, reader_get_ptr2(reader, val->start), len*sizeof(WCHAR));
         val->start += len;
         val->len -= len;
-        if (read) *read = len;
     }
 
-    return S_OK;
+    return len || !chunk_size ? S_OK : S_FALSE;
 }
 
 static HRESULT WINAPI xmlreader_GetBaseUri(IXmlReader* iface,
@@ -2836,33 +3372,71 @@ static BOOL WINAPI xmlreader_IsEmptyElement(IXmlReader* iface)
     TRACE("(%p)\n", This);
     /* Empty elements are not placed in stack, it's stored as a global reader flag that makes sense
        when current node is start tag of an element */
-    return (reader_get_nodetype(This) == XmlNodeType_Element) ? This->empty_element : FALSE;
+    return (reader_get_nodetype(This) == XmlNodeType_Element) ? This->is_empty_element : FALSE;
 }
 
-static HRESULT WINAPI xmlreader_GetLineNumber(IXmlReader* iface, UINT *lineNumber)
+static HRESULT WINAPI xmlreader_GetLineNumber(IXmlReader* iface, UINT *line_number)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
+    const struct element *element;
 
-    TRACE("(%p %p)\n", This, lineNumber);
+    TRACE("(%p %p)\n", This, line_number);
 
-    if (!lineNumber) return E_INVALIDARG;
+    if (!line_number)
+        return E_INVALIDARG;
 
-    *lineNumber = This->line;
+    switch (reader_get_nodetype(This))
+    {
+    case XmlNodeType_Element:
+    case XmlNodeType_EndElement:
+        element = reader_get_element(This);
+        *line_number = element->position.line_number;
+        break;
+    case XmlNodeType_Attribute:
+        *line_number = This->attr->position.line_number;
+        break;
+    case XmlNodeType_Whitespace:
+    case XmlNodeType_XmlDeclaration:
+        *line_number = This->empty_element.position.line_number;
+        break;
+    default:
+        *line_number = This->position.line_number;
+        break;
+    }
 
-    return S_OK;
+    return This->state == XmlReadState_Closed ? S_FALSE : S_OK;
 }
 
-static HRESULT WINAPI xmlreader_GetLinePosition(IXmlReader* iface, UINT *linePosition)
+static HRESULT WINAPI xmlreader_GetLinePosition(IXmlReader* iface, UINT *line_position)
 {
     xmlreader *This = impl_from_IXmlReader(iface);
+    const struct element *element;
 
-    TRACE("(%p %p)\n", This, linePosition);
+    TRACE("(%p %p)\n", This, line_position);
 
-    if (!linePosition) return E_INVALIDARG;
+    if (!line_position)
+        return E_INVALIDARG;
 
-    *linePosition = This->pos;
+    switch (reader_get_nodetype(This))
+    {
+    case XmlNodeType_Element:
+    case XmlNodeType_EndElement:
+        element = reader_get_element(This);
+        *line_position = element->position.line_position;
+        break;
+    case XmlNodeType_Attribute:
+        *line_position = This->attr->position.line_position;
+        break;
+    case XmlNodeType_Whitespace:
+    case XmlNodeType_XmlDeclaration:
+        *line_position = This->empty_element.position.line_position;
+        break;
+    default:
+        *line_position = This->position.line_position;
+        break;
+    }
 
-    return S_OK;
+    return This->state == XmlReadState_Closed ? S_FALSE : S_OK;
 }
 
 static HRESULT WINAPI xmlreader_GetAttributeCount(IXmlReader* iface, UINT *count)
@@ -2887,8 +3461,9 @@ static HRESULT WINAPI xmlreader_GetDepth(IXmlReader* iface, UINT *depth)
 
 static BOOL WINAPI xmlreader_IsEOF(IXmlReader* iface)
 {
-    FIXME("(%p): stub\n", iface);
-    return FALSE;
+    xmlreader *This = impl_from_IXmlReader(iface);
+    TRACE("(%p)\n", iface);
+    return This->state == XmlReadState_EndOfFile;
 }
 
 static const struct IXmlReaderVtbl xmlreader_vtbl =
@@ -2998,29 +3573,24 @@ HRESULT WINAPI CreateXmlReader(REFIID riid, void **obj, IMalloc *imalloc)
         reader = IMalloc_Alloc(imalloc, sizeof(*reader));
     else
         reader = heap_alloc(sizeof(*reader));
-    if(!reader) return E_OUTOFMEMORY;
+    if (!reader)
+        return E_OUTOFMEMORY;
 
+    memset(reader, 0, sizeof(*reader));
     reader->IXmlReader_iface.lpVtbl = &xmlreader_vtbl;
     reader->ref = 1;
-    reader->input = NULL;
     reader->state = XmlReadState_Closed;
     reader->instate = XmlReadInState_Initial;
     reader->resumestate = XmlReadResumeState_Initial;
     reader->dtdmode = DtdProcessing_Prohibit;
-    reader->resolver = NULL;
-    reader->mlang = NULL;
-    reader->line  = reader->pos = 0;
     reader->imalloc = imalloc;
     if (imalloc) IMalloc_AddRef(imalloc);
     reader->nodetype = XmlNodeType_None;
     list_init(&reader->attrs);
-    reader->attr_count = 0;
-    reader->attr = NULL;
+    list_init(&reader->nsdef);
+    list_init(&reader->ns);
     list_init(&reader->elements);
-    reader->depth = 0;
     reader->max_depth = 256;
-    reader->empty_element = FALSE;
-    memset(reader->resume, 0, sizeof(reader->resume));
 
     for (i = 0; i < StringValue_Last; i++)
         reader->strvalues[i] = strval_empty;

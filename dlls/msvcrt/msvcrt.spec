@@ -164,13 +164,13 @@
 # stub _CrtSetReportHook
 # stub _CrtSetReportHook2
 # stub _CrtSetReportMode
-@ stdcall _CxxThrowException(long long)
+@ stdcall _CxxThrowException(ptr ptr)
 @ cdecl -arch=i386 -norelay _EH_prolog()
 @ cdecl _Getdays()
 @ cdecl _Getmonths()
 @ cdecl _Gettnames()
 @ extern _HUGE MSVCRT__HUGE
-@ cdecl _Strftime(str long str ptr ptr)
+@ cdecl _Strftime(ptr long str ptr ptr)
 @ cdecl _XcptFilter(long ptr)
 @ stdcall -arch=x86_64 __C_specific_handler(ptr long ptr ptr) ntdll.__C_specific_handler
 @ cdecl -arch=i386,x86_64,arm __CppXcptFilter(long ptr)
@@ -223,27 +223,27 @@
 @ extern __lc_collate_cp MSVCRT___lc_collate_cp
 @ extern __lc_handle MSVCRT___lc_handle
 @ cdecl __lconv_init()
-@ cdecl -arch=i386 __libm_sse2_acos() MSVCRT___libm_sse2_acos
-@ cdecl -arch=i386 __libm_sse2_acosf() MSVCRT___libm_sse2_acosf
-@ cdecl -arch=i386 __libm_sse2_asin() MSVCRT___libm_sse2_asin
-@ cdecl -arch=i386 __libm_sse2_asinf() MSVCRT___libm_sse2_asinf
-@ cdecl -arch=i386 __libm_sse2_atan() MSVCRT___libm_sse2_atan
-@ cdecl -arch=i386 __libm_sse2_atan2() MSVCRT___libm_sse2_atan2
-@ cdecl -arch=i386 __libm_sse2_atanf() MSVCRT___libm_sse2_atanf
-@ cdecl -arch=i386 __libm_sse2_cos() MSVCRT___libm_sse2_cos
-@ cdecl -arch=i386 __libm_sse2_cosf() MSVCRT___libm_sse2_cosf
-@ cdecl -arch=i386 __libm_sse2_exp() MSVCRT___libm_sse2_exp
-@ cdecl -arch=i386 __libm_sse2_expf() MSVCRT___libm_sse2_expf
-@ cdecl -arch=i386 __libm_sse2_log() MSVCRT___libm_sse2_log
-@ cdecl -arch=i386 __libm_sse2_log10() MSVCRT___libm_sse2_log10
-@ cdecl -arch=i386 __libm_sse2_log10f() MSVCRT___libm_sse2_log10f
-@ cdecl -arch=i386 __libm_sse2_logf() MSVCRT___libm_sse2_logf
-@ cdecl -arch=i386 __libm_sse2_pow() MSVCRT___libm_sse2_pow
-@ cdecl -arch=i386 __libm_sse2_powf() MSVCRT___libm_sse2_powf
-@ cdecl -arch=i386 __libm_sse2_sin() MSVCRT___libm_sse2_sin
-@ cdecl -arch=i386 __libm_sse2_sinf() MSVCRT___libm_sse2_sinf
-@ cdecl -arch=i386 __libm_sse2_tan() MSVCRT___libm_sse2_tan
-@ cdecl -arch=i386 __libm_sse2_tanf() MSVCRT___libm_sse2_tanf
+@ cdecl -arch=i386 -norelay __libm_sse2_acos() MSVCRT___libm_sse2_acos
+@ cdecl -arch=i386 -norelay __libm_sse2_acosf() MSVCRT___libm_sse2_acosf
+@ cdecl -arch=i386 -norelay __libm_sse2_asin() MSVCRT___libm_sse2_asin
+@ cdecl -arch=i386 -norelay __libm_sse2_asinf() MSVCRT___libm_sse2_asinf
+@ cdecl -arch=i386 -norelay __libm_sse2_atan() MSVCRT___libm_sse2_atan
+@ cdecl -arch=i386 -norelay __libm_sse2_atan2() MSVCRT___libm_sse2_atan2
+@ cdecl -arch=i386 -norelay __libm_sse2_atanf() MSVCRT___libm_sse2_atanf
+@ cdecl -arch=i386 -norelay __libm_sse2_cos() MSVCRT___libm_sse2_cos
+@ cdecl -arch=i386 -norelay __libm_sse2_cosf() MSVCRT___libm_sse2_cosf
+@ cdecl -arch=i386 -norelay __libm_sse2_exp() MSVCRT___libm_sse2_exp
+@ cdecl -arch=i386 -norelay __libm_sse2_expf() MSVCRT___libm_sse2_expf
+@ cdecl -arch=i386 -norelay __libm_sse2_log() MSVCRT___libm_sse2_log
+@ cdecl -arch=i386 -norelay __libm_sse2_log10() MSVCRT___libm_sse2_log10
+@ cdecl -arch=i386 -norelay __libm_sse2_log10f() MSVCRT___libm_sse2_log10f
+@ cdecl -arch=i386 -norelay __libm_sse2_logf() MSVCRT___libm_sse2_logf
+@ cdecl -arch=i386 -norelay __libm_sse2_pow() MSVCRT___libm_sse2_pow
+@ cdecl -arch=i386 -norelay __libm_sse2_powf() MSVCRT___libm_sse2_powf
+@ cdecl -arch=i386 -norelay __libm_sse2_sin() MSVCRT___libm_sse2_sin
+@ cdecl -arch=i386 -norelay __libm_sse2_sinf() MSVCRT___libm_sse2_sinf
+@ cdecl -arch=i386 -norelay __libm_sse2_tan() MSVCRT___libm_sse2_tan
+@ cdecl -arch=i386 -norelay __libm_sse2_tanf() MSVCRT___libm_sse2_tanf
 @ extern __mb_cur_max MSVCRT___mb_cur_max
 @ cdecl __p___argc() MSVCRT___p___argc
 @ cdecl __p___argv() MSVCRT___p___argv
@@ -655,7 +655,7 @@
 @ cdecl _jn(long double) MSVCRT__jn
 @ cdecl _kbhit()
 @ cdecl _lfind(ptr ptr ptr long ptr)
-# stub _lfind_s(ptr ptr ptr long ptr ptr)
+@ cdecl _lfind_s(ptr ptr ptr long ptr ptr)
 @ cdecl _loaddll(str)
 @ cdecl -arch=x86_64 _local_unwind(ptr ptr)
 @ cdecl -arch=i386 _local_unwind2(ptr long)
@@ -1426,7 +1426,7 @@
 @ cdecl strcspn(str str) ntdll.strcspn
 @ cdecl strerror(long) MSVCRT_strerror
 @ cdecl strerror_s(ptr long long) MSVCRT_strerror_s
-@ cdecl strftime(str long str ptr) MSVCRT_strftime
+@ cdecl strftime(ptr long str ptr) MSVCRT_strftime
 @ cdecl strlen(str) MSVCRT_strlen
 @ cdecl strncat(str str long) MSVCRT_strncat
 @ cdecl strncat_s(str long str long) MSVCRT_strncat_s

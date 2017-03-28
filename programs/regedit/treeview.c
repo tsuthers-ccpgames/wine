@@ -461,6 +461,17 @@ static BOOL RefreshTreeItem(HWND hwndTV, HTREEITEM hItem)
     return TRUE;
 }
 
+static void treeview_sort_item(HWND hWnd, HTREEITEM item)
+{
+    HTREEITEM child = (HTREEITEM)SendMessageW(hWnd, TVM_GETNEXTITEM, TVGN_CHILD, (LPARAM)item);
+
+    while (child != NULL) {
+        treeview_sort_item(hWnd, child);
+        child = (HTREEITEM)SendMessageW(hWnd, TVM_GETNEXTITEM, TVGN_NEXT, (LPARAM)child);
+    }
+    SendMessageW(hWnd, TVM_SORTCHILDREN, 0, (LPARAM)item);
+}
+
 BOOL RefreshTreeView(HWND hwndTV)
 {
     HTREEITEM hItem;
@@ -477,6 +488,7 @@ BOOL RefreshTreeView(HWND hwndTV)
     hItem = (HTREEITEM)SendMessageW(hwndTV, TVM_GETNEXTITEM, TVGN_CHILD, (LPARAM)hRoot);
     while (hItem) {
         RefreshTreeItem(hwndTV, hItem);
+        treeview_sort_item(hwndTV, hItem);
         hItem = (HTREEITEM)SendMessageW(hwndTV, TVM_GETNEXTITEM, TVGN_NEXT, (LPARAM)hItem);
     }
 
@@ -529,6 +541,7 @@ HWND StartKeyRename(HWND hwndTV)
     HTREEITEM hItem;
 
     if(!(hItem = (HTREEITEM)SendMessageW(hwndTV, TVM_GETNEXTITEM, TVGN_CARET, 0))) return 0;
+    SetWindowLongPtrW(hwndTV, GWLP_USERDATA, 1);
     return (HWND)SendMessageW(hwndTV, TVM_EDITLABELW, 0, (LPARAM)hItem);
 }
 
@@ -695,7 +708,8 @@ HWND CreateTreeView(HWND hwndParent, LPWSTR pHostName, UINT id)
     /* Get the dimensions of the parent window's client area, and create the tree view control.  */
     GetClientRect(hwndParent, &rcClient);
     hwndTV = CreateWindowExW(WS_EX_CLIENTEDGE, WC_TREEVIEWW, TreeView,
-                            WS_VISIBLE | WS_CHILD | WS_TABSTOP | TVS_HASLINES | TVS_HASBUTTONS | TVS_LINESATROOT | TVS_EDITLABELS,
+                            WS_VISIBLE | WS_CHILD | WS_TABSTOP | TVS_HASLINES | TVS_HASBUTTONS |
+                            TVS_LINESATROOT | TVS_EDITLABELS | TVS_SHOWSELALWAYS,
                             0, 0, rcClient.right, rcClient.bottom,
                             hwndParent, ULongToHandle(id), hInst, NULL);
     SendMessageW(hwndTV, TVM_SETUNICODEFORMAT, TRUE, 0);

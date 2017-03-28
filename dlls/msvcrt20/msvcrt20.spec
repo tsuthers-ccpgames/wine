@@ -790,7 +790,7 @@
 @ cdecl -arch=i386 _CIsqrt() msvcrt._CIsqrt
 @ cdecl -arch=i386 _CItan() msvcrt._CItan
 @ cdecl -arch=i386 _CItanh() msvcrt._CItanh
-@ stdcall _CxxThrowException(long long) msvcrt._CxxThrowException
+@ stdcall _CxxThrowException(ptr ptr) msvcrt._CxxThrowException
 @ extern _HUGE msvcrt._HUGE
 @ cdecl _XcptFilter(long ptr) msvcrt._XcptFilter
 @ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler(ptr ptr ptr ptr) msvcrt.__CxxFrameHandler
@@ -1404,7 +1404,7 @@
 @ cdecl strcpy(ptr str) msvcrt.strcpy
 @ cdecl strcspn(str str) msvcrt.strcspn
 @ cdecl strerror(long) msvcrt.strerror
-@ cdecl strftime(str long str ptr) msvcrt.strftime
+@ cdecl strftime(ptr long str ptr) msvcrt.strftime
 @ cdecl strlen(str) msvcrt.strlen
 @ cdecl strncat(str str long) msvcrt.strncat
 @ cdecl strncmp(str str long) msvcrt.strncmp

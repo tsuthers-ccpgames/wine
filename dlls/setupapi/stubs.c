@@ -79,6 +79,38 @@ CONFIGRET WINAPI CM_Disconnect_Machine(HMACHINE handle)
 }
 
 /***********************************************************************
+ *             CM_Open_DevNode_Key  (SETUPAPI.@)
+ */
+CONFIGRET WINAPI CM_Open_DevNode_Key(
+    DEVINST dnDevInst, REGSAM access, ULONG ulHardwareProfile, REGDISPOSITION disposition,
+    PHKEY phkDevice, ULONG ulFlags)
+{
+    FIXME("0x%08x 0x%08x 0x%08x 0x%08x %p 0x%08x : stub\n", dnDevInst, access, ulHardwareProfile,
+          disposition, phkDevice, ulFlags);
+    return CR_SUCCESS;
+}
+
+/***********************************************************************
+ *             CM_Get_Child  (SETUPAPI.@)
+ */
+CONFIGRET WINAPI CM_Get_Child(
+    PDEVINST pdnDevInst, DEVINST dnDevInst, ULONG ulFlags)
+{
+    FIXME("%p 0x%08x 0x%08x: stub\n", pdnDevInst, dnDevInst, ulFlags);
+    return CR_SUCCESS;
+}
+
+/***********************************************************************
+ *             CM_Get_Child_Ex  (SETUPAPI.@)
+ */
+CONFIGRET WINAPI CM_Get_Child_Ex(
+    PDEVINST pdnDevInst, DEVINST dnDevInst, ULONG ulFlags, HMACHINE hMachine)
+{
+    FIXME("%p 0x%08x 0x%08x %p: stub\n", pdnDevInst, dnDevInst, ulFlags, hMachine);
+    return CR_SUCCESS;
+}
+
+/***********************************************************************
  *             CM_Get_Device_ID_ExA  (SETUPAPI.@)
  */
 DWORD WINAPI CM_Get_Device_ID_ExA(
@@ -467,6 +499,16 @@ CONFIGRET WINAPI CM_Get_Class_Registry_PropertyW(LPGUID class, ULONG prop, PULON
     return CR_FAILURE;
 }
 
+/***********************************************************************
+ *             CM_Get_Sibling_Ex  (SETUPAPI.@)
+ */
+CONFIGRET WINAPI CM_Get_Sibling_Ex(
+    PDEVINST pdnDevInst, DEVINST DevInst, ULONG ulFlags, HMACHINE hMachine)
+{
+    FIXME("%p 0x%08x 0x%08x %p: stub\n", pdnDevInst, DevInst, ulFlags, hMachine);
+    return CR_FAILURE;
+}
+
 CONFIGRET WINAPI CM_Reenumerate_DevNode(DEVINST dnDevInst, ULONG ulFlags)
 {
     FIXME("0x%08x 0x%08x: stub\n", dnDevInst, ulFlags);
@@ -632,4 +674,26 @@ BOOL WINAPI SetupDiSetSelectedDevice(HDEVINFO SetupDiSetSelectedDevice, PSP_DEVI
     FIXME("(%p, %p) stub\n", SetupDiSetSelectedDevice, DeviceInfoData);
 
     return TRUE;
+}
+
+/***********************************************************************
+ *              SetupDiEnumDriverInfoA  (SETUPAPI.@)
+ */
+BOOL WINAPI SetupDiEnumDriverInfoA(HDEVINFO DeviceInfoSet, PSP_DEVINFO_DATA DeviceInfoData, DWORD DriverType, DWORD MemberIndex, PSP_DRVINFO_DATA_A DriverInfoData)
+{
+    FIXME("(%p, %p, 0x%x, %u, %p stub\n", DeviceInfoSet, DeviceInfoData, DriverType, MemberIndex, DriverInfoData);
+
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+/***********************************************************************
+ *              SetupDiEnumDriverInfoW  (SETUPAPI.@)
+ */
+BOOL WINAPI SetupDiEnumDriverInfoW(HDEVINFO DeviceInfoSet, PSP_DEVINFO_DATA DeviceInfoData, DWORD DriverType, DWORD MemberIndex, PSP_DRVINFO_DATA_W DriverInfoData)
+{
+    FIXME("(%p, %p, 0x%x, %u, %p stub\n", DeviceInfoSet, DeviceInfoData, DriverType, MemberIndex, DriverInfoData);
+
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
 }

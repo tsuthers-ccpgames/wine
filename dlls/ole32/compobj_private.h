@@ -297,6 +297,10 @@ extern HRESULT WINAPI OLE32_DllUnregisterServer(void) DECLSPEC_HIDDEN;
 extern HRESULT Handler_DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv) DECLSPEC_HIDDEN;
 extern HRESULT HandlerCF_Create(REFCLSID rclsid, REFIID riid, LPVOID *ppv) DECLSPEC_HIDDEN;
 
+extern HRESULT WINAPI GlobalOptions_CreateInstance(IClassFactory *iface, IUnknown *pUnk,
+                                                   REFIID riid, void **ppv) DECLSPEC_HIDDEN;
+extern IClassFactory GlobalOptionsCF DECLSPEC_HIDDEN;
+
 /* Exported non-interface Data Advise Holder functions */
 HRESULT DataAdviseHolder_OnConnect(IDataAdviseHolder *iface, IDataObject *pDelegate) DECLSPEC_HIDDEN;
 void DataAdviseHolder_OnDisconnect(IDataAdviseHolder *iface) DECLSPEC_HIDDEN;
@@ -320,7 +324,7 @@ extern BOOL actctx_get_miscstatus(const CLSID*, DWORD, DWORD*) DECLSPEC_HIDDEN;
 
 extern const char *debugstr_formatetc(const FORMATETC *formatetc) DECLSPEC_HIDDEN;
 
-static inline void *heap_alloc(size_t len)
+static inline void* __WINE_ALLOC_SIZE(1) heap_alloc(size_t len)
 {
     return HeapAlloc(GetProcessHeap(), 0, len);
 }

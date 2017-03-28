@@ -120,7 +120,7 @@ static gboolean amt_from_gst_caps_audio(GstCaps *caps, AM_MEDIA_TYPE *amt)
 {
     WAVEFORMATEXTENSIBLE *wfe;
     WAVEFORMATEX *wfx;
-    gint32 depth = 0, bpp = 0;
+    gint32 depth, bpp;
     GstAudioInfo ainfo;
 
     if (!gst_audio_info_from_caps (&ainfo, caps))
@@ -181,7 +181,7 @@ static gboolean amt_from_gst_caps_video(GstCaps *caps, AM_MEDIA_TYPE *amt)
 {
     VIDEOINFOHEADER *vih;
     BITMAPINFOHEADER *bih;
-    gint32 width = 0, height = 0, nom = 0, denom = 0;
+    gint32 width, height, nom, denom;
     GstVideoInfo vinfo;
 
     if (!gst_video_info_from_caps (&vinfo, caps))
@@ -233,9 +233,8 @@ static gboolean amt_from_gst_caps_video(GstCaps *caps, AM_MEDIA_TYPE *amt)
         bih->biCompression = amt->subtype.Data1;
     }
     bih->biSizeImage = width * height * bih->biBitCount / 8;
-    vih->AvgTimePerFrame = 10000000;
-    vih->AvgTimePerFrame *= denom;
-    vih->AvgTimePerFrame /= nom;
+    if ((vih->AvgTimePerFrame = (REFERENCE_TIME)MulDiv(10000000, denom, nom)) == -1)
+        vih->AvgTimePerFrame = 0; /* zero division or integer overflow */
     vih->rcSource.left = 0;
     vih->rcSource.right = width;
     vih->rcSource.top = height;
@@ -701,7 +700,7 @@ static GstFlowReturn request_buffer_src(GstPad *pad, GstObject *parent, guint64 
     TRACE("%p %s %i %p\n", pad, wine_dbgstr_longlong(ofs), len, buf);
 
     *buf = NULL;
-    if (ofs == (guint64)-1)
+    if (ofs == GST_BUFFER_OFFSET_NONE)
         ofs = This->nextpullofs;
     if (ofs >= This->filesize) {
         WARN("Reading past eof: %s, %u\n", wine_dbgstr_longlong(ofs), len);
@@ -1083,7 +1082,8 @@ static GstBusSyncReply watch_bus(GstBus *bus, GstMessage *msg, gpointer data)
         WARN("%s: %s\n", GST_OBJECT_NAME(msg->src), err->message);
         WARN("%s\n", dbg_info);
     }
-    g_error_free(err);
+    if (err)
+        g_error_free(err);
     g_free(dbg_info);
     return GST_BUS_DROP;
 }
@@ -1950,6 +1950,9 @@ static ULONG WINAPI GSTInPin_Release(IPin *iface)
         if (This->pAlloc)
             IMemAllocator_Release(This->pAlloc);
         This->pAlloc = NULL;
+        if (This->pReader)
+            IAsyncReader_Release(This->pReader);
+        This->pReader = NULL;
         This->pin.IPin_iface.lpVtbl = NULL;
         return 0;
     } else
@@ -2047,6 +2050,7 @@ static HRESULT WINAPI GSTInPin_Disconnect(IPin *iface)
         if (SUCCEEDED(hr) && state == State_Stopped) {
             IMemAllocator_Decommit(This->pAlloc);
             IPin_Disconnect(This->pin.pConnectedTo);
+            IPin_Release(This->pin.pConnectedTo);
             This->pin.pConnectedTo = NULL;
             hr = GST_RemoveOutputPins(Parser);
         } else

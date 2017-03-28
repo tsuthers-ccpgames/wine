@@ -741,7 +741,7 @@ static HRESULT get_data_from_storage(IDataObject *data, FORMATETC *fmt, HGLOBAL 
     hr = IDataObject_GetDataHere(data, &stg_fmt, &med);
     if(FAILED(hr))
     {
-        med.u.pstg = NULL;
+        memset(&med, 0, sizeof(med));
         hr = IDataObject_GetData(data, &stg_fmt, &med);
         if(FAILED(hr)) goto end;
 
@@ -789,7 +789,7 @@ static HRESULT get_data_from_stream(IDataObject *data, FORMATETC *fmt, HGLOBAL *
         LARGE_INTEGER offs;
         ULARGE_INTEGER pos;
 
-        med.u.pstm = NULL;
+        memset(&med, 0, sizeof(med));
         hr = IDataObject_GetData(data, &stm_fmt, &med);
         if(FAILED(hr)) goto error;
 
@@ -826,6 +826,7 @@ static HRESULT get_data_from_global(IDataObject *data, FORMATETC *fmt, HGLOBAL *
 
     mem_fmt = *fmt;
     mem_fmt.tymed = TYMED_HGLOBAL;
+    memset(&med, 0, sizeof(med));
 
     hr = IDataObject_GetData(data, &mem_fmt, &med);
     if(FAILED(hr)) return hr;
@@ -853,6 +854,7 @@ static HRESULT get_data_from_enhmetafile(IDataObject *data, FORMATETC *fmt, HGLO
 
     mem_fmt = *fmt;
     mem_fmt.tymed = TYMED_ENHMF;
+    memset(&med, 0, sizeof(med));
 
     hr = IDataObject_GetData(data, &mem_fmt, &med);
     if(FAILED(hr)) return hr;
@@ -880,6 +882,7 @@ static HRESULT get_data_from_metafilepict(IDataObject *data, FORMATETC *fmt, HGL
 
     mem_fmt = *fmt;
     mem_fmt.tymed = TYMED_MFPICT;
+    memset(&med, 0, sizeof(med));
 
     hr = IDataObject_GetData(data, &mem_fmt, &med);
     if(FAILED(hr)) return hr;
@@ -909,6 +912,7 @@ static HRESULT get_data_from_bitmap(IDataObject *data, FORMATETC *fmt, HBITMAP *
 
     mem_fmt = *fmt;
     mem_fmt.tymed = TYMED_GDI;
+    memset(&med, 0, sizeof(med));
 
     hr = IDataObject_GetData(data, &mem_fmt, &med);
     if(FAILED(hr)) return hr;
@@ -1110,7 +1114,7 @@ static HRESULT get_current_dataobject(IDataObject **data)
 
     h = GetClipboardData(wine_marshal_clipboard_format);
     if(!h) return S_FALSE;
-    if(GlobalSize(h) == 0) return S_FALSE;
+    if(GlobalSize(h) <= 1) return S_FALSE;
     ptr = GlobalLock(h);
     if(!ptr) return S_FALSE;
 
@@ -1198,9 +1202,11 @@ static HRESULT get_priv_data(ole_priv_data **data)
 
         for(cf = 0; (cf = EnumClipboardFormats(cf)) != 0; count++)
         {
-            char buf[100];
-            GetClipboardFormatNameA(cf, buf, sizeof(buf));
-            TRACE("cf %04x %s\n", cf, buf);
+            WCHAR buf[256];
+            if (GetClipboardFormatNameW(cf, buf, sizeof(buf) / sizeof(WCHAR)))
+                TRACE("cf %04x %s\n", cf, debugstr_w(buf));
+            else
+                TRACE("cf %04x\n", cf);
         }
         TRACE("count %d\n", count);
         size += count * sizeof(ret->entries[0]);
@@ -1391,6 +1397,8 @@ static HRESULT WINAPI snapshot_GetData(IDataObject *iface, FORMATETC *fmt,
     TRACE("(%p, %p {%s}, %p)\n", iface, fmt, dump_fmtetc(fmt), med);
 
     if ( !fmt || !med ) return E_INVALIDARG;
+
+    memset(med, 0, sizeof(*med));
 
     if ( !OpenClipboard(NULL)) return CLIPBRD_E_CANT_OPEN;
 
@@ -1957,7 +1965,7 @@ static HRESULT expose_marshalled_dataobject(ole_clipbrd *clipbrd, IDataObject *d
         dup_global_mem(h_stm, GMEM_DDESHARE|GMEM_MOVEABLE, &h);
     }
     else /* flushed */
-        h = GlobalAlloc(GMEM_DDESHARE|GMEM_MOVEABLE, 0);
+        h = GlobalAlloc(GMEM_DDESHARE|GMEM_MOVEABLE, 1);
 
     if(!h) return E_OUTOFMEMORY;
 
@@ -2096,8 +2104,7 @@ static HWND create_clipbrd_window(void)
     RegisterClassExW(&class);
 
     return CreateWindowW(clipbrd_wndclass, title, WS_POPUP | WS_CLIPSIBLINGS | WS_OVERLAPPED,
-                         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                         NULL, NULL, hinst, 0);
+                         0, 0, 0, 0, HWND_MESSAGE, NULL, hinst, 0);
 }
 
 /*********************************************************************

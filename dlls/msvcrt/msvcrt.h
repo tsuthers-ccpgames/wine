@@ -283,7 +283,17 @@ extern WORD MSVCRT__ctype [257];
 
 void msvcrt_set_errno(int) DECLSPEC_HIDDEN;
 #if _MSVCR_VER >= 80
-void throw_bad_alloc(const char*) DECLSPEC_HIDDEN;
+typedef enum {
+    EXCEPTION_BAD_ALLOC,
+#if _MSVCR_VER >= 100
+    EXCEPTION_SCHEDULER_RESOURCE_ALLOCATION_ERROR,
+    EXCEPTION_IMPROPER_LOCK,
+    EXCEPTION_INVALID_SCHEDULER_POLICY_KEY,
+    EXCEPTION_INVALID_SCHEDULER_POLICY_VALUE,
+    EXCEPTION_INVALID_SCHEDULER_POLICY_THREAD_SPECIFICATION,
+#endif
+} exception_type;
+void throw_exception(exception_type, HRESULT, const char*) DECLSPEC_HIDDEN;
 #endif
 
 void __cdecl _purecall(void);
@@ -328,6 +338,12 @@ extern void msvcrt_free_signals(void) DECLSPEC_HIDDEN;
 extern void msvcrt_free_popen_data(void) DECLSPEC_HIDDEN;
 extern BOOL msvcrt_init_heap(void) DECLSPEC_HIDDEN;
 extern void msvcrt_destroy_heap(void) DECLSPEC_HIDDEN;
+
+#if _MSVCR_VER >= 100
+extern void msvcrt_init_scheduler(void*) DECLSPEC_HIDDEN;
+extern void msvcrt_free_scheduler(void) DECLSPEC_HIDDEN;
+extern void msvcrt_free_scheduler_thread(void) DECLSPEC_HIDDEN;
+#endif
 
 extern unsigned msvcrt_create_io_inherit_block(WORD*, BYTE**) DECLSPEC_HIDDEN;
 
@@ -447,6 +463,11 @@ typedef struct MSVCRT__ldiv_t {
     MSVCRT_long quot;  /* quotient */
     MSVCRT_long rem;   /* remainder */
 } MSVCRT_ldiv_t;
+
+typedef struct MSVCRT__lldiv_t {
+    MSVCRT_longlong quot;  /* quotient */
+    MSVCRT_longlong rem;   /* remainder */
+} MSVCRT_lldiv_t;
 
 struct MSVCRT__heapinfo {
   int*           _pentry;
@@ -1176,6 +1197,9 @@ extern char* __cdecl __unDName(char *,const char*,int,malloc_func_t,free_func_t,
 
 #define UCRTBASE_SCANF_MASK                              (0x0007)
 
+#define COOPERATIVE_TIMEOUT_INFINITE ((unsigned int)-1)
+#define COOPERATIVE_WAIT_TIMEOUT     ~0
+
 typedef enum {
     _FpCodeUnspecified,
     _FpCodeAdd,
@@ -1373,4 +1397,20 @@ typedef struct {
     _FPIEEE_VALUE Result;
 } _FPIEEE_RECORD, *_PFPIEEE_RECORD;
 
+static inline void* __WINE_ALLOC_SIZE(1) heap_alloc(size_t len)
+{
+    return HeapAlloc(GetProcessHeap(), 0, len);
+}
+
+static inline void* __WINE_ALLOC_SIZE(1) heap_alloc_zero(size_t len)
+{
+    return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, len);
+}
+
+static inline BOOL heap_free(void *mem)
+{
+    return HeapFree(GetProcessHeap(), 0, mem);
+}
+
+#define INHERIT_THREAD_PRIORITY 0xF000
 #endif /* __WINE_MSVCRT_H */

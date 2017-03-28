@@ -1,7 +1,7 @@
 /*
  *    FreeType integration
  *
- * Copyright 2014-2015 Nikolay Sivov for CodeWeavers
+ * Copyright 2014-2017 Nikolay Sivov for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -74,10 +74,12 @@ MAKE_FUNCPTR(FT_Glyph_Transform);
 MAKE_FUNCPTR(FT_Init_FreeType);
 MAKE_FUNCPTR(FT_Library_Version);
 MAKE_FUNCPTR(FT_Load_Glyph);
+MAKE_FUNCPTR(FT_Matrix_Multiply);
 MAKE_FUNCPTR(FT_New_Memory_Face);
 MAKE_FUNCPTR(FT_Outline_Copy);
 MAKE_FUNCPTR(FT_Outline_Decompose);
 MAKE_FUNCPTR(FT_Outline_Done);
+MAKE_FUNCPTR(FT_Outline_Embolden);
 MAKE_FUNCPTR(FT_Outline_Get_Bitmap);
 MAKE_FUNCPTR(FT_Outline_New);
 MAKE_FUNCPTR(FT_Outline_Transform);
@@ -92,6 +94,23 @@ MAKE_FUNCPTR(FTC_Manager_LookupFace);
 MAKE_FUNCPTR(FTC_Manager_LookupSize);
 MAKE_FUNCPTR(FTC_Manager_RemoveFaceID);
 #undef MAKE_FUNCPTR
+static FT_Error (*pFT_Outline_EmboldenXY)(FT_Outline *, FT_Pos, FT_Pos);
+
+struct face_finalizer_data
+{
+    IDWriteFontFileStream *stream;
+    void *context;
+};
+
+static void face_finalizer(void *object)
+{
+    FT_Face face = object;
+    struct face_finalizer_data *data = (struct face_finalizer_data *)face->generic.data;
+
+    IDWriteFontFileStream_ReleaseFileFragment(data->stream, data->context);
+    IDWriteFontFileStream_Release(data->stream);
+    heap_free(data);
+}
 
 static FT_Error face_requester(FTC_FaceID face_id, FT_Library library, FT_Pointer request_data, FT_Face *face)
 {
@@ -136,7 +155,19 @@ static FT_Error face_requester(FTC_FaceID face_id, FT_Library library, FT_Pointe
 
     index = IDWriteFontFace_GetIndex(fontface);
     fterror = pFT_New_Memory_Face(library, data_ptr, data_size, index, face);
-    IDWriteFontFileStream_ReleaseFileFragment(stream, context);
+    if (fterror == FT_Err_Ok) {
+        struct face_finalizer_data *data;
+
+        data = heap_alloc(sizeof(*data));
+        data->stream = stream;
+        data->context = context;
+
+        (*face)->generic.data = data;
+        (*face)->generic.finalizer = face_finalizer;
+        return fterror;
+    }
+    else
+        IDWriteFontFileStream_ReleaseFileFragment(stream, context);
 
 fail:
     IDWriteFontFileStream_Release(stream);
@@ -166,10 +197,12 @@ BOOL init_freetype(void)
     LOAD_FUNCPTR(FT_Init_FreeType)
     LOAD_FUNCPTR(FT_Library_Version)
     LOAD_FUNCPTR(FT_Load_Glyph)
+    LOAD_FUNCPTR(FT_Matrix_Multiply)
     LOAD_FUNCPTR(FT_New_Memory_Face)
     LOAD_FUNCPTR(FT_Outline_Copy)
     LOAD_FUNCPTR(FT_Outline_Decompose)
     LOAD_FUNCPTR(FT_Outline_Done)
+    LOAD_FUNCPTR(FT_Outline_Embolden)
     LOAD_FUNCPTR(FT_Outline_Get_Bitmap)
     LOAD_FUNCPTR(FT_Outline_New)
     LOAD_FUNCPTR(FT_Outline_Transform)
@@ -184,6 +217,7 @@ BOOL init_freetype(void)
     LOAD_FUNCPTR(FTC_Manager_LookupSize)
     LOAD_FUNCPTR(FTC_Manager_RemoveFaceID)
 #undef LOAD_FUNCPTR
+    pFT_Outline_EmboldenXY = wine_dlsym(ft_handle, "FT_Outline_EmboldenXY", NULL, 0);
 
     if (pFT_Init_FreeType(&library) != 0) {
         ERR("Can't init FreeType library\n");
@@ -244,6 +278,7 @@ HRESULT freetype_get_design_glyph_metrics(IDWriteFontFace4 *fontface, UINT16 uni
     EnterCriticalSection(&freetype_cs);
     if (pFTC_Manager_LookupSize(cache_manager, &scaler, &size) == 0) {
          if (pFT_Load_Glyph(size->face, glyph, FT_LOAD_NO_SCALE) == 0) {
+             USHORT simulations = IDWriteFontFace4_GetSimulations(fontface);
              FT_Glyph_Metrics *metrics = &size->face->glyph->metrics;
 
              ret->leftSideBearing = metrics->horiBearingX;
@@ -253,6 +288,13 @@ HRESULT freetype_get_design_glyph_metrics(IDWriteFontFace4 *fontface, UINT16 uni
              ret->advanceHeight = metrics->vertAdvance;
              ret->bottomSideBearing = metrics->vertAdvance - metrics->vertBearingY - metrics->height;
              ret->verticalOriginY = metrics->height + metrics->vertBearingY;
+
+             /* Adjust in case of bold simulation, glyphs without contours are ignored. */
+             if (simulations & DWRITE_FONT_SIMULATIONS_BOLD && size->face->glyph->format == FT_GLYPH_FORMAT_OUTLINE &&
+                     size->face->glyph->outline.n_contours != 0) {
+                 if (ret->advanceWidth)
+                     ret->advanceWidth += (unitsperEm + 49) / 50;
+             }
          }
     }
     LeaveCriticalSection(&freetype_cs);
@@ -417,8 +459,29 @@ static void decompose_outline(FT_Outline *outline, FLOAT xoffset, FLOAT yoffset,
         ID2D1SimplifiedGeometrySink_EndFigure(sink, D2D1_FIGURE_END_CLOSED);
 }
 
-HRESULT freetype_get_glyphrun_outline(IDWriteFontFace4 *fontface, FLOAT emSize, UINT16 const *glyphs, FLOAT const *advances,
-    DWRITE_GLYPH_OFFSET const *offsets, UINT32 count, BOOL is_rtl, IDWriteGeometrySink *sink)
+static void embolden_glyph_outline(FT_Outline *outline, FLOAT emsize)
+{
+    FT_Pos strength;
+
+    strength = MulDiv(emsize, 1 << 6, 24);
+    if (pFT_Outline_EmboldenXY)
+        pFT_Outline_EmboldenXY(outline, strength, 0);
+    else
+        pFT_Outline_Embolden(outline, strength);
+}
+
+static void embolden_glyph(FT_Glyph glyph, FLOAT emsize)
+{
+    FT_OutlineGlyph outline_glyph = (FT_OutlineGlyph)glyph;
+
+    if (glyph->format != FT_GLYPH_FORMAT_OUTLINE)
+        return;
+
+    embolden_glyph_outline(&outline_glyph->outline, emsize);
+}
+
+HRESULT freetype_get_glyphrun_outline(IDWriteFontFace4 *fontface, FLOAT emSize, UINT16 const *glyphs,
+    FLOAT const *advances, DWRITE_GLYPH_OFFSET const *offsets, UINT32 count, BOOL is_rtl, IDWriteGeometrySink *sink)
 {
     FTC_ScalerRec scaler;
     USHORT simulations;
@@ -450,6 +513,9 @@ HRESULT freetype_get_glyphrun_outline(IDWriteFontFace4 *fontface, FLOAT emSize, 
                 FT_Outline *outline = &size->face->glyph->outline;
                 FLOAT xoffset = 0.0f, yoffset = 0.0f;
                 FT_Matrix m;
+
+                if (simulations & DWRITE_FONT_SIMULATIONS_BOLD)
+                    embolden_glyph_outline(outline, emSize);
 
                 m.xx = 1 << 16;
                 m.xy = simulations & DWRITE_FONT_SIMULATIONS_OBLIQUE ? (1 << 16) / 3 : 0;
@@ -568,35 +634,66 @@ static BOOL is_face_scalable(IDWriteFontFace4 *fontface)
         return FALSE;
 }
 
+static BOOL get_glyph_transform(struct dwrite_glyphbitmap *bitmap, FT_Matrix *ret)
+{
+    USHORT simulations = IDWriteFontFace4_GetSimulations(bitmap->fontface);
+    FT_Matrix m;
+
+    ret->xx = 1 << 16;
+    ret->xy = 0;
+    ret->yx = 0;
+    ret->yy = 1 << 16;
+
+    /* Some fonts provide mostly bitmaps and very few outlines, for example for .notdef.
+       Disable transform if that's the case. */
+    if (!is_face_scalable(bitmap->fontface) || (!bitmap->m && simulations == 0))
+        return FALSE;
+
+    if (simulations & DWRITE_FONT_SIMULATIONS_OBLIQUE) {
+        m.xx =  1 << 16;
+        m.xy = (1 << 16) / 3;
+        m.yx =  0;
+        m.yy =  1 << 16;
+        pFT_Matrix_Multiply(&m, ret);
+    }
+
+    if (bitmap->m) {
+        ft_matrix_from_dwrite_matrix(bitmap->m, &m);
+        pFT_Matrix_Multiply(&m, ret);
+    }
+
+    return TRUE;
+}
+
 void freetype_get_glyph_bbox(struct dwrite_glyphbitmap *bitmap)
 {
+    USHORT simulations = IDWriteFontFace4_GetSimulations(bitmap->fontface);
     FTC_ImageTypeRec imagetype;
     FT_BBox bbox = { 0 };
+    BOOL needs_transform;
     FT_Glyph glyph;
+    FT_Matrix m;
 
     EnterCriticalSection(&freetype_cs);
 
-    /* Some fonts provide mostly bitmaps and very few outlines, for example for .notdef,
-       disable transform if that's the case. */
-    if (bitmap->m) {
-        if (!is_face_scalable(bitmap->fontface))
-            bitmap->m = NULL;
-    }
+    needs_transform = get_glyph_transform(bitmap, &m);
 
     imagetype.face_id = bitmap->fontface;
     imagetype.width = 0;
     imagetype.height = bitmap->emsize;
-    imagetype.flags = bitmap->m ? FT_LOAD_NO_BITMAP : FT_LOAD_DEFAULT;
+    imagetype.flags = needs_transform ? FT_LOAD_NO_BITMAP : FT_LOAD_DEFAULT;
 
     if (pFTC_ImageCache_Lookup(image_cache, &imagetype, bitmap->index, &glyph, NULL) == 0) {
-        if (bitmap->m) {
+        if (needs_transform) {
             FT_Glyph glyph_copy;
 
             if (pFT_Glyph_Copy(glyph, &glyph_copy) == 0) {
-                FT_Matrix ft_matrix;
+                if (simulations & DWRITE_FONT_SIMULATIONS_BOLD)
+                    embolden_glyph(glyph_copy, bitmap->emsize);
 
-                ft_matrix_from_dwrite_matrix(bitmap->m, &ft_matrix);
-                pFT_Glyph_Transform(glyph_copy, &ft_matrix, NULL);
+                if (simulations & DWRITE_FONT_SIMULATIONS_OBLIQUE)
+                    pFT_Glyph_Transform(glyph_copy, &m, NULL);
+
                 pFT_Glyph_Get_CBox(glyph_copy, FT_GLYPH_BBOX_PIXELS, &bbox);
                 pFT_Done_Glyph(glyph_copy);
             }
@@ -609,6 +706,32 @@ void freetype_get_glyph_bbox(struct dwrite_glyphbitmap *bitmap)
 
     /* flip Y axis */
     SetRect(&bitmap->bbox, bbox.xMin, -bbox.yMax, bbox.xMax, -bbox.yMin);
+}
+
+void freetype_get_design_glyph_bbox(IDWriteFontFace4 *fontface, UINT16 unitsperEm, UINT16 glyph, RECT *bbox)
+{
+    FTC_ScalerRec scaler;
+    FT_Size size;
+
+    scaler.face_id = fontface;
+    scaler.width  = unitsperEm;
+    scaler.height = unitsperEm;
+    scaler.pixel = 1;
+    scaler.x_res = 0;
+    scaler.y_res = 0;
+
+    EnterCriticalSection(&freetype_cs);
+    if (pFTC_Manager_LookupSize(cache_manager, &scaler, &size) == 0) {
+         if (pFT_Load_Glyph(size->face, glyph, FT_LOAD_NO_SCALE) == 0) {
+             FT_Glyph_Metrics *metrics = &size->face->glyph->metrics;
+
+             bbox->left = metrics->horiBearingX;
+             bbox->right = bbox->left + metrics->horiAdvance;
+             bbox->top = -metrics->horiBearingY;
+             bbox->bottom = bbox->top + metrics->height;
+         }
+    }
+    LeaveCriticalSection(&freetype_cs);
 }
 
 static BOOL freetype_get_aliased_glyph_bitmap(struct dwrite_glyphbitmap *bitmap, FT_Glyph glyph)
@@ -704,31 +827,32 @@ static BOOL freetype_get_aa_glyph_bitmap(struct dwrite_glyphbitmap *bitmap, FT_G
 
 BOOL freetype_get_glyph_bitmap(struct dwrite_glyphbitmap *bitmap)
 {
+    USHORT simulations = IDWriteFontFace4_GetSimulations(bitmap->fontface);
     FTC_ImageTypeRec imagetype;
+    BOOL needs_transform;
     BOOL ret = FALSE;
     FT_Glyph glyph;
+    FT_Matrix m;
 
     EnterCriticalSection(&freetype_cs);
 
-    if (bitmap->m) {
-        if (!is_face_scalable(bitmap->fontface))
-            bitmap->m = NULL;
-    }
+    needs_transform = get_glyph_transform(bitmap, &m);
 
     imagetype.face_id = bitmap->fontface;
     imagetype.width = 0;
     imagetype.height = bitmap->emsize;
-    imagetype.flags = bitmap->m ? FT_LOAD_NO_BITMAP : FT_LOAD_DEFAULT;
+    imagetype.flags = needs_transform ? FT_LOAD_NO_BITMAP : FT_LOAD_DEFAULT;
 
     if (pFTC_ImageCache_Lookup(image_cache, &imagetype, bitmap->index, &glyph, NULL) == 0) {
         FT_Glyph glyph_copy;
 
-        if (bitmap->m) {
+        if (needs_transform) {
             if (pFT_Glyph_Copy(glyph, &glyph_copy) == 0) {
-                FT_Matrix ft_matrix;
+                if (simulations & DWRITE_FONT_SIMULATIONS_BOLD)
+                    embolden_glyph(glyph_copy, bitmap->emsize);
 
-                ft_matrix_from_dwrite_matrix(bitmap->m, &ft_matrix);
-                pFT_Glyph_Transform(glyph_copy, &ft_matrix, NULL);
+                if (simulations & DWRITE_FONT_SIMULATIONS_OBLIQUE)
+                    pFT_Glyph_Transform(glyph_copy, &m, NULL);
                 glyph = glyph_copy;
             }
         }
@@ -781,7 +905,8 @@ INT freetype_get_charmap_index(IDWriteFontFace4 *fontface, BOOL *is_symbol)
     return charmap_index;
 }
 
-INT32 freetype_get_glyph_advance(IDWriteFontFace4 *fontface, FLOAT emSize, UINT16 index, DWRITE_MEASURING_MODE mode)
+INT32 freetype_get_glyph_advance(IDWriteFontFace4 *fontface, FLOAT emSize, UINT16 index, DWRITE_MEASURING_MODE mode,
+    BOOL *has_contours)
 {
     FTC_ImageTypeRec imagetype;
     FT_Glyph glyph;
@@ -795,10 +920,14 @@ INT32 freetype_get_glyph_advance(IDWriteFontFace4 *fontface, FLOAT emSize, UINT1
         imagetype.flags |= FT_LOAD_NO_HINTING;
 
     EnterCriticalSection(&freetype_cs);
-    if (pFTC_ImageCache_Lookup(image_cache, &imagetype, index, &glyph, NULL) == 0)
+    if (pFTC_ImageCache_Lookup(image_cache, &imagetype, index, &glyph, NULL) == 0) {
+        *has_contours = glyph->format == FT_GLYPH_FORMAT_OUTLINE && ((FT_OutlineGlyph)glyph)->outline.n_contours;
         advance = glyph->advance.x >> 16;
-    else
+    }
+    else {
+        *has_contours = FALSE;
         advance = 0;
+    }
     LeaveCriticalSection(&freetype_cs);
 
     return advance;
@@ -861,6 +990,11 @@ void freetype_get_glyph_bbox(struct dwrite_glyphbitmap *bitmap)
     memset(&bitmap->bbox, 0, sizeof(bitmap->bbox));
 }
 
+void freetype_get_design_glyph_bbox(IDWriteFontFace4 *fontface, UINT16 unitsperEm, UINT16 glyph, RECT *bbox)
+{
+    memset(bbox, 0, sizeof(*bbox));
+}
+
 BOOL freetype_get_glyph_bitmap(struct dwrite_glyphbitmap *bitmap)
 {
     return FALSE;
@@ -872,8 +1006,10 @@ INT freetype_get_charmap_index(IDWriteFontFace4 *fontface, BOOL *is_symbol)
     return -1;
 }
 
-INT32 freetype_get_glyph_advance(IDWriteFontFace4 *fontface, FLOAT emSize, UINT16 index, DWRITE_MEASURING_MODE mode)
+INT32 freetype_get_glyph_advance(IDWriteFontFace4 *fontface, FLOAT emSize, UINT16 index, DWRITE_MEASURING_MODE mode,
+    BOOL *has_contours)
 {
+    *has_contours = FALSE;
     return 0;
 }
 

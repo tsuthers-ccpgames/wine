@@ -41,6 +41,7 @@
 #define MS_HHEA_TAG DWRITE_MAKE_OPENTYPE_TAG('h','h','e','a')
 #define MS_POST_TAG DWRITE_MAKE_OPENTYPE_TAG('p','o','s','t')
 #define MS_GSUB_TAG DWRITE_MAKE_OPENTYPE_TAG('G','S','U','B')
+#define MS_KERN_TAG DWRITE_MAKE_OPENTYPE_TAG('k','e','r','n')
 
 #ifdef WORDS_BIGENDIAN
 #define GET_BE_WORD(x) (x)
@@ -91,9 +92,9 @@ static void _expect_ref(IUnknown* obj, ULONG ref, int line)
     ok_(__FILE__,line)(rc == ref, "expected refcount %d, got %d\n", ref, rc);
 }
 
-static inline void *heap_alloc(size_t len)
+static inline void* __WINE_ALLOC_SIZE(1) heap_alloc(size_t size)
 {
-    return HeapAlloc(GetProcessHeap(), 0, len);
+    return HeapAlloc(GetProcessHeap(), 0, size);
 }
 
 static inline BOOL heap_free(void *mem)
@@ -113,7 +114,8 @@ static const WCHAR emojiW[] = {'S','e','g','o','e',' ','U','I',' ','E','m','o','
 #include "pshpack2.h"
 typedef struct
 {
-    ULONG version;
+    USHORT majorVersion;
+    USHORT minorVersion;
     ULONG revision;
     ULONG checksumadj;
     ULONG magic;
@@ -131,6 +133,17 @@ typedef struct
     SHORT index_format;
     SHORT glyphdata_format;
 } TT_HEAD;
+
+enum TT_HEAD_MACSTYLE
+{
+    TT_HEAD_MACSTYLE_BOLD      = 1 << 0,
+    TT_HEAD_MACSTYLE_ITALIC    = 1 << 1,
+    TT_HEAD_MACSTYLE_UNDERLINE = 1 << 2,
+    TT_HEAD_MACSTYLE_OUTLINE   = 1 << 3,
+    TT_HEAD_MACSTYLE_SHADOW    = 1 << 4,
+    TT_HEAD_MACSTYLE_CONDENSED = 1 << 5,
+    TT_HEAD_MACSTYLE_EXTENDED  = 1 << 6,
+};
 
 typedef struct
 {
@@ -205,7 +218,8 @@ typedef struct {
 } TT_POST;
 
 typedef struct {
-    ULONG  version;
+    USHORT majorVersion;
+    USHORT minorVersion;
     SHORT  ascender;
     SHORT  descender;
     SHORT  linegap;
@@ -1714,16 +1728,10 @@ static void get_expected_font_metrics(IDWriteFontFace *fontface, DWRITE_FONT_MET
         metrics->underlineThickness = GET_BE_WORD(tt_post->underlineThickness);
     }
 
-    if (metrics->strikethroughThickness || metrics->underlineThickness) {
-        if (!metrics->strikethroughThickness)
-            metrics->strikethroughThickness = metrics->underlineThickness;
-        if (!metrics->underlineThickness)
-            metrics->underlineThickness = metrics->strikethroughThickness;
-    }
-    else {
-        metrics->strikethroughThickness = metrics->designUnitsPerEm / 14;
+    if (metrics->underlineThickness == 0)
         metrics->underlineThickness = metrics->designUnitsPerEm / 14;
-    }
+    if (metrics->strikethroughThickness == 0)
+        metrics->strikethroughThickness = metrics->underlineThickness;
 
     if (tt_os2)
         IDWriteFontFace_ReleaseFontTable(fontface, os2_context);
@@ -2185,68 +2193,215 @@ static void test_system_fontcollection(void)
     IDWriteFactory_Release(factory);
 }
 
+static void get_logfont_from_font(IDWriteFont *font, LOGFONTW *logfont)
+{
+    void *os2_context, *head_context;
+    IDWriteLocalizedStrings *names;
+    DWRITE_FONT_SIMULATIONS sim;
+    IDWriteFontFace *fontface;
+    const TT_OS2_V2 *tt_os2;
+    DWRITE_FONT_STYLE style;
+    const TT_HEAD *tt_head;
+    LONG weight;
+    UINT32 size;
+    BOOL exists;
+    HRESULT hr;
+
+    /* These are rendering time properties. */
+    logfont->lfHeight = 0;
+    logfont->lfWidth = 0;
+    logfont->lfEscapement = 0;
+    logfont->lfOrientation = 0;
+    logfont->lfUnderline = 0;
+    logfont->lfStrikeOut = 0;
+
+    logfont->lfWeight = 0;
+    logfont->lfItalic = 0;
+
+    hr = IDWriteFont_CreateFontFace(font, &fontface);
+    ok(hr == S_OK, "Failed to create font face, %#x\n", hr);
+
+    hr = IDWriteFontFace_TryGetFontTable(fontface, MS_0S2_TAG, (const void **)&tt_os2, &size,
+        &os2_context, &exists);
+    ok(hr == S_OK, "Failed to get OS/2 table, %#x\n", hr);
+
+    hr = IDWriteFontFace_TryGetFontTable(fontface, MS_HEAD_TAG, (const void **)&tt_head, &size,
+        &head_context, &exists);
+    ok(hr == S_OK, "Failed to get head table, %#x\n", hr);
+
+    sim = IDWriteFont_GetSimulations(font);
+
+    /* lfWeight */
+    weight = FW_REGULAR;
+    if (tt_os2) {
+        USHORT usWeightClass = GET_BE_WORD(tt_os2->usWeightClass);
+
+        if (usWeightClass >= 1 && usWeightClass <= 9)
+            usWeightClass *= 100;
+
+        if (usWeightClass > DWRITE_FONT_WEIGHT_ULTRA_BLACK)
+            weight = DWRITE_FONT_WEIGHT_ULTRA_BLACK;
+        else if (usWeightClass > 0)
+            weight = usWeightClass;
+    }
+    else if (tt_head) {
+        USHORT macStyle = GET_BE_WORD(tt_head->macStyle);
+        if (macStyle & TT_HEAD_MACSTYLE_BOLD)
+            weight = DWRITE_FONT_WEIGHT_BOLD;
+    }
+    if (sim & DWRITE_FONT_SIMULATIONS_BOLD)
+        weight += (FW_BOLD - FW_REGULAR) / 2 + 1;
+    logfont->lfWeight = weight;
+
+    /* lfItalic */
+    if (IDWriteFont_GetSimulations(font) & DWRITE_FONT_SIMULATIONS_OBLIQUE)
+        logfont->lfItalic = 1;
+
+    style = IDWriteFont_GetStyle(font);
+    if (!logfont->lfItalic && ((style == DWRITE_FONT_STYLE_ITALIC) || (style == DWRITE_FONT_STYLE_OBLIQUE))) {
+        if (tt_os2) {
+            USHORT fsSelection = GET_BE_WORD(tt_os2->fsSelection);
+            logfont->lfItalic = !!(fsSelection & OS2_FSSELECTION_ITALIC);
+        }
+        else if (tt_head) {
+            USHORT macStyle = GET_BE_WORD(tt_head->macStyle);
+            logfont->lfItalic = !!(macStyle & TT_HEAD_MACSTYLE_ITALIC);
+        }
+    }
+
+    /* lfFaceName */
+    exists = FALSE;
+    logfont->lfFaceName[0] = 0;
+    hr = IDWriteFont_GetInformationalStrings(font, DWRITE_INFORMATIONAL_STRING_WIN32_FAMILY_NAMES, &names, &exists);
+    if (SUCCEEDED(hr)) {
+        if (exists) {
+            static const WCHAR enusW[] = {'e','n','-','u','s',0};
+            WCHAR localeW[LOCALE_NAME_MAX_LENGTH];
+            UINT32 index;
+
+            /* Fallback to en-us if there's no string for user locale. */
+            exists = FALSE;
+            if (GetSystemDefaultLocaleName(localeW, sizeof(localeW)/sizeof(WCHAR)))
+                IDWriteLocalizedStrings_FindLocaleName(names, localeW, &index, &exists);
+
+            if (!exists)
+                IDWriteLocalizedStrings_FindLocaleName(names, enusW, &index, &exists);
+
+            if (exists)
+                IDWriteLocalizedStrings_GetString(names, index, logfont->lfFaceName, sizeof(logfont->lfFaceName)/sizeof(WCHAR));
+        }
+
+        IDWriteLocalizedStrings_Release(names);
+    }
+
+    if (tt_os2)
+        IDWriteFontFace_ReleaseFontTable(fontface, os2_context);
+    if (tt_head)
+        IDWriteFontFace_ReleaseFontTable(fontface, head_context);
+    IDWriteFontFace_Release(fontface);
+}
+
 static void test_ConvertFontFaceToLOGFONT(void)
 {
-    DWRITE_FONT_SIMULATIONS sim;
     IDWriteGdiInterop *interop;
     IDWriteFontFace *fontface;
     IDWriteFactory *factory;
-    IDWriteFont *font;
     LOGFONTW logfont;
+    UINT32 count, i;
     HRESULT hr;
+    IDWriteFontCollection *collection;
 
     factory = create_factory();
 
     hr = IDWriteFactory_GetGdiInterop(factory, &interop);
     ok(hr == S_OK, "got 0x%08x\n", hr);
 
-    memset(&logfont, 0, sizeof(logfont));
-    logfont.lfHeight = 12;
-    logfont.lfWidth  = 12;
-    logfont.lfEscapement = 100;
-    logfont.lfWeight = FW_NORMAL;
-    logfont.lfItalic = 1;
-    logfont.lfUnderline = 1;
-    logfont.lfStrikeOut = 1;
-
-    lstrcpyW(logfont.lfFaceName, tahomaW);
-
-    hr = IDWriteGdiInterop_CreateFontFromLOGFONT(interop, &logfont, &font);
-    ok(hr == S_OK, "got 0x%08x\n", hr);
-
-    hr = IDWriteFont_CreateFontFace(font, &fontface);
-    ok(hr == S_OK, "got 0x%08x\n", hr);
-
-    sim = IDWriteFont_GetSimulations(font);
-    ok(sim == DWRITE_FONT_SIMULATIONS_OBLIQUE, "sim %d\n", sim);
-
-    sim = IDWriteFontFace_GetSimulations(fontface);
-    ok(sim == DWRITE_FONT_SIMULATIONS_OBLIQUE, "sim %d\n", sim);
-
-    IDWriteFont_Release(font);
-
 if (0) /* crashes on native */
 {
     hr = IDWriteGdiInterop_ConvertFontFaceToLOGFONT(interop, NULL, NULL);
     hr = IDWriteGdiInterop_ConvertFontFaceToLOGFONT(interop, fontface, NULL);
 }
+    memset(&logfont, 0xcc, sizeof(logfont));
+    hr = IDWriteGdiInterop_ConvertFontFaceToLOGFONT(interop, NULL, &logfont);
+    ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
+    ok(logfont.lfFaceName[0] == 0, "got face name %s\n", wine_dbgstr_w(logfont.lfFaceName));
 
-    memset(&logfont, 0xa, sizeof(logfont));
-    logfont.lfFaceName[0] = 0;
-
-    hr = IDWriteGdiInterop_ConvertFontFaceToLOGFONT(interop, fontface, &logfont);
+    hr = IDWriteFactory_GetSystemFontCollection(factory, &collection, FALSE);
     ok(hr == S_OK, "got 0x%08x\n", hr);
-    ok(logfont.lfHeight == 0, "got %d\n", logfont.lfHeight);
-    ok(logfont.lfWidth == 0, "got %d\n", logfont.lfWidth);
-    ok(logfont.lfWeight == FW_NORMAL, "got %d\n", logfont.lfWeight);
-    ok(logfont.lfEscapement == 0, "got %d\n", logfont.lfEscapement);
-    ok(logfont.lfItalic == 1, "got %d\n", logfont.lfItalic);
-    ok(logfont.lfUnderline == 0, "got %d\n", logfont.lfUnderline);
-    ok(logfont.lfStrikeOut == 0, "got %d\n", logfont.lfStrikeOut);
-    ok(!lstrcmpW(logfont.lfFaceName, tahomaW), "got %s\n", wine_dbgstr_w(logfont.lfFaceName));
 
+    count = IDWriteFontCollection_GetFontFamilyCount(collection);
+    for (i = 0; i < count; i++) {
+        WCHAR nameW[128], familynameW[64], facenameW[64];
+        IDWriteLocalizedStrings *names;
+        DWRITE_FONT_SIMULATIONS sim;
+        IDWriteFontFamily *family;
+        UINT32 font_count, j;
+        IDWriteFont *font;
+        LOGFONTW lf;
+
+        hr = IDWriteFontCollection_GetFontFamily(collection, i, &family);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        hr = IDWriteFontFamily_GetFamilyNames(family, &names);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        get_enus_string(names, familynameW, sizeof(familynameW)/sizeof(familynameW[0]));
+        IDWriteLocalizedStrings_Release(names);
+
+        font_count = IDWriteFontFamily_GetFontCount(family);
+
+        for (j = 0; j < font_count; j++) {
+            static const WCHAR spaceW[] = {' ', 0};
+            IDWriteFontFace *fontface;
+
+            hr = IDWriteFontFamily_GetFont(family, j, &font);
+            ok(hr == S_OK, "got 0x%08x\n", hr);
+
+            hr = IDWriteFont_GetFaceNames(font, &names);
+            ok(hr == S_OK, "got 0x%08x\n", hr);
+
+            get_enus_string(names, facenameW, sizeof(facenameW)/sizeof(facenameW[0]));
+            IDWriteLocalizedStrings_Release(names);
+
+            lstrcpyW(nameW, familynameW);
+            lstrcatW(nameW, spaceW);
+            lstrcatW(nameW, facenameW);
+
+            hr = IDWriteFont_CreateFontFace(font, &fontface);
+            ok(hr == S_OK, "got 0x%08x\n", hr);
+
+            memset(&logfont, 0xcc, sizeof(logfont));
+            hr = IDWriteGdiInterop_ConvertFontFaceToLOGFONT(interop, fontface, &logfont);
+            ok(hr == S_OK, "got 0x%08x\n", hr);
+
+            sim = IDWriteFontFace_GetSimulations(fontface);
+
+            get_logfont_from_font(font, &lf);
+            ok(logfont.lfWeight == lf.lfWeight, "%s: unexpected lfWeight %d, expected lfWeight %d, font weight %d, "
+                "bold simulation %s\n", wine_dbgstr_w(nameW), logfont.lfWeight, lf.lfWeight, IDWriteFont_GetWeight(font),
+                sim & DWRITE_FONT_SIMULATIONS_BOLD ? "yes" : "no");
+            ok(logfont.lfItalic == lf.lfItalic, "%s: unexpected italic flag %d, oblique simulation %s\n",
+                wine_dbgstr_w(nameW), logfont.lfItalic, sim & DWRITE_FONT_SIMULATIONS_OBLIQUE ? "yes" : "no");
+            ok(!lstrcmpW(logfont.lfFaceName, lf.lfFaceName), "%s: unexpected facename %s, expected %s\n",
+                wine_dbgstr_w(nameW), wine_dbgstr_w(logfont.lfFaceName), wine_dbgstr_w(lf.lfFaceName));
+
+            ok(logfont.lfOutPrecision == OUT_OUTLINE_PRECIS, "%s: unexpected output precision %d\n", wine_dbgstr_w(nameW),
+                logfont.lfOutPrecision);
+            ok(logfont.lfClipPrecision == CLIP_DEFAULT_PRECIS, "%s: unexpected clipping precision %d\n", wine_dbgstr_w(nameW),
+                logfont.lfClipPrecision);
+            ok(logfont.lfQuality == DEFAULT_QUALITY, "%s: unexpected quality %d\n", wine_dbgstr_w(nameW), logfont.lfQuality);
+            ok(logfont.lfPitchAndFamily == DEFAULT_PITCH, "%s: unexpected pitch %d\n", wine_dbgstr_w(nameW),
+                logfont.lfPitchAndFamily);
+
+            IDWriteFontFace_Release(fontface);
+            IDWriteFont_Release(font);
+        }
+
+        IDWriteFontFamily_Release(family);
+    }
+
+    IDWriteFontCollection_Release(collection);
     IDWriteGdiInterop_Release(interop);
-    IDWriteFontFace_Release(fontface);
     IDWriteFactory_Release(factory);
 }
 
@@ -3453,6 +3608,7 @@ static void test_ConvertFontToLOGFONT(void)
     IDWriteFontFamily *family;
     IDWriteFont *font;
     LOGFONTW logfont;
+    UINT32 i, count;
     BOOL system;
     HRESULT hr;
 
@@ -3486,41 +3642,73 @@ if (0) { /* crashes on native */
     ok(!system, "got %d\n", system);
     ok(logfont.lfFaceName[0] == 0, "got face name %s\n", wine_dbgstr_w(logfont.lfFaceName));
 
-    system = FALSE;
+    count = IDWriteFontCollection_GetFontFamilyCount(collection);
+    for (i = 0; i < count; i++) {
+        WCHAR nameW[128], familynameW[64], facenameW[64];
+        IDWriteLocalizedStrings *names;
+        DWRITE_FONT_SIMULATIONS sim;
+        IDWriteFontFamily *family;
+        UINT32 font_count, j;
+        IDWriteFont *font;
+        LOGFONTW lf;
 
-    logfont.lfHeight = 10;
-    logfont.lfWidth = 11;
-    logfont.lfEscapement = 10;
-    logfont.lfOrientation = 10;
-    logfont.lfWeight = 0;
-    logfont.lfItalic = 1;
-    logfont.lfUnderline = 1;
-    logfont.lfStrikeOut = 1;
-    logfont.lfCharSet = 0;
-    logfont.lfOutPrecision = 0;
-    logfont.lfClipPrecision = 0;
-    logfont.lfQuality = 0;
-    logfont.lfPitchAndFamily = 0;
-    logfont.lfFaceName[0] = 0;
+        hr = IDWriteFontCollection_GetFontFamily(collection, i, &family);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
 
-    hr = IDWriteGdiInterop_ConvertFontToLOGFONT(interop, font, &logfont, &system);
-    ok(hr == S_OK, "got 0x%08x\n", hr);
-    ok(system, "got %d\n", system);
+        hr = IDWriteFontFamily_GetFamilyNames(family, &names);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
 
-    ok(logfont.lfHeight == 0, "got %d\n", logfont.lfHeight);
-    ok(logfont.lfWidth == 0, "got %d\n", logfont.lfWidth);
-    ok(logfont.lfEscapement == 0, "got %d\n", logfont.lfEscapement);
-    ok(logfont.lfOrientation == 0, "got %d\n", logfont.lfOrientation);
-    ok(logfont.lfWeight > 0, "got %d\n", logfont.lfWeight);
-    ok(logfont.lfItalic == 0, "got %d\n", logfont.lfItalic);
-    ok(logfont.lfUnderline == 0, "got %d\n", logfont.lfUnderline);
-    ok(logfont.lfStrikeOut == 0, "got %d\n", logfont.lfStrikeOut);
-    ok(logfont.lfCharSet == DEFAULT_CHARSET, "got %d\n", logfont.lfCharSet);
-    ok(logfont.lfOutPrecision == OUT_OUTLINE_PRECIS, "got %d\n", logfont.lfOutPrecision);
-    ok(logfont.lfClipPrecision == 0, "got %d\n", logfont.lfClipPrecision);
-    ok(logfont.lfQuality == 0, "got %d\n", logfont.lfQuality);
-    ok(logfont.lfPitchAndFamily == 0, "got %d\n", logfont.lfPitchAndFamily);
-    ok(logfont.lfFaceName[0] != 0, "got face name %s\n", wine_dbgstr_w(logfont.lfFaceName));
+        get_enus_string(names, familynameW, sizeof(familynameW)/sizeof(familynameW[0]));
+        IDWriteLocalizedStrings_Release(names);
+
+        font_count = IDWriteFontFamily_GetFontCount(family);
+
+        for (j = 0; j < font_count; j++) {
+            static const WCHAR spaceW[] = {' ', 0};
+
+            hr = IDWriteFontFamily_GetFont(family, j, &font);
+            ok(hr == S_OK, "got 0x%08x\n", hr);
+
+            hr = IDWriteFont_GetFaceNames(font, &names);
+            ok(hr == S_OK, "got 0x%08x\n", hr);
+
+            get_enus_string(names, facenameW, sizeof(facenameW)/sizeof(facenameW[0]));
+            IDWriteLocalizedStrings_Release(names);
+
+            lstrcpyW(nameW, familynameW);
+            lstrcatW(nameW, spaceW);
+            lstrcatW(nameW, facenameW);
+
+            system = FALSE;
+            memset(&logfont, 0xcc, sizeof(logfont));
+            hr = IDWriteGdiInterop_ConvertFontToLOGFONT(interop, font, &logfont, &system);
+            ok(hr == S_OK, "got 0x%08x\n", hr);
+            ok(system, "got %d\n", system);
+
+            sim = IDWriteFont_GetSimulations(font);
+
+            get_logfont_from_font(font, &lf);
+            ok(logfont.lfWeight == lf.lfWeight, "%s: unexpected lfWeight %d, expected lfWeight %d, font weight %d, "
+                "bold simulation %s\n", wine_dbgstr_w(nameW), logfont.lfWeight, lf.lfWeight, IDWriteFont_GetWeight(font),
+                sim & DWRITE_FONT_SIMULATIONS_BOLD ? "yes" : "no");
+            ok(logfont.lfItalic == lf.lfItalic, "%s: unexpected italic flag %d, oblique simulation %s\n",
+                wine_dbgstr_w(nameW), logfont.lfItalic, sim & DWRITE_FONT_SIMULATIONS_OBLIQUE ? "yes" : "no");
+            ok(!lstrcmpW(logfont.lfFaceName, lf.lfFaceName), "%s: unexpected facename %s, expected %s\n",
+                wine_dbgstr_w(nameW), wine_dbgstr_w(logfont.lfFaceName), wine_dbgstr_w(lf.lfFaceName));
+
+            ok(logfont.lfOutPrecision == OUT_OUTLINE_PRECIS, "%s: unexpected output precision %d\n", wine_dbgstr_w(nameW),
+                logfont.lfOutPrecision);
+            ok(logfont.lfClipPrecision == CLIP_DEFAULT_PRECIS, "%s: unexpected clipping precision %d\n", wine_dbgstr_w(nameW),
+                logfont.lfClipPrecision);
+            ok(logfont.lfQuality == DEFAULT_QUALITY, "%s: unexpected quality %d\n", wine_dbgstr_w(nameW), logfont.lfQuality);
+            ok(logfont.lfPitchAndFamily == DEFAULT_PITCH, "%s: unexpected pitch %d\n", wine_dbgstr_w(nameW),
+                logfont.lfPitchAndFamily);
+
+            IDWriteFont_Release(font);
+        }
+
+        IDWriteFontFamily_Release(family);
+    }
 
     IDWriteFactory_Release(factory2);
 
@@ -4887,11 +5075,38 @@ static void test_GetGdiCompatibleMetrics(void)
     IDWriteFactory_Release(factory);
 }
 
+static void get_expected_panose(IDWriteFont1 *font, DWRITE_PANOSE *panose)
+{
+    IDWriteFontFace *fontface;
+    const TT_OS2_V2 *tt_os2;
+    void *os2_context;
+    UINT32 size;
+    BOOL exists;
+    HRESULT hr;
+
+    memset(panose, 0, sizeof(*panose));
+
+    hr = IDWriteFont1_CreateFontFace(font, &fontface);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    hr = IDWriteFontFace_TryGetFontTable(fontface, MS_0S2_TAG, (const void **)&tt_os2, &size, &os2_context, &exists);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+
+    if (tt_os2) {
+        memcpy(panose, &tt_os2->panose, sizeof(*panose));
+        IDWriteFontFace_ReleaseFontTable(fontface, os2_context);
+    }
+
+    IDWriteFontFace_Release(fontface);
+}
+
 static void test_GetPanose(void)
 {
+    IDWriteFontCollection *syscollection;
     IDWriteFactory *factory;
     IDWriteFont1 *font1;
     IDWriteFont *font;
+    UINT count, i;
     HRESULT hr;
 
     factory = create_factory();
@@ -4899,56 +5114,83 @@ static void test_GetPanose(void)
 
     hr = IDWriteFont_QueryInterface(font, &IID_IDWriteFont1, (void**)&font1);
     IDWriteFont_Release(font);
-    if (hr == S_OK) {
+
+    if (FAILED(hr)) {
+        IDWriteFactory_Release(factory);
+        win_skip("GetPanose() is not supported.\n");
+        return;
+    }
+
+    hr = IDWriteFactory_GetSystemFontCollection(factory, &syscollection, FALSE);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    count = IDWriteFontCollection_GetFontFamilyCount(syscollection);
+
+    for (i = 0; i < count; i++) {
+        DWRITE_PANOSE panose, expected_panose;
+        IDWriteLocalizedStrings *names;
         IDWriteFontFace3 *fontface3;
         IDWriteFontFace *fontface;
-        DWRITE_PANOSE panose;
+        IDWriteFontFamily *family;
+        IDWriteFont1 *font1;
+        IDWriteFont *font;
+        WCHAR nameW[256];
 
-        if (0) /* crashes on native */
-            IDWriteFont1_GetPanose(font1, NULL);
-
-        memset(&panose, 0, sizeof(panose));
-        IDWriteFont1_GetPanose(font1, &panose);
-        ok(panose.familyKind == DWRITE_PANOSE_FAMILY_TEXT_DISPLAY,
-            "got %u\n", panose.familyKind);
-        ok(panose.text.serifStyle == DWRITE_PANOSE_SERIF_STYLE_NORMAL_SANS,
-            "got %u\n", panose.text.serifStyle);
-        ok(panose.text.weight == DWRITE_PANOSE_WEIGHT_MEDIUM,
-            "got %u\n", panose.text.weight);
-        ok(panose.text.proportion == DWRITE_PANOSE_PROPORTION_EVEN_WIDTH,
-            "got %u\n", panose.text.proportion);
-        ok(panose.text.contrast == DWRITE_PANOSE_CONTRAST_VERY_LOW,
-            "got %u\n", panose.text.contrast);
-        ok(panose.text.strokeVariation == DWRITE_PANOSE_STROKE_VARIATION_GRADUAL_VERTICAL,
-            "got %u\n", panose.text.strokeVariation);
-        ok(panose.text.armStyle == DWRITE_PANOSE_ARM_STYLE_STRAIGHT_ARMS_VERTICAL,
-            "got %u\n", panose.text.armStyle);
-        ok(panose.text.letterform == DWRITE_PANOSE_LETTERFORM_NORMAL_BOXED,
-            "got %u\n", panose.text.letterform);
-        ok(panose.text.midline == DWRITE_PANOSE_MIDLINE_STANDARD_TRIMMED,
-            "got %u\n", panose.text.midline);
-        ok(panose.text.xHeight == DWRITE_PANOSE_XHEIGHT_CONSTANT_LARGE,
-            "got %u\n", panose.text.xHeight);
-
-        hr = IDWriteFont1_CreateFontFace(font1, &fontface);
+        hr = IDWriteFontCollection_GetFontFamily(syscollection, i, &family);
         ok(hr == S_OK, "got 0x%08x\n", hr);
 
-        hr = IDWriteFontFace_QueryInterface(fontface, &IID_IDWriteFontFace3, (void**)&fontface3);
-        IDWriteFontFace_Release(fontface);
-        if (hr == S_OK) {
-            DWRITE_PANOSE panose2;
+        hr = IDWriteFontFamily_GetFirstMatchingFont(family, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL, &font);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
 
-            IDWriteFontFace3_GetPanose(fontface3, &panose2);
-            ok(!memcmp(&panose, &panose2, sizeof(panose)), "wrong panose data\n");
+        hr = IDWriteFont_QueryInterface(font, &IID_IDWriteFont1, (void **)&font1);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        IDWriteFont_Release(font);
 
+        hr = IDWriteFontFamily_GetFamilyNames(family, &names);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        get_enus_string(names, nameW, sizeof(nameW)/sizeof(nameW[0]));
+
+        IDWriteLocalizedStrings_Release(names);
+
+        IDWriteFont1_GetPanose(font1, &panose);
+        get_expected_panose(font1, &expected_panose);
+
+        ok(panose.values[0] == expected_panose.values[0], "%s: values[0] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[0], expected_panose.values[0]);
+        ok(panose.values[1] == expected_panose.values[1], "%s: values[1] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[1], expected_panose.values[1]);
+        ok(panose.values[2] == expected_panose.values[2], "%s: values[2] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[2], expected_panose.values[2]);
+        ok(panose.values[3] == expected_panose.values[3], "%s: values[3] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[3], expected_panose.values[3]);
+        ok(panose.values[4] == expected_panose.values[4], "%s: values[4] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[4], expected_panose.values[4]);
+        ok(panose.values[5] == expected_panose.values[5], "%s: values[5] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[5], expected_panose.values[5]);
+        ok(panose.values[6] == expected_panose.values[6], "%s: values[6] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[6], expected_panose.values[6]);
+        ok(panose.values[7] == expected_panose.values[7], "%s: values[7] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[7], expected_panose.values[7]);
+        ok(panose.values[8] == expected_panose.values[8], "%s: values[8] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[8], expected_panose.values[8]);
+        ok(panose.values[9] == expected_panose.values[9], "%s: values[9] %#x, expected %#x.\n", wine_dbgstr_w(nameW),
+            panose.values[9], expected_panose.values[9]);
+
+        hr = IDWriteFont1_CreateFontFace(font1, &fontface);
+        ok(hr == S_OK, "Failed to create a font face, %#x.\n", hr);
+        if (IDWriteFontFace_QueryInterface(fontface, &IID_IDWriteFontFace3, (void **)&fontface3) == S_OK) {
+            ok(!memcmp(&panose, &expected_panose, sizeof(panose)), "%s: Unexpected panose from font face.\n",
+                wine_dbgstr_w(nameW));
             IDWriteFontFace3_Release(fontface3);
         }
+        IDWriteFontFace_Release(fontface);
 
         IDWriteFont1_Release(font1);
+        IDWriteFontFamily_Release(family);
     }
-    else
-        win_skip("GetPanose() is not supported.\n");
 
+    IDWriteFontCollection_Release(syscollection);
     IDWriteFactory_Release(factory);
 }
 
@@ -6267,8 +6509,14 @@ static void get_expected_fontsig(IDWriteFont *font, FONTSIGNATURE *fontsig)
         fontsig->fsUsb[2] = GET_BE_DWORD(tt_os2->ulUnicodeRange3);
         fontsig->fsUsb[3] = GET_BE_DWORD(tt_os2->ulUnicodeRange4);
 
-        fontsig->fsCsb[0] = GET_BE_DWORD(tt_os2->ulCodePageRange1);
-        fontsig->fsCsb[1] = GET_BE_DWORD(tt_os2->ulCodePageRange2);
+        if (GET_BE_WORD(tt_os2->version) == 0) {
+            fontsig->fsCsb[0] = 0;
+            fontsig->fsCsb[1] = 0;
+        }
+        else {
+            fontsig->fsCsb[0] = GET_BE_DWORD(tt_os2->ulCodePageRange1);
+            fontsig->fsCsb[1] = GET_BE_DWORD(tt_os2->ulCodePageRange2);
+        }
 
         IDWriteFontFace_ReleaseFontTable(fontface, os2_context);
     }
@@ -6536,6 +6784,80 @@ static void test_HasVerticalGlyphVariants(void)
     IDWriteFactory_Release(factory);
 }
 
+static void test_HasKerningPairs(void)
+{
+    IDWriteFontCollection *syscollection;
+    IDWriteFontFace1 *fontface1;
+    IDWriteFontFace *fontface;
+    IDWriteFactory *factory;
+    UINT32 count, i;
+    HRESULT hr;
+
+    factory = create_factory();
+    fontface = create_fontface(factory);
+
+    hr = IDWriteFontFace_QueryInterface(fontface, &IID_IDWriteFontFace1, (void**)&fontface1);
+    IDWriteFontFace_Release(fontface);
+    if (hr != S_OK) {
+        win_skip("HasKerningPairs() is not supported.\n");
+        IDWriteFactory_Release(factory);
+        return;
+    }
+    IDWriteFontFace1_Release(fontface1);
+
+    hr = IDWriteFactory_GetSystemFontCollection(factory, &syscollection, FALSE);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    count = IDWriteFontCollection_GetFontFamilyCount(syscollection);
+
+    for (i = 0; i < count; i++) {
+        IDWriteLocalizedStrings *names;
+        BOOL exists, has_kerningpairs;
+        IDWriteFontFamily *family;
+        IDWriteFont *font;
+        WCHAR nameW[256];
+        const void *data;
+        void *context;
+        UINT32 size;
+
+        hr = IDWriteFontCollection_GetFontFamily(syscollection, i, &family);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        hr = IDWriteFontFamily_GetFirstMatchingFont(family, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL, &font);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        hr = IDWriteFont_CreateFontFace(font, &fontface);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        hr = IDWriteFontFace_QueryInterface(fontface, &IID_IDWriteFontFace1, (void **)&fontface1);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        hr = IDWriteFontFamily_GetFamilyNames(family, &names);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+
+        get_enus_string(names, nameW, sizeof(nameW)/sizeof(nameW[0]));
+
+        exists = FALSE;
+        hr = IDWriteFontFace1_TryGetFontTable(fontface1, MS_KERN_TAG, &data, &size, &context, &exists);
+        ok(hr == S_OK, "got 0x%08x\n", hr);
+        IDWriteFontFace1_ReleaseFontTable(fontface1, context);
+
+        has_kerningpairs = IDWriteFontFace1_HasKerningPairs(fontface1);
+        if (!exists)
+            ok(!has_kerningpairs, "%s: expected %d, got %d\n", wine_dbgstr_w(nameW), exists, has_kerningpairs);
+
+        IDWriteLocalizedStrings_Release(names);
+        IDWriteFont_Release(font);
+
+        IDWriteFontFace1_Release(fontface1);
+        IDWriteFontFace_Release(fontface);
+        IDWriteFontFamily_Release(family);
+    }
+
+    IDWriteFontCollection_Release(syscollection);
+    IDWriteFactory_Release(factory);
+}
+
 START_TEST(font)
 {
     IDWriteFactory *factory;
@@ -6594,6 +6916,7 @@ START_TEST(font)
     test_GetFontSignature();
     test_font_properties();
     test_HasVerticalGlyphVariants();
+    test_HasKerningPairs();
 
     IDWriteFactory_Release(factory);
 }

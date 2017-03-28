@@ -1266,6 +1266,45 @@ HANDLE CDECL MSVCP__crtCreateSemaphoreExW(
     return CreateSemaphoreExW(attribs, initial_count, max_count, name, flags, access);
 }
 
+/*********************************************************************
+ *  __crtCreateThreadpoolTimer (MSVCP140.@)
+ */
+PTP_TIMER CDECL MSVCP__crtCreateThreadpoolTimer(PTP_TIMER_CALLBACK callback,
+        PVOID userdata, TP_CALLBACK_ENVIRON *environment)
+{
+    TRACE("(%p %p %p)\n", callback, userdata, environment);
+    return CreateThreadpoolTimer(callback, userdata, environment);
+}
+
+/*********************************************************************
+ *  __crtSetThreadpoolTimer (MSVCP140.@)
+ */
+VOID CDECL MSVCP__crtSetThreadpoolTimer(TP_TIMER *timer,
+        FILETIME *due_time, DWORD period, DWORD window_length)
+{
+    TRACE("(%p %p 0x%08x 0x%08x)\n", timer, due_time, period, window_length);
+    return SetThreadpoolTimer(timer, due_time, period, window_length);
+}
+
+/*********************************************************************
+ *  __crtCreateThreadpoolWait (MSVCP140.@)
+ */
+PTP_WAIT CDECL MSVCP__crtCreateThreadpoolWait(PTP_WAIT_CALLBACK callback,
+        PVOID userdata, TP_CALLBACK_ENVIRON *environment)
+{
+    TRACE("(%p %p %p)\n", callback, userdata, environment);
+    return CreateThreadpoolWait(callback, userdata, environment);
+}
+
+/*********************************************************************
+ *  __crtSetThreadpoolWait (MSVCP140.@)
+ */
+VOID CDECL MSVCP__crtSetThreadpoolWait(TP_WAIT *wait, HANDLE handle, FILETIME *due_time)
+{
+    TRACE("(%p %p %p)\n", wait, handle, due_time);
+    return SetThreadpoolWait(wait, handle, due_time);
+}
+
 /* ?_Execute_once@std@@YAHAAUonce_flag@1@P6GHPAX1PAPAX@Z1@Z */
 /* ?_Execute_once@std@@YAHAEAUonce_flag@1@P6AHPEAX1PEAPEAX@Z1@Z */
 BOOL __cdecl _Execute_once(INIT_ONCE *flag, PINIT_ONCE_FN func, void *param)
@@ -1339,3 +1378,203 @@ void __cdecl threads__Mtx_unlock(void *mtx)
 {
     LeaveCriticalSection(mtx);
 }
+
+#if _MSVCP_VER >= 110
+static LONG shared_ptr_lock;
+
+void __cdecl _Lock_shared_ptr_spin_lock(void)
+{
+    LONG l = 0;
+
+    while(InterlockedCompareExchange(&shared_ptr_lock, 1, 0) != 0) {
+        if(l++ == 1000) {
+            Sleep(0);
+            l = 0;
+        }
+    }
+}
+
+void __cdecl _Unlock_shared_ptr_spin_lock(void)
+{
+    shared_ptr_lock = 0;
+}
+#endif
+
+#if _MSVCP_VER >= 100
+/* ?is_current_task_group_canceling@Concurrency@@YA_NXZ */
+MSVCP_bool __cdecl is_current_task_group_canceling(void)
+{
+    return Context_IsCurrentTaskCollectionCanceling();
+}
+#endif
+
+#if _MSVCP_VER >= 140
+typedef struct {
+    void *unk0;
+    BYTE unk1;
+} task_continuation_context;
+
+/* ??0task_continuation_context@Concurrency@@AAE@XZ */
+/* ??0task_continuation_context@Concurrency@@AEAA@XZ */
+DEFINE_THISCALL_WRAPPER(task_continuation_context_ctor, 4)
+task_continuation_context* __thiscall task_continuation_context_ctor(task_continuation_context *this)
+{
+    TRACE("(%p)\n", this);
+    memset(this, 0, sizeof(*this));
+    return this;
+}
+
+typedef struct {
+    const vtable_ptr *vtable;
+    void (__cdecl *func)(void);
+    int unk[4];
+    void *unk2[3];
+    void *this;
+} function_void_cdecl_void;
+
+/* ?_Assign@_ContextCallback@details@Concurrency@@AAEXPAX@Z */
+/* ?_Assign@_ContextCallback@details@Concurrency@@AEAAXPEAX@Z */
+DEFINE_THISCALL_WRAPPER(_ContextCallback__Assign, 8)
+void __thiscall _ContextCallback__Assign(void *this, void *v)
+{
+    TRACE("(%p %p)\n", this, v);
+}
+
+#define call_function_do_call(this) CALL_VTBL_FUNC(this, 8, void, (function_void_cdecl_void*), (this))
+#define call_function_do_clean(this,b) CALL_VTBL_FUNC(this, 16, void, (function_void_cdecl_void*,MSVCP_bool), (this, b))
+/* ?_CallInContext@_ContextCallback@details@Concurrency@@QBEXV?$function@$$A6AXXZ@std@@_N@Z */
+/* ?_CallInContext@_ContextCallback@details@Concurrency@@QEBAXV?$function@$$A6AXXZ@std@@_N@Z */
+DEFINE_THISCALL_WRAPPER(_ContextCallback__CallInContext, 48)
+void __thiscall _ContextCallback__CallInContext(const void *this, function_void_cdecl_void func, MSVCP_bool b)
+{
+    TRACE("(%p %p %x)\n", this, func.func, b);
+    call_function_do_call(func.this);
+    call_function_do_clean(func.this, func.this!=&func);
+}
+
+/* ?_Capture@_ContextCallback@details@Concurrency@@AAEXXZ */
+/* ?_Capture@_ContextCallback@details@Concurrency@@AEAAXXZ */
+DEFINE_THISCALL_WRAPPER(_ContextCallback__Capture, 4)
+void __thiscall _ContextCallback__Capture(void *this)
+{
+    TRACE("(%p)\n", this);
+}
+
+/* ?_Reset@_ContextCallback@details@Concurrency@@AAEXXZ */
+/* ?_Reset@_ContextCallback@details@Concurrency@@AEAAXXZ */
+DEFINE_THISCALL_WRAPPER(_ContextCallback__Reset, 4)
+void __thiscall _ContextCallback__Reset(void *this)
+{
+    TRACE("(%p)\n", this);
+}
+
+/* ?_IsCurrentOriginSTA@_ContextCallback@details@Concurrency@@CA_NXZ */
+MSVCP_bool __cdecl _ContextCallback__IsCurrentOriginSTA(void *this)
+{
+    TRACE("(%p)\n", this);
+    return FALSE;
+}
+
+typedef struct {
+    /*_Task_impl_base*/void *task;
+    MSVCP_bool scheduled;
+    MSVCP_bool started;
+} _TaskEventLogger;
+
+/* ?_LogCancelTask@_TaskEventLogger@details@Concurrency@@QAEXXZ */
+/* ?_LogCancelTask@_TaskEventLogger@details@Concurrency@@QEAAXXZ */
+DEFINE_THISCALL_WRAPPER(_TaskEventLogger__LogCancelTask, 4)
+void __thiscall _TaskEventLogger__LogCancelTask(_TaskEventLogger *this)
+{
+    TRACE("(%p)\n", this);
+}
+
+/* ?_LogScheduleTask@_TaskEventLogger@details@Concurrency@@QAEX_N@Z */
+/* ?_LogScheduleTask@_TaskEventLogger@details@Concurrency@@QEAAX_N@Z */
+DEFINE_THISCALL_WRAPPER(_TaskEventLogger__LogScheduleTask, 8)
+void __thiscall _TaskEventLogger__LogScheduleTask(_TaskEventLogger *this, MSVCP_bool continuation)
+{
+    TRACE("(%p %x)\n", this, continuation);
+}
+
+/* ?_LogTaskCompleted@_TaskEventLogger@details@Concurrency@@QAEXXZ */
+/* ?_LogTaskCompleted@_TaskEventLogger@details@Concurrency@@QEAAXXZ */
+DEFINE_THISCALL_WRAPPER(_TaskEventLogger__LogTaskCompleted, 4)
+void __thiscall _TaskEventLogger__LogTaskCompleted(_TaskEventLogger *this)
+{
+    TRACE("(%p)\n", this);
+}
+
+/* ?_LogTaskExecutionCompleted@_TaskEventLogger@details@Concurrency@@QAEXXZ */
+/* ?_LogTaskExecutionCompleted@_TaskEventLogger@details@Concurrency@@QEAAXXZ */
+DEFINE_THISCALL_WRAPPER(_TaskEventLogger__LogTaskExecutionCompleted, 4)
+void __thiscall _TaskEventLogger__LogTaskExecutionCompleted(_TaskEventLogger *this)
+{
+    TRACE("(%p)\n", this);
+}
+
+/* ?_LogWorkItemCompleted@_TaskEventLogger@details@Concurrency@@QAEXXZ */
+/* ?_LogWorkItemCompleted@_TaskEventLogger@details@Concurrency@@QEAAXXZ */
+DEFINE_THISCALL_WRAPPER(_TaskEventLogger__LogWorkItemCompleted, 4)
+void __thiscall _TaskEventLogger__LogWorkItemCompleted(_TaskEventLogger *this)
+{
+    TRACE("(%p)\n", this);
+}
+
+/* ?_LogWorkItemStarted@_TaskEventLogger@details@Concurrency@@QAEXXZ */
+/* ?_LogWorkItemStarted@_TaskEventLogger@details@Concurrency@@QEAAXXZ */
+DEFINE_THISCALL_WRAPPER(_TaskEventLogger__LogWorkItemStarted, 4)
+void __thiscall _TaskEventLogger__LogWorkItemStarted(_TaskEventLogger *this)
+{
+    TRACE("(%p)\n", this);
+}
+
+typedef struct {
+    PTP_WORK work;
+    void (__cdecl *callback)(void*);
+    void *arg;
+} _Threadpool_chore;
+
+/* ?_Reschedule_chore@details@Concurrency@@YAHPBU_Threadpool_chore@12@@Z */
+/* ?_Reschedule_chore@details@Concurrency@@YAHPEBU_Threadpool_chore@12@@Z */
+int __cdecl _Reschedule_chore(const _Threadpool_chore *chore)
+{
+    TRACE("(%p)\n", chore);
+
+    SubmitThreadpoolWork(chore->work);
+    return 0;
+}
+
+static void WINAPI threadpool_callback(PTP_CALLBACK_INSTANCE instance, void *context, PTP_WORK work)
+{
+    _Threadpool_chore *chore = context;
+    TRACE("calling chore callback: %p\n", chore);
+    if (chore->callback)
+        chore->callback(chore->arg);
+}
+
+/* ?_Schedule_chore@details@Concurrency@@YAHPAU_Threadpool_chore@12@@Z */
+/* ?_Schedule_chore@details@Concurrency@@YAHPEAU_Threadpool_chore@12@@Z */
+int __cdecl _Schedule_chore(_Threadpool_chore *chore)
+{
+    TRACE("(%p)\n", chore);
+
+    chore->work = CreateThreadpoolWork(threadpool_callback, chore, NULL);
+    /* FIXME: what should be returned in case of error */
+    if(!chore->work)
+        return -1;
+
+    return _Reschedule_chore(chore);
+}
+
+/* ?_Release_chore@details@Concurrency@@YAXPAU_Threadpool_chore@12@@Z */
+/* ?_Release_chore@details@Concurrency@@YAXPEAU_Threadpool_chore@12@@Z */
+void __cdecl _Release_chore(_Threadpool_chore *chore)
+{
+    TRACE("(%p)\n", chore);
+
+    if(!chore->work) return;
+    CloseThreadpoolWork(chore->work);
+    chore->work = NULL;
+}
+#endif

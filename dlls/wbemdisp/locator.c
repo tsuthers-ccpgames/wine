@@ -155,7 +155,7 @@ static HRESULT WINAPI object_QueryInterface(
         IsEqualGUID( riid, &IID_IDispatch ) ||
         IsEqualGUID( riid, &IID_IUnknown ))
     {
-        *ppvObject = object;
+        *ppvObject = iface;
     }
     else
     {
@@ -399,7 +399,7 @@ static HRESULT WINAPI objectset_QueryInterface(
         IsEqualGUID( riid, &IID_IDispatch ) ||
         IsEqualGUID( riid, &IID_IUnknown ))
     {
-        *ppvObject = objectset;
+        *ppvObject = iface;
     }
     else
     {
@@ -538,8 +538,39 @@ static HRESULT WINAPI objectset_ItemIndex(
     LONG lIndex,
     ISWbemObject **objWbemObject )
 {
-    FIXME( "\n" );
-    return E_NOTIMPL;
+    struct objectset *objectset = impl_from_ISWbemObjectSet( iface );
+    LONG count;
+    HRESULT hr;
+    IEnumVARIANT *enum_var;
+    VARIANT var;
+
+    TRACE( "%p, %d, %p\n", objectset, lIndex, objWbemObject );
+
+    *objWbemObject = NULL;
+    hr = ISWbemObjectSet_get_Count( iface, &count );
+    if (FAILED(hr)) return hr;
+
+    if (lIndex >= count) return WBEM_E_NOT_FOUND;
+
+    hr = ISWbemObjectSet_get__NewEnum( iface, (IUnknown **)&enum_var );
+    if (FAILED(hr)) return hr;
+
+    IEnumVARIANT_Reset( enum_var );
+    hr = IEnumVARIANT_Skip( enum_var, lIndex );
+    if (SUCCEEDED(hr))
+        hr = IEnumVARIANT_Next( enum_var, 1, &var, NULL );
+    IEnumVARIANT_Release( enum_var );
+
+    if (SUCCEEDED(hr))
+    {
+        if (V_VT( &var ) == VT_DISPATCH)
+            hr = IDispatch_QueryInterface( V_DISPATCH( &var ), &IID_ISWbemObject, (void **)objWbemObject );
+        else
+            hr = WBEM_E_NOT_FOUND;
+        VariantClear( &var );
+    }
+
+    return hr;
 }
 
 static const ISWbemObjectSetVtbl objectset_vtbl =
@@ -630,7 +661,7 @@ static HRESULT WINAPI enumvar_QueryInterface(
     if (IsEqualGUID( riid, &IID_IEnumVARIANT ) ||
         IsEqualGUID( riid, &IID_IUnknown ))
     {
-        *ppvObject = enumvar;
+        *ppvObject = iface;
     }
     else
     {
@@ -763,7 +794,7 @@ static HRESULT WINAPI services_QueryInterface(
         IsEqualGUID( riid, &IID_IDispatch ) ||
         IsEqualGUID( riid, &IID_IUnknown ))
     {
-        *ppvObject = services;
+        *ppvObject = iface;
     }
     else
     {

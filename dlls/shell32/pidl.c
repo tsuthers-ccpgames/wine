@@ -1245,16 +1245,27 @@ BOOL WINAPI SHGetPathFromIDListA(LPCITEMIDLIST pidl, LPSTR pszPath)
  */
 BOOL WINAPI SHGetPathFromIDListW(LPCITEMIDLIST pidl, LPWSTR pszPath)
 {
+    return SHGetPathFromIDListEx(pidl, pszPath, MAX_PATH, 0);
+}
+
+/*************************************************************************
+ * SHGetPathFromIDListEx             [SHELL32.@]
+ */
+BOOL WINAPI SHGetPathFromIDListEx(LPCITEMIDLIST pidl, WCHAR *path, DWORD path_size, GPFIDL_FLAGS flags)
+{
     HRESULT hr;
     LPCITEMIDLIST pidlLast;
     LPSHELLFOLDER psfFolder;
     DWORD dwAttributes;
     STRRET strret;
 
-    TRACE_(shell)("(pidl=%p,%p)\n", pidl, pszPath);
+    TRACE_(shell)("(pidl=%p,%p,%u,%x)\n", pidl, path, path_size, flags);
     pdump(pidl);
 
-    *pszPath = '\0';
+    if (flags != GPFIDL_DEFAULT)
+        FIXME("Unsupported flags %x\n", flags);
+
+    *path = '\0';
     if (!pidl)
         return FALSE;
 
@@ -1272,9 +1283,9 @@ BOOL WINAPI SHGetPathFromIDListW(LPCITEMIDLIST pidl, LPWSTR pszPath)
     IShellFolder_Release(psfFolder);
     if (FAILED(hr)) return FALSE;
 
-    hr = StrRetToBufW(&strret, pidlLast, pszPath, MAX_PATH);
+    hr = StrRetToBufW(&strret, pidlLast, path, path_size);
 
-    TRACE_(shell)("-- %s, 0x%08x\n",debugstr_w(pszPath), hr);
+    TRACE_(shell)("-- %s, 0x%08x\n",debugstr_w(path), hr);
     return SUCCEEDED(hr);
 }
 
@@ -2408,15 +2419,18 @@ void _ILGetFileType(LPCITEMIDLIST pidl, LPSTR pOut, UINT uOutSize)
     {
         char sTemp[64];
 
-        if(uOutSize > 0)
-            pOut[0] = 0;
-        if (_ILGetExtension (pidl, sTemp, 64))
+        /* "name" or "name." or any unhandled => "File" */
+        lstrcpynA (pOut, "File", uOutSize);
+
+        /* If there's space for more, try to get a better description. */
+        if (uOutSize > 6 && _ILGetExtension (pidl, sTemp, 64))
         {
             if (!( HCR_MapTypeToValueA(sTemp, sTemp, 64, TRUE)
-                && HCR_MapTypeToValueA(sTemp, pOut, uOutSize, FALSE )))
+                && HCR_MapTypeToValueA(sTemp, pOut, uOutSize, FALSE ))
+                && sTemp[0])
             {
                 lstrcpynA (pOut, sTemp, uOutSize - 6);
-                strcat (pOut, "-file");
+                strcat (pOut, " file");
             }
         }
     }

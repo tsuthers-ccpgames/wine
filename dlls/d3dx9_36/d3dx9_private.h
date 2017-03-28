@@ -65,6 +65,22 @@ struct pixel_format_desc {
     void (*to_rgba)(const struct vec4 *src, struct vec4 *dst, const PALETTEENTRY *palette);
 };
 
+static inline BOOL is_conversion_from_supported(const struct pixel_format_desc *format)
+{
+    if (format->type == FORMAT_ARGB || format->type == FORMAT_ARGBF16
+            || format->type == FORMAT_ARGBF)
+        return TRUE;
+    return !!format->to_rgba;
+}
+
+static inline BOOL is_conversion_to_supported(const struct pixel_format_desc *format)
+{
+    if (format->type == FORMAT_ARGB || format->type == FORMAT_ARGBF16
+            || format->type == FORMAT_ARGBF)
+        return TRUE;
+    return !!format->from_rgba;
+}
+
 HRESULT map_view_of_file(const WCHAR *filename, void **buffer, DWORD *length) DECLSPEC_HIDDEN;
 HRESULT load_resource_into_memory(HMODULE module, HRSRC resinfo, void **buffer, DWORD *length) DECLSPEC_HIDDEN;
 
@@ -176,6 +192,8 @@ struct d3dx_param_eval
     struct d3dx_const_tab shader_inputs;
 };
 
+#define PARAMETER_FLAG_DIRTY 0x1u
+
 struct d3dx_parameter
 {
     char *name;
@@ -190,6 +208,7 @@ struct d3dx_parameter
     UINT member_count;
     DWORD flags;
     UINT bytes;
+    DWORD runtime_flags;
     DWORD object_id;
 
     D3DXHANDLE handle;
@@ -199,7 +218,14 @@ struct d3dx_parameter
 
     struct d3dx_parameter *referenced_param;
     struct d3dx_param_eval *param_eval;
+
+    DWORD *dirty_flag_ptr;
 };
+
+static inline BOOL is_param_dirty(struct d3dx_parameter *param)
+{
+    return *param->dirty_flag_ptr & PARAMETER_FLAG_DIRTY;
+}
 
 struct d3dx9_base_effect;
 
@@ -210,8 +236,9 @@ void d3dx_create_param_eval(struct d3dx9_base_effect *base_effect, void *byte_co
         unsigned int byte_code_size, D3DXPARAMETER_TYPE type, struct d3dx_param_eval **peval) DECLSPEC_HIDDEN;
 void d3dx_free_param_eval(struct d3dx_param_eval *peval) DECLSPEC_HIDDEN;
 HRESULT d3dx_evaluate_parameter(struct d3dx_param_eval *peval,
-        const struct d3dx_parameter *param, void *param_value) DECLSPEC_HIDDEN;
+        const struct d3dx_parameter *param, void *param_value, BOOL update_all) DECLSPEC_HIDDEN;
 HRESULT d3dx_param_eval_set_shader_constants(struct IDirect3DDevice9 *device,
-        struct d3dx_param_eval *peval) DECLSPEC_HIDDEN;
+        struct d3dx_param_eval *peval, BOOL update_all) DECLSPEC_HIDDEN;
+BOOL is_param_eval_input_dirty(struct d3dx_param_eval *peval) DECLSPEC_HIDDEN;
 
 #endif /* __WINE_D3DX9_PRIVATE_H */

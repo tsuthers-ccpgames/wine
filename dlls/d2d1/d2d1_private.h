@@ -40,6 +40,7 @@ enum d2d_brush_type
 
 enum d2d_shape_type
 {
+    D2D_SHAPE_TYPE_OUTLINE,
     D2D_SHAPE_TYPE_TRIANGLE,
     D2D_SHAPE_TYPE_BEZIER,
     D2D_SHAPE_TYPE_COUNT,
@@ -68,8 +69,11 @@ struct d2d_shape_resources
 struct d2d_d3d_render_target
 {
     ID2D1RenderTarget ID2D1RenderTarget_iface;
+    ID2D1GdiInteropRenderTarget ID2D1GdiInteropRenderTarget_iface;
     IDWriteTextRenderer IDWriteTextRenderer_iface;
     LONG refcount;
+
+    IUnknown *outer_unknown;
 
     ID2D1Factory *factory;
     ID3D10Device *device;
@@ -92,8 +96,8 @@ struct d2d_d3d_render_target
     struct d2d_clip_stack clip_stack;
 };
 
-HRESULT d2d_d3d_render_target_init(struct d2d_d3d_render_target *render_target, ID2D1Factory *factory,
-        IDXGISurface *surface, const D2D1_RENDER_TARGET_PROPERTIES *desc) DECLSPEC_HIDDEN;
+HRESULT d2d_d3d_create_render_target(ID2D1Factory *factory, IDXGISurface *surface, IUnknown *outer_unknown,
+        const D2D1_RENDER_TARGET_PROPERTIES *desc, ID2D1RenderTarget **render_target) DECLSPEC_HIDDEN;
 HRESULT d2d_d3d_render_target_create_rtv(ID2D1RenderTarget *render_target, IDXGISurface1 *surface) DECLSPEC_HIDDEN;
 
 struct d2d_wic_render_target
@@ -223,9 +227,12 @@ struct d2d_stroke_style
     LONG refcount;
 
     ID2D1Factory *factory;
+    D2D1_STROKE_STYLE_PROPERTIES desc;
+    float *dashes;
+    UINT32 dash_count;
 };
 
-void d2d_stroke_style_init(struct d2d_stroke_style *style, ID2D1Factory *factory,
+HRESULT d2d_stroke_style_init(struct d2d_stroke_style *style, ID2D1Factory *factory,
         const D2D1_STROKE_STYLE_PROPERTIES *desc, const float *dashes, UINT32 dash_count) DECLSPEC_HIDDEN;
 
 struct d2d_mesh
@@ -282,21 +289,30 @@ enum d2d_geometry_state
     D2D_GEOMETRY_STATE_FIGURE,
 };
 
-struct d2d_bezier
+struct d2d_bezier_vertex
 {
+    D2D1_POINT_2F position;
     struct
     {
-        D2D1_POINT_2F position;
-        struct
-        {
-            float u, v, sign;
-        } texcoord;
-    } v[3];
+        float u, v, sign;
+    } texcoord;
 };
 
 struct d2d_face
 {
     UINT16 v[3];
+};
+
+struct d2d_vec4
+{
+    float x, y, z, w;
+};
+
+struct d2d_outline_vertex
+{
+    D2D1_POINT_2F position;
+    D2D1_POINT_2F prev;
+    D2D1_POINT_2F next;
 };
 
 struct d2d_geometry
@@ -308,15 +324,29 @@ struct d2d_geometry
 
     D2D_MATRIX_3X2_F transform;
 
-    D2D1_POINT_2F *vertices;
-    size_t vertex_count;
+    struct
+    {
+        D2D1_POINT_2F *vertices;
+        size_t vertex_count;
 
-    struct d2d_face *faces;
-    size_t faces_size;
-    size_t face_count;
+        struct d2d_face *faces;
+        size_t faces_size;
+        size_t face_count;
 
-    struct d2d_bezier *beziers;
-    size_t bezier_count;
+        struct d2d_bezier_vertex *bezier_vertices;
+        size_t bezier_vertex_count;
+    } fill;
+
+    struct
+    {
+        struct d2d_outline_vertex *vertices;
+        size_t vertices_size;
+        size_t vertex_count;
+
+        struct d2d_face *faces;
+        size_t faces_size;
+        size_t face_count;
+    } outline;
 
     union
     {
@@ -339,6 +369,7 @@ struct d2d_geometry
         struct
         {
             ID2D1Geometry *src_geometry;
+            D2D_MATRIX_3X2_F transform;
         } transformed;
     } u;
 };
@@ -377,6 +408,12 @@ static inline BOOL d2d_matrix_invert(D2D_MATRIX_3X2_F *dst, const D2D_MATRIX_3X2
     dst->_32 = -(src->_11 * src->_32 - src->_31 * src->_12) / d;
 
     return TRUE;
+}
+
+static inline void d2d_point_set(D2D1_POINT_2F *dst, float x, float y)
+{
+    dst->x = x;
+    dst->y = y;
 }
 
 static inline void d2d_point_transform(D2D1_POINT_2F *dst, const D2D1_MATRIX_3X2_F *matrix, float x, float y)

@@ -48,22 +48,19 @@
 #define GIF_DISPOSE_RESTORE_TO_BKGND 2
 #define GIF_DISPOSE_RESTORE_TO_PREV 3
 
-static void *heap_alloc(size_t len) __WINE_ALLOC_SIZE(1);
-static inline void *heap_alloc(size_t len)
+static inline void* __WINE_ALLOC_SIZE(1) heap_alloc(size_t size)
 {
-    return HeapAlloc(GetProcessHeap(), 0, len);
+    return HeapAlloc(GetProcessHeap(), 0, size);
 }
 
-static void *heap_alloc_zero(size_t len) __WINE_ALLOC_SIZE(1);
-static inline void *heap_alloc_zero(size_t len)
+static inline void* __WINE_ALLOC_SIZE(1) heap_alloc_zero(size_t size)
 {
-    return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, len);
+    return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
 }
 
-static void *heap_realloc(void *mem, size_t len) __WINE_ALLOC_SIZE(2);
-static inline void *heap_realloc(void *mem, size_t len)
+static inline void* __WINE_ALLOC_SIZE(2) heap_realloc(void *mem, size_t size)
 {
-    return HeapReAlloc(GetProcessHeap(), 0, mem, len);
+    return HeapReAlloc(GetProcessHeap(), 0, mem, size);
 }
 
 static inline BOOL heap_free(void *mem)
@@ -327,6 +324,7 @@ struct GpPathIterator{
 };
 
 struct GpCustomLineCap{
+    CustomLineCapType type;
     GpPathData pathdata;
     BOOL fill;      /* TRUE for fill, FALSE for stroke */
     GpLineCap cap;  /* as far as I can tell, this value is ignored */
@@ -347,6 +345,7 @@ struct GpImage{
     UINT frame_count, current_frame;
     ColorPalette *palette;
     REAL xres, yres;
+    LONG busy;
 };
 
 struct GpMetafile{
@@ -389,7 +388,6 @@ struct GpBitmap{
     INT height;
     PixelFormat format;
     ImageLockMode lockmode;
-    INT numlocks;
     BYTE *bitmapbits;   /* pointer to the buffer we passed in BitmapLockBits */
     HBITMAP hbitmap;
     HDC hdc;
@@ -513,5 +511,18 @@ GpStatus gdip_format_string(HDC hdc,
     gdip_format_string_callback callback, void *user_data) DECLSPEC_HIDDEN;
 
 void get_log_fontW(const GpFont *, GpGraphics *, LOGFONTW *) DECLSPEC_HIDDEN;
+
+static inline BOOL image_lock(GpImage *image, BOOL *unlock)
+{
+    LONG tid = GetCurrentThreadId(), owner_tid;
+    owner_tid = InterlockedCompareExchange(&image->busy, tid, 0);
+    *unlock = !owner_tid;
+    return !owner_tid || owner_tid==tid;
+}
+
+static inline void image_unlock(GpImage *image, BOOL unlock)
+{
+    if (unlock) image->busy = 0;
+}
 
 #endif

@@ -50,6 +50,7 @@
 
 static HMODULE hLibrary = NULL;
 
+static DWORD (WINAPI *pAllocateAndGetTcpExTableFromStack)(void**,BOOL,HANDLE,DWORD,DWORD);
 static DWORD (WINAPI *pGetNumberOfInterfaces)(PDWORD);
 static DWORD (WINAPI *pGetIpAddrTable)(PMIB_IPADDRTABLE,PULONG,BOOL);
 static DWORD (WINAPI *pGetIfEntry)(PMIB_IFROW);
@@ -74,6 +75,7 @@ static DWORD (WINAPI *pGetTcpTable)(PMIB_TCPTABLE,PDWORD,BOOL);
 static DWORD (WINAPI *pGetUdpTable)(PMIB_UDPTABLE,PDWORD,BOOL);
 static DWORD (WINAPI *pGetPerAdapterInfo)(ULONG,PIP_PER_ADAPTER_INFO,PULONG);
 static DWORD (WINAPI *pGetAdaptersAddresses)(ULONG,ULONG,PVOID,PIP_ADAPTER_ADDRESSES,PULONG);
+static DWORD (WINAPI *pGetUnicastIpAddressEntry)(MIB_UNICASTIPADDRESS_ROW*);
 static DWORD (WINAPI *pNotifyAddrChange)(PHANDLE,LPOVERLAPPED);
 static BOOL  (WINAPI *pCancelIPChangeNotify)(LPOVERLAPPED);
 static DWORD (WINAPI *pGetExtendedTcpTable)(PVOID,PDWORD,BOOL,ULONG,TCP_TABLE_CLASS,ULONG);
@@ -97,6 +99,7 @@ static void loadIPHlpApi(void)
 {
   hLibrary = LoadLibraryA("iphlpapi.dll");
   if (hLibrary) {
+    pAllocateAndGetTcpExTableFromStack = (void *)GetProcAddress(hLibrary, "AllocateAndGetTcpExTableFromStack");
     pGetNumberOfInterfaces = (void *)GetProcAddress(hLibrary, "GetNumberOfInterfaces");
     pGetIpAddrTable = (void *)GetProcAddress(hLibrary, "GetIpAddrTable");
     pGetIfEntry = (void *)GetProcAddress(hLibrary, "GetIfEntry");
@@ -121,6 +124,7 @@ static void loadIPHlpApi(void)
     pGetUdpTable = (void *)GetProcAddress(hLibrary, "GetUdpTable");
     pGetPerAdapterInfo = (void *)GetProcAddress(hLibrary, "GetPerAdapterInfo");
     pGetAdaptersAddresses = (void *)GetProcAddress(hLibrary, "GetAdaptersAddresses");
+    pGetUnicastIpAddressEntry = (void *)GetProcAddress(hLibrary, "GetUnicastIpAddressEntry");
     pNotifyAddrChange = (void *)GetProcAddress(hLibrary, "NotifyAddrChange");
     pCancelIPChangeNotify = (void *)GetProcAddress(hLibrary, "CancelIPChangeNotify");
     pGetExtendedTcpTable = (void *)GetProcAddress(hLibrary, "GetExtendedTcpTable");
@@ -261,6 +265,9 @@ static void testGetIpAddrTable(void)
           ok (buf->table[i].wType != 0, "Test[%d]: expected wType > 0\n", i);
           trace("Entry[%d]: addr %s, dwIndex %u, wType 0x%x\n", i,
                 ntoa(buf->table[i].dwAddr), buf->table[i].dwIndex, buf->table[i].wType);
+          /* loopback must never be the first when more than one interface is found */
+          if (buf->table[i].dwAddr ==  htonl(INADDR_LOOPBACK))
+              ok(buf->dwNumEntries == 1 || i, "Loopback interface in wrong first position\n");
         }
       }
       HeapFree(GetProcessHeap(), 0, buf);
@@ -348,7 +355,7 @@ static void testGetIpForwardTable(void)
        "GetIpForwardTable(buf, &dwSize, FALSE) returned %d, expected NO_ERROR\n",
        apiReturn);
 
-      if (apiReturn == NO_ERROR && winetest_debug > 1)
+      if (apiReturn == NO_ERROR)
       {
           DWORD i;
 
@@ -356,11 +363,31 @@ static void testGetIpForwardTable(void)
           for (i = 0; i < buf->dwNumEntries; i++)
           {
               char buffer[100];
+
+              if (!U1(buf->table[i]).dwForwardDest) /* Default route */
+              {
+todo_wine
+                  ok (U1(buf->table[i]).dwForwardProto == MIB_IPPROTO_NETMGMT,
+                  "Unexpected dwForwardProto %d\n", U1(buf->table[i]).dwForwardProto);
+                  ok (U1(buf->table[i]).dwForwardType == MIB_IPROUTE_TYPE_INDIRECT,
+                  "Unexpected dwForwardType %d\n",  U1(buf->table[i]).dwForwardType);
+              }
+              else
+              {
+                  /* In general we should get MIB_IPPROTO_LOCAL but does not work
+                   * for Vista, 2008 and 7. */
+                  ok (U1(buf->table[i]).dwForwardProto == MIB_IPPROTO_LOCAL ||
+                      broken(U1(buf->table[i]).dwForwardProto == MIB_IPPROTO_NETMGMT),
+                  "Unexpected dwForwardProto %d\n", U1(buf->table[i]).dwForwardProto);
+                  /* The forward type varies depending on the address and gateway
+                   * value so it is not worth testing in this case. */
+              }
+
               sprintf( buffer, "dest %s", ntoa( buf->table[i].dwForwardDest ));
               sprintf( buffer + strlen(buffer), " mask %s", ntoa( buf->table[i].dwForwardMask ));
-              trace( "%u: %s gw %s if %u type %u\n", i, buffer,
-                     ntoa( buf->table[i].dwForwardNextHop ),
-                     buf->table[i].dwForwardIfIndex, U1(buf->table[i]).dwForwardType );
+              trace( "%u: %s gw %s if %u type %u proto %u\n", i, buffer,
+                     ntoa( buf->table[i].dwForwardNextHop ), buf->table[i].dwForwardIfIndex,
+                     U1(buf->table[i]).dwForwardType, U1(buf->table[i]).dwForwardProto );
           }
       }
       HeapFree(GetProcessHeap(), 0, buf);
@@ -1404,6 +1431,9 @@ static void test_GetAdaptersAddresses(void)
         ua = aa->FirstUnicastAddress;
         while (ua)
         {
+            ok(S(U(*ua)).Length == sizeof(IP_ADAPTER_UNICAST_ADDRESS_LH) ||
+               S(U(*ua)).Length == sizeof(IP_ADAPTER_UNICAST_ADDRESS_XP),
+               "Unknown structure size of %u bytes\n", S(U(*ua)).Length);
             ok(ua->PrefixOrigin != IpPrefixOriginOther,
                "bad address config value %d\n", ua->PrefixOrigin);
             ok(ua->SuffixOrigin != IpSuffixOriginOther,
@@ -1430,6 +1460,13 @@ static void test_GetAdaptersAddresses(void)
             trace("\tValidLifetime:           %u seconds\n", ua->ValidLifetime);
             trace("\tPreferredLifetime:       %u seconds\n", ua->PreferredLifetime);
             trace("\tLeaseLifetime:           %u seconds\n", ua->LeaseLifetime);
+            if (S(U(*ua)).Length < sizeof(IP_ADAPTER_UNICAST_ADDRESS_LH))
+            {
+                trace("\n");
+                ua = ua->Next;
+                continue;
+            }
+            trace("\tOnLinkPrefixLength:      %u\n", ua->OnLinkPrefixLength);
             trace("\n");
             ua = ua->Next;
         }
@@ -1557,6 +1594,55 @@ static void test_GetExtendedTcpTable(void)
     ret = pGetExtendedTcpTable( table_module, &size, TRUE, AF_INET, TCP_TABLE_OWNER_MODULE_LISTENER, 0 );
     ok( ret == ERROR_SUCCESS, "got %u\n", ret );
     HeapFree( GetProcessHeap(), 0, table_module );
+}
+
+static void test_AllocateAndGetTcpExTableFromStack(void)
+{
+    DWORD ret;
+    MIB_TCPTABLE_OWNER_PID *table_ex = NULL;
+
+    if (!pAllocateAndGetTcpExTableFromStack)
+    {
+        skip("AllocateAndGetTcpExTableFromStack not available\n");
+        return;
+    }
+
+    if (0)
+    {
+        /* crashes on native */
+        ret = pAllocateAndGetTcpExTableFromStack( NULL, FALSE, INVALID_HANDLE_VALUE, 0, 0 );
+        ok( ret == ERROR_INVALID_PARAMETER, "got %u\n", ret );
+        ret = pAllocateAndGetTcpExTableFromStack( (void **)&table_ex, FALSE, INVALID_HANDLE_VALUE, 0, AF_INET );
+        ok( ret == ERROR_INVALID_PARAMETER, "got %u\n", ret );
+        ret = pAllocateAndGetTcpExTableFromStack( NULL, FALSE, GetProcessHeap(), 0, AF_INET );
+        ok( ret == ERROR_INVALID_PARAMETER, "got %u\n", ret );
+    }
+
+    ret = pAllocateAndGetTcpExTableFromStack( (void **)&table_ex, FALSE, GetProcessHeap(), 0, 0 );
+    ok( ret == ERROR_INVALID_PARAMETER || broken(ret == ERROR_NOT_SUPPORTED) /* win2k */, "got %u\n", ret );
+
+    ret = pAllocateAndGetTcpExTableFromStack( (void **)&table_ex, FALSE, GetProcessHeap(), 0, AF_INET );
+    ok( ret == ERROR_SUCCESS, "got %u\n", ret );
+
+    if (ret == NO_ERROR && winetest_debug > 1)
+    {
+        DWORD i;
+        trace( "AllocateAndGetTcpExTableFromStack table: %u entries\n", table_ex->dwNumEntries );
+        for (i = 0; i < table_ex->dwNumEntries; i++)
+        {
+          char remote_ip[16];
+
+          strcpy(remote_ip, ntoa(table_ex->table[i].dwRemoteAddr));
+          trace( "%u: local %s:%u remote %s:%u state %u pid %u\n", i,
+                 ntoa(table_ex->table[i].dwLocalAddr), ntohs(table_ex->table[i].dwLocalPort),
+                 remote_ip, ntohs(table_ex->table[i].dwRemotePort),
+                 U(table_ex->table[i]).dwState, table_ex->table[i].dwOwningPid );
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, table_ex);
+
+    ret = pAllocateAndGetTcpExTableFromStack( (void **)&table_ex, FALSE, GetProcessHeap(), 0, AF_INET6 );
+    ok( ret == ERROR_NOT_SUPPORTED, "got %u\n", ret );
 }
 
 static void test_GetExtendedUdpTable(void)
@@ -1901,6 +1987,114 @@ static void test_GetIfTable2(void)
     pFreeMibTable( table );
 }
 
+static void test_GetUnicastIpAddressEntry(void)
+{
+    IP_ADAPTER_ADDRESSES *aa, *ptr;
+    MIB_UNICASTIPADDRESS_ROW row;
+    DWORD ret, size;
+
+    if (!pGetUnicastIpAddressEntry)
+    {
+        win_skip( "GetUnicastIpAddressEntry not available\n" );
+        return;
+    }
+
+    ret = pGetUnicastIpAddressEntry( NULL );
+    ok( ret == ERROR_INVALID_PARAMETER, "got %u\n", ret );
+
+    memset( &row, 0, sizeof(row) );
+    ret = pGetUnicastIpAddressEntry( &row );
+    todo_wine ok( ret == ERROR_INVALID_PARAMETER, "got %u\n", ret );
+
+    memset( &row, 0, sizeof(row) );
+    row.Address.Ipv4.sin_family = AF_INET;
+    row.Address.Ipv4.sin_port = 0;
+    row.Address.Ipv4.sin_addr.S_un.S_addr = 0x01020304;
+    ret = pGetUnicastIpAddressEntry( &row );
+    ok( ret == ERROR_FILE_NOT_FOUND, "got %u\n", ret );
+
+    memset( &row, 0, sizeof(row) );
+    row.InterfaceIndex = 123;
+    ret = pGetUnicastIpAddressEntry( &row );
+    todo_wine ok( ret == ERROR_INVALID_PARAMETER, "got %u\n", ret );
+
+    memset( &row, 0, sizeof(row) );
+    row.InterfaceIndex = get_interface_index();
+    row.Address.Ipv4.sin_family = AF_INET;
+    row.Address.Ipv4.sin_port = 0;
+    row.Address.Ipv4.sin_addr.S_un.S_addr = 0x01020304;
+    ret = pGetUnicastIpAddressEntry( &row );
+    ok( ret == ERROR_NOT_FOUND, "got %u\n", ret );
+
+    memset( &row, 0, sizeof(row) );
+    row.InterfaceIndex = 123;
+    row.Address.Ipv4.sin_family = AF_INET;
+    row.Address.Ipv4.sin_port = 0;
+    row.Address.Ipv4.sin_addr.S_un.S_addr = 0x01020304;
+    ret = pGetUnicastIpAddressEntry( &row );
+    ok( ret == ERROR_FILE_NOT_FOUND, "got %u\n", ret );
+
+    ret = pGetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_ALL_INTERFACES, NULL, NULL, &size);
+    ok(ret == ERROR_BUFFER_OVERFLOW, "expected ERROR_BUFFER_OVERFLOW, got %u\n", ret);
+    if (ret != ERROR_BUFFER_OVERFLOW) return;
+
+    ptr = HeapAlloc(GetProcessHeap(), 0, size);
+    ret = pGetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_ALL_INTERFACES, NULL, ptr, &size);
+    ok(!ret, "expected ERROR_SUCCESS got %u\n", ret);
+
+    for (aa = ptr; !ret && aa; aa = aa->Next)
+    {
+        IP_ADAPTER_UNICAST_ADDRESS *ua;
+
+        ua = aa->FirstUnicastAddress;
+        while (ua)
+        {
+            /* test with luid */
+            memset( &row, 0, sizeof(row) );
+            memcpy(&row.InterfaceLuid, &aa->Luid, sizeof(aa->Luid));
+            memcpy(&row.Address, ua->Address.lpSockaddr, ua->Address.iSockaddrLength);
+            ret = pGetUnicastIpAddressEntry( &row );
+            ok( ret == NO_ERROR, "got %u\n", ret );
+
+            /* test with index */
+            memset( &row, 0, sizeof(row) );
+            row.InterfaceIndex = S(U(*aa)).IfIndex;
+            memcpy(&row.Address, ua->Address.lpSockaddr, ua->Address.iSockaddrLength);
+            ret = pGetUnicastIpAddressEntry( &row );
+            ok( ret == NO_ERROR, "got %u\n", ret );
+            if (ret == NO_ERROR)
+            {
+                ok(row.InterfaceLuid.Info.Reserved == aa->Luid.Info.Reserved, "Expected %d, got %d\n",
+                    aa->Luid.Info.Reserved, row.InterfaceLuid.Info.Reserved);
+                ok(row.InterfaceLuid.Info.NetLuidIndex == aa->Luid.Info.NetLuidIndex, "Expected %d, got %d\n",
+                    aa->Luid.Info.NetLuidIndex, row.InterfaceLuid.Info.NetLuidIndex);
+                ok(row.InterfaceLuid.Info.IfType == aa->Luid.Info.IfType, "Expected %d, got %d\n",
+                    aa->Luid.Info.IfType, row.InterfaceLuid.Info.IfType);
+                ok(row.InterfaceIndex == S(U(*aa)).IfIndex, "Expected %d, got %d\n",
+                    S(U(*aa)).IfIndex, row.InterfaceIndex);
+                ok(row.PrefixOrigin == ua->PrefixOrigin, "Expected %d, got %d\n",
+                    ua->PrefixOrigin, row.PrefixOrigin);
+                ok(row.SuffixOrigin == ua->SuffixOrigin, "Expected %d, got %d\n",
+                    ua->SuffixOrigin, row.SuffixOrigin);
+                ok(row.ValidLifetime == ua->ValidLifetime, "Expected %d, got %d\n",
+                    ua->ValidLifetime, row.ValidLifetime);
+                ok(row.PreferredLifetime == ua->PreferredLifetime, "Expected %d, got %d\n",
+                    ua->PreferredLifetime, row.PreferredLifetime);
+                ok(row.OnLinkPrefixLength == ua->OnLinkPrefixLength, "Expected %d, got %d\n",
+                    ua->OnLinkPrefixLength, row.OnLinkPrefixLength);
+                ok(row.SkipAsSource == 0, "Expected 0, got %d\n", row.SkipAsSource);
+                ok(row.DadState == ua->DadState, "Expected %d, got %d\n", ua->DadState, row.DadState);
+                if (row.Address.si_family == AF_INET6)
+                    ok(row.ScopeId.Value == row.Address.Ipv6.sin6_scope_id, "Expected %d, got %d\n",
+                        row.Address.Ipv6.sin6_scope_id, row.ScopeId.Value);
+                ok(row.CreationTimeStamp.QuadPart, "CreationTimeStamp is 0\n");
+            }
+            ua = ua->Next;
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, ptr);
+}
+
 START_TEST(iphlpapi)
 {
 
@@ -1920,10 +2114,12 @@ START_TEST(iphlpapi)
     test_GetAdaptersAddresses();
     test_GetExtendedTcpTable();
     test_GetExtendedUdpTable();
+    test_AllocateAndGetTcpExTableFromStack();
     test_CreateSortedAddressPairs();
     test_interface_identifier_conversion();
     test_GetIfEntry2();
     test_GetIfTable2();
+    test_GetUnicastIpAddressEntry();
     freeIPHlpApi();
   }
 }

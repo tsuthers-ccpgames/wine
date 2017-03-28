@@ -4,7 +4,7 @@ Wine is a program which allows running Microsoft Windows programs
 (including DOS, Windows 3.x, Win32, and Win64 executables) on Unix.
 It consists of a program loader which loads and executes a Microsoft
 Windows binary, and a library (called Winelib) that implements Windows
-API calls using their Unix or X11 equivalents.  The library may also
+API calls using their Unix, X11 or Mac equivalents.  The library may also
 be used for porting Windows code into native Unix executables.
 
 Wine is free software, released under the GNU LGPL; see the file
@@ -13,11 +13,11 @@ LICENSE for the details.
 
 2. QUICK START
 
-Whenever you compile from source, it is recommended to use the Wine
-Installer to build and install Wine.  From the top-level directory
-of the Wine source (which contains this file), run:
+From the top-level directory of the Wine source (which contains this file),
+run:
 
-./tools/wineinstall
+./configure
+make
 
 Run programs as "wine program".  For more information and problem
 resolution, read the rest of this file, the Wine man page, and
@@ -82,10 +82,10 @@ Optional support libraries:
   64-bit Wine (or a mixed 32-bit and 64-bit Wine setup), see
   http://wiki.winehq.org/Wine64 for details.
 
+
 4. COMPILATION
 
-In case you chose to not use wineinstall, run the following commands
-to build Wine:
+To build Wine, do:
 
 ./configure
 make
@@ -96,6 +96,9 @@ The library "libwine" ("Winelib") can be used to compile and link
 Windows source code under Unix.
 
 To see compile configuration options, do ./configure --help.
+
+For more information, see https://wiki.winehq.org/Building_Wine
+
 
 5. SETUP
 

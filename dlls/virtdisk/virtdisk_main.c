@@ -1,6 +1,5 @@
 /*
- * The Wine project - Xinput Joystick Library
- * Copyright 2008 Andrew Fenn
+ * Copyright 2017 Louis Lenders
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,20 +17,30 @@
  */
 
 #include "config.h"
+
 #include <stdarg.h>
 
 #include "windef.h"
 #include "winbase.h"
+#include "wine/debug.h"
 
-BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
+WINE_DEFAULT_DEBUG_CHANNEL(virtdisk);
+
+/*****************************************************
+ *    DllMain (VIRTDISK.@)
+ */
+BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, void *reserved)
 {
-    switch(reason)
+    TRACE("(%p, %d, %p)\n", hinst, reason, reserved);
+
+    switch (reason)
     {
-    case DLL_WINE_PREATTACH:
-        return FALSE; /* prefer native version */
-    case DLL_PROCESS_ATTACH:
-        DisableThreadLibraryCalls(inst);
-        break;
+        case DLL_WINE_PREATTACH:
+            return FALSE;    /* prefer native version */
+        case DLL_PROCESS_ATTACH:
+            DisableThreadLibraryCalls(hinst);
+            break;
     }
+
     return TRUE;
 }

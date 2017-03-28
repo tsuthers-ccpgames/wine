@@ -835,7 +835,7 @@ void d3dx_free_param_eval(struct d3dx_param_eval *peval)
     HeapFree(GetProcessHeap(), 0, peval);
 }
 
-static void set_constants(struct d3dx_regstore *rs, struct d3dx_const_tab *const_tab)
+static void set_constants(struct d3dx_regstore *rs, struct d3dx_const_tab *const_tab, BOOL update_all)
 {
     unsigned int const_idx;
 
@@ -849,6 +849,9 @@ static void set_constants(struct d3dx_regstore *rs, struct d3dx_const_tab *const
         unsigned int minor, major, major_stride, param_offset;
         BOOL transpose;
         unsigned int count;
+
+        if (!(update_all || is_param_dirty(param)))
+            continue;
 
         transpose = (const_set->constant_class == D3DXPC_MATRIX_COLUMNS && param->class == D3DXPC_MATRIX_ROWS)
                 || (param->class == D3DXPC_MATRIX_COLUMNS && const_set->constant_class == D3DXPC_MATRIX_ROWS);
@@ -1085,16 +1088,11 @@ static HRESULT init_set_constants(struct d3dx_const_tab *const_tab, ID3DXConstan
     return ret;
 }
 
-static double exec_get_arg(struct d3dx_regstore *rs, const struct d3dx_pres_ins *ins,
-        const struct d3dx_pres_operand *opr, unsigned int comp)
+static double exec_get_arg(struct d3dx_regstore *rs, const struct d3dx_pres_operand *opr, unsigned int comp)
 {
     if (!regstore_is_val_set_reg(rs, opr->table, (opr->offset + comp) / table_info[opr->table].reg_component_count))
-    {
-        WARN("Using uninitialized input ");
-        dump_arg(rs, opr, comp);
-        TRACE(".\n");
-        dump_ins(rs, ins);
-    }
+        WARN("Using uninitialized input, table %u, offset %u.\n", opr->table, opr->offset + comp);
+
     return regstore_get_double(rs, opr->table, opr->offset + comp);
 }
 
@@ -1127,7 +1125,7 @@ static HRESULT execute_preshader(struct d3dx_preshader *pres)
             }
             for (k = 0; k < oi->input_count; ++k)
                 for (j = 0; j < ins->component_count; ++j)
-                    args[k * ins->component_count + j] = exec_get_arg(&pres->regs, ins, &ins->inputs[k],
+                    args[k * ins->component_count + j] = exec_get_arg(&pres->regs, &ins->inputs[k],
                             ins->scalar_op && !k ? 0 : j);
             res = oi->func(args, ins->component_count);
 
@@ -1139,7 +1137,7 @@ static HRESULT execute_preshader(struct d3dx_preshader *pres)
             for (j = 0; j < ins->component_count; ++j)
             {
                 for (k = 0; k < oi->input_count; ++k)
-                    args[k] = exec_get_arg(&pres->regs, ins, &ins->inputs[k], ins->scalar_op && !k ? 0 : j);
+                    args[k] = exec_get_arg(&pres->regs, &ins->inputs[k], ins->scalar_op && !k ? 0 : j);
                 res = oi->func(args, ins->component_count);
                 exec_set_arg(&pres->regs, &ins->output, j, res);
             }
@@ -1148,7 +1146,26 @@ static HRESULT execute_preshader(struct d3dx_preshader *pres)
     return D3D_OK;
 }
 
-HRESULT d3dx_evaluate_parameter(struct d3dx_param_eval *peval, const struct d3dx_parameter *param, void *param_value)
+static BOOL is_const_tab_input_dirty(struct d3dx_const_tab *ctab)
+{
+    unsigned int i;
+
+    for (i = 0; i < ctab->const_set_count; ++i)
+    {
+        if (is_param_dirty(ctab->const_set[i].param))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+BOOL is_param_eval_input_dirty(struct d3dx_param_eval *peval)
+{
+    return is_const_tab_input_dirty(&peval->pres.inputs)
+            || is_const_tab_input_dirty(&peval->shader_inputs);
+}
+
+HRESULT d3dx_evaluate_parameter(struct d3dx_param_eval *peval, const struct d3dx_parameter *param,
+        void *param_value, BOOL update_all)
 {
     HRESULT hr;
     unsigned int i;
@@ -1157,7 +1174,7 @@ HRESULT d3dx_evaluate_parameter(struct d3dx_param_eval *peval, const struct d3dx
 
     TRACE("peval %p, param %p, param_value %p.\n", peval, param, param_value);
 
-    set_constants(&peval->pres.regs, &peval->pres.inputs);
+    set_constants(&peval->pres.regs, &peval->pres.inputs, update_all);
 
     if (FAILED(hr = execute_preshader(&peval->pres)))
         return hr;
@@ -1246,7 +1263,8 @@ static HRESULT set_shader_constants_device(struct IDirect3DDevice9 *device, stru
     return result;
 }
 
-HRESULT d3dx_param_eval_set_shader_constants(struct IDirect3DDevice9 *device, struct d3dx_param_eval *peval)
+HRESULT d3dx_param_eval_set_shader_constants(struct IDirect3DDevice9 *device, struct d3dx_param_eval *peval,
+        BOOL update_all)
 {
     static const enum pres_reg_tables set_tables[] =
             {PRES_REGTAB_OCONST, PRES_REGTAB_OICONST, PRES_REGTAB_OBCONST};
@@ -1257,11 +1275,14 @@ HRESULT d3dx_param_eval_set_shader_constants(struct IDirect3DDevice9 *device, st
 
     TRACE("device %p, peval %p, param_type %u.\n", device, peval, peval->param_type);
 
-    set_constants(rs, &pres->inputs);
-    if (FAILED(hr = execute_preshader(pres)))
-        return hr;
+    if (update_all || is_const_tab_input_dirty(&pres->inputs))
+    {
+        set_constants(rs, &pres->inputs, update_all);
+        if (FAILED(hr = execute_preshader(pres)))
+            return hr;
+    }
 
-    set_constants(rs, &peval->shader_inputs);
+    set_constants(rs, &peval->shader_inputs, update_all);
     result = D3D_OK;
     for (i = 0; i < ARRAY_SIZE(set_tables); ++i)
     {

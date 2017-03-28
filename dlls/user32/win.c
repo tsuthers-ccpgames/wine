@@ -2184,7 +2184,7 @@ BOOL WINAPI EnableWindow( HWND hwnd, BOOL enable )
             SetFocus( 0 );  /* A disabled window can't have the focus */
 
         capture_wnd = GetCapture();
-        if (hwnd == capture_wnd || IsChild(hwnd, capture_wnd))
+        if (capture_wnd && (hwnd == capture_wnd || IsChild(hwnd, capture_wnd)))
             ReleaseCapture();  /* A disabled window can't capture the mouse */
 
         SendMessageW( hwnd, WM_ENABLE, FALSE, 0 );
@@ -2255,7 +2255,29 @@ static LONG_PTR WIN_GetWindowLong( HWND hwnd, INT offset, UINT size, BOOL unicod
         return 0;
     }
 
-    if (wndPtr == WND_OTHER_PROCESS || wndPtr == WND_DESKTOP)
+    if (wndPtr == WND_DESKTOP)
+    {
+        switch (offset)
+        {
+        case GWL_STYLE:
+            retvalue = WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN; /* message parent is not visible */
+            if (WIN_GetFullHandle( hwnd ) == GetDesktopWindow())
+                retvalue |= WS_VISIBLE;
+            return retvalue;
+        case GWL_EXSTYLE:
+        case GWLP_USERDATA:
+        case GWLP_ID:
+        case GWLP_HINSTANCE:
+            return 0;
+        case GWLP_WNDPROC:
+            SetLastError( ERROR_ACCESS_DENIED );
+            return 0;
+        }
+        SetLastError( ERROR_INVALID_INDEX );
+        return 0;
+    }
+
+    if (wndPtr == WND_OTHER_PROCESS)
     {
         if (offset == GWLP_WNDPROC)
         {

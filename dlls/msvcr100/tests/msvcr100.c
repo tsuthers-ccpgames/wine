@@ -134,6 +134,18 @@ typedef struct
     yield_func yield_func;
 } SpinWait;
 
+typedef struct {
+    CRITICAL_SECTION cs;
+} _ReentrantBlockingLock;
+
+typedef struct {
+    char pad[64];
+} event;
+
+typedef struct {
+    void *vtable;
+} Context;
+
 static int* (__cdecl *p_errno)(void);
 static int (__cdecl *p_wmemcpy_s)(wchar_t *dest, size_t numberOfElements, const wchar_t *src, size_t count);
 static int (__cdecl *p_wmemmove_s)(wchar_t *dest, size_t numberOfElements, const wchar_t *src, size_t count);
@@ -154,6 +166,35 @@ static ULONG (__thiscall *pSpinWait__NumberOfSpins)(SpinWait*);
 static void (__thiscall *pSpinWait__SetSpinCount)(SpinWait*, unsigned int);
 static MSVCRT_bool (__thiscall *pSpinWait__ShouldSpinAgain)(SpinWait*);
 static MSVCRT_bool (__thiscall *pSpinWait__SpinOnce)(SpinWait*);
+
+static void* (__thiscall *preader_writer_lock_ctor)(void*);
+static void (__thiscall *preader_writer_lock_dtor)(void*);
+static void (__thiscall *preader_writer_lock_lock)(void*);
+static void (__thiscall *preader_writer_lock_lock_read)(void*);
+static void (__thiscall *preader_writer_lock_unlock)(void*);
+static MSVCRT_bool (__thiscall *preader_writer_lock_try_lock)(void*);
+static MSVCRT_bool (__thiscall *preader_writer_lock_try_lock_read)(void*);
+
+static _ReentrantBlockingLock* (__thiscall *p_ReentrantBlockingLock_ctor)(_ReentrantBlockingLock*);
+static void (__thiscall *p_ReentrantBlockingLock_dtor)(_ReentrantBlockingLock*);
+static void (__thiscall *p_ReentrantBlockingLock__Acquire)(_ReentrantBlockingLock*);
+static void (__thiscall *p_ReentrantBlockingLock__Release)(_ReentrantBlockingLock*);
+static MSVCRT_bool (__thiscall *p_ReentrantBlockingLock__TryAcquire)(_ReentrantBlockingLock*);
+static _ReentrantBlockingLock* (__thiscall *p_NonReentrantBlockingLock_ctor)(_ReentrantBlockingLock*);
+static void (__thiscall *p_NonReentrantBlockingLock_dtor)(_ReentrantBlockingLock*);
+static void (__thiscall *p_NonReentrantBlockingLock__Acquire)(_ReentrantBlockingLock*);
+static void (__thiscall *p_NonReentrantBlockingLock__Release)(_ReentrantBlockingLock*);
+static MSVCRT_bool (__thiscall *p_NonReentrantBlockingLock__TryAcquire)(_ReentrantBlockingLock*);
+
+static event* (__thiscall *p_event_ctor)(event*);
+static void (__thiscall *p_event_dtor)(event*);
+static void (__thiscall *p_event_reset)(event*);
+static void (__thiscall *p_event_set)(event*);
+static size_t (__thiscall *p_event_wait)(event*, unsigned int);
+static int (__cdecl *p_event_wait_for_multiple)(event**, size_t, MSVCRT_bool, unsigned int);
+
+static Context* (__cdecl *p_Context_CurrentContext)(void);
+unsigned int (__cdecl *p_Context_Id)(void);
 
 /* make sure we use the correct errno */
 #undef errno
@@ -187,6 +228,8 @@ static BOOL init(void)
     SET(p__aligned_msize, "_aligned_msize");
     SET(p_atoi, "atoi");
 
+    SET(p_Context_Id, "?Id@Context@Concurrency@@SAIXZ");
+
     if(sizeof(void*) == 8) { /* 64-bit initialization */
         SET(pSpinWait_ctor_yield, "??0?$_SpinWait@$00@details@Concurrency@@QEAA@P6AXXZ@Z");
         SET(pSpinWait_dtor, "??_F?$_SpinWait@$00@details@Concurrency@@QEAAXXZ");
@@ -195,6 +238,34 @@ static BOOL init(void)
         SET(pSpinWait__SetSpinCount, "?_SetSpinCount@?$_SpinWait@$00@details@Concurrency@@QEAAXI@Z");
         SET(pSpinWait__ShouldSpinAgain, "?_ShouldSpinAgain@?$_SpinWait@$00@details@Concurrency@@IEAA_NXZ");
         SET(pSpinWait__SpinOnce, "?_SpinOnce@?$_SpinWait@$00@details@Concurrency@@QEAA_NXZ");
+
+        SET(preader_writer_lock_ctor, "??0reader_writer_lock@Concurrency@@QEAA@XZ");
+        SET(preader_writer_lock_dtor, "??1reader_writer_lock@Concurrency@@QEAA@XZ");
+        SET(preader_writer_lock_lock, "?lock@reader_writer_lock@Concurrency@@QEAAXXZ");
+        SET(preader_writer_lock_lock_read, "?lock_read@reader_writer_lock@Concurrency@@QEAAXXZ");
+        SET(preader_writer_lock_unlock, "?unlock@reader_writer_lock@Concurrency@@QEAAXXZ");
+        SET(preader_writer_lock_try_lock, "?try_lock@reader_writer_lock@Concurrency@@QEAA_NXZ");
+        SET(preader_writer_lock_try_lock_read, "?try_lock_read@reader_writer_lock@Concurrency@@QEAA_NXZ");
+
+        SET(p_ReentrantBlockingLock_ctor, "??0_ReentrantBlockingLock@details@Concurrency@@QEAA@XZ");
+        SET(p_ReentrantBlockingLock_dtor, "??1_ReentrantBlockingLock@details@Concurrency@@QEAA@XZ");
+        SET(p_ReentrantBlockingLock__Acquire, "?_Acquire@_ReentrantBlockingLock@details@Concurrency@@QEAAXXZ");
+        SET(p_ReentrantBlockingLock__Release, "?_Release@_ReentrantBlockingLock@details@Concurrency@@QEAAXXZ");
+        SET(p_ReentrantBlockingLock__TryAcquire, "?_TryAcquire@_ReentrantBlockingLock@details@Concurrency@@QEAA_NXZ");
+        SET(p_NonReentrantBlockingLock_ctor, "??0_NonReentrantBlockingLock@details@Concurrency@@QEAA@XZ");
+        SET(p_NonReentrantBlockingLock_dtor, "??1_NonReentrantBlockingLock@details@Concurrency@@QEAA@XZ");
+        SET(p_NonReentrantBlockingLock__Acquire, "?_Acquire@_NonReentrantBlockingLock@details@Concurrency@@QEAAXXZ");
+        SET(p_NonReentrantBlockingLock__Release, "?_Release@_NonReentrantBlockingLock@details@Concurrency@@QEAAXXZ");
+        SET(p_NonReentrantBlockingLock__TryAcquire, "?_TryAcquire@_NonReentrantBlockingLock@details@Concurrency@@QEAA_NXZ");
+
+        SET(p_event_ctor, "??0event@Concurrency@@QEAA@XZ");
+        SET(p_event_dtor, "??1event@Concurrency@@QEAA@XZ");
+        SET(p_event_reset, "?reset@event@Concurrency@@QEAAXXZ");
+        SET(p_event_set, "?set@event@Concurrency@@QEAAXXZ");
+        SET(p_event_wait, "?wait@event@Concurrency@@QEAA_KI@Z");
+        SET(p_event_wait_for_multiple, "?wait_for_multiple@event@Concurrency@@SA_KPEAPEAV12@_K_NI@Z");
+
+        SET(p_Context_CurrentContext, "?CurrentContext@Context@Concurrency@@SAPEAV12@XZ");
     } else {
         SET(pSpinWait_ctor_yield, "??0?$_SpinWait@$00@details@Concurrency@@QAE@P6AXXZ@Z");
         SET(pSpinWait_dtor, "??_F?$_SpinWait@$00@details@Concurrency@@QAEXXZ");
@@ -203,6 +274,34 @@ static BOOL init(void)
         SET(pSpinWait__SetSpinCount, "?_SetSpinCount@?$_SpinWait@$00@details@Concurrency@@QAEXI@Z");
         SET(pSpinWait__ShouldSpinAgain, "?_ShouldSpinAgain@?$_SpinWait@$00@details@Concurrency@@IAE_NXZ");
         SET(pSpinWait__SpinOnce, "?_SpinOnce@?$_SpinWait@$00@details@Concurrency@@QAE_NXZ");
+
+        SET(preader_writer_lock_ctor, "??0reader_writer_lock@Concurrency@@QAE@XZ");
+        SET(preader_writer_lock_dtor, "??1reader_writer_lock@Concurrency@@QAE@XZ");
+        SET(preader_writer_lock_lock, "?lock@reader_writer_lock@Concurrency@@QAEXXZ");
+        SET(preader_writer_lock_lock_read, "?lock_read@reader_writer_lock@Concurrency@@QAEXXZ");
+        SET(preader_writer_lock_unlock, "?unlock@reader_writer_lock@Concurrency@@QAEXXZ");
+        SET(preader_writer_lock_try_lock, "?try_lock@reader_writer_lock@Concurrency@@QAE_NXZ");
+        SET(preader_writer_lock_try_lock_read, "?try_lock_read@reader_writer_lock@Concurrency@@QAE_NXZ");
+
+        SET(p_ReentrantBlockingLock_ctor, "??0_ReentrantBlockingLock@details@Concurrency@@QAE@XZ");
+        SET(p_ReentrantBlockingLock_dtor, "??1_ReentrantBlockingLock@details@Concurrency@@QAE@XZ");
+        SET(p_ReentrantBlockingLock__Acquire, "?_Acquire@_ReentrantBlockingLock@details@Concurrency@@QAEXXZ");
+        SET(p_ReentrantBlockingLock__Release, "?_Release@_ReentrantBlockingLock@details@Concurrency@@QAEXXZ");
+        SET(p_ReentrantBlockingLock__TryAcquire, "?_TryAcquire@_ReentrantBlockingLock@details@Concurrency@@QAE_NXZ");
+        SET(p_NonReentrantBlockingLock_ctor, "??0_NonReentrantBlockingLock@details@Concurrency@@QAE@XZ");
+        SET(p_NonReentrantBlockingLock_dtor, "??1_NonReentrantBlockingLock@details@Concurrency@@QAE@XZ");
+        SET(p_NonReentrantBlockingLock__Acquire, "?_Acquire@_NonReentrantBlockingLock@details@Concurrency@@QAEXXZ");
+        SET(p_NonReentrantBlockingLock__Release, "?_Release@_NonReentrantBlockingLock@details@Concurrency@@QAEXXZ");
+        SET(p_NonReentrantBlockingLock__TryAcquire, "?_TryAcquire@_NonReentrantBlockingLock@details@Concurrency@@QAE_NXZ");
+
+        SET(p_event_ctor, "??0event@Concurrency@@QAE@XZ");
+        SET(p_event_dtor, "??1event@Concurrency@@QAE@XZ");
+        SET(p_event_reset, "?reset@event@Concurrency@@QAEXXZ");
+        SET(p_event_set, "?set@event@Concurrency@@QAEXXZ");
+        SET(p_event_wait, "?wait@event@Concurrency@@QAEII@Z");
+        SET(p_event_wait_for_multiple, "?wait_for_multiple@event@Concurrency@@SAIPAPAV12@I_NI@Z");
+
+        SET(p_Context_CurrentContext, "?CurrentContext@Context@Concurrency@@SAPAV12@XZ");
     }
 
     init_thiscall_thunk();
@@ -557,15 +656,251 @@ static void test__SpinWait(void)
     call_func1(pSpinWait_dtor, &sp);
 }
 
+static DWORD WINAPI lock_read_thread(void *rw_lock)
+{
+    return (MSVCRT_bool)call_func1(preader_writer_lock_try_lock_read, rw_lock);
+}
+
+static void test_reader_writer_lock(void)
+{
+    /* define reader_writer_lock data big enough to hold every version of structure */
+    char rw_lock[100];
+    MSVCRT_bool ret;
+    HANDLE thread;
+    DWORD d;
+
+    call_func1(preader_writer_lock_ctor, rw_lock);
+
+    ret = call_func1(preader_writer_lock_try_lock, rw_lock);
+    ok(ret, "reader_writer_lock:try_lock returned %x\n", ret);
+    ret = call_func1(preader_writer_lock_try_lock, rw_lock);
+    ok(!ret, "reader_writer_lock:try_lock returned %x\n", ret);
+    ret = call_func1(preader_writer_lock_try_lock_read, rw_lock);
+    ok(!ret, "reader_writer_lock:try_lock_read returned %x\n", ret);
+    call_func1(preader_writer_lock_unlock, rw_lock);
+
+    /* test lock for read on already locked section */
+    ret = call_func1(preader_writer_lock_try_lock_read, rw_lock);
+    ok(ret, "reader_writer_lock:try_lock_read returned %x\n", ret);
+    ret = call_func1(preader_writer_lock_try_lock_read, rw_lock);
+    ok(ret, "reader_writer_lock:try_lock_read returned %x\n", ret);
+    ret = call_func1(preader_writer_lock_try_lock, rw_lock);
+    ok(!ret, "reader_writer_lock:try_lock returned %x\n", ret);
+    call_func1(preader_writer_lock_unlock, rw_lock);
+    ret = call_func1(preader_writer_lock_try_lock, rw_lock);
+    ok(!ret, "reader_writer_lock:try_lock returned %x\n", ret);
+    call_func1(preader_writer_lock_unlock, rw_lock);
+    ret = call_func1(preader_writer_lock_try_lock, rw_lock);
+    ok(ret, "reader_writer_lock:try_lock returned %x\n", ret);
+    call_func1(preader_writer_lock_unlock, rw_lock);
+
+    call_func1(preader_writer_lock_lock, rw_lock);
+    thread = CreateThread(NULL, 0, lock_read_thread, rw_lock, 0, NULL);
+    ok(thread != NULL, "CreateThread failed: %d\n", GetLastError());
+    WaitForSingleObject(thread, INFINITE);
+    ok(GetExitCodeThread(thread, &d), "GetExitCodeThread failed\n");
+    ok(!d, "reader_writer_lock::try_lock_read succeeded on already locked object\n");
+    CloseHandle(thread);
+    call_func1(preader_writer_lock_unlock, rw_lock);
+
+    call_func1(preader_writer_lock_lock_read, rw_lock);
+    thread = CreateThread(NULL, 0, lock_read_thread, rw_lock, 0, NULL);
+    ok(thread != NULL, "CreateThread failed: %d\n", GetLastError());
+    WaitForSingleObject(thread, INFINITE);
+    ok(GetExitCodeThread(thread, &d), "GetExitCodeThread failed\n");
+    ok(d, "reader_writer_lock::try_lock_read failed on object locked for reading\n");
+    CloseHandle(thread);
+    call_func1(preader_writer_lock_unlock, rw_lock);
+
+    call_func1(preader_writer_lock_dtor, rw_lock);
+}
+
+static void test__ReentrantBlockingLock(void)
+{
+    _ReentrantBlockingLock rbl;
+    MSVCRT_bool ret;
+
+    call_func1(p_ReentrantBlockingLock_ctor, &rbl);
+    ret = call_func1(p_ReentrantBlockingLock__TryAcquire, &rbl);
+    ok(ret, "_ReentrantBlockingLock__TryAcquire failed\n");
+    call_func1(p_ReentrantBlockingLock__Acquire, &rbl);
+    ret = call_func1(p_ReentrantBlockingLock__TryAcquire, &rbl);
+    ok(ret, "_ReentrantBlockingLock__TryAcquire failed\n");
+    call_func1(p_ReentrantBlockingLock__Release, &rbl);
+    call_func1(p_ReentrantBlockingLock__Release, &rbl);
+    call_func1(p_ReentrantBlockingLock__Release, &rbl);
+    call_func1(p_ReentrantBlockingLock_dtor, &rbl);
+
+    call_func1(p_NonReentrantBlockingLock_ctor, &rbl);
+    ret = call_func1(p_NonReentrantBlockingLock__TryAcquire, &rbl);
+    ok(ret, "_NonReentrantBlockingLock__TryAcquire failed\n");
+    call_func1(p_NonReentrantBlockingLock__Acquire, &rbl);
+    ret = call_func1(p_NonReentrantBlockingLock__TryAcquire, &rbl);
+    ok(ret, "_NonReentrantBlockingLock__TryAcquire failed\n");
+    call_func1(p_NonReentrantBlockingLock__Release, &rbl);
+    call_func1(p_NonReentrantBlockingLock__Release, &rbl);
+    call_func1(p_NonReentrantBlockingLock__Release, &rbl);
+    call_func1(p_NonReentrantBlockingLock_dtor, &rbl);
+}
+
+static DWORD WINAPI test_event_thread(void *arg)
+{
+    event *evt = arg;
+    call_func1(p_event_set, evt);
+    return 0;
+}
+
+static DWORD WINAPI multiple_events_thread(void *arg)
+{
+     event **events = arg;
+
+     Sleep(50);
+     call_func1(p_event_set, events[0]);
+     call_func1(p_event_reset, events[0]);
+     call_func1(p_event_set, events[1]);
+     call_func1(p_event_reset, events[1]);
+     return 0;
+}
+
+static void test_event(void)
+{
+    int i;
+    int ret;
+    event evt;
+    event *evts[70];
+    HANDLE thread;
+    HANDLE threads[NUMELMS(evts)];
+
+    call_func1(p_event_ctor, &evt);
+
+    ret = call_func2(p_event_wait, &evt, 100);
+    ok(ret == -1, "expected -1, got %d\n", ret);
+
+    call_func1(p_event_set, &evt);
+    ret = call_func2(p_event_wait, &evt, 100);
+    ok(!ret, "expected 0, got %d\n", ret);
+
+    ret = call_func2(p_event_wait, &evt, 100);
+    ok(!ret, "expected 0, got %d\n", ret);
+
+    call_func1(p_event_reset, &evt);
+    ret = call_func2(p_event_wait, &evt, 100);
+    ok(ret == -1, "expected -1, got %d\n", ret);
+
+    thread = CreateThread(NULL, 0, test_event_thread, (void*)&evt, 0, NULL);
+    ret = call_func2(p_event_wait, &evt, 5000);
+    ok(!ret, "expected 0, got %d\n", ret);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+
+    if (0) /* crashes on Windows */
+        p_event_wait_for_multiple(NULL, 10, TRUE, 0);
+
+    for (i = 0; i < NUMELMS(evts); i++) {
+        evts[i] = malloc(sizeof(evt));
+        call_func1(p_event_ctor, evts[i]);
+    }
+
+    ret = p_event_wait_for_multiple(evts, 0, TRUE, 100);
+    ok(!ret, "expected 0, got %d\n", ret);
+
+    ret = p_event_wait_for_multiple(evts, NUMELMS(evts), TRUE, 100);
+    ok(ret == -1, "expected -1, got %d\n", ret);
+
+    /* reset and test wait for multiple with all */
+    for (i = 0; i < NUMELMS(evts); i++)
+        threads[i] = CreateThread(NULL, 0, test_event_thread, (void*)evts[i], 0, NULL);
+
+    ret = p_event_wait_for_multiple(evts, NUMELMS(evts), TRUE, 5000);
+    ok(ret != -1, "didn't expect -1\n");
+
+    for (i = 0; i < NUMELMS(evts); i++) {
+        WaitForSingleObject(threads[i], INFINITE);
+        CloseHandle(threads[i]);
+    }
+
+    /* reset and test wait for multiple with any */
+    call_func1(p_event_reset, evts[0]);
+
+    thread = CreateThread(NULL, 0, test_event_thread, (void*)evts[0], 0, NULL);
+    ret = p_event_wait_for_multiple(evts, 1, FALSE, 5000);
+    ok(!ret, "expected 0, got %d\n", ret);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+
+    call_func1(p_event_reset, evts[0]);
+    call_func1(p_event_reset, evts[1]);
+    thread = CreateThread(NULL, 0, multiple_events_thread, (void*)evts, 0, NULL);
+    ret = p_event_wait_for_multiple(evts, 2, TRUE, 500);
+    ok(ret == -1, "expected -1, got %d\n", ret);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+
+    call_func1(p_event_reset, evts[0]);
+    call_func1(p_event_set, evts[1]);
+    ret = p_event_wait_for_multiple(evts, 2, FALSE, 0);
+    ok(ret == 1, "expected 1, got %d\n", ret);
+
+    for (i = 0; i < NUMELMS(evts); i++) {
+        call_func1(p_event_dtor, evts[i]);
+        free(evts[i]);
+    }
+
+    call_func1(p_event_dtor, &evt);
+}
+
+static DWORD WINAPI external_context_thread(void *arg)
+{
+    unsigned int id;
+    Context *ctx;
+
+    id = p_Context_Id();
+    ok(id == -1, "Context::Id() = %u\n", id);
+
+    ctx = p_Context_CurrentContext();
+    ok(ctx != NULL, "Context::CurrentContext() = NULL\n");
+    id = p_Context_Id();
+    ok(id == 1, "Context::Id() = %u\n", id);
+    return 0;
+}
+
+static void test_ExternalContextBase(void)
+{
+    unsigned int id;
+    Context *ctx;
+    HANDLE thread;
+
+    id = p_Context_Id();
+    ok(id == -1, "Context::Id() = %u\n", id);
+
+    ctx = p_Context_CurrentContext();
+    ok(ctx != NULL, "Context::CurrentContext() = NULL\n");
+    id = p_Context_Id();
+    ok(id == 0, "Context::Id() = %u\n", id);
+
+    ctx = p_Context_CurrentContext();
+    ok(ctx != NULL, "Context::CurrentContext() = NULL\n");
+    id = p_Context_Id();
+    ok(id == 0, "Context::Id() = %u\n", id);
+
+    thread = CreateThread(NULL, 0, external_context_thread, NULL, 0, NULL);
+    ok(thread != NULL, "CreateThread failed: %d\n", GetLastError());
+    WaitForSingleObject(thread, INFINITE);
+}
+
 START_TEST(msvcr100)
 {
     if (!init())
         return;
 
+    test_ExternalContextBase();
     test_wmemcpy_s();
     test_wmemmove_s();
     test_fread_s();
     test__aligned_msize();
     test_atoi();
     test__SpinWait();
+    test_reader_writer_lock();
+    test__ReentrantBlockingLock();
+    test_event();
 }

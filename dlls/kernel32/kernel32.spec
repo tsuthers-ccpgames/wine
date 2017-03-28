@@ -167,11 +167,11 @@
 @ stub BaseCheckAppcompatCache
 # @ stub BaseCheckAppcompatCacheEx
 # @ stub BaseCheckRunApp
-@ stub BaseCleanupAppcompatCache 
+@ stub BaseCleanupAppcompatCache
 @ stub BaseCleanupAppcompatCacheSupport
 # @ stub BaseDllReadWriteIniFile
 @ stub BaseDumpAppcompatCache
-@ stub BaseFlushAppcompatCache
+@ stdcall BaseFlushAppcompatCache()
 # @ stub BaseFormatObjectAttributes
 # @ stub BaseFormatTimeOut
 # @ stub BaseGenerateAppCompatData
@@ -348,7 +348,7 @@
 @ stdcall CreateWaitableTimerExW(ptr wstr long long)
 @ stdcall CreateWaitableTimerW(ptr long wstr)
 # @ stub CtrlRoutine
-@ stdcall DeactivateActCtx(long ptr)
+@ stdcall DeactivateActCtx(long long)
 @ stdcall DebugActiveProcess(long)
 @ stdcall DebugActiveProcessStop(long)
 @ stdcall DebugBreak()
@@ -367,7 +367,7 @@
 # @ stub DeleteFileTransactedA
 # @ stub DeleteFileTransactedW
 @ stdcall DeleteFileW(wstr)
-# @ stub DeleteProcThreadAttributeList
+@ stdcall DeleteProcThreadAttributeList(ptr)
 # @ stub DisableThreadProfiling
 @ stdcall DisassociateCurrentThreadFromCallback(ptr) ntdll.TpDisassociateCallback
 @ stdcall DeleteTimerQueue(long)
@@ -564,7 +564,7 @@
 # @ stub GetCalendarSupportedDateRange
 # @ stub GetCalendarWeekNumber
 # @ stub GetComPlusPackageInstallStatus
-@ stdcall GetCommConfig(long ptr long)
+@ stdcall GetCommConfig(long ptr ptr)
 @ stdcall GetCommMask(long ptr)
 @ stdcall GetCommModemStatus(long ptr)
 @ stdcall GetCommProperties(long ptr)
@@ -628,6 +628,8 @@
 # @ stub GetCurrentConsoleFontEx
 @ stdcall GetCurrentDirectoryA(long ptr)
 @ stdcall GetCurrentDirectoryW(long ptr)
+@ stdcall GetCurrentPackageFamilyName(ptr ptr)
+@ stdcall GetCurrentPackageFullName(ptr ptr)
 @ stdcall GetCurrentPackageId(ptr ptr)
 @ stdcall -norelay GetCurrentProcess()
 @ stdcall -norelay GetCurrentProcessId()
@@ -640,8 +642,8 @@
 @ stdcall GetDateFormatEx(wstr long ptr wstr ptr long wstr)
 @ stdcall GetDateFormatW(long long ptr wstr ptr long)
 @ stdcall GetDaylightFlag()
-@ stdcall GetDefaultCommConfigA(str ptr long)
-@ stdcall GetDefaultCommConfigW(wstr ptr long)
+@ stdcall GetDefaultCommConfigA(str ptr ptr)
+@ stdcall GetDefaultCommConfigW(wstr ptr ptr)
 @ stub GetDefaultSortkeySize
 @ stdcall GetDevicePowerState(long ptr)
 @ stdcall GetDiskFreeSpaceA(str ptr ptr ptr ptr)
@@ -875,7 +877,7 @@
 @ stdcall GetVersionExA(ptr)
 @ stdcall GetVersionExW(ptr)
 @ stdcall GetVolumeInformationA(str ptr long ptr ptr ptr ptr long)
-# @ stub GetVolumeInformationByHandleW
+@ stdcall GetVolumeInformationByHandleW(ptr ptr long ptr ptr ptr ptr long)
 @ stdcall GetVolumeInformationW(wstr ptr long ptr ptr ptr ptr long)
 @ stdcall GetVolumeNameForVolumeMountPointA(str ptr long)
 @ stdcall GetVolumeNameForVolumeMountPointW(wstr ptr long)
@@ -945,7 +947,7 @@
 @ stdcall InitializeCriticalSection(ptr)
 @ stdcall InitializeCriticalSectionAndSpinCount(ptr long)
 @ stdcall InitializeCriticalSectionEx(ptr long long)
-# @ stub InitializeProcThreadAttributeList
+@ stdcall InitializeProcThreadAttributeList(ptr long long ptr)
 @ stdcall InitializeSListHead(ptr) ntdll.RtlInitializeSListHead
 @ stdcall InitializeSRWLock(ptr) ntdll.RtlInitializeSRWLock
 @ stdcall -arch=i386 InterlockedCompareExchange (ptr long long)
@@ -1329,7 +1331,7 @@
 # @ stub SetComPlusPackageInstallStatus
 @ stdcall SetCommBreak(long)
 @ stdcall SetCommConfig(long ptr long)
-@ stdcall SetCommMask(long ptr)
+@ stdcall SetCommMask(long long)
 @ stdcall SetCommState(long ptr)
 @ stdcall SetCommTimeouts(long ptr)
 @ stdcall SetComputerNameA(str)
@@ -1349,8 +1351,8 @@
 @ stdcall SetConsoleFont(long long)
 @ stub SetConsoleHardwareState
 @ stdcall SetConsoleIcon(ptr)
-@ stdcall SetConsoleInputExeNameA(ptr)
-@ stdcall SetConsoleInputExeNameW(ptr)
+@ stdcall SetConsoleInputExeNameA(str)
+@ stdcall SetConsoleInputExeNameW(wstr)
 @ stdcall SetConsoleKeyShortcuts(long long ptr long)
 @ stub SetConsoleLocalEUDC
 @ stub SetConsoleMaximumWindowSize
@@ -1538,7 +1540,7 @@
 @ stdcall UnregisterWait(long)
 @ stdcall UnregisterWaitEx(long long)
 # @ stub UpdateCalendarDayOfWeek
-# @ stub UpdateProcThreadAttribute
+@ stdcall UpdateProcThreadAttribute(ptr long long ptr long ptr ptr)
 @ stdcall UpdateResourceA(long str str long ptr long)
 @ stdcall UpdateResourceW(long wstr wstr long ptr long)
 @ stub VDMConsoleOperation

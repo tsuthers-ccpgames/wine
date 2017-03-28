@@ -134,17 +134,27 @@ DWORD WINAPI AllocateAndGetIfTableFromStack(PMIB_IFTABLE *ppIfTable,
 }
 
 
-static int IpAddrTableSorter(const void *a, const void *b)
+static int IpAddrTableNumericSorter(const void *a, const void *b)
 {
-  int ret;
+  int ret = 0;
 
   if (a && b)
     ret = ((const MIB_IPADDRROW*)a)->dwAddr - ((const MIB_IPADDRROW*)b)->dwAddr;
-  else
-    ret = 0;
   return ret;
 }
 
+static int IpAddrTableLoopbackSorter(const void *a, const void *b)
+{
+  const MIB_IPADDRROW *left = a, *right = b;
+  int ret = 0;
+
+  if (isIfIndexLoopback(left->dwIndex))
+    ret = 1;
+  else if (isIfIndexLoopback(right->dwIndex))
+    ret = -1;
+
+  return ret;
+}
 
 /******************************************************************
  *    AllocateAndGetIpAddrTableFromStack (IPHLPAPI.@)
@@ -173,7 +183,7 @@ DWORD WINAPI AllocateAndGetIpAddrTableFromStack(PMIB_IPADDRTABLE *ppIpAddrTable,
   ret = getIPAddrTable(ppIpAddrTable, heap, flags);
   if (!ret && bOrder)
     qsort((*ppIpAddrTable)->table, (*ppIpAddrTable)->dwNumEntries,
-     sizeof(MIB_IPADDRROW), IpAddrTableSorter);
+     sizeof(MIB_IPADDRROW), IpAddrTableNumericSorter);
   TRACE("returning %d\n", ret);
   return ret;
 }
@@ -858,6 +868,27 @@ static ULONG count_v4_gateways(DWORD index, PMIB_IPFORWARDTABLE routeTable)
     return num_gateways;
 }
 
+static DWORD mask_v4_to_prefix(DWORD m)
+{
+#ifdef HAVE___BUILTIN_POPCOUNT
+    return __builtin_popcount(m);
+#else
+    m -= m >> 1 & 0x55555555;
+    m = (m & 0x33333333) + (m >> 2 & 0x33333333);
+    return ((m + (m >> 4)) & 0x0f0f0f0f) * 0x01010101 >> 24;
+#endif
+}
+
+static DWORD mask_v6_to_prefix(SOCKET_ADDRESS *m)
+{
+    const IN6_ADDR *mask = &((struct WS_sockaddr_in6 *)m->lpSockaddr)->sin6_addr;
+    DWORD ret = 0, i;
+
+    for (i = 0; i < 8; i++)
+        ret += mask_v4_to_prefix(mask->u.Word[i]);
+    return ret;
+}
+
 static PMIB_IPFORWARDROW findIPv4Gateway(DWORD index,
                                          PMIB_IPFORWARDTABLE routeTable)
 {
@@ -1036,7 +1067,7 @@ static ULONG adapterAddressesFromIndex(ULONG family, ULONG flags, IF_INDEX index
         {
             IP_ADAPTER_UNICAST_ADDRESS *ua;
             struct WS_sockaddr_in *sa;
-            aa->Flags |= IP_ADAPTER_IPV4_ENABLED;
+            aa->u1.s1.Ipv4Enabled = TRUE;
             ua = aa->FirstUnicastAddress = (IP_ADAPTER_UNICAST_ADDRESS *)ptr;
             for (i = 0; i < num_v4addrs; i++)
             {
@@ -1055,6 +1086,8 @@ static ULONG adapterAddressesFromIndex(ULONG family, ULONG flags, IF_INDEX index
                       debugstr_ipv4(&sa->sin_addr.S_un.S_addr, addr_buf));
                 fill_unicast_addr_data(aa, ua);
 
+                ua->OnLinkPrefixLength = mask_v4_to_prefix(v4masks[i]);
+
                 ptr += ua->u.s.Length + ua->Address.iSockaddrLength;
                 if (i < num_v4addrs - 1)
                 {
@@ -1068,7 +1101,7 @@ static ULONG adapterAddressesFromIndex(ULONG family, ULONG flags, IF_INDEX index
             IP_ADAPTER_UNICAST_ADDRESS *ua;
             struct WS_sockaddr_in6 *sa;
 
-            aa->Flags |= IP_ADAPTER_IPV6_ENABLED;
+            aa->u1.s1.Ipv6Enabled = TRUE;
             if (aa->FirstUnicastAddress)
             {
                 for (ua = aa->FirstUnicastAddress; ua->Next; ua = ua->Next)
@@ -1092,6 +1125,8 @@ static ULONG adapterAddressesFromIndex(ULONG family, ULONG flags, IF_INDEX index
                 TRACE("IPv6 %d/%d: %s\n", i + 1, num_v6addrs,
                       debugstr_ipv6(sa, addr_buf));
                 fill_unicast_addr_data(aa, ua);
+
+                ua->OnLinkPrefixLength = mask_v6_to_prefix(&v6masks[i]);
 
                 ptr += ua->u.s.Length + ua->Address.iSockaddrLength;
                 if (i < num_v6addrs - 1)
@@ -1122,12 +1157,8 @@ static ULONG adapterAddressesFromIndex(ULONG family, ULONG flags, IF_INDEX index
                 sa->sin_addr.S_un.S_addr = v4addrs[i] & v4masks[i];
                 sa->sin_port             = 0;
 
-                prefix->PrefixLength = 0;
-                for (j = 0; j < sizeof(*v4masks) * 8; j++)
-                {
-                    if (v4masks[i] & 1 << j) prefix->PrefixLength++;
-                    else break;
-                }
+                prefix->PrefixLength = mask_v4_to_prefix(v4masks[i]);
+
                 TRACE("IPv4 network: %s/%u\n",
                       debugstr_ipv4((const in_addr_t *)&sa->sin_addr.S_un.S_addr, addr_buf),
                       prefix->PrefixLength);
@@ -1158,8 +1189,6 @@ static ULONG adapterAddressesFromIndex(ULONG family, ULONG flags, IF_INDEX index
                 char addr_buf[46];
                 struct WS_sockaddr_in6 *sa;
                 const IN6_ADDR *addr, *mask;
-                BOOL done = FALSE;
-                ULONG k;
 
                 prefix->u.s.Length = sizeof(*prefix);
                 prefix->u.s.Flags  = 0;
@@ -1176,15 +1205,8 @@ static ULONG adapterAddressesFromIndex(ULONG family, ULONG flags, IF_INDEX index
                 for (j = 0; j < 8; j++) sa->sin6_addr.u.Word[j] = addr->u.Word[j] & mask->u.Word[j];
                 sa->sin6_scope_id = 0;
 
-                prefix->PrefixLength = 0;
-                for (k = 0; k < 8 && !done; k++)
-                {
-                    for (j = 0; j < sizeof(WORD) * 8 && !done; j++)
-                    {
-                        if (mask->u.Word[k] & 1 << j) prefix->PrefixLength++;
-                        else done = TRUE;
-                    }
-                }
+                prefix->PrefixLength = mask_v6_to_prefix(&v6masks[i]);
+
                 TRACE("IPv6 network: %s/%u\n", debugstr_ipv6(sa, addr_buf), prefix->PrefixLength);
 
                 ptr += prefix->u.s.Length + prefix->Address.iSockaddrLength;
@@ -1988,9 +2010,14 @@ DWORD WINAPI GetIpAddrTable(PMIB_IPADDRTABLE pIpAddrTable, PULONG pdwSize, BOOL 
       else {
         *pdwSize = size;
         memcpy(pIpAddrTable, table, size);
+        /* sort by numeric IP value */
         if (bOrder)
           qsort(pIpAddrTable->table, pIpAddrTable->dwNumEntries,
-           sizeof(MIB_IPADDRROW), IpAddrTableSorter);
+           sizeof(MIB_IPADDRROW), IpAddrTableNumericSorter);
+        /* sort ensuring loopback interfaces are in the end */
+        else
+          qsort(pIpAddrTable->table, pIpAddrTable->dwNumEntries,
+           sizeof(MIB_IPADDRROW), IpAddrTableLoopbackSorter);
         ret = NO_ERROR;
       }
       HeapFree(GetProcessHeap(), 0, table);
@@ -2440,6 +2467,73 @@ DWORD WINAPI GetExtendedUdpTable(PVOID pUdpTable, PDWORD pdwSize, BOOL bOrder,
     return ret;
 }
 
+DWORD WINAPI GetUnicastIpAddressEntry(MIB_UNICASTIPADDRESS_ROW *row)
+{
+    IP_ADAPTER_ADDRESSES *aa, *ptr;
+    ULONG size = 0;
+    DWORD ret;
+
+    TRACE("%p\n", row);
+
+    if (!row)
+        return ERROR_INVALID_PARAMETER;
+
+    ret = GetAdaptersAddresses(row->Address.si_family, 0, NULL, NULL, &size);
+    if (ret != ERROR_BUFFER_OVERFLOW)
+        return ret;
+    if (!(ptr = HeapAlloc(GetProcessHeap(), 0, size)))
+        return ERROR_OUTOFMEMORY;
+    if ((ret = GetAdaptersAddresses(row->Address.si_family, 0, NULL, ptr, &size)))
+    {
+        HeapFree(GetProcessHeap(), 0, ptr);
+        return ret;
+    }
+
+    ret = ERROR_FILE_NOT_FOUND;
+    for (aa = ptr; aa; aa = aa->Next)
+    {
+        IP_ADAPTER_UNICAST_ADDRESS *ua;
+
+        if (aa->u.s.IfIndex != row->InterfaceIndex &&
+            memcmp(&aa->Luid, &row->InterfaceLuid, sizeof(row->InterfaceLuid)))
+            continue;
+        ret = ERROR_NOT_FOUND;
+
+        ua = aa->FirstUnicastAddress;
+        while (ua)
+        {
+            SOCKADDR_INET *uaaddr = (SOCKADDR_INET *)ua->Address.lpSockaddr;
+
+            if ((row->Address.si_family == WS_AF_INET6 &&
+                 !memcmp(&row->Address.Ipv6.sin6_addr, &uaaddr->Ipv6.sin6_addr, sizeof(uaaddr->Ipv6.sin6_addr))) ||
+                (row->Address.si_family == WS_AF_INET &&
+                 row->Address.Ipv4.sin_addr.S_un.S_addr == uaaddr->Ipv4.sin_addr.S_un.S_addr))
+            {
+                memcpy(&row->InterfaceLuid, &aa->Luid, sizeof(aa->Luid));
+                row->InterfaceIndex     = aa->u.s.IfIndex;
+                row->PrefixOrigin       = ua->PrefixOrigin;
+                row->SuffixOrigin       = ua->SuffixOrigin;
+                row->ValidLifetime      = ua->ValidLifetime;
+                row->PreferredLifetime  = ua->PreferredLifetime;
+                row->OnLinkPrefixLength = ua->OnLinkPrefixLength;
+                row->SkipAsSource       = 0;
+                row->DadState           = ua->DadState;
+                if (row->Address.si_family == WS_AF_INET6)
+                    row->ScopeId.u.Value  = row->Address.Ipv6.sin6_scope_id;
+                else
+                    row->ScopeId.u.Value  = 0;
+                NtQuerySystemTime(&row->CreationTimeStamp);
+                HeapFree(GetProcessHeap(), 0, ptr);
+                return NO_ERROR;
+            }
+            ua = ua->Next;
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, ptr);
+
+    return ret;
+}
+
 /******************************************************************
  *    GetUniDirectionalAdapterInfo (IPHLPAPI.@)
  *
@@ -2546,8 +2640,8 @@ DWORD WINAPI NotifyAddrChange(PHANDLE Handle, LPOVERLAPPED overlapped)
 /******************************************************************
  *    NotifyIpInterfaceChange (IPHLPAPI.@)
  */
-DWORD WINAPI NotifyIpInterfaceChange(ULONG family, PVOID callback, PVOID context,
-                                     BOOLEAN init_notify, PHANDLE handle)
+DWORD WINAPI NotifyIpInterfaceChange(ADDRESS_FAMILY family, PIPINTERFACE_CHANGE_CALLBACK callback,
+                                     PVOID context, BOOLEAN init_notify, PHANDLE handle)
 {
     FIXME("(family %d, callback %p, context %p, init_notify %d, handle %p): stub\n",
           family, callback, context, init_notify, handle);
@@ -2578,6 +2672,18 @@ DWORD WINAPI NotifyRouteChange(PHANDLE Handle, LPOVERLAPPED overlapped)
   return ERROR_NOT_SUPPORTED;
 }
 
+
+/******************************************************************
+ *    NotifyUnicastIpAddressChange (IPHLPAPI.@)
+ */
+DWORD WINAPI NotifyUnicastIpAddressChange(ADDRESS_FAMILY family, PUNICAST_IPADDRESS_CHANGE_CALLBACK callback,
+                                          PVOID context, BOOLEAN init_notify, PHANDLE handle)
+{
+    FIXME("(family %d, callback %p, context %p, init_notify %d, handle %p): stub\n",
+          family, callback, context, init_notify, handle);
+    if (handle) *handle = NULL;
+    return ERROR_NOT_SUPPORTED;
+}
 
 /******************************************************************
  *    SendARP (IPHLPAPI.@)

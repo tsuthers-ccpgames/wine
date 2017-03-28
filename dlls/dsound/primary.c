@@ -238,7 +238,10 @@ static HRESULT DSOUND_PrimaryOpen(DirectSoundDevice *device, WAVEFORMATEX *wfx, 
         mixfloat = TRUE;
 
     /* reallocate emulated primary buffer */
-    if (forcewave) {
+    if (forcewave || !mixfloat) {
+        if (!forcewave)
+            new_buflen = frames * wfx->nChannels * sizeof(float);
+
         if (device->buffer)
             newbuf = HeapReAlloc(GetProcessHeap(), 0, device->buffer, new_buflen);
         else
@@ -249,19 +252,6 @@ static HRESULT DSOUND_PrimaryOpen(DirectSoundDevice *device, WAVEFORMATEX *wfx, 
             return DSERR_OUTOFMEMORY;
         }
         FillMemory(newbuf, new_buflen, (wfx->wBitsPerSample == 8) ? 128 : 0);
-    } else if (!mixfloat) {
-        DWORD alloc_len = frames * sizeof(float);
-
-        if (device->buffer)
-            newbuf = HeapReAlloc(GetProcessHeap(), 0, device->buffer, alloc_len);
-        else
-            newbuf = HeapAlloc(GetProcessHeap(), 0, alloc_len);
-
-        if (!newbuf) {
-            ERR("failed to allocate primary buffer\n");
-            return DSERR_OUTOFMEMORY;
-        }
-        FillMemory(newbuf, alloc_len, (wfx->wBitsPerSample == 8) ? 128 : 0);
     } else {
         HeapFree(GetProcessHeap(), 0, device->buffer);
         newbuf = NULL;
@@ -274,7 +264,7 @@ static HRESULT DSOUND_PrimaryOpen(DirectSoundDevice *device, WAVEFORMATEX *wfx, 
 
     device->writelead = (wfx->nSamplesPerSec / 100) * wfx->nBlockAlign;
 
-    TRACE("buflen: %u, fraglen: %u\n", device->buflen, device->fraglen);
+    TRACE("buflen: %u, frames %u\n", device->buflen, frames);
 
     if (!mixfloat)
         device->normfunction = normfunctions[wfx->wBitsPerSample/8 - 1];
@@ -296,12 +286,12 @@ HRESULT DSOUND_ReopenDevice(DirectSoundDevice *device, BOOL forcewave)
 {
     HRESULT hres;
     REFERENCE_TIME period;
-    UINT32 frames;
+    UINT32 acbuf_frames, aclen_frames;
     DWORD period_ms;
     IAudioClient *client = NULL;
     IAudioRenderClient *render = NULL;
     IAudioStreamVolume *volume = NULL;
-    DWORD fraglen;
+    DWORD frag_frames;
     WAVEFORMATEX *wfx = NULL;
     DWORD oldspeakerconfig = device->speaker_config;
 
@@ -350,17 +340,20 @@ HRESULT DSOUND_ReopenDevice(DirectSoundDevice *device, BOOL forcewave)
         WARN("GetStreamLatency failed with %08x\n", hres);
         goto err;
     }
-    hres = IAudioClient_GetBufferSize(client, &frames);
+    hres = IAudioClient_GetBufferSize(client, &acbuf_frames);
     if (FAILED(hres)) {
         WARN("GetBufferSize failed with %08x\n", hres);
         goto err;
     }
 
     period_ms = (period + 9999) / 10000;
-    fraglen = MulDiv(wfx->nSamplesPerSec, period, 10000000) * wfx->nBlockAlign;
-    TRACE("period %u ms fraglen %u buflen %u\n", period_ms, fraglen, frames * wfx->nBlockAlign);
+    frag_frames = MulDiv(wfx->nSamplesPerSec, period, 10000000);
 
-    hres = DSOUND_PrimaryOpen(device, wfx, frames, forcewave);
+    aclen_frames = min(acbuf_frames, 3 * frag_frames);
+
+    TRACE("period %u ms frag_frames %u buf_frames %u\n", period_ms, frag_frames, aclen_frames);
+
+    hres = DSOUND_PrimaryOpen(device, wfx, aclen_frames, forcewave);
     if(FAILED(hres))
         goto err;
 
@@ -368,8 +361,8 @@ HRESULT DSOUND_ReopenDevice(DirectSoundDevice *device, BOOL forcewave)
     device->client = client;
     device->render = render;
     device->volume = volume;
-    device->fraglen = fraglen;
-    device->aclen = frames * wfx->nBlockAlign;
+    device->frag_frames = frag_frames;
+    device->ac_frames = aclen_frames;
 
     if (period_ms < 3)
         device->sleeptime = 5;

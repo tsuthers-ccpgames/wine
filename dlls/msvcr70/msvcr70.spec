@@ -108,13 +108,13 @@
 @ cdecl -arch=i386 _CItan()
 @ cdecl -arch=i386 _CItanh()
 @ cdecl _CRT_RTC_INIT(ptr ptr long long long)
-@ stdcall _CxxThrowException(long long)
+@ stdcall _CxxThrowException(ptr ptr)
 @ cdecl -arch=i386 -norelay _EH_prolog()
 @ cdecl _Getdays()
 @ cdecl _Getmonths()
 @ cdecl _Gettnames()
 @ extern _HUGE MSVCRT__HUGE
-@ cdecl _Strftime(str long str ptr ptr)
+@ cdecl _Strftime(ptr long str ptr ptr)
 @ cdecl _XcptFilter(long ptr)
 @ stub __CxxCallUnwindDtor
 @ stub __CxxCallUnwindVecDtor
@@ -816,7 +816,7 @@
 @ cdecl strcpy(ptr str) ntdll.strcpy
 @ cdecl strcspn(str str) ntdll.strcspn
 @ cdecl strerror(long) MSVCRT_strerror
-@ cdecl strftime(str long str ptr) MSVCRT_strftime
+@ cdecl strftime(ptr long str ptr) MSVCRT_strftime
 @ cdecl strlen(str) MSVCRT_strlen
 @ cdecl strncat(str str long) MSVCRT_strncat
 @ cdecl strncmp(str str long) MSVCRT_strncmp

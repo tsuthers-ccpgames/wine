@@ -22,6 +22,8 @@
 #include <dplay8.h>
 #include "wine/test.h"
 
+#include "dpnet_test.h"
+
 /* {6733C6E8-A0D6-450E-8C18-CEACF331DC27} */
 static const GUID IID_Random = {0x6733c6e8, 0xa0d6, 0x450e, { 0x8c, 0x18, 0xce, 0xac, 0xf3, 0x31, 0xdc, 0x27 } };
 static const WCHAR localhost[] = {'l','o','c','a','l','h','o','s','t',0};
@@ -356,6 +358,20 @@ static void address_duplicate(void)
 START_TEST(address)
 {
     HRESULT hr;
+    char path[MAX_PATH];
+
+    if(!GetSystemDirectoryA(path, MAX_PATH))
+    {
+        skip("Failed to get systems directory\n");
+        return;
+    }
+    strcat(path, "\\dpnet.dll");
+
+    if (!winetest_interactive && is_stub_dll(path))
+    {
+        win_skip("dpnet is a stub dll, skipping tests\n");
+        return;
+    }
 
     hr = CoInitialize(0);
     ok(hr == S_OK, "failed to init com\n");

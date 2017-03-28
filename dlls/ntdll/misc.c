@@ -380,6 +380,16 @@ ULONG WINAPI EtwEventUnregister( REGHANDLE handle )
     return ERROR_SUCCESS;
 }
 
+/*********************************************************************
+ *                  EtwEventSetInformation   (NTDLL.@)
+ */
+ULONG WINAPI EtwEventSetInformation( REGHANDLE handle, EVENT_INFO_CLASS class, void *info,
+                                     ULONG length )
+{
+    FIXME("(%s, %u, %p, %u) stub\n", wine_dbgstr_longlong(handle), class, info, length);
+    return ERROR_SUCCESS;
+}
+
 /******************************************************************************
  *                  EtwRegisterTraceGuidsW (NTDLL.@)
  *
@@ -433,5 +443,17 @@ ULONG WINAPI EtwRegisterTraceGuidsA( WMIDPREQUEST RequestAddress,
     FIXME("(%p, %p, %s, %u, %p, %s, %s, %p): stub\n", RequestAddress, RequestContext,
           debugstr_guid(ControlGuid), GuidCount, TraceGuidReg, debugstr_a(MofImagePath),
           debugstr_a(MofResourceName), RegistrationHandle);
+    return ERROR_SUCCESS;
+}
+
+/******************************************************************************
+ *                  EtwUnregisterTraceGuids (NTDLL.@)
+ */
+ULONG WINAPI EtwUnregisterTraceGuids( TRACEHANDLE RegistrationHandle )
+{
+    if (!RegistrationHandle)
+         return ERROR_INVALID_PARAMETER;
+
+    FIXME("%s: stub\n", wine_dbgstr_longlong(RegistrationHandle));
     return ERROR_SUCCESS;
 }

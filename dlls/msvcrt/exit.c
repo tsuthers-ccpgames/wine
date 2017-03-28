@@ -41,8 +41,6 @@ typedef struct MSVCRT__onexit_table_t
     MSVCRT__onexit_t *_end;
 } MSVCRT__onexit_table_t;
 
-static const char szMsgBoxTitle[] = "Wine C++ Runtime Library";
-
 extern int MSVCRT_app_type;
 extern MSVCRT_wchar_t *MSVCRT__wpgmptr;
 
@@ -115,19 +113,22 @@ static void DoMessageBoxW(const MSVCRT_wchar_t *lead, const MSVCRT_wchar_t *mess
   static const MSVCRT_wchar_t message_format[] = {'%','s','\n','\n','P','r','o','g','r','a','m',':',' ','%','s','\n',
     '%','s','\n','\n','P','r','e','s','s',' ','O','K',' ','t','o',' ','e','x','i','t',' ','t','h','e',' ',
     'p','r','o','g','r','a','m',',',' ','o','r',' ','C','a','n','c','e','l',' ','t','o',' ','s','t','a','r','t',' ',
-    't','h','e',' ','W','i','n','e',' ','d','e','b','b','u','g','e','r','.','\n',0};
+    't','h','e',' ','W','i','n','e',' ','d','e','b','u','g','g','e','r','.','\n',0};
+  static const WCHAR title[] =
+    {'W','i','n','e',' ','C','+','+',' ','R','u','n','t','i','m','e',' ','L','i','b','r','a','r','y',0};
 
   MSGBOXPARAMSW msgbox;
   MSVCRT_wchar_t text[2048];
   INT ret;
 
-  MSVCRT__snwprintf(text,sizeof(text),message_format, lead, MSVCRT__wpgmptr, message);
+  MSVCRT__snwprintf(text, sizeof(text)/sizeof(text[0]), message_format,
+          lead, MSVCRT__wpgmptr, message);
 
   msgbox.cbSize = sizeof(msgbox);
   msgbox.hwndOwner = GetActiveWindow();
   msgbox.hInstance = 0;
-  msgbox.lpszText = (LPCWSTR)text;
-  msgbox.lpszCaption = (LPCWSTR)szMsgBoxTitle;
+  msgbox.lpszText = text;
+  msgbox.lpszCaption = title;
   msgbox.dwStyle = MB_OKCANCEL|MB_ICONERROR;
   msgbox.lpszIcon = NULL;
   msgbox.dwContextHelpId = 0;

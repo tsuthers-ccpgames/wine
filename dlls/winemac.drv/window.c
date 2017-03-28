@@ -786,6 +786,25 @@ static void destroy_cocoa_view(struct macdrv_win_data *data)
 
 
 /***********************************************************************
+ *              set_cocoa_view_parent
+ */
+static void set_cocoa_view_parent(struct macdrv_win_data *data, HWND parent)
+{
+    struct macdrv_win_data *parent_data = get_win_data(parent);
+    macdrv_window cocoa_window = parent_data ? parent_data->cocoa_window : NULL;
+    macdrv_view superview = parent_data ? parent_data->client_cocoa_view : NULL;
+
+    TRACE("win %p/%p parent %p/%p\n", data->hwnd, data->cocoa_view, parent, cocoa_window ? (void*)cocoa_window : (void*)superview);
+
+    if (!cocoa_window && !superview)
+        WARN("hwnd %p new parent %p has no Cocoa window or view in this process\n", data->hwnd, parent);
+
+    macdrv_set_view_superview(data->cocoa_view, superview, cocoa_window, NULL, NULL);
+    release_win_data(parent_data);
+}
+
+
+/***********************************************************************
  *              macdrv_create_win_data
  *
  * Create a Mac data window structure for an existing window.
@@ -825,6 +844,8 @@ static struct macdrv_win_data *macdrv_create_win_data(HWND hwnd, const RECT *win
         TRACE("win %p/%p window %s whole %s client %s\n",
                hwnd, data->cocoa_view, wine_dbgstr_rect(&data->window_rect),
                wine_dbgstr_rect(&data->whole_rect), wine_dbgstr_rect(&data->client_rect));
+
+        set_cocoa_view_parent(data, parent);
     }
 
     return data;
@@ -1073,7 +1094,7 @@ static void sync_window_position(struct macdrv_win_data *data, UINT swp_flags, c
             macdrv_set_view_frame(data->cocoa_view, frame);
             force_z_order = TRUE;
         }
-        else
+        else if (!EqualRect(&data->whole_rect, old_whole_rect))
             macdrv_set_view_frame(data->cocoa_view, frame);
     }
 
@@ -1574,18 +1595,8 @@ void CDECL macdrv_SetParent(HWND hwnd, HWND parent, HWND old_parent)
             destroy_cocoa_window(data);
             create_cocoa_view(data);
         }
-        else
-        {
-            struct macdrv_win_data *parent_data = get_win_data(parent);
-            macdrv_window cocoa_window = parent_data ? parent_data->cocoa_window : NULL;
-            macdrv_view superview = parent_data ? parent_data->client_cocoa_view : NULL;
 
-            if (!cocoa_window && !superview)
-                WARN("hwnd %p new parent %p has no Cocoa window or view in this process\n", hwnd, parent);
-
-            macdrv_set_view_superview(data->cocoa_view, superview, cocoa_window, NULL, NULL);
-            release_win_data(parent_data);
-        }
+        set_cocoa_view_parent(data, parent);
     }
     else  /* new top level window */
     {
@@ -2010,7 +2021,7 @@ void CDECL macdrv_WindowPosChanged(HWND hwnd, HWND insert_after, UINT swp_flags,
     data->window_rect = *window_rect;
     data->whole_rect  = *visible_rect;
     data->client_rect = *client_rect;
-    if (!data->ulw_layered)
+    if (data->cocoa_window && !data->ulw_layered)
     {
         if (surface) window_surface_add_ref(surface);
         if (new_style & WS_MINIMIZE)
@@ -2295,6 +2306,18 @@ void macdrv_window_lost_focus(HWND hwnd, const macdrv_event *event)
             SetForegroundWindow(GetDesktopWindow());
     }
 }
+
+/***********************************************************************
+ *              macdrv_app_activated
+ *
+ * Handler for APP_ACTIVATED events.
+ */
+void macdrv_app_activated(void)
+{
+    TRACE("\n");
+    macdrv_UpdateClipboard();
+}
+
 
 /***********************************************************************
  *              macdrv_app_deactivated

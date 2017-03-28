@@ -79,7 +79,7 @@ static	BOOL	WINMM_CreateIData(HINSTANCE hInstDLL)
 {
     hWinMM32Instance = hInstDLL;
     psLastEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
-    return TRUE;
+    return psLastEvent != NULL;
 }
 
 /******************************************************************
@@ -137,9 +137,10 @@ BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD fdwReason, LPVOID fImpLoad)
     case DLL_PROCESS_ATTACH:
         DisableThreadLibraryCalls(hInstDLL);
 
-	if (!WINMM_CreateIData(hInstDLL))
-	    return FALSE;
-	break;
+        if (!WINMM_CreateIData(hInstDLL))
+            return FALSE;
+
+        break;
     case DLL_PROCESS_DETACH:
         if(fImpLoad)
             break;
@@ -412,12 +413,12 @@ static	LPWINE_MIDI	MIDI_OutAlloc(HMIDIOUT* lphMidiOut, DWORD_PTR* lpdwCallback,
 /**************************************************************************
  * 				midiOutOpen    		[WINMM.@]
  */
-UINT WINAPI midiOutOpen(LPHMIDIOUT lphMidiOut, UINT uDeviceID,
+MMRESULT WINAPI midiOutOpen(LPHMIDIOUT lphMidiOut, UINT uDeviceID,
                        DWORD_PTR dwCallback, DWORD_PTR dwInstance, DWORD dwFlags)
 {
     HMIDIOUT		hMidiOut;
     LPWINE_MIDI		lpwm;
-    UINT		dwRet;
+    MMRESULT		dwRet;
 
     TRACE("(%p, %d, %08lX, %08lX, %08X);\n",
 	  lphMidiOut, uDeviceID, dwCallback, dwInstance, dwFlags);
@@ -698,12 +699,12 @@ UINT WINAPI midiInGetDevCapsA(UINT_PTR uDeviceID, LPMIDIINCAPSA lpCaps, UINT uSi
 /**************************************************************************
  * 				midiInOpen		[WINMM.@]
  */
-UINT WINAPI midiInOpen(HMIDIIN* lphMidiIn, UINT uDeviceID,
+MMRESULT WINAPI midiInOpen(HMIDIIN* lphMidiIn, UINT uDeviceID,
 		       DWORD_PTR dwCallback, DWORD_PTR dwInstance, DWORD dwFlags)
 {
     HANDLE		hMidiIn;
     LPWINE_MIDI		lpwm;
-    DWORD		dwRet;
+    MMRESULT		dwRet;
 
     TRACE("(%p, %d, %08lX, %08lX, %08X);\n",
 	  lphMidiIn, uDeviceID, dwCallback, dwInstance, dwFlags);

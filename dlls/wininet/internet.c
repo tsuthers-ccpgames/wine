@@ -982,7 +982,6 @@ static const object_vtbl_t APPINFOVtbl = {
     APPINFO_SetOption,
     NULL,
     NULL,
-    NULL,
     NULL
 };
 
@@ -1182,11 +1181,7 @@ BOOL WINAPI InternetGetConnectedState(LPDWORD lpdwStatus, DWORD dwReserved)
 {
     TRACE("(%p, 0x%08x)\n", lpdwStatus, dwReserved);
 
-    if (lpdwStatus) {
-	WARN("always returning LAN connection.\n");
-	*lpdwStatus = INTERNET_CONNECTION_LAN;
-    }
-    return TRUE;
+    return InternetGetConnectedStateExW(lpdwStatus, NULL, 0, dwReserved);
 }
 
 
@@ -2170,8 +2165,11 @@ BOOL WINAPI InternetReadFile(HINTERNET hFile, LPVOID lpBuffer,
         return FALSE;
     }
 
-    if(hdr->vtbl->ReadFile)
-        res = hdr->vtbl->ReadFile(hdr, lpBuffer, dwNumOfBytesToRead, pdwNumOfBytesRead);
+    if(hdr->vtbl->ReadFile) {
+        res = hdr->vtbl->ReadFile(hdr, lpBuffer, dwNumOfBytesToRead, pdwNumOfBytesRead, 0, 0);
+        if(res == ERROR_IO_PENDING)
+            *pdwNumOfBytesRead = 0;
+    }
 
     WININET_Release(hdr);
 
@@ -2229,8 +2227,8 @@ BOOL WINAPI InternetReadFileExA(HINTERNET hFile, LPINTERNET_BUFFERSA lpBuffersOu
         return FALSE;
     }
 
-    if(hdr->vtbl->ReadFileEx)
-        res = hdr->vtbl->ReadFileEx(hdr, lpBuffersOut->lpvBuffer, lpBuffersOut->dwBufferLength,
+    if(hdr->vtbl->ReadFile)
+        res = hdr->vtbl->ReadFile(hdr, lpBuffersOut->lpvBuffer, lpBuffersOut->dwBufferLength,
                 &lpBuffersOut->dwBufferLength, dwFlags, dwContext);
 
     WININET_Release(hdr);
@@ -2267,8 +2265,8 @@ BOOL WINAPI InternetReadFileExW(HINTERNET hFile, LPINTERNET_BUFFERSW lpBuffer,
         return FALSE;
     }
 
-    if(hdr->vtbl->ReadFileEx)
-        res = hdr->vtbl->ReadFileEx(hdr, lpBuffer->lpvBuffer, lpBuffer->dwBufferLength, &lpBuffer->dwBufferLength,
+    if(hdr->vtbl->ReadFile)
+        res = hdr->vtbl->ReadFile(hdr, lpBuffer->lpvBuffer, lpBuffer->dwBufferLength, &lpBuffer->dwBufferLength,
                 dwFlags, dwContext);
 
     WININET_Release(hdr);
@@ -3462,7 +3460,9 @@ static HINTERNET INTERNET_InternetOpenUrlW(appinfo_t *hIC, LPCWSTR lpszUrl,
     if(!InternetCrackUrlW(lpszUrl, strlenW(lpszUrl), 0, &urlComponents))
 	return NULL;
 
-    if(urlComponents.nScheme == INTERNET_SCHEME_HTTP && urlComponents.dwExtraInfoLength) {
+    if ((urlComponents.nScheme == INTERNET_SCHEME_HTTP || urlComponents.nScheme == INTERNET_SCHEME_HTTPS) &&
+        urlComponents.dwExtraInfoLength)
+    {
         assert(urlComponents.lpszUrlPath + urlComponents.dwUrlPathLength == urlComponents.lpszExtraInfo);
         urlComponents.dwUrlPathLength += urlComponents.dwExtraInfoLength;
     }

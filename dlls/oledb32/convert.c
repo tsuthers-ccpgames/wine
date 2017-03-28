@@ -139,6 +139,8 @@ static int get_length(DBTYPE type)
         return sizeof(FILETIME);
     case DBTYPE_GUID:
         return sizeof(GUID);
+    case DBTYPE_NUMERIC:
+        return sizeof(DB_NUMERIC);
     case DBTYPE_BYTES:
     case DBTYPE_WSTR:
     case DBTYPE_STR:
@@ -813,26 +815,27 @@ static HRESULT WINAPI convert_DataConvert(IDataConvert* iface,
         SysFreeString(b);
         return hr;
     }
+
     case DBTYPE_STR:
     {
         BSTR b;
-        DBLENGTH bstr_len;
+        DBLENGTH length;
         INT bytes_to_copy;
-        hr = IDataConvert_DataConvert(iface, src_type, DBTYPE_BSTR, src_len, &bstr_len,
+        hr = IDataConvert_DataConvert(iface, src_type, DBTYPE_BSTR, src_len, &length,
                                       src, &b, sizeof(BSTR), src_status, dst_status,
                                       precision, scale, flags);
         if(hr != S_OK) return hr;
-        bstr_len = SysStringLen(b);
-        *dst_len = bstr_len * sizeof(char); /* Doesn't include size for '\0' */
+        length = WideCharToMultiByte(CP_ACP, 0, b, SysStringLen(b), NULL, 0, NULL, NULL);
+        *dst_len = length; /* Doesn't include size for '\0' */
         *dst_status = DBSTATUS_S_OK;
-        bytes_to_copy = min(*dst_len + sizeof(char), dst_max_len);
+        bytes_to_copy = min(length + 1, dst_max_len);
         if(dst)
         {
             if(bytes_to_copy >= sizeof(char))
             {
-                WideCharToMultiByte(CP_ACP, 0, b, bytes_to_copy - sizeof(char), dst, dst_max_len, NULL, NULL);
-                *((char *)dst + bytes_to_copy / sizeof(char) - 1) = 0;
-                if(bytes_to_copy < *dst_len + sizeof(char))
+                WideCharToMultiByte(CP_ACP, 0, b, SysStringLen(b), dst, bytes_to_copy - 1, NULL, NULL);
+                *((char *)dst + bytes_to_copy - 1) = 0;
+                if(bytes_to_copy < length + 1)
                     *dst_status = DBSTATUS_S_TRUNCATED;
             }
             else
@@ -862,6 +865,30 @@ static HRESULT WINAPI convert_DataConvert(IDataConvert* iface,
         if(*d) memcpy(*d, b, bstr_len + sizeof(WCHAR));
         else hr = E_OUTOFMEMORY;
         SysFreeString(b);
+        return hr;
+    }
+
+    case DBTYPE_BYREF | DBTYPE_STR:
+    {
+        BSTR b;
+        char **d = dst;
+        DBLENGTH length;
+        hr = IDataConvert_DataConvert(iface, src_type, DBTYPE_BSTR, src_len, &length,
+                                      src, &b, sizeof(BSTR), src_status, dst_status,
+                                      precision, scale, flags);
+        if(hr != S_OK) return hr;
+
+        length = WideCharToMultiByte(CP_ACP, 0, b, SysStringLen(b) + 1, NULL, 0, NULL, NULL);
+        *dst_len = length - 1; /* Doesn't include size for '\0' */
+        *dst_status = DBSTATUS_S_OK;
+        *d = CoTaskMemAlloc(length);
+
+        if(*d)
+            WideCharToMultiByte(CP_ACP, 0, b, SysStringLen(b) + 1, *d, length, NULL, NULL);
+        else
+            hr = E_OUTOFMEMORY;
+        SysFreeString(b);
+
         return hr;
     }
 

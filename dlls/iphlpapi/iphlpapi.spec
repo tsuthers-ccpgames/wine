@@ -76,7 +76,7 @@
 @ stdcall GetBestInterface( long ptr )
 @ stdcall GetBestInterfaceEx( ptr ptr )
 @ stub GetBestInterfaceFromStack
-@ stdcall GetBestRoute( long long long )
+@ stdcall GetBestRoute( long long ptr )
 #@ stub GetBestRoute2
 @ stub GetBestRouteFromStack
 #@ stub GetCurrentThreadCompartmentId
@@ -147,7 +147,7 @@
 @ stub GetUdpStatsFromStack
 @ stdcall GetUdpTable( ptr ptr long )
 @ stub GetUdpTableFromStack
-#@ stub GetUnicastIpAddressEntry
+@ stdcall GetUnicastIpAddressEntry( ptr )
 #@ stub GetUnicastIpAddressTable
 @ stdcall GetUniDirectionalAdapterInfo( ptr ptr )
 @ stdcall Icmp6CreateFile()
@@ -239,7 +239,7 @@
 @ stub NotifyRouteChangeEx
 #@ stub NotifyStableUnicastIpAddressTable
 #@ stub NotifyTeredoPortChange
-#@ stub NotifyUnicastIpAddressChange
+@ stdcall NotifyUnicastIpAddressChange(long ptr ptr long ptr)
 #@ stub NTPTimeToNTFileTime
 #@ stub NTTimeToNTPTime
 #@ stub ParseNetworkString

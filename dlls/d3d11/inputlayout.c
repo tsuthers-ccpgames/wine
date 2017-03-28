@@ -28,15 +28,15 @@ static HRESULT isgn_handler(const char *data, DWORD data_size, DWORD tag, void *
 {
     struct wined3d_shader_signature *is = ctx;
 
-    switch(tag)
-    {
-        case TAG_ISGN:
-            return shader_parse_signature(data, data_size, is);
+    if (tag != TAG_ISGN)
+        return S_OK;
 
-        default:
-            FIXME("Unhandled chunk %s.\n", debugstr_an((const char *)&tag, 4));
-            return S_OK;
+    if (is->elements)
+    {
+        FIXME("Multiple input signatures.\n");
+        shader_free_signature(is);
     }
+    return shader_parse_signature(data, data_size, is);
 }
 
 static HRESULT d3d11_input_layout_to_wined3d_declaration(const D3D11_INPUT_ELEMENT_DESC *element_descs,
@@ -47,6 +47,7 @@ static HRESULT d3d11_input_layout_to_wined3d_declaration(const D3D11_INPUT_ELEME
     unsigned int i;
     HRESULT hr;
 
+    memset(&is, 0, sizeof(is));
     if (FAILED(hr = parse_dxbc(shader_byte_code, shader_byte_code_length, isgn_handler, &is)))
     {
         ERR("Failed to parse input signature.\n");
@@ -64,7 +65,7 @@ static HRESULT d3d11_input_layout_to_wined3d_declaration(const D3D11_INPUT_ELEME
     {
         struct wined3d_vertex_element *e = &(*wined3d_elements)[i];
         const D3D11_INPUT_ELEMENT_DESC *f = &element_descs[i];
-        unsigned int j;
+        struct wined3d_shader_signature_element *element;
 
         e->format = wined3dformat_from_dxgi_format(f->Format);
         e->input_slot = f->InputSlot;
@@ -76,17 +77,9 @@ static HRESULT d3d11_input_layout_to_wined3d_declaration(const D3D11_INPUT_ELEME
         e->usage = 0;
         e->usage_idx = 0;
 
-        for (j = 0; j < is.element_count; ++j)
-        {
-            if (!strcasecmp(element_descs[i].SemanticName, is.elements[j].semantic_name)
-                    && element_descs[i].SemanticIndex == is.elements[j].semantic_idx)
-            {
-                e->output_slot = is.elements[j].register_idx;
-                break;
-            }
-        }
-
-        if (e->output_slot == WINED3D_OUTPUT_SLOT_UNUSED)
+        if ((element = shader_find_signature_element(&is, f->SemanticName, f->SemanticIndex)))
+            e->output_slot = element->register_idx;
+        else
             WARN("Unused input element %u.\n", i);
     }
 

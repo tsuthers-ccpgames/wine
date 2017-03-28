@@ -27,6 +27,7 @@ IDL_SRCS = \
 	colinf.idl \
 	comcat.idl \
 	commoncontrols.idl \
+	comsvcs.idl \
 	control.idl \
 	cor.idl \
 	cordebug.idl \
@@ -88,6 +89,7 @@ IDL_SRCS = \
 	mediaobj.idl \
 	metahost.idl \
 	mfobjects.idl \
+	mfreadwrite.idl \
 	mimeinfo.idl \
 	mimeole.idl \
 	mlang.idl \
@@ -313,6 +315,7 @@ HEADER_SRCS = \
 	devguid.h \
 	devpkey.h \
 	devpropdef.h \
+	dhcpcsdk.h \
 	difxapi.h \
 	digitalv.h \
 	dinput.h \
@@ -461,6 +464,7 @@ HEADER_SRCS = \
 	msidefs.h \
 	msiquery.h \
 	mssip.h \
+	msstkppg.h \
 	mstcpip.h \
 	msvcrt/assert.h \
 	msvcrt/conio.h \

@@ -132,6 +132,7 @@ static Cursor create_cursor( HANDLE handle );
 static BOOL xinput2_available;
 static BOOL broken_rawevents;
 #define MAKE_FUNCPTR(f) static typeof(f) * p##f
+MAKE_FUNCPTR(XIGetClientPointer);
 MAKE_FUNCPTR(XIFreeDeviceInfo);
 MAKE_FUNCPTR(XIQueryDevice);
 MAKE_FUNCPTR(XIQueryVersion);
@@ -245,6 +246,45 @@ void sync_window_cursor( Window window )
     set_window_cursor( window, cursor );
 }
 
+#ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
+/***********************************************************************
+ *              update_relative_valuators
+ */
+static void update_relative_valuators(XIAnyClassInfo **valuators, int n_valuators)
+{
+    struct x11drv_thread_data *thread_data = x11drv_thread_data();
+    int i;
+
+    thread_data->x_rel_valuator.number = -1;
+    thread_data->y_rel_valuator.number = -1;
+
+    for (i = 0; i < n_valuators; i++)
+    {
+        XIValuatorClassInfo *class = (XIValuatorClassInfo *)valuators[i];
+        struct x11drv_valuator_data *valuator_data = NULL;
+
+        if (valuators[i]->type != XIValuatorClass) continue;
+        if (class->label == x11drv_atom( Rel_X ) ||
+            (!class->label && class->number == 0 && class->mode == XIModeRelative))
+        {
+            valuator_data = &thread_data->x_rel_valuator;
+        }
+        else if (class->label == x11drv_atom( Rel_Y ) ||
+                 (!class->label && class->number == 1 && class->mode == XIModeRelative))
+        {
+            valuator_data = &thread_data->y_rel_valuator;
+        }
+
+        if (valuator_data) {
+            valuator_data->number = class->number;
+            valuator_data->min = class->min;
+            valuator_data->max = class->max;
+        }
+    }
+}
+#endif
+
+
 /***********************************************************************
  *              enable_xinput2
  */
@@ -253,9 +293,9 @@ static void enable_xinput2(void)
 #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
     struct x11drv_thread_data *data = x11drv_thread_data();
     XIEventMask mask;
-    XIDeviceInfo *devices;
+    XIDeviceInfo *pointer_info;
     unsigned char mask_bits[XIMaskLen(XI_LASTEVENT)];
-    int i, j, count;
+    int count;
 
     if (!xinput2_available) return;
 
@@ -270,49 +310,33 @@ static void enable_xinput2(void)
         }
     }
     if (data->xi2_state == xi_unavailable) return;
-
-    if (data->xi2_devices) pXIFreeDeviceInfo( data->xi2_devices );
-    data->xi2_devices = devices = pXIQueryDevice( data->display, XIAllDevices, &data->xi2_device_count );
-    for (i = 0; i < data->xi2_device_count; ++i)
-    {
-        if (devices[i].use != XIMasterPointer) continue;
-        for (j = count = 0; j < devices[i].num_classes; j++)
-        {
-            XIValuatorClassInfo *class = (XIValuatorClassInfo *)devices[i].classes[j];
-
-            if (devices[i].classes[j]->type != XIValuatorClass) continue;
-            TRACE( "Device %u (%s) num %u %f,%f res %u mode %u label %s\n",
-                   devices[i].deviceid, debugstr_a(devices[i].name),
-                   class->number, class->min, class->max, class->resolution, class->mode,
-                   XGetAtomName( data->display, class->label ));
-            if (class->label == x11drv_atom( Rel_X ) || class->label == x11drv_atom( Rel_Y )) count++;
-            /* workaround for drivers that don't provide labels */
-            if (!class->label && class->number <= 1 && class->mode == XIModeRelative) count++;
-        }
-        if (count < 2) continue;
-        TRACE( "Using %u (%s) as core pointer\n",
-               devices[i].deviceid, debugstr_a(devices[i].name) );
-        data->xi2_core_pointer = devices[i].deviceid;
-        break;
-    }
+    if (!pXIGetClientPointer( data->display, None, &data->xi2_core_pointer )) return;
 
     mask.mask     = mask_bits;
     mask.mask_len = sizeof(mask_bits);
+    mask.deviceid = XIAllDevices;
     memset( mask_bits, 0, sizeof(mask_bits) );
+    XISetMask( mask_bits, XI_DeviceChanged );
     XISetMask( mask_bits, XI_RawMotion );
     XISetMask( mask_bits, XI_ButtonPress );
 
-    for (i = 0; i < data->xi2_device_count; ++i)
-    {
-        if (devices[i].use == XISlavePointer && devices[i].attachment == data->xi2_core_pointer)
-        {
-            TRACE( "Device %u (%s) is attached to the core pointer\n",
-                   devices[i].deviceid, debugstr_a(devices[i].name) );
-            mask.deviceid = devices[i].deviceid;
-            pXISelectEvents( data->display, DefaultRootWindow( data->display ), &mask, 1 );
-            data->xi2_state = xi_enabled;
-        }
-    }
+    pXISelectEvents( data->display, DefaultRootWindow( data->display ), &mask, 1 );
+
+    pointer_info = pXIQueryDevice( data->display, data->xi2_core_pointer, &count );
+    update_relative_valuators( pointer_info->classes, pointer_info->num_classes );
+    pXIFreeDeviceInfo( pointer_info );
+
+    /* This device info list is only used to find the initial current slave if
+     * no XI_DeviceChanged events happened. If any hierarchy change occurred that
+     * might be relevant here (eg. user switching mice after (un)plugging), a
+     * XI_DeviceChanged event will point us to the right slave. So this list is
+     * safe to be obtained statically at enable_xinput2() time.
+     */
+    if (data->xi2_devices) pXIFreeDeviceInfo( data->xi2_devices );
+    data->xi2_devices = pXIQueryDevice( data->display, XIAllDevices, &data->xi2_device_count );
+    data->xi2_current_slave = 0;
+
+    data->xi2_state = xi_enabled;
 #endif
 }
 
@@ -323,9 +347,7 @@ static void disable_xinput2(void)
 {
 #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
     struct x11drv_thread_data *data = x11drv_thread_data();
-    XIDeviceInfo *devices = data->xi2_devices;
     XIEventMask mask;
-    int i;
 
     if (data->xi2_state != xi_enabled) return;
 
@@ -334,18 +356,15 @@ static void disable_xinput2(void)
 
     mask.mask = NULL;
     mask.mask_len = 0;
+    mask.deviceid = XIAllDevices;
 
-    for (i = 0; i < data->xi2_device_count; ++i)
-    {
-        if (devices[i].use == XISlavePointer && devices[i].attachment == data->xi2_core_pointer)
-        {
-            mask.deviceid = devices[i].deviceid;
-            pXISelectEvents( data->display, DefaultRootWindow( data->display ), &mask, 1 );
-        }
-    }
-    pXIFreeDeviceInfo( devices );
+    pXISelectEvents( data->display, DefaultRootWindow( data->display ), &mask, 1 );
+    pXIFreeDeviceInfo( data->xi2_devices );
+    data->x_rel_valuator.number = -1;
+    data->y_rel_valuator.number = -1;
     data->xi2_devices = NULL;
-    data->xi2_device_count = 0;
+    data->xi2_core_pointer = 0;
+    data->xi2_current_slave = 0;
 #endif
 }
 
@@ -987,7 +1006,7 @@ static Cursor create_xcursor_system_cursor( const ICONINFOEXW *info )
     HKEY key;
     WCHAR *p, name[MAX_PATH * 2], valueW[64];
     char valueA[64];
-    DWORD size, ret;
+    DWORD ret;
 
     if (!info->szModName[0]) return 0;
 
@@ -1002,7 +1021,7 @@ static Cursor create_xcursor_system_cursor( const ICONINFOEXW *info )
     /* @@ Wine registry key: HKCU\Software\Wine\X11 Driver\Cursors */
     if (!RegOpenKeyA( HKEY_CURRENT_USER, "Software\\Wine\\X11 Driver\\Cursors", &key ))
     {
-        size = sizeof(valueW) / sizeof(WCHAR);
+        DWORD size = sizeof(valueW);
         ret = RegQueryValueExW( key, name, NULL, NULL, (BYTE *)valueW, &size );
         RegCloseKey( key );
         if (!ret)
@@ -1636,6 +1655,22 @@ BOOL X11DRV_EnterNotify( HWND hwnd, XEvent *xev )
 #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
 
 /***********************************************************************
+ *           X11DRV_DeviceChanged
+ */
+static BOOL X11DRV_DeviceChanged( XGenericEventCookie *xev )
+{
+    XIDeviceChangedEvent *event = xev->data;
+    struct x11drv_thread_data *data = x11drv_thread_data();
+
+    if (event->deviceid != data->xi2_core_pointer) return FALSE;
+    if (event->reason != XISlaveSwitch) return FALSE;
+
+    update_relative_valuators( event->classes, event->num_classes );
+    data->xi2_current_slave = event->sourceid;
+    return TRUE;
+}
+
+/***********************************************************************
  *           X11DRV_RawMotion
  */
 static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
@@ -1644,13 +1679,37 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
     const double *values = event->valuators.values;
     RECT virtual_rect;
     INPUT input;
-    int i, j;
-    double dx = 0, dy = 0;
+    int i;
+    double dx = 0, dy = 0, val;
     struct x11drv_thread_data *thread_data = x11drv_thread_data();
-    XIDeviceInfo *devices = thread_data->xi2_devices;
+    struct x11drv_valuator_data *x_rel, *y_rel;
 
+    if (thread_data->x_rel_valuator.number < 0 || thread_data->y_rel_valuator.number < 0) return FALSE;
     if (!event->valuators.mask_len) return FALSE;
     if (thread_data->xi2_state != xi_enabled) return FALSE;
+
+    /* If there is no slave currently detected, no previous motion nor device
+     * change events were received. Look it up now on the device list in this
+     * case.
+     */
+    if (!thread_data->xi2_current_slave)
+    {
+        XIDeviceInfo *devices = thread_data->xi2_devices;
+
+        for (i = 0; i < thread_data->xi2_device_count; i++)
+        {
+            if (devices[i].use != XISlavePointer) continue;
+            if (devices[i].deviceid != event->deviceid) continue;
+            if (devices[i].attachment != thread_data->xi2_core_pointer) continue;
+            thread_data->xi2_current_slave = event->deviceid;
+            break;
+        }
+    }
+
+    if (event->deviceid != thread_data->xi2_current_slave) return FALSE;
+
+    x_rel = &thread_data->x_rel_valuator;
+    y_rel = &thread_data->y_rel_valuator;
 
     input.u.mi.mouseData   = 0;
     input.u.mi.dwFlags     = MOUSEEVENTF_MOVE;
@@ -1660,36 +1719,25 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
     input.u.mi.dy          = 0;
 
     virtual_rect = get_virtual_screen_rect();
-    for (i = 0; i < thread_data->xi2_device_count; ++i)
-    {
-        if (devices[i].deviceid != event->deviceid) continue;
-        for (j = 0; j < devices[i].num_classes; j++)
-        {
-            XIValuatorClassInfo *class = (XIValuatorClassInfo *)devices[i].classes[j];
 
-            if (devices[i].classes[j]->type != XIValuatorClass) continue;
-            if (XIMaskIsSet( event->valuators.mask, class->number ))
-            {
-                double val = *values++;
-                if (class->label == x11drv_atom( Rel_X ) ||
-                    (!class->label && class->number == 0 && class->mode == XIModeRelative))
-                {
-                    input.u.mi.dx = dx = val;
-                    if (class->min < class->max)
-                        input.u.mi.dx = val * (virtual_rect.right - virtual_rect.left)
-                                            / (class->max - class->min);
-                }
-                else if (class->label == x11drv_atom( Rel_Y ) ||
-                         (!class->label && class->number == 1 && class->mode == XIModeRelative))
-                {
-                    input.u.mi.dy = dy = val;
-                    if (class->min < class->max)
-                        input.u.mi.dy = val * (virtual_rect.bottom - virtual_rect.top)
-                                            / (class->max - class->min);
-                }
-            }
+    for (i = 0; i <= max ( x_rel->number, y_rel->number ); i++)
+    {
+        if (!XIMaskIsSet( event->valuators.mask, i )) continue;
+        val = *values++;
+        if (i == x_rel->number)
+        {
+            input.u.mi.dx = dx = val;
+            if (x_rel->min < x_rel->max)
+                input.u.mi.dx = val * (virtual_rect.right - virtual_rect.left)
+                                    / (x_rel->max - x_rel->min);
         }
-        break;
+        if (i == y_rel->number)
+        {
+            input.u.mi.dy = dy = val;
+            if (y_rel->min < y_rel->max)
+                input.u.mi.dy = val * (virtual_rect.bottom - virtual_rect.top)
+                                    / (y_rel->max - y_rel->min);
+        }
     }
 
     if (broken_rawevents && is_old_motion_event( xev->serial ))
@@ -1729,6 +1777,7 @@ void X11DRV_XInput2_Init(void)
         return; \
     }
 
+    LOAD_FUNCPTR(XIGetClientPointer);
     LOAD_FUNCPTR(XIFreeDeviceInfo);
     LOAD_FUNCPTR(XIQueryDevice);
     LOAD_FUNCPTR(XIQueryVersion);
@@ -1762,6 +1811,9 @@ BOOL X11DRV_GenericEvent( HWND hwnd, XEvent *xev )
 
     switch (event->evtype)
     {
+    case XI_DeviceChanged:
+        ret = X11DRV_DeviceChanged( event );
+        break;
     case XI_RawMotion:
         ret = X11DRV_RawMotion( event );
         break;

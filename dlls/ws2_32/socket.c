@@ -586,6 +586,8 @@ struct per_thread_data
     struct WS_hostent *he_buffer;
     struct WS_servent *se_buffer;
     struct WS_protoent *pe_buffer;
+    struct pollfd *fd_cache;
+    unsigned int fd_count;
     int he_len;
     int se_len;
     int pe_len;
@@ -622,6 +624,7 @@ static const int ws_flags_map[][2] =
     MAP_OPTION( MSG_PEEK ),
     MAP_OPTION( MSG_DONTROUTE ),
     MAP_OPTION( MSG_WAITALL ),
+    { WS_MSG_PARTIAL, 0 },
 };
 
 static const int ws_sock_map[][2] =
@@ -1148,6 +1151,108 @@ static int _get_fd_type(int fd)
     return sock_type;
 }
 
+static BOOL set_dont_fragment(SOCKET s, int level, BOOL value)
+{
+    int fd, optname;
+
+    if (level == IPPROTO_IP)
+    {
+#ifdef IP_DONTFRAG
+        optname = IP_DONTFRAG;
+#elif defined(IP_MTU_DISCOVER) && defined(IP_PMTUDISC_DO) && defined(IP_PMTUDISC_DONT)
+        optname = IP_MTU_DISCOVER;
+        value = value ? IP_PMTUDISC_DO : IP_PMTUDISC_DONT;
+#else
+        static int once;
+        if (!once++)
+            FIXME("IP_DONTFRAGMENT for IPv4 not supported in this platform\n");
+        return TRUE; /* fake success */
+#endif
+    }
+    else
+    {
+#ifdef IPV6_DONTFRAG
+        optname = IPV6_DONTFRAG;
+#elif defined(IPV6_MTU_DISCOVER) && defined(IPV6_PMTUDISC_DO) && defined(IPV6_PMTUDISC_DONT)
+        optname = IPV6_MTU_DISCOVER;
+        value = value ? IPV6_PMTUDISC_DO : IPV6_PMTUDISC_DONT;
+#else
+        static int once;
+        if (!once++)
+            FIXME("IP_DONTFRAGMENT for IPv6 not supported in this platform\n");
+        return TRUE; /* fake success */
+#endif
+    }
+
+    fd = get_sock_fd(s, 0, NULL);
+    if (fd == -1) return FALSE;
+
+    if (!setsockopt(fd, level, optname, &value, sizeof(value)))
+        value = TRUE;
+    else
+    {
+        WSASetLastError(wsaErrno());
+        value = FALSE;
+    }
+
+    release_sock_fd(s, fd);
+    return value;
+}
+
+static BOOL get_dont_fragment(SOCKET s, int level, BOOL *out)
+{
+    int fd, optname, value, not_expected;
+    socklen_t optlen = sizeof(value);
+
+    if (level == IPPROTO_IP)
+    {
+#ifdef IP_DONTFRAG
+        optname = IP_DONTFRAG;
+        not_expected = 0;
+#elif defined(IP_MTU_DISCOVER) && defined(IP_PMTUDISC_DONT)
+        optname = IP_MTU_DISCOVER;
+        not_expected = IP_PMTUDISC_DONT;
+#else
+        static int once;
+        if (!once++)
+            FIXME("IP_DONTFRAGMENT for IPv4 not supported in this platform\n");
+        return TRUE; /* fake success */
+#endif
+    }
+    else
+    {
+#ifdef IPV6_DONTFRAG
+        optname = IPV6_DONTFRAG;
+        not_expected = 0;
+#elif defined(IPV6_MTU_DISCOVER) && defined(IPV6_PMTUDISC_DONT)
+        optname = IPV6_MTU_DISCOVER;
+        not_expected = IPV6_PMTUDISC_DONT;
+#else
+        static int once;
+        if (!once++)
+            FIXME("IP_DONTFRAGMENT for IPv6 not supported in this platform\n");
+        return TRUE; /* fake success */
+#endif
+    }
+
+    fd = get_sock_fd(s, 0, NULL);
+    if (fd == -1) return FALSE;
+
+    if (!getsockopt(fd, level, optname, &value, &optlen))
+    {
+        *out = value != not_expected;
+        value = TRUE;
+    }
+    else
+    {
+        WSASetLastError(wsaErrno());
+        value = FALSE;
+    }
+
+    release_sock_fd(s, fd);
+    return value;
+}
+
 static struct per_thread_data *get_per_thread_data(void)
 {
     struct per_thread_data * ptb = NtCurrentTeb()->WinSockData;
@@ -1170,9 +1275,7 @@ static void free_per_thread_data(void)
     HeapFree( GetProcessHeap(), 0, ptb->he_buffer );
     HeapFree( GetProcessHeap(), 0, ptb->se_buffer );
     HeapFree( GetProcessHeap(), 0, ptb->pe_buffer );
-    ptb->he_buffer = NULL;
-    ptb->se_buffer = NULL;
-    ptb->pe_buffer = NULL;
+    HeapFree( GetProcessHeap(), 0, ptb->fd_cache );
 
     HeapFree( GetProcessHeap(), 0, ptb );
     NtCurrentTeb()->WinSockData = NULL;
@@ -1629,13 +1732,16 @@ static inline BOOL supported_protocol(int protocol)
 
 /**********************************************************************/
 
-/* Returns the length of the converted address if successful, 0 if it was too small to
- * start with.
+/* Returns the length of the converted address if successful, 0 if it was too
+ * small to start with or unknown family or invalid address buffer.
  */
 static unsigned int ws_sockaddr_ws2u(const struct WS_sockaddr* wsaddr, int wsaddrlen,
                                      union generic_unix_sockaddr *uaddr)
 {
     unsigned int uaddrlen = 0;
+
+    if (!wsaddr)
+        return 0;
 
     switch (wsaddr->sa_family)
     {
@@ -2635,10 +2741,7 @@ SOCKET WINAPI WS_accept(SOCKET s, struct WS_sockaddr *addr, int *addrlen32)
     TRACE("socket %04lx\n", s );
     status = _is_blocking(s, &is_blocking);
     if (status)
-    {
-        set_error(status);
-        return INVALID_SOCKET;
-    }
+        goto error;
 
     do {
         /* try accepting first (if there is a deferred connection) */
@@ -2671,7 +2774,9 @@ SOCKET WINAPI WS_accept(SOCKET s, struct WS_sockaddr *addr, int *addrlen32)
         }
     } while (is_blocking && status == STATUS_CANT_WAIT);
 
+error:
     set_error(status);
+    WARN(" -> ERROR %d\n", GetLastError());
     return INVALID_SOCKET;
 }
 
@@ -4231,9 +4336,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             release_sock_fd( s, fd );
             return ret;
         case WS_IP_DONTFRAGMENT:
-            FIXME("WS_IP_DONTFRAGMENT is always false!\n");
-            *(BOOL*)optval = FALSE;
-            return 0;
+            return get_dont_fragment(s, IPPROTO_IP, (BOOL *)optval) ? 0 : SOCKET_ERROR;
         }
         FIXME("Unknown IPPROTO_IP optname 0x%08x\n", optname);
         return SOCKET_ERROR;
@@ -4266,9 +4369,7 @@ INT WINAPI WS_getsockopt(SOCKET s, INT level,
             release_sock_fd( s, fd );
             return ret;
         case WS_IPV6_DONTFRAG:
-            FIXME("WS_IPV6_DONTFRAG is always false!\n");
-            *(BOOL*)optval = FALSE;
-            return 0;
+            return get_dont_fragment(s, IPPROTO_IPV6, (BOOL *)optval) ? 0 : SOCKET_ERROR;
         }
         FIXME("Unknown IPPROTO_IPV6 optname 0x%08x\n", optname);
         return SOCKET_ERROR;
@@ -4368,13 +4469,14 @@ WS_u_short WINAPI WS_ntohs(WS_u_short netshort)
  */
 char* WINAPI WS_inet_ntoa(struct WS_in_addr in)
 {
+    unsigned int long_ip = ntohl(in.WS_s_addr);
     struct per_thread_data *data = get_per_thread_data();
 
     sprintf( data->ntoa_buffer, "%u.%u.%u.%u",
-            (unsigned int)(ntohl( in.WS_s_addr ) >> 24 & 0xff),
-            (unsigned int)(ntohl( in.WS_s_addr ) >> 16 & 0xff),
-            (unsigned int)(ntohl( in.WS_s_addr ) >> 8 & 0xff),
-            (unsigned int)(ntohl( in.WS_s_addr ) & 0xff) );
+            (long_ip >> 24) & 0xff,
+            (long_ip >> 16) & 0xff,
+            (long_ip >> 8) & 0xff,
+            long_ip & 0xff);
 
     return data->ntoa_buffer;
 }
@@ -4806,68 +4908,54 @@ INT WINAPI WSAIoctl(SOCKET s, DWORD code, LPVOID in_buff, DWORD in_size, LPVOID 
         break;
    }
 
-   case WS_SIO_FLUSH:
-	FIXME("SIO_FLUSH: stub.\n");
-	break;
+    case WS_SIO_FLUSH:
+        FIXME("SIO_FLUSH: stub.\n");
+        break;
 
-   case WS_SIO_GET_EXTENSION_FUNCTION_POINTER:
-   {
-        static const GUID connectex_guid = WSAID_CONNECTEX;
-        static const GUID disconnectex_guid = WSAID_DISCONNECTEX;
-        static const GUID acceptex_guid = WSAID_ACCEPTEX;
-        static const GUID getaccepexsockaddrs_guid = WSAID_GETACCEPTEXSOCKADDRS;
-        static const GUID transmitfile_guid = WSAID_TRANSMITFILE;
-        static const GUID transmitpackets_guid = WSAID_TRANSMITPACKETS;
-        static const GUID wsarecvmsg_guid = WSAID_WSARECVMSG;
-        static const GUID wsasendmsg_guid = WSAID_WSASENDMSG;
+    case WS_SIO_GET_EXTENSION_FUNCTION_POINTER:
+    {
+#define EXTENSION_FUNCTION(x, y) { x, y, #y },
+        static const struct
+        {
+            GUID guid;
+            void *func_ptr;
+            const char *name;
+        } guid_funcs[] = {
+            EXTENSION_FUNCTION(WSAID_CONNECTEX, WS2_ConnectEx)
+            EXTENSION_FUNCTION(WSAID_DISCONNECTEX, WS2_DisconnectEx)
+            EXTENSION_FUNCTION(WSAID_ACCEPTEX, WS2_AcceptEx)
+            EXTENSION_FUNCTION(WSAID_GETACCEPTEXSOCKADDRS, WS2_GetAcceptExSockaddrs)
+            EXTENSION_FUNCTION(WSAID_TRANSMITFILE, WS2_TransmitFile)
+            /* EXTENSION_FUNCTION(WSAID_TRANSMITPACKETS, WS2_TransmitPackets) */
+            EXTENSION_FUNCTION(WSAID_WSARECVMSG, WS2_WSARecvMsg)
+            EXTENSION_FUNCTION(WSAID_WSASENDMSG, WSASendMsg)
+        };
+#undef EXTENSION_FUNCTION
+        BOOL found = FALSE;
+        unsigned int i;
 
-        if ( IsEqualGUID(&connectex_guid, in_buff) )
+        for (i = 0; i < sizeof(guid_funcs) / sizeof(guid_funcs[0]); i++)
         {
-            *(LPFN_CONNECTEX *)out_buff = WS2_ConnectEx;
-            break;
+            if (IsEqualGUID(&guid_funcs[i].guid, in_buff))
+            {
+                found = TRUE;
+                break;
+            }
         }
-        else if ( IsEqualGUID(&disconnectex_guid, in_buff) )
-        {
-            *(LPFN_DISCONNECTEX *)out_buff = WS2_DisconnectEx;
-            break;
-        }
-        else if ( IsEqualGUID(&acceptex_guid, in_buff) )
-        {
-            *(LPFN_ACCEPTEX *)out_buff = WS2_AcceptEx;
-            break;
-        }
-        else if ( IsEqualGUID(&getaccepexsockaddrs_guid, in_buff) )
-        {
-            *(LPFN_GETACCEPTEXSOCKADDRS *)out_buff = WS2_GetAcceptExSockaddrs;
-            break;
-        }
-        else if ( IsEqualGUID(&transmitfile_guid, in_buff) )
-        {
-            *(LPFN_TRANSMITFILE *)out_buff = WS2_TransmitFile;
-            break;
-        }
-        else if ( IsEqualGUID(&transmitpackets_guid, in_buff) )
-        {
-            FIXME("SIO_GET_EXTENSION_FUNCTION_POINTER: unimplemented TransmitPackets\n");
-        }
-        else if ( IsEqualGUID(&wsarecvmsg_guid, in_buff) )
-        {
-            *(LPFN_WSARECVMSG *)out_buff = WS2_WSARecvMsg;
-            break;
-        }
-        else if ( IsEqualGUID(&wsasendmsg_guid, in_buff) )
-        {
-            *(LPFN_WSASENDMSG *)out_buff = WSASendMsg;
-            break;
-        }
-        else
-            FIXME("SIO_GET_EXTENSION_FUNCTION_POINTER %s: stub\n", debugstr_guid(in_buff));
 
+        if (found)
+        {
+            TRACE("-> got %s\n", guid_funcs[i].name);
+            *(void **)out_buff = guid_funcs[i].func_ptr;
+            break;
+        }
+
+        FIXME("SIO_GET_EXTENSION_FUNCTION_POINTER %s: stub\n", debugstr_guid(in_buff));
         status = WSAEOPNOTSUPP;
         break;
-   }
-   case WS_SIO_KEEPALIVE_VALS:
-   {
+    }
+    case WS_SIO_KEEPALIVE_VALS:
+    {
         struct tcp_keepalive *k;
         int keepalive, keepidle, keepintvl;
 
@@ -5108,6 +5196,7 @@ static struct pollfd *fd_sets_to_poll( const WS_fd_set *readfds, const WS_fd_set
 {
     unsigned int i, j = 0, count = 0;
     struct pollfd *fds;
+    struct per_thread_data *ptb = get_per_thread_data();
 
     if (readfds) count += readfds->fd_count;
     if (writefds) count += writefds->fd_count;
@@ -5118,11 +5207,22 @@ static struct pollfd *fd_sets_to_poll( const WS_fd_set *readfds, const WS_fd_set
         SetLastError(WSAEINVAL);
         return NULL;
     }
-    if (!(fds = HeapAlloc( GetProcessHeap(), 0, count * sizeof(fds[0]))))
+
+    /* check if the cache can hold all descriptors, if not do the resizing */
+    if (ptb->fd_count < count)
     {
-        SetLastError( ERROR_NOT_ENOUGH_MEMORY );
-        return NULL;
+        if (!(fds = HeapAlloc(GetProcessHeap(), 0, count * sizeof(fds[0]))))
+        {
+            SetLastError( ERROR_NOT_ENOUGH_MEMORY );
+            return NULL;
+        }
+        HeapFree(GetProcessHeap(), 0, ptb->fd_cache);
+        ptb->fd_cache = fds;
+        ptb->fd_count = count;
     }
+    else
+        fds = ptb->fd_cache;
+
     if (readfds)
         for (i = 0; i < readfds->fd_count; i++, j++)
         {
@@ -5197,7 +5297,6 @@ failed:
     if (exceptfds)
         for (i = 0; i < exceptfds->fd_count && j < count; i++, j++)
             if (fds[j].fd != -1) release_sock_fd( exceptfds->fd_array[i], fds[j].fd );
-    HeapFree( GetProcessHeap(), 0, fds );
     return NULL;
 }
 
@@ -5330,7 +5429,6 @@ int WINAPI WS_select(int nfds, WS_fd_set *ws_readfds,
 
     if (ret == -1) SetLastError(wsaErrno());
     else ret = get_poll_results( ws_readfds, ws_writefds, ws_exceptfds, pollfds );
-    HeapFree( GetProcessHeap(), 0, pollfds );
     return ret;
 }
 
@@ -5887,8 +5985,7 @@ int WINAPI WS_setsockopt(SOCKET s, int level, int optname,
             convert_sockopt(&level, &optname);
             break;
         case WS_IP_DONTFRAGMENT:
-            FIXME("IP_DONTFRAGMENT is silently ignored!\n");
-            return 0;
+            return set_dont_fragment(s, IPPROTO_IP, *(BOOL *)optval) ? 0 : SOCKET_ERROR;
         default:
             FIXME("Unknown IPPROTO_IP optname 0x%08x\n", optname);
             return SOCKET_ERROR;
@@ -5908,18 +6005,40 @@ int WINAPI WS_setsockopt(SOCKET s, int level, int optname,
         case WS_IPV6_MULTICAST_HOPS:
         case WS_IPV6_MULTICAST_LOOP:
         case WS_IPV6_UNICAST_HOPS:
-        case WS_IPV6_V6ONLY:
 #ifdef IPV6_UNICAST_IF
         case WS_IPV6_UNICAST_IF:
 #endif
             convert_sockopt(&level, &optname);
             break;
         case WS_IPV6_DONTFRAG:
-            FIXME("IPV6_DONTFRAG is silently ignored!\n");
-            return 0;
+            return set_dont_fragment(s, IPPROTO_IPV6, *(BOOL *)optval) ? 0 : SOCKET_ERROR;
         case WS_IPV6_PROTECTION_LEVEL:
             FIXME("IPV6_PROTECTION_LEVEL is ignored!\n");
             return 0;
+        case WS_IPV6_V6ONLY:
+        {
+            union generic_unix_sockaddr uaddr;
+            socklen_t uaddrlen;
+            int bound;
+
+            fd = get_sock_fd( s, 0, NULL );
+            if (fd == -1) return SOCKET_ERROR;
+
+            bound = is_fd_bound(fd, &uaddr, &uaddrlen);
+            release_sock_fd( s, fd );
+            if (bound == 0 && uaddr.addr.sa_family == AF_INET)
+            {
+                /* Changing IPV6_V6ONLY succeeds on AF_INET (IPv4) socket
+                 * on Windows (with IPv6 support) if the socket is unbound.
+                 * It is essentially a noop, though Windows does store the value
+                 */
+                WARN("Silently ignoring IPPROTO_IPV6+IPV6_V6ONLY on AF_INET socket\n");
+                return 0;
+            }
+            level = IPPROTO_IPV6;
+            optname = IPV6_V6ONLY;
+            break;
+        }
         default:
             FIXME("Unknown IPPROTO_IPV6 optname 0x%08x\n", optname);
             return SOCKET_ERROR;
@@ -6407,7 +6526,7 @@ static int convert_aiflag_w2u(int winflags) {
             winflags &= ~ws_aiflag_map[i][0];
         }
     if (winflags)
-        FIXME("Unhandled windows AI_xxx flags %x\n", winflags);
+        FIXME("Unhandled windows AI_xxx flags 0x%x\n", winflags);
     return unixflags;
 }
 
@@ -6421,7 +6540,7 @@ static int convert_niflag_w2u(int winflags) {
             winflags &= ~ws_niflag_map[i][0];
         }
     if (winflags)
-        FIXME("Unhandled windows NI_xxx flags %x\n", winflags);
+        FIXME("Unhandled windows NI_xxx flags 0x%x\n", winflags);
     return unixflags;
 }
 
@@ -6434,8 +6553,8 @@ static int convert_aiflag_u2w(int unixflags) {
             winflags |= ws_aiflag_map[i][0];
             unixflags &= ~ws_aiflag_map[i][1];
         }
-    if (unixflags) /* will warn usually */
-        WARN("Unhandled UNIX AI_xxx flags %x\n", unixflags);
+    if (unixflags)
+        WARN("Unhandled UNIX AI_xxx flags 0x%x\n", unixflags);
     return winflags;
 }
 
@@ -6743,25 +6862,56 @@ int WINAPI GetAddrInfoExW(const WCHAR *name, const WCHAR *servname, DWORD namesp
  */
 int WINAPI GetAddrInfoW(LPCWSTR nodename, LPCWSTR servname, const ADDRINFOW *hints, PADDRINFOW *res)
 {
-    int ret, len;
+    int ret = EAI_MEMORY, len, i;
     char *nodenameA = NULL, *servnameA = NULL;
     struct WS_addrinfo *resA, *hintsA = NULL;
+    WCHAR *local_nodenameW = (WCHAR *)nodename;
+
+    TRACE("nodename %s, servname %s, hints %p, result %p\n",
+          debugstr_w(nodename), debugstr_w(servname), hints, res);
 
     *res = NULL;
     if (nodename)
     {
-        len = WideCharToMultiByte(CP_ACP, 0, nodename, -1, NULL, 0, NULL, NULL);
-        if (!(nodenameA = HeapAlloc(GetProcessHeap(), 0, len))) return EAI_MEMORY;
-        WideCharToMultiByte(CP_ACP, 0, nodename, -1, nodenameA, len, NULL, NULL);
+        /* Is this an IDN? Most likely if any char is above the Ascii table, this
+         * is the simplest validation possible, further validation will be done by
+         * the native getaddrinfo() */
+        for (i = 0; nodename[i]; i++)
+        {
+            if (nodename[i] > 'z')
+                break;
+        }
+        if (nodename[i])
+        {
+            if (hints && (hints->ai_flags & WS_AI_DISABLE_IDN_ENCODING))
+            {
+                /* Name requires conversion but it was disabled */
+                ret = WSAHOST_NOT_FOUND;
+                WSASetLastError(ret);
+                goto end;
+            }
+
+            len = IdnToAscii(0, nodename, -1, NULL, 0);
+            if (!len)
+            {
+                ERR("Failed to convert %s to punycode\n", debugstr_w(nodename));
+                ret = EAI_FAIL;
+                goto end;
+            }
+            if (!(local_nodenameW = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR)))) goto end;
+            IdnToAscii(0, nodename, -1, local_nodenameW, len);
+        }
+    }
+    if (local_nodenameW)
+    {
+        len = WideCharToMultiByte(CP_ACP, 0, local_nodenameW, -1, NULL, 0, NULL, NULL);
+        if (!(nodenameA = HeapAlloc(GetProcessHeap(), 0, len))) goto end;
+        WideCharToMultiByte(CP_ACP, 0, local_nodenameW, -1, nodenameA, len, NULL, NULL);
     }
     if (servname)
     {
         len = WideCharToMultiByte(CP_ACP, 0, servname, -1, NULL, 0, NULL, NULL);
-        if (!(servnameA = HeapAlloc(GetProcessHeap(), 0, len)))
-        {
-            HeapFree(GetProcessHeap(), 0, nodenameA);
-            return EAI_MEMORY;
-        }
+        if (!(servnameA = HeapAlloc(GetProcessHeap(), 0, len))) goto end;
         WideCharToMultiByte(CP_ACP, 0, servname, -1, servnameA, len, NULL, NULL);
     }
 
@@ -6775,6 +6925,9 @@ int WINAPI GetAddrInfoW(LPCWSTR nodename, LPCWSTR servname, const ADDRINFOW *hin
         WS_freeaddrinfo(resA);
     }
 
+end:
+    if (local_nodenameW != nodename)
+        HeapFree(GetProcessHeap(), 0, local_nodenameW);
     HeapFree(GetProcessHeap(), 0, nodenameA);
     HeapFree(GetProcessHeap(), 0, servnameA);
     return ret;
@@ -7227,6 +7380,10 @@ SOCKET WINAPI WSASocketW(int af, int type, int protocol,
         TRACE("\tcreated %04lx\n", ret );
         if (ipxptype > 0)
             set_ipx_packettype(ret, ipxptype);
+
+        /* ensure IP_DONTFRAGMENT is disabled, in Linux the global default can be enabled */
+        if (unixaf == AF_INET || unixaf == AF_INET6)
+            set_dont_fragment(ret, unixaf == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP, FALSE);
 
 #ifdef IPV6_V6ONLY
         if (unixaf == AF_INET6)
@@ -8098,10 +8255,6 @@ INT WINAPI WSAStringToAddressA(LPSTR AddressString,
             ((LPSOCKADDR_IN)lpAddress)->sin_port = htons(atoi(ptrPort+1));
             *ptrPort = '\0';
         }
-        else
-        {
-            ((LPSOCKADDR_IN)lpAddress)->sin_port = 0;
-        }
 
         if(inet_aton(workBuffer, &inetaddr) > 0)
         {
@@ -8112,11 +8265,12 @@ INT WINAPI WSAStringToAddressA(LPSTR AddressString,
             res = WSAEINVAL;
 
         break;
-
     }
     case WS_AF_INET6:
     {
         struct in6_addr inetaddr;
+        char *ptrAddr = workBuffer;
+
         /* If lpAddressLength is too small, tell caller the size we need */
         if (*lpAddressLength < sizeof(SOCKADDR_IN6))
         {
@@ -8130,24 +8284,27 @@ INT WINAPI WSAStringToAddressA(LPSTR AddressString,
 
         ((LPSOCKADDR_IN6)lpAddress)->sin6_family = WS_AF_INET6;
 
-        /* This one is a bit tricky. An IPv6 address contains colons, so the
-         * check from IPv4 doesn't work like that. However, IPv6 addresses that
-         * contain a port are written with braces like [fd12:3456:7890::1]:12345
-         * so what we will do is to look for ']', check if the next char is a
-         * colon, and if it is, parse the port as in IPv4. */
+        /* Valid IPv6 addresses can also be surrounded by [ ], and in this case
+         * a port number may follow after like in [fd12:3456:7890::1]:12345
+         * We need to cut the brackets and find the port if any. */
 
-        ptrPort = strchr(workBuffer, ']');
-        if(ptrPort && *(++ptrPort) == ':')
+        if(*workBuffer == '[')
         {
-            ((LPSOCKADDR_IN6)lpAddress)->sin6_port = htons(atoi(ptrPort+1));
+            ptrPort = strchr(workBuffer, ']');
+            if (!ptrPort)
+            {
+                SetLastError(WSAEINVAL);
+                return SOCKET_ERROR;
+            }
+
+            if (ptrPort[1] == ':')
+                ((LPSOCKADDR_IN6)lpAddress)->sin6_port = htons(atoi(ptrPort + 2));
+
             *ptrPort = '\0';
-        }
-        else
-        {
-            ((LPSOCKADDR_IN6)lpAddress)->sin6_port = 0;
+            ptrAddr = workBuffer + 1;
         }
 
-        if(inet_pton(AF_INET6, workBuffer, &inetaddr) > 0)
+        if(inet_pton(AF_INET6, ptrAddr, &inetaddr) > 0)
         {
             memcpy(&((LPSOCKADDR_IN6)lpAddress)->sin6_addr, &inetaddr,
                     sizeof(struct in6_addr));
@@ -8255,18 +8412,20 @@ INT WINAPI WSAAddressToStringA( LPSOCKADDR sockaddr, DWORD len,
     switch(sockaddr->sa_family)
     {
     case WS_AF_INET:
+    {
+        unsigned int long_ip = ntohl(((SOCKADDR_IN *)sockaddr)->sin_addr.WS_s_addr);
         if (len < sizeof(SOCKADDR_IN)) return SOCKET_ERROR;
         sprintf( buffer, "%u.%u.%u.%u:%u",
-               (unsigned int)(ntohl( ((SOCKADDR_IN *)sockaddr)->sin_addr.WS_s_addr ) >> 24 & 0xff),
-               (unsigned int)(ntohl( ((SOCKADDR_IN *)sockaddr)->sin_addr.WS_s_addr ) >> 16 & 0xff),
-               (unsigned int)(ntohl( ((SOCKADDR_IN *)sockaddr)->sin_addr.WS_s_addr ) >> 8 & 0xff),
-               (unsigned int)(ntohl( ((SOCKADDR_IN *)sockaddr)->sin_addr.WS_s_addr ) & 0xff),
+               (long_ip >> 24) & 0xff,
+               (long_ip >> 16) & 0xff,
+               (long_ip >> 8) & 0xff,
+               long_ip & 0xff,
                ntohs( ((SOCKADDR_IN *)sockaddr)->sin_port ) );
 
         p = strchr( buffer, ':' );
         if (!((SOCKADDR_IN *)sockaddr)->sin_port) *p = 0;
         break;
-
+    }
     case WS_AF_INET6:
     {
         struct WS_sockaddr_in6 *sockaddr6 = (LPSOCKADDR_IN6) sockaddr;

@@ -903,7 +903,7 @@ BOOL WINAPI SetupDiClassGuidsFromNameExW(
 
     for (dwIndex = 0; ; dwIndex++)
     {
-	dwLength = 40;
+	dwLength = sizeof(szKeyName) / sizeof(WCHAR);
 	lError = RegEnumKeyExW(hClassesKey,
 			       dwIndex,
 			       szKeyName,
@@ -927,7 +927,7 @@ BOOL WINAPI SetupDiClassGuidsFromNameExW(
 		return FALSE;
 	    }
 
-	    dwLength = 256 * sizeof(WCHAR);
+	    dwLength = sizeof(szClassName);
 	    if (!RegQueryValueExW(hClassKey,
 				  Class,
 				  NULL,
@@ -1556,6 +1556,16 @@ BOOL WINAPI SetupDiRemoveDevice(
         PSP_DEVINFO_DATA info)
 {
     FIXME("(%p, %p): stub\n", devinfo, info);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+/***********************************************************************
+ *              SetupDiRemoveDeviceInterface (SETUPAPI.@)
+ */
+BOOL WINAPI SetupDiRemoveDeviceInterface(HDEVINFO info, PSP_DEVICE_INTERFACE_DATA data)
+{
+    FIXME("(%p, %p): stub\n", info, data);
     SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
     return FALSE;
 }

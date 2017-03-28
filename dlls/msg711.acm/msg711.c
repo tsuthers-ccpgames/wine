@@ -843,9 +843,6 @@ static	LRESULT	G711_FormatSuggest(PACMDRVFORMATSUGGEST adfs)
         adfs->pwfxDst->nBlockAlign = adfs->pwfxDst->nChannels;
         adfs->pwfxDst->nAvgBytesPerSec = adfs->pwfxDst->nSamplesPerSec * adfs->pwfxSrc->nChannels;
         break;
-    default:
-        FIXME("\n");
-        break;
     }
 
     return MMSYSERR_NOERROR;
@@ -1043,7 +1040,6 @@ static	LRESULT G711_StreamSize(const ACMDRVSTREAMINSTANCE *adsi, PACMDRVSTREAMSI
 	WARN("Unsupported query %08x\n", adss->fdwSize);
 	return MMSYSERR_NOTSUPPORTED;
     }
-    FIXME("\n");
     return MMSYSERR_NOERROR;
 }
 

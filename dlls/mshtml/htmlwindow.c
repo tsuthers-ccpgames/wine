@@ -253,6 +253,7 @@ static void release_inner_window(HTMLInnerWindow *This)
         htmldoc_release(&This->doc->basedoc);
     }
 
+    release_event_target(&This->event_target);
     release_dispex(&This->event_target.dispex);
 
     for(i=0; i < This->global_prop_cnt; i++)
@@ -2940,10 +2941,10 @@ static HRESULT HTMLWindow_invoke(DispatchEx *dispex, DISPID id, LCID lcid, WORD 
     return hres;
 }
 
-static event_target_t **HTMLWindow_get_event_target_ptr(DispatchEx *dispex)
+static EventTarget *HTMLWindow_get_event_target(DispatchEx *dispex)
 {
     HTMLInnerWindow *This = impl_from_DispatchEx(dispex);
-    return &This->doc->body_event_target;
+    return &This->event_target;
 }
 
 static void HTMLWindow_bind_event(DispatchEx *dispex, int eid)
@@ -2962,7 +2963,7 @@ static const dispex_static_data_vtbl_t HTMLWindow_dispex_vtbl = {
     NULL,
     HTMLWindow_invoke,
     NULL,
-    HTMLWindow_get_event_target_ptr,
+    HTMLWindow_get_event_target,
     HTMLWindow_bind_event
 };
 
@@ -3019,6 +3020,7 @@ static HRESULT create_inner_window(HTMLOuterWindow *outer_window, IMoniker *mon,
     window->base.outer_window = outer_window;
     window->base.inner_window = window;
 
+    init_event_target(&window->event_target);
     init_dispex(&window->event_target.dispex, (IUnknown*)&window->base.IHTMLWindow2_iface, &HTMLWindow_dispex);
 
     window->task_magic = get_task_target_magic();

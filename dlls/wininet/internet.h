@@ -279,8 +279,7 @@ typedef struct {
     void (*CloseConnection)(object_header_t*);
     DWORD (*QueryOption)(object_header_t*,DWORD,void*,DWORD*,BOOL);
     DWORD (*SetOption)(object_header_t*,DWORD,void*,DWORD);
-    DWORD (*ReadFile)(object_header_t*,void*,DWORD,DWORD*);
-    DWORD (*ReadFileEx)(object_header_t*,void*,DWORD,DWORD*,DWORD,DWORD_PTR);
+    DWORD (*ReadFile)(object_header_t*,void*,DWORD,DWORD*,DWORD,DWORD_PTR);
     DWORD (*WriteFile)(object_header_t*,const void*,DWORD,DWORD*);
     DWORD (*QueryDataAvailable)(object_header_t*,DWORD*,DWORD,DWORD_PTR);
     DWORD (*FindNextFileW)(object_header_t*,void*);
@@ -455,7 +454,6 @@ DWORD NETCON_secure_connect(netconn_t*,server_t*) DECLSPEC_HIDDEN;
 DWORD NETCON_send(netconn_t *connection, const void *msg, size_t len, int flags,
 		int *sent /* out */) DECLSPEC_HIDDEN;
 DWORD NETCON_recv(netconn_t*,void*,size_t,BOOL,int*) DECLSPEC_HIDDEN;
-BOOL NETCON_query_data_available(netconn_t *connection, DWORD *available) DECLSPEC_HIDDEN;
 BOOL NETCON_is_alive(netconn_t*) DECLSPEC_HIDDEN;
 LPCVOID NETCON_GetCert(netconn_t *connection) DECLSPEC_HIDDEN;
 int NETCON_GetCipherStrength(netconn_t*) DECLSPEC_HIDDEN;

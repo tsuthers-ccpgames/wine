@@ -61,7 +61,8 @@ struct FvfToDecl
 
 #define DDRAW_WINED3D_FLAGS     (WINED3D_LEGACY_DEPTH_BIAS | WINED3D_VIDMEM_ACCOUNTING \
         | WINED3D_RESTORE_MODE_ON_ACTIVATE | WINED3D_FOCUS_MESSAGES | WINED3D_PIXEL_CENTER_INTEGER \
-        | WINED3D_LEGACY_UNBOUND_RESOURCE_COLOR)
+        | WINED3D_LEGACY_UNBOUND_RESOURCE_COLOR | WINED3D_NO_PRIMITIVE_RESTART \
+        | WINED3D_LEGACY_CUBEMAP_FILTERING)
 
 enum ddraw_device_state
 {
@@ -126,7 +127,6 @@ struct ddraw
 
 HRESULT ddraw_init(struct ddraw *ddraw, DWORD flags, enum wined3d_device_type device_type) DECLSPEC_HIDDEN;
 void ddraw_d3dcaps1_from_7(D3DDEVICEDESC *caps1, D3DDEVICEDESC7 *caps7) DECLSPEC_HIDDEN;
-void ddraw_destroy_swapchain(struct ddraw *ddraw) DECLSPEC_HIDDEN;
 HRESULT ddraw_get_d3dcaps(const struct ddraw *ddraw, D3DDEVICEDESC7 *caps) DECLSPEC_HIDDEN;
 void ddraw_update_lost_surfaces(struct ddraw *ddraw) DECLSPEC_HIDDEN;
 
@@ -206,6 +206,7 @@ struct ddraw_texture
     DDSURFACEDESC2 surface_desc;
 
     struct ddraw_surface *root;
+    struct wined3d_device *wined3d_device;
 };
 
 HRESULT ddraw_surface_create(struct ddraw *ddraw, const DDSURFACEDESC2 *surface_desc,
@@ -214,7 +215,6 @@ struct wined3d_rendertarget_view *ddraw_surface_get_rendertarget_view(struct ddr
 void ddraw_surface_init(struct ddraw_surface *surface, struct ddraw *ddraw,
         struct wined3d_texture *wined3d_texture, unsigned int sub_resource_idx,
         const struct wined3d_parent_ops **parent_ops) DECLSPEC_HIDDEN;
-ULONG ddraw_surface_release_iface(struct ddraw_surface *This) DECLSPEC_HIDDEN;
 HRESULT ddraw_surface_update_frontbuffer(struct ddraw_surface *surface,
         const RECT *rect, BOOL read) DECLSPEC_HIDDEN;
 
@@ -547,8 +547,8 @@ HRESULT d3d_execute_buffer_execute(struct d3d_execute_buffer *execute_buffer,
 struct d3d_vertex_buffer
 {
     IDirect3DVertexBuffer7 IDirect3DVertexBuffer7_iface;
-    IDirect3DVertexBuffer IDirect3DVertexBuffer_iface;
     LONG ref;
+    unsigned int version;
 
     /*** WineD3D and ddraw links ***/
     struct wined3d_buffer *wined3d_buffer;
@@ -625,10 +625,10 @@ struct member_info
 /* Structure copy */
 #define ME(x,f,e) { x, #x, (void (*)(const void *))(f), offsetof(STRUCT, e) }
 
-#define DD_STRUCT_COPY_BYSIZE_(to,from,from_size)                 \
+#define DD_STRUCT_COPY_BYSIZE_(to,from,to_size,from_size)         \
     do {                                                          \
         DWORD __size = (to)->dwSize;                              \
-        DWORD __resetsize = min(__size, sizeof(*to));             \
+        DWORD __resetsize = min(to_size, sizeof(*to));            \
         DWORD __copysize = min(__resetsize, from_size);           \
         assert(to != from);                                       \
         memcpy(to, from, __copysize);                             \
@@ -636,7 +636,7 @@ struct member_info
         (to)->dwSize = __size; /* restore size */                 \
     } while (0)
 
-#define DD_STRUCT_COPY_BYSIZE(to,from) DD_STRUCT_COPY_BYSIZE_(to,from,(from)->dwSize)
+#define DD_STRUCT_COPY_BYSIZE(to,from) DD_STRUCT_COPY_BYSIZE_(to,from,(to)->dwSize,(from)->dwSize)
 
 HRESULT hr_ddraw_from_wined3d(HRESULT hr) DECLSPEC_HIDDEN;
 

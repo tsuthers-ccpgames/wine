@@ -382,14 +382,6 @@ ME_StreamOutRTFFontAndColorTbl(ME_OutStream *pStream, ME_DisplayItem *pFirstRun,
   if (!ME_StreamOutPrint(pStream, "}\r\n"))
     return FALSE;
 
-  /* It seems like Open Office ignores \deff0 tag at RTF-header.
-     As result it can't correctly parse text before first \fN tag,
-     so we can put \f0 immediately after font table. This forces
-     parser to use the same font, that \deff0 specifies.
-     It makes OOffice happy */
-  if (!ME_StreamOutPrint(pStream, "\\f0"))
-    return FALSE;
-
   /* Output the color table */
   if (!ME_StreamOutPrint(pStream, "{\\colortbl;")) return FALSE; /* first entry is auto-color */
   for (i = 1; i < pStream->nColorTblLen; i++)
@@ -398,7 +390,7 @@ ME_StreamOutRTFFontAndColorTbl(ME_OutStream *pStream, ME_DisplayItem *pFirstRun,
                            (pStream->colortbl[i] >> 8) & 0xFF, (pStream->colortbl[i] >> 16) & 0xFF))
       return FALSE;
   }
-  if (!ME_StreamOutPrint(pStream, "}")) return FALSE;
+  if (!ME_StreamOutPrint(pStream, "}\r\n")) return FALSE;
 
   return TRUE;
 }
@@ -1025,7 +1017,7 @@ static BOOL ME_StreamOutRTF(ME_TextEditor *editor, ME_OutStream *pStream,
 
   /* TODO: stylesheet table */
 
-  if (!ME_StreamOutPrint(pStream, "{\\*\\generator Wine Riched20 2.0;}"))
+  if (!ME_StreamOutPrint(pStream, "{\\*\\generator Wine Riched20 2.0;}\r\n"))
     return FALSE;
 
   /* TODO: information group */
@@ -1074,6 +1066,9 @@ static BOOL ME_StreamOutRTF(ME_TextEditor *editor, ME_OutStream *pStream,
       }
       nChars--;
     } else if (cursor.pRun->member.run.nFlags & MERF_ENDPARA) {
+      if (!ME_StreamOutRTFCharProps(pStream, &cursor.pRun->member.run.style->fmt))
+        return FALSE;
+
       if (cursor.pPara->member.para.fmt.dwMask & PFM_TABLE &&
           cursor.pPara->member.para.fmt.wEffects & PFE_TABLE &&
           !(cursor.pPara->member.para.nFlags & (MEPF_ROWSTART|MEPF_ROWEND|MEPF_CELL)))

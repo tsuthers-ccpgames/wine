@@ -23,6 +23,7 @@
 #include <stdarg.h>
 #include <errno.h>
 
+#define NONAMELESSUNION
 #include "windef.h"
 #include "winbase.h"
 #include "winreg.h"
@@ -732,7 +733,14 @@ schan_imp_session schan_session_for_transport(struct schan_transport* t)
     return t->ctx->session;
 }
 
-static int schan_init_sec_ctx_get_next_buffer(const struct schan_transport *t, struct schan_buffers *s)
+static int schan_init_sec_ctx_get_next_input_buffer(const struct schan_transport *t, struct schan_buffers *s)
+{
+    if (s->current_buffer_idx != -1)
+        return -1;
+    return schan_find_sec_buffer_idx(s->desc, 0, SECBUFFER_TOKEN);
+}
+
+static int schan_init_sec_ctx_get_next_output_buffer(const struct schan_transport *t, struct schan_buffers *s)
 {
     if (s->current_buffer_idx == -1)
     {
@@ -884,9 +892,9 @@ static SECURITY_STATUS SEC_ENTRY schan_InitializeSecurityContextW(
     ctx->req_ctx_attr = fContextReq;
 
     transport.ctx = ctx;
-    init_schan_buffers(&transport.in, pInput, schan_init_sec_ctx_get_next_buffer);
+    init_schan_buffers(&transport.in, pInput, schan_init_sec_ctx_get_next_input_buffer);
     transport.in.limit = expected_size;
-    init_schan_buffers(&transport.out, pOutput, schan_init_sec_ctx_get_next_buffer);
+    init_schan_buffers(&transport.out, pOutput, schan_init_sec_ctx_get_next_output_buffer);
     schan_imp_set_session_transport(ctx->session, &transport);
 
     /* Perform the TLS handshake */
@@ -954,6 +962,23 @@ static SECURITY_STATUS SEC_ENTRY schan_InitializeSecurityContextA(
     return ret;
 }
 
+static SECURITY_STATUS ensure_remote_cert(struct schan_context *ctx)
+{
+    HCERTSTORE cert_store;
+    SECURITY_STATUS status;
+
+    if(ctx->cert)
+        return SEC_E_OK;
+
+    cert_store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0, CERT_STORE_CREATE_NEW_FLAG, NULL);
+    if(!cert_store)
+        return GetLastError();
+
+    status = schan_imp_get_session_peer_certificate(ctx->session, cert_store, &ctx->cert);
+    CertCloseStore(cert_store, 0);
+    return status;
+}
+
 static SECURITY_STATUS SEC_ENTRY schan_QueryContextAttributesW(
         PCtxtHandle context_handle, ULONG attribute, PVOID buffer)
 {
@@ -994,20 +1019,11 @@ static SECURITY_STATUS SEC_ENTRY schan_QueryContextAttributesW(
         case SECPKG_ATTR_REMOTE_CERT_CONTEXT:
         {
             PCCERT_CONTEXT *cert = buffer;
+            SECURITY_STATUS status;
 
-            if (!ctx->cert) {
-                HCERTSTORE cert_store;
-                SECURITY_STATUS status;
-
-                cert_store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0, CERT_STORE_CREATE_NEW_FLAG, NULL);
-                if(!cert_store)
-                    return GetLastError();
-
-                status = schan_imp_get_session_peer_certificate(ctx->session, cert_store, &ctx->cert);
-                CertCloseStore(cert_store, 0);
-                if(status != SEC_E_OK)
-                    return status;
-            }
+            status = ensure_remote_cert(ctx);
+            if(status != SEC_E_OK)
+                return status;
 
             *cert = CertDuplicateCertificateContext(ctx->cert);
             return SEC_E_OK;
@@ -1016,6 +1032,47 @@ static SECURITY_STATUS SEC_ENTRY schan_QueryContextAttributesW(
         {
             SecPkgContext_ConnectionInfo *info = buffer;
             return schan_imp_get_connection_info(ctx->session, info);
+        }
+        case SECPKG_ATTR_ENDPOINT_BINDINGS:
+        {
+            SecPkgContext_Bindings *bindings = buffer;
+            CCRYPT_OID_INFO *info;
+            ALG_ID hash_alg = CALG_SHA_256;
+            BYTE hash[1024];
+            DWORD hash_size;
+            SECURITY_STATUS status;
+            char *p;
+            BOOL r;
+
+            static const char prefix[] = "tls-server-end-point:";
+
+            status = ensure_remote_cert(ctx);
+            if(status != SEC_E_OK)
+                return status;
+
+            /* RFC 5929 */
+            info = CryptFindOIDInfo(CRYPT_OID_INFO_OID_KEY, ctx->cert->pCertInfo->SignatureAlgorithm.pszObjId, 0);
+            if(info && info->u.Algid != CALG_SHA1 && info->u.Algid != CALG_MD5)
+                hash_alg = info->u.Algid;
+
+            hash_size = sizeof(hash);
+            r = CryptHashCertificate(0, hash_alg, 0, ctx->cert->pbCertEncoded, ctx->cert->cbCertEncoded, hash, &hash_size);
+            if(!r)
+                return GetLastError();
+
+            bindings->BindingsLength = sizeof(*bindings->Bindings) + sizeof(prefix)-1 + hash_size;
+            bindings->Bindings = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bindings->BindingsLength);
+            if(!bindings->Bindings)
+                return SEC_E_INSUFFICIENT_MEMORY;
+
+            bindings->Bindings->cbApplicationDataLength = sizeof(prefix)-1 + hash_size;
+            bindings->Bindings->dwApplicationDataOffset = sizeof(*bindings->Bindings);
+
+            p = (char*)(bindings->Bindings+1);
+            memcpy(p, prefix, sizeof(prefix)-1);
+            p += sizeof(prefix)-1;
+            memcpy(p, hash, hash_size);
+            return SEC_E_OK;
         }
 
         default:
@@ -1037,6 +1094,8 @@ static SECURITY_STATUS SEC_ENTRY schan_QueryContextAttributesA(
         case SECPKG_ATTR_REMOTE_CERT_CONTEXT:
             return schan_QueryContextAttributesW(context_handle, attribute, buffer);
         case SECPKG_ATTR_CONNECTION_INFO:
+            return schan_QueryContextAttributesW(context_handle, attribute, buffer);
+        case SECPKG_ATTR_ENDPOINT_BINDINGS:
             return schan_QueryContextAttributesW(context_handle, attribute, buffer);
 
         default:

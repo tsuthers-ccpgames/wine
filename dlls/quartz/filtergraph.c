@@ -730,6 +730,9 @@ static HRESULT WINAPI FilterGraph2_Reconnect(IFilterGraph2 *iface, IPin *ppin)
 
     IPin_QueryDirection(ppin, &pindir);
     hr = IPin_ConnectedTo(ppin, &pConnectedTo);
+
+    TRACE("(%p/%p)->(%p) -- %p\n", This, iface, ppin, pConnectedTo);
+
     if (FAILED(hr)) {
         TRACE("Querying connected to failed: %x\n", hr);
         return hr; 
@@ -743,7 +746,7 @@ static HRESULT WINAPI FilterGraph2_Reconnect(IFilterGraph2 *iface, IPin *ppin)
     IPin_Release(pConnectedTo);
     if (FAILED(hr))
         WARN("Reconnecting pins failed, pins are not connected now..\n");
-    TRACE("(%p->%p) -- %p %p -> %x\n", iface, This, ppin, pConnectedTo, hr);
+    TRACE("-> %08x\n", hr);
     return hr;
 }
 
@@ -766,7 +769,7 @@ static HRESULT WINAPI FilterGraph2_SetDefaultSyncSource(IFilterGraph2 *iface)
     HRESULT hr = S_OK;
     int i;
 
-    TRACE("(%p/%p)->() live sources not handled properly!\n", iface, This);
+    TRACE("(%p/%p)->() live sources not handled properly!\n", This, iface);
 
     EnterCriticalSection(&This->cs);
 
@@ -1539,8 +1542,7 @@ static HRESULT WINAPI FilterGraph2_RenderFile(IFilterGraph2 *iface, LPCWSTR lpcw
     if (FAILED(hr))
         return hr;
 
-    if (SUCCEEDED(hr))
-        hr = IBaseFilter_EnumPins(preader, &penumpins);
+    hr = IBaseFilter_EnumPins(preader, &penumpins);
     if (SUCCEEDED(hr))
     {
         while (IEnumPins_Next(penumpins, 1, &ppinreader, NULL) == S_OK)
@@ -2376,7 +2378,7 @@ static HRESULT WINAPI MediaSeeking_IsFormatSupported(IMediaSeeking *iface, const
 
     if (!IsEqualGUID(&TIME_FORMAT_MEDIA_TIME, pFormat))
     {
-        FIXME("Unhandled time format %s\n", debugstr_guid(pFormat));
+        WARN("Unhandled time format %s\n", debugstr_guid(pFormat));
         return S_FALSE;
     }
 
@@ -5299,8 +5301,7 @@ static HRESULT WINAPI MediaFilter_Run(IMediaFilter *iface, REFERENCE_TIME tStart
     IFilterGraphImpl *This = impl_from_IMediaFilter(iface);
 
     if (tStart)
-        FIXME("Run called with non-null tStart: %x%08x\n",
-              (int)(tStart>>32), (int)tStart);
+        FIXME("Run called with non-null tStart: %s\n", wine_dbgstr_longlong(tStart));
 
     return MediaControl_Run(&This->IMediaControl_iface);
 }
@@ -5319,7 +5320,7 @@ static HRESULT WINAPI MediaFilter_SetSyncSource(IMediaFilter *iface, IReferenceC
     HRESULT hr = S_OK;
     int i;
 
-    TRACE("(%p/%p)->(%p)\n", iface, This, pClock);
+    TRACE("(%p/%p)->(%p)\n", This, iface, pClock);
 
     EnterCriticalSection(&This->cs);
     {
@@ -5367,7 +5368,7 @@ static HRESULT WINAPI MediaFilter_GetSyncSource(IMediaFilter *iface, IReferenceC
 {
     IFilterGraphImpl *This = impl_from_IMediaFilter(iface);
 
-    TRACE("(%p/%p)->(%p)\n", iface, This, ppClock);
+    TRACE("(%p/%p)->(%p)\n", This, iface, ppClock);
 
     if (!ppClock)
         return E_POINTER;

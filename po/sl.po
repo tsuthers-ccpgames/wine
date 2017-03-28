@@ -61,20 +61,21 @@ msgstr "&Odstrani"
 msgid "Support Information"
 msgstr "Podporni podatki"
 
-#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:55 comdlg32.rc:232 comdlg32.rc:262
-#: comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398 comdlg32.rc:452 credui.rc:52
-#: cryptui.rc:263 cryptui.rc:275 cryptui.rc:365 dinput.rc:46 ieframe.rc:96
-#: localui.rc:44 localui.rc:57 mpr.rc:49 msacm32.rc:53 mshtml.rc:47
-#: mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62 oledlg.rc:94 serialui.rc:41
-#: setupapi.rc:59 shell32.rc:276 shell32.rc:300 shell32.rc:322 shell32.rc:341
-#: shlwapi.rc:44 user32.rc:83 user32.rc:98 wininet.rc:51 wininet.rc:71
-#: winspool.rc:42 net.rc:47 notepad.rc:117 oleview.rc:162 oleview.rc:175
-#: progman.rc:106 progman.rc:124 progman.rc:142 progman.rc:158 progman.rc:180
-#: progman.rc:199 progman.rc:216 regedit.rc:247 regedit.rc:258 regedit.rc:271
-#: regedit.rc:287 regedit.rc:300 regedit.rc:313 taskmgr.rc:442 taskmgr.rc:517
-#: winecfg.rc:214 winecfg.rc:224 wineconsole.rc:135 winefile.rc:128
-#: winefile.rc:151 winefile.rc:181 winemine.rc:71 winemine.rc:81 winemine.rc:95
-#: wordpad.rc:215 wordpad.rc:226 wordpad.rc:244 wordpad.rc:257
+#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:65 comctl32.rc:55 comdlg32.rc:232
+#: comdlg32.rc:262 comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398
+#: comdlg32.rc:452 credui.rc:52 cryptui.rc:263 cryptui.rc:275 cryptui.rc:365
+#: dinput.rc:46 ieframe.rc:96 localui.rc:44 localui.rc:57 mpr.rc:49
+#: msacm32.rc:53 mshtml.rc:47 mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62
+#: oledlg.rc:94 serialui.rc:41 setupapi.rc:59 shell32.rc:276 shell32.rc:300
+#: shell32.rc:322 shell32.rc:341 shlwapi.rc:44 user32.rc:83 user32.rc:98
+#: wininet.rc:51 wininet.rc:71 winspool.rc:42 net.rc:47 notepad.rc:117
+#: oleview.rc:161 oleview.rc:174 progman.rc:106 progman.rc:124 progman.rc:142
+#: progman.rc:158 progman.rc:180 progman.rc:199 progman.rc:216 regedit.rc:263
+#: regedit.rc:274 regedit.rc:287 regedit.rc:303 regedit.rc:316 regedit.rc:329
+#: taskmgr.rc:442 taskmgr.rc:517 winecfg.rc:214 winecfg.rc:224
+#: wineconsole.rc:135 winefile.rc:128 winefile.rc:151 winefile.rc:181
+#: winemine.rc:71 winemine.rc:81 winemine.rc:95 wordpad.rc:215 wordpad.rc:226
+#: wordpad.rc:244 wordpad.rc:257
 msgid "OK"
 msgstr "V redu"
 
@@ -141,23 +142,23 @@ msgstr ""
 msgid "&Install"
 msgstr "&Namesti"
 
-#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:56
-#: comctl32.rc:71 comdlg32.rc:171 comdlg32.rc:193 comdlg32.rc:211
-#: comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306 comdlg32.rc:328
-#: comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399 comdlg32.rc:453
-#: comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264 cryptui.rc:276
-#: cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81 localui.rc:45
-#: localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48 mshtml.rc:58
-#: msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42 setupapi.rc:42
-#: setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312 shell32.rc:342
-#: shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52 wininet.rc:72
-#: winspool.rc:43 notepad.rc:118 oleview.rc:163 oleview.rc:176 progman.rc:107
-#: progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181 progman.rc:200
-#: progman.rc:217 regedit.rc:248 regedit.rc:259 regedit.rc:272 regedit.rc:288
-#: regedit.rc:301 regedit.rc:314 taskmgr.rc:443 taskmgr.rc:518 wineboot.rc:34
-#: winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136 winefile.rc:129
-#: winefile.rc:152 winefile.rc:182 winemine.rc:96 wordpad.rc:216 wordpad.rc:227
-#: wordpad.rc:245 wordpad.rc:258
+#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:66
+#: comctl32.rc:81 comctl32.rc:56 comdlg32.rc:171 comdlg32.rc:193
+#: comdlg32.rc:211 comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306
+#: comdlg32.rc:328 comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399
+#: comdlg32.rc:453 comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264
+#: cryptui.rc:276 cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81
+#: localui.rc:45 localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48
+#: mshtml.rc:58 msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42
+#: setupapi.rc:42 setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312
+#: shell32.rc:342 shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52
+#: wininet.rc:72 winspool.rc:43 notepad.rc:118 oleview.rc:162 oleview.rc:175
+#: progman.rc:107 progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181
+#: progman.rc:200 progman.rc:217 regedit.rc:264 regedit.rc:275 regedit.rc:288
+#: regedit.rc:304 regedit.rc:317 regedit.rc:330 taskmgr.rc:443 taskmgr.rc:518
+#: wineboot.rc:34 winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136
+#: winefile.rc:129 winefile.rc:152 winefile.rc:182 winemine.rc:96
+#: wordpad.rc:216 wordpad.rc:227 wordpad.rc:245 wordpad.rc:258
 msgid "Cancel"
 msgstr "Prekliči"
 
@@ -242,7 +243,7 @@ msgid "Programs (*.exe)"
 msgstr "Programi (*.exe)"
 
 #: appwiz.rc:43 avifil32.rc:33 cryptui.rc:83 shell32.rc:199 notepad.rc:76
-#: oleview.rc:104 progman.rc:82 regedit.rc:198 winedbg.rc:42 winhlp32.rc:90
+#: oleview.rc:103 progman.rc:82 regedit.rc:200 winedbg.rc:42 winhlp32.rc:90
 msgid "All files (*.*)"
 msgstr "Vse datoteke (*.*)"
 
@@ -322,48 +323,48 @@ msgstr "nestisnjeno"
 msgid "Canceling..."
 msgstr "Preklicevanje ..."
 
-#: comctl32.rc:52 winefile.rc:157
+#: comctl32.rc:62 winefile.rc:157
 msgid "Properties for %s"
 msgstr "Lastnosti %s"
 
-#: comctl32.rc:57 comdlg32.rc:264
+#: comctl32.rc:67 comdlg32.rc:264
 msgid "&Apply"
 msgstr "&Uporabi"
 
-#: comctl32.rc:58 comctl32.rc:72 comdlg32.rc:307 user32.rc:88
+#: comctl32.rc:68 comctl32.rc:82 comdlg32.rc:307 user32.rc:88
 msgid "Help"
 msgstr "Pomoč"
 
-#: comctl32.rc:65
+#: comctl32.rc:75
 msgid "Wizard"
 msgstr "Čarovnik"
 
-#: comctl32.rc:68
+#: comctl32.rc:78
 msgid "< &Back"
 msgstr "< Na&zaj"
 
-#: comctl32.rc:69
+#: comctl32.rc:79
 msgid "&Next >"
 msgstr "&Naprej >"
 
-#: comctl32.rc:70
+#: comctl32.rc:80
 msgid "Finish"
 msgstr "Dokončaj"
 
-#: comctl32.rc:81
+#: comctl32.rc:91
 msgid "Customize Toolbar"
 msgstr "Prilagoditev orodne vrstice"
 
-#: comctl32.rc:84 cryptui.rc:351 ieframe.rc:43 oleview.rc:83 oleview.rc:188
-#: oleview.rc:201 oleview.rc:213 taskmgr.rc:139
+#: comctl32.rc:94 comctl32.rc:57 cryptui.rc:351 ieframe.rc:43 oleview.rc:83
+#: oleview.rc:187 oleview.rc:200 oleview.rc:212 taskmgr.rc:139
 msgid "&Close"
 msgstr "&Zapri"
 
-#: comctl32.rc:85
+#: comctl32.rc:95
 msgid "R&eset"
 msgstr "Po&nastavi"
 
-#: comctl32.rc:86 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
+#: comctl32.rc:96 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
 #: comdlg32.rc:329 comdlg32.rc:349 comdlg32.rc:361 comdlg32.rc:479
 #: comdlg32.rc:502 ieframe.rc:58 msacm32.rc:52 oledlg.rc:96 shell32.rc:128
 #: clock.rc:44 notepad.rc:60 notepad.rc:119 oleview.rc:72 progman.rc:55
@@ -373,27 +374,27 @@ msgstr "Po&nastavi"
 msgid "&Help"
 msgstr "Pomo&č"
 
-#: comctl32.rc:87
+#: comctl32.rc:97
 msgid "Move &Up"
 msgstr "N&avzgor"
 
-#: comctl32.rc:88
+#: comctl32.rc:98
 msgid "Move &Down"
 msgstr "Na&vzdol"
 
-#: comctl32.rc:89
+#: comctl32.rc:99
 msgid "A&vailable buttons:"
 msgstr "Razpoložljivi &gumbi:"
 
-#: comctl32.rc:91
+#: comctl32.rc:101
 msgid "&Add ->"
 msgstr "&Dodaj ->"
 
-#: comctl32.rc:92
+#: comctl32.rc:102
 msgid "<- &Remove"
 msgstr "<- &Odstrani"
 
-#: comctl32.rc:93
+#: comctl32.rc:103
 msgid "&Toolbar buttons:"
 msgstr "G&umbi orodne vrstice:"
 
@@ -406,7 +407,19 @@ msgctxt "hotkey"
 msgid "None"
 msgstr "Brez"
 
-#: comctl32.rc:31 cryptui.rc:230 regedit.rc:237 taskmgr.rc:434 winedbg.rc:60
+#: comctl32.rc:52 shell32.rc:309 shlwapi.rc:46 user32.rc:79
+msgid "&Yes"
+msgstr "&Da"
+
+#: comctl32.rc:53 shell32.rc:311 shlwapi.rc:47 user32.rc:80
+msgid "&No"
+msgstr "&Ne"
+
+#: comctl32.rc:54 user32.rc:82
+msgid "&Retry"
+msgstr "P&onovi"
+
+#: comctl32.rc:31 cryptui.rc:230 regedit.rc:253 taskmgr.rc:434 winedbg.rc:60
 #: winedbg.rc:75 wordpad.rc:180
 msgid "Close"
 msgstr "Zapri"
@@ -420,7 +433,7 @@ msgid "Go to today"
 msgstr "Pojdi na današnji dan"
 
 #: comdlg32.rc:157 comdlg32.rc:170 comdlg32.rc:459 comdlg32.rc:485
-#: shell32.rc:167 oleview.rc:102
+#: shell32.rc:167 oleview.rc:101
 msgid "Open"
 msgstr "Odpri"
 
@@ -465,7 +478,7 @@ msgstr "Tiskalnik:"
 msgid "Print range"
 msgstr "Obseg tiskanja"
 
-#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:219
+#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:235
 msgid "&All"
 msgstr "&Vse"
 
@@ -635,7 +648,7 @@ msgstr "&Dodaj med namešane barve"
 msgid "&Define Custom Colors >>"
 msgstr "M&ešanje barv >>"
 
-#: comdlg32.rc:316 regedit.rc:226 regedit.rc:236
+#: comdlg32.rc:316 regedit.rc:242 regedit.rc:252
 msgid "Find"
 msgstr "Iskanje"
 
@@ -3093,7 +3106,7 @@ msgstr "Simbol"
 msgid "OEM/DOS"
 msgstr "OEM/DOS"
 
-#: gdi32.rc:45 wldap32.rc:110
+#: gdi32.rc:45 wldap32.rc:112
 msgid "Other"
 msgstr "Drugo"
 
@@ -3745,6 +3758,14 @@ msgstr "Dolžina polja mora bit pozitivno celo število"
 #: jscript.rc:68
 msgid "Array object expected"
 msgstr "Pričakovan je bil predmet polja"
+
+#: ../../include/wine/wine_common_ver.rc:129
+msgid "Wine kernel DLL"
+msgstr ""
+
+#: ../../include/wine/wine_common_ver.rc:134 winemac.rc:32 wineboot.rc:42
+msgid "Wine"
+msgstr "Wine"
 
 #: winerror.mc:26
 msgid "Success.\n"
@@ -7476,11 +7497,11 @@ msgctxt "object state"
 msgid "has popup"
 msgstr ""
 
-#: oleaut32.rc:30 oleview.rc:147
+#: oleaut32.rc:30 oleview.rc:146
 msgid "True"
 msgstr "Prav"
 
-#: oleaut32.rc:31 oleview.rc:148
+#: oleaut32.rc:31 oleview.rc:147
 msgid "False"
 msgstr "Napak"
 
@@ -8151,17 +8172,9 @@ msgstr "Ustvari &novo mapo"
 msgid "Message"
 msgstr "Sporočilo"
 
-#: shell32.rc:309 shlwapi.rc:46 user32.rc:79
-msgid "&Yes"
-msgstr "&Da"
-
 #: shell32.rc:310
 msgid "Yes to &all"
 msgstr "Da za &vse"
-
-#: shell32.rc:311 shlwapi.rc:47 user32.rc:80
-msgid "&No"
-msgstr "&Ne"
 
 #: shell32.rc:319
 msgid "About %s"
@@ -8247,7 +8260,7 @@ msgctxt "display name"
 msgid "Desktop"
 msgstr "Namizje"
 
-#: shell32.rc:157 regedit.rc:203
+#: shell32.rc:157 regedit.rc:205
 msgid "My Computer"
 msgstr "Moj računalnik"
 
@@ -8502,7 +8515,9 @@ msgid "Wine Control Panel"
 msgstr "Nadzorna plošča Wine"
 
 #: shell32.rc:195
-msgid "Unable to display Run File dialog box (internal error)"
+#, fuzzy
+#| msgid "Unable to display Run File dialog box (internal error)"
+msgid "Unable to display Run dialog box (internal error)"
 msgstr "Pogovornega okna Zagon datoteke ni mogoče prikazati (notranja napaka)"
 
 #: shell32.rc:196
@@ -8704,10 +8719,6 @@ msgstr "Na&prej\tCtrl+F6"
 msgid "&Abort"
 msgstr "P&rekini"
 
-#: user32.rc:82
-msgid "&Retry"
-msgstr "P&onovi"
-
 #: user32.rc:85
 msgid "&Ignore"
 msgstr "Pr&ezri"
@@ -8727,10 +8738,6 @@ msgstr "Izbira okna"
 #: user32.rc:72
 msgid "&More Windows..."
 msgstr "&Več oken ..."
-
-#: winemac.rc:32 wineboot.rc:42
-msgid "Wine"
-msgstr "Wine"
 
 #: winemac.rc:33
 #, fuzzy
@@ -9463,239 +9470,245 @@ msgstr "Izhodna datoteka že obstaja. Za njen prepis kliknite gumb V redu."
 msgid "Unable to create the output file."
 msgstr "Izhodne datoteke ni mogoče ustvariti."
 
-#: wldap32.rc:30
+#: wldap32.rc:32
 msgid "Success"
 msgstr "Uspeh"
 
-#: wldap32.rc:31
+#: wldap32.rc:33
 msgid "Operations Error"
 msgstr "Napaka opravil"
 
-#: wldap32.rc:32
+#: wldap32.rc:34
 msgid "Protocol Error"
 msgstr "Napaka v protokolu"
 
-#: wldap32.rc:33
+#: wldap32.rc:35
 msgid "Time Limit Exceeded"
 msgstr "Časovna omejitev je bila presežena"
 
-#: wldap32.rc:34
+#: wldap32.rc:36
 msgid "Size Limit Exceeded"
 msgstr "Omejitev velikosti je bila presežena"
 
-#: wldap32.rc:35
+#: wldap32.rc:37
 msgid "Compare False"
 msgstr "Primerjaj napak"
 
-#: wldap32.rc:36
+#: wldap32.rc:38
 msgid "Compare True"
 msgstr "Primerjaj prav"
 
-#: wldap32.rc:37
+#: wldap32.rc:39
 msgid "Authentication Method Not Supported"
 msgstr "Način overitve ni podprt"
 
-#: wldap32.rc:38
+#: wldap32.rc:40
 msgid "Strong Authentication Required"
 msgstr "Zahtevana je močna overitev"
 
-#: wldap32.rc:39
+#: wldap32.rc:41
 msgid "Referral (v2)"
 msgstr "Napotitelj (r2)"
 
-#: wldap32.rc:40
+#: wldap32.rc:42
 msgid "Referral"
 msgstr "Napotitelj"
 
-#: wldap32.rc:41
+#: wldap32.rc:43
 msgid "Administration Limit Exceeded"
 msgstr "Omejitev skrbništva je bila presežena"
 
-#: wldap32.rc:42
+#: wldap32.rc:44
 msgid "Unavailable Critical Extension"
 msgstr "Kritična razširitev ni na voljo"
 
-#: wldap32.rc:43
+#: wldap32.rc:45
 msgid "Confidentiality Required"
 msgstr "Zahtevana je zaupnost"
 
 #: wldap32.rc:46
+#, fuzzy
+#| msgid "Shutdown in progress.\n"
+msgid "SASL Bind in Progress"
+msgstr "Izklop poteka.\n"
+
+#: wldap32.rc:48
 msgid "No Such Attribute"
 msgstr "Ni takšnega atributa"
 
-#: wldap32.rc:47
+#: wldap32.rc:49
 msgid "Undefined Type"
 msgstr "Nedoločena vrsta"
 
-#: wldap32.rc:48
+#: wldap32.rc:50
 msgid "Inappropriate Matching"
 msgstr "Neprimerno skladanje"
 
-#: wldap32.rc:49
+#: wldap32.rc:51
 msgid "Constraint Violation"
 msgstr "Prekršitev omejitve"
 
-#: wldap32.rc:50
+#: wldap32.rc:52
 msgid "Attribute Or Value Exists"
 msgstr "Atribut ali mapa obstaja"
 
-#: wldap32.rc:51
+#: wldap32.rc:53
 msgid "Invalid Syntax"
 msgstr "Neveljavna skladnja"
 
-#: wldap32.rc:62
+#: wldap32.rc:64
 msgid "No Such Object"
 msgstr "Ni takšnega predmeta"
 
-#: wldap32.rc:63
+#: wldap32.rc:65
 msgid "Alias Problem"
 msgstr "Napaka vzdevka"
 
-#: wldap32.rc:64
+#: wldap32.rc:66
 msgid "Invalid DN Syntax"
 msgstr "Neveljavna skladnja DN"
 
-#: wldap32.rc:65
+#: wldap32.rc:67
 msgid "Is Leaf"
 msgstr "Je list"
 
-#: wldap32.rc:66
+#: wldap32.rc:68
 msgid "Alias Dereference Problem"
 msgstr "Težava med sledenjem vzdevku"
 
-#: wldap32.rc:78
+#: wldap32.rc:80
 msgid "Inappropriate Authentication"
 msgstr "Neprimerna overitev"
 
-#: wldap32.rc:79
+#: wldap32.rc:81
 msgid "Invalid Credentials"
 msgstr "Neveljavna poverila"
 
-#: wldap32.rc:80
+#: wldap32.rc:82
 msgid "Insufficient Rights"
 msgstr "Nezadostne  pravice"
 
-#: wldap32.rc:81
+#: wldap32.rc:83
 msgid "Busy"
 msgstr "Zaposleno"
 
-#: wldap32.rc:82
+#: wldap32.rc:84
 msgid "Unavailable"
 msgstr "Ni na voljo"
 
-#: wldap32.rc:83
+#: wldap32.rc:85
 msgid "Unwilling To Perform"
 msgstr "Ni pripravljen izvesti"
 
-#: wldap32.rc:84
+#: wldap32.rc:86
 msgid "Loop Detected"
 msgstr "Zaznana je bila zanka"
 
-#: wldap32.rc:90
+#: wldap32.rc:92
 msgid "Sort Control Missing"
 msgstr "Nadzor razvrščanja manjka"
 
-#: wldap32.rc:91
+#: wldap32.rc:93
 msgid "Index range error"
 msgstr "Napaka obsega kazala"
 
-#: wldap32.rc:94
+#: wldap32.rc:96
 msgid "Naming Violation"
 msgstr "Prekršitev poimenovanja"
 
-#: wldap32.rc:95
+#: wldap32.rc:97
 msgid "Object Class Violation"
 msgstr "Prekršitev razreda predmetov"
 
-#: wldap32.rc:96
+#: wldap32.rc:98
 msgid "Not allowed on Non-leaf"
 msgstr "Ni dovoljeno na non-leaf"
 
-#: wldap32.rc:97
+#: wldap32.rc:99
 msgid "Not allowed on RDN"
 msgstr "Ni dovoljeno na RDN"
 
-#: wldap32.rc:98
+#: wldap32.rc:100
 msgid "Already Exists"
 msgstr "Že obstaja"
 
-#: wldap32.rc:99
+#: wldap32.rc:101
 msgid "No Object Class Mods"
 msgstr "Ni modov razreda predmeta"
 
-#: wldap32.rc:100
+#: wldap32.rc:102
 msgid "Results Too Large"
 msgstr "Rezultati so preveliki"
 
-#: wldap32.rc:101
+#: wldap32.rc:103
 msgid "Affects Multiple DSAs"
 msgstr "Vpliva na več DSA-jev"
 
-#: wldap32.rc:111
+#: wldap32.rc:113
 msgid "Server Down"
 msgstr "Strežnik ni dostopen"
 
-#: wldap32.rc:112
+#: wldap32.rc:114
 msgid "Local Error"
 msgstr "Krajevna napaka"
 
-#: wldap32.rc:113
+#: wldap32.rc:115
 msgid "Encoding Error"
 msgstr "Napaka kodiranja"
 
-#: wldap32.rc:114
+#: wldap32.rc:116
 msgid "Decoding Error"
 msgstr "Napaka odkodiranja"
 
-#: wldap32.rc:115
+#: wldap32.rc:117
 msgid "Timeout"
 msgstr "Zakasnitev"
 
-#: wldap32.rc:116
+#: wldap32.rc:118
 msgid "Auth Unknown"
 msgstr "Neznana overitev"
 
-#: wldap32.rc:117
+#: wldap32.rc:119
 msgid "Filter Error"
 msgstr "Napaka filtra"
 
-#: wldap32.rc:118
+#: wldap32.rc:120
 msgid "User Canceled"
 msgstr "Uporabnik je preklical"
 
-#: wldap32.rc:119
+#: wldap32.rc:121
 msgid "Parameter Error"
 msgstr "Napaka parametra"
 
-#: wldap32.rc:120
+#: wldap32.rc:122
 msgid "No Memory"
 msgstr "Ni pomnilnika"
 
-#: wldap32.rc:121
+#: wldap32.rc:123
 msgid "Can't connect to the LDAP server"
 msgstr "Ni se mogoče povezati s strežnikom LDAP"
 
-#: wldap32.rc:122
+#: wldap32.rc:124
 msgid "Operation not supported by this version of the LDAP protocol"
 msgstr "Ta različica protokola LDAP opravila ne podpira"
 
-#: wldap32.rc:123
+#: wldap32.rc:125
 msgid "Specified control was not found in message"
 msgstr "Navedenega nadzornika v sporočilu ni bilo mogoče najti"
 
-#: wldap32.rc:124
+#: wldap32.rc:126
 msgid "No result present in message"
 msgstr "V sporočilu ni prisotnih rezultatov"
 
-#: wldap32.rc:125
+#: wldap32.rc:127
 msgid "More results returned"
 msgstr "Vrnjenih je bilo več rezultatov"
 
-#: wldap32.rc:126
+#: wldap32.rc:128
 msgid "Loop while handling referrals"
 msgstr "Kroži v zanki med upravljanjem napotiteljev"
 
-#: wldap32.rc:127
+#: wldap32.rc:129
 msgid "Referral hop limit exceeded"
 msgstr "Meja preskoka napotitev je bila presežena"
 
@@ -11094,7 +11107,7 @@ msgctxt "accelerator Copy"
 msgid "C"
 msgstr "C"
 
-#: notepad.rc:134 regedit.rc:323 wordpad.rc:287
+#: notepad.rc:134 regedit.rc:339 wordpad.rc:287
 msgctxt "accelerator Find"
 msgid "F"
 msgstr "F"
@@ -11114,7 +11127,7 @@ msgctxt "accelerator Open"
 msgid "O"
 msgstr "O"
 
-#: notepad.rc:138 regedit.rc:324 wordpad.rc:300
+#: notepad.rc:138 regedit.rc:340 wordpad.rc:300
 msgctxt "accelerator Print"
 msgid "P"
 msgstr "P"
@@ -11303,31 +11316,31 @@ msgstr "&Shrani kot ..."
 msgid "&Group by type kind"
 msgstr "&Združi glede na vrsto"
 
-#: oleview.rc:157
+#: oleview.rc:156
 msgid "Connect to another machine"
 msgstr "Povezava z drugim strojem"
 
-#: oleview.rc:160
+#: oleview.rc:159
 msgid "&Machine name:"
 msgstr "Ime &stroja:"
 
-#: oleview.rc:168
+#: oleview.rc:167
 msgid "System Configuration"
 msgstr "Sistemske nastavitve"
 
-#: oleview.rc:171
+#: oleview.rc:170
 msgid "System Settings"
 msgstr "Sistemske nastavitve"
 
-#: oleview.rc:172
+#: oleview.rc:171
 msgid "&Enable Distributed COM"
 msgstr "&Omogoči distribuiran COM"
 
-#: oleview.rc:173
+#: oleview.rc:172
 msgid "Enable &Remote Connections (Win95 only)"
 msgstr "Omogoči &oddaljene povezave (le Win95)"
 
-#: oleview.rc:174
+#: oleview.rc:173
 msgid ""
 "These settings change only registry values.\n"
 "They have no effect on Wine performance."
@@ -11335,35 +11348,35 @@ msgstr ""
 "Te nastavitve spremenijo le vrednosti registra.\n"
 "Nimajo učinka na hitrost delovanja Wine."
 
-#: oleview.rc:181
+#: oleview.rc:180
 msgid "Default Interface Viewer"
 msgstr "Privzet pregledovalnik vmesnika"
 
-#: oleview.rc:184
+#: oleview.rc:183
 msgid "Interface"
 msgstr "Vmesnik"
 
-#: oleview.rc:186
+#: oleview.rc:185
 msgid "IID:"
 msgstr "IID:"
 
-#: oleview.rc:189
+#: oleview.rc:188
 msgid "&View Type Info"
 msgstr "&Ogled podatkov o vrsti"
 
-#: oleview.rc:194
+#: oleview.rc:193
 msgid "IPersist Interface Viewer"
 msgstr "Pregledovalnik vmesnika IPersist"
 
-#: oleview.rc:197 oleview.rc:209
+#: oleview.rc:196 oleview.rc:208
 msgid "Class Name:"
 msgstr "Ime razreda:"
 
-#: oleview.rc:199 oleview.rc:211
+#: oleview.rc:198 oleview.rc:210
 msgid "CLSID:"
 msgstr "CLSID:"
 
-#: oleview.rc:206
+#: oleview.rc:205
 msgid "IPersistStream Interface Viewer"
 msgstr "Vmesnik pregledovalnika IPersistStream"
 
@@ -11371,7 +11384,7 @@ msgstr "Vmesnik pregledovalnika IPersistStream"
 msgid "OleView"
 msgstr "OleView"
 
-#: oleview.rc:101
+#: oleview.rc:100
 msgid "ITypeLib viewer"
 msgstr "Pregledovalnik ITypeLib"
 
@@ -11379,172 +11392,168 @@ msgstr "Pregledovalnik ITypeLib"
 msgid "OleView - OLE/COM Object Viewer"
 msgstr "OleView - pregledovalnik predmetov OLE/COM"
 
-#: oleview.rc:100
-msgid "version 1.0"
-msgstr "različica 1.0"
-
-#: oleview.rc:103
+#: oleview.rc:102
 msgid "TypeLib files (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 msgstr "Datoteke TypeLib (*.tlb;*.olb;*.dll;*.ocx;*.exe)"
 
-#: oleview.rc:106
+#: oleview.rc:105
 msgid "Bind to file via a File Moniker"
 msgstr "Vezave na datoteko preko File Moniker"
 
-#: oleview.rc:107
+#: oleview.rc:106
 msgid "Open a TypeLib file and view the contents"
 msgstr "Odpre datoteko TypeLib in si ogleda vsebino"
 
-#: oleview.rc:108
+#: oleview.rc:107
 msgid "Change machine wide Distributed COM settings"
 msgstr "Spremeni strojno široke distribuirane nastavitve COM"
 
-#: oleview.rc:109
+#: oleview.rc:108
 msgid "Run the Wine registry editor"
 msgstr "Zažene urejevalnik registra Wine"
 
-#: oleview.rc:110
+#: oleview.rc:109
 msgid "Quit the application. Prompts to save changes"
 msgstr "Konča program. Pozove za shranjevanje sprememb"
 
-#: oleview.rc:111
+#: oleview.rc:110
 msgid "Create an instance of the selected object"
 msgstr "Ustvari primerek izbranega predmeta"
 
-#: oleview.rc:112
+#: oleview.rc:111
 msgid "Create an instance of the selected object on a specific machine"
 msgstr "Ustvari primerek izbranega predmeta na določenem stroju"
 
-#: oleview.rc:113
+#: oleview.rc:112
 msgid "Release the currently selected object instance"
 msgstr "Izda trenutno izbran primerek predmeta"
 
-#: oleview.rc:114
+#: oleview.rc:113
 msgid "Copy the GUID of the currently selected item to the clipboard"
 msgstr "Kopiraj GUID trenutno izbranega predmeta na odložišče"
 
-#: oleview.rc:115
+#: oleview.rc:114
 msgid "Display the viewer for the selected item"
 msgstr "Prikaži pregledovalnik za izbran predmet"
 
-#: oleview.rc:120
+#: oleview.rc:119
 msgid "Toggle between expert and novice display mode"
 msgstr "Preklopi med načinom prikaza izvedenca in začetnika"
 
-#: oleview.rc:121
+#: oleview.rc:120
 msgid ""
 "Toggle the display of component categories that are not meant to be visible"
 msgstr "Preklopi prikaz kategorij sestavnih delov, ki naj ne bi bile vidne"
 
-#: oleview.rc:122
+#: oleview.rc:121
 msgid "Show or hide the toolbar"
 msgstr "Pokaži ali skrij orodno vrstico"
 
-#: oleview.rc:123
+#: oleview.rc:122
 msgid "Show or hide the status bar"
 msgstr "Pokaži ali skrij vrstico stanja"
 
-#: oleview.rc:124
+#: oleview.rc:123
 msgid "Refresh all lists"
 msgstr "Osveži vse sezname"
 
-#: oleview.rc:125
+#: oleview.rc:124
 msgid "Display program information, version number and copyright"
 msgstr "Prikaže podatke o programu, številki različice in avtorskih pravicah"
 
-#: oleview.rc:116
+#: oleview.rc:115
 msgid "Ask for an in-process server when calling CoGetClassObject"
 msgstr "Pri klicu CoGetClassObject vprašaj za strežnik v opravilu"
 
-#: oleview.rc:117
+#: oleview.rc:116
 msgid "Ask for an in-process handler when calling CoGetClassObject"
 msgstr "Vpraša za ročnik v opravilu pri klicu CoGetClassObject"
 
-#: oleview.rc:118
+#: oleview.rc:117
 msgid "Ask for a local server when calling CoGetClassObject"
 msgstr "Pri klicanju CoGetClassObject vprašaj za krajevni strežnik"
 
-#: oleview.rc:119
+#: oleview.rc:118
 msgid "Ask for a remote server when calling CoGetClassObject"
 msgstr "Pri klicanju CoGetClassObject vprašaj za oddaljeni strežnik"
 
-#: oleview.rc:131
+#: oleview.rc:130
 msgid "ObjectClasses"
 msgstr "RazrediPredmetov"
 
-#: oleview.rc:132
+#: oleview.rc:131
 msgid "Grouped by Component Category"
 msgstr "Združeni po kategoriji sestavnih delov"
 
-#: oleview.rc:133
+#: oleview.rc:132
 msgid "OLE 1.0 Objects"
 msgstr "Predmeti OLE 1.0"
 
-#: oleview.rc:134
+#: oleview.rc:133
 msgid "COM Library Objects"
 msgstr "Predmeti knjižnice COM"
 
-#: oleview.rc:135
+#: oleview.rc:134
 msgid "All Objects"
 msgstr "Vsi predmeti"
 
-#: oleview.rc:136
+#: oleview.rc:135
 msgid "Application IDs"
 msgstr "ID-ji programov"
 
-#: oleview.rc:137
+#: oleview.rc:136
 msgid "Type Libraries"
 msgstr "Knjižnice vrst"
 
-#: oleview.rc:138
+#: oleview.rc:137
 msgid "ver."
 msgstr "raz."
 
-#: oleview.rc:139
+#: oleview.rc:138
 msgid "Interfaces"
 msgstr "Vmesniki"
 
-#: oleview.rc:141
+#: oleview.rc:140
 msgid "Registry"
 msgstr "Register"
 
-#: oleview.rc:142
+#: oleview.rc:141
 msgid "Implementation"
 msgstr "Izvedba"
 
-#: oleview.rc:143
+#: oleview.rc:142
 msgid "Activation"
 msgstr "Omogočenje"
 
-#: oleview.rc:145
+#: oleview.rc:144
 msgid "CoGetClassObject failed."
 msgstr "CoGetClassObject je spodletel."
 
-#: oleview.rc:146
+#: oleview.rc:145
 msgid "Unknown error"
 msgstr "Neznana napaka"
 
-#: oleview.rc:149
+#: oleview.rc:148
 msgid "bytes"
 msgstr "bajtov"
 
-#: oleview.rc:151
+#: oleview.rc:150
 msgid "LoadTypeLib( %1 ) failed ($%2!x!)"
 msgstr "Ukaz LoadTypeLib( %1 ) je spodletel ($%2!x!)"
 
-#: oleview.rc:152
+#: oleview.rc:151
 msgid "Inherited Interfaces"
 msgstr "Podedovani vmesniki"
 
-#: oleview.rc:127
+#: oleview.rc:126
 msgid "Save as an .IDL or .H file"
 msgstr "Shrani kot datoteko .IDL ali .H"
 
-#: oleview.rc:128
+#: oleview.rc:127
 msgid "Close window"
 msgstr "Zapri okno"
 
-#: oleview.rc:129
+#: oleview.rc:128
 msgid "Group typeinfos by kind"
 msgstr "Združi glede na podatke o vrsti"
 
@@ -11847,11 +11856,11 @@ msgstr "Določena datoteka že obstaja. Ali jo želite zamenjati?"
 msgid "The registry operation was cancelled\n"
 msgstr ""
 
-#: reg.rc:53 regedit.rc:204
+#: reg.rc:53 regedit.rc:206
 msgid "(Default)"
 msgstr "(Privzeto)"
 
-#: reg.rc:54
+#: reg.rc:54 regedit.rc:185
 #, fuzzy
 #| msgid "Are you sure you want to delete these values?"
 msgid "Are you sure you want to delete the registry value '%1'?"
@@ -11909,7 +11918,7 @@ msgstr ""
 msgid "Type \"REG %1 /?\" for help.\n"
 msgstr ""
 
-#: reg.rc:65 regedit.rc:205
+#: reg.rc:65 regedit.rc:207
 msgid "(value not set)"
 msgstr "(vrednost ni nastavljena)"
 
@@ -11985,83 +11994,83 @@ msgstr "&O Urejevalniku registra"
 msgid "Modify Binary Data..."
 msgstr "Spremeni binarne podatke ..."
 
-#: regedit.rc:218
+#: regedit.rc:234
 msgid "Export registry"
 msgstr "Izvozi register"
 
-#: regedit.rc:220
+#: regedit.rc:236
 msgid "S&elected branch:"
 msgstr "I&zbrano vejo:"
 
-#: regedit.rc:229
+#: regedit.rc:245
 msgid "Find:"
 msgstr "Najdi:"
 
-#: regedit.rc:231
+#: regedit.rc:247
 msgid "Find in:"
 msgstr "Išči v:"
 
-#: regedit.rc:232
+#: regedit.rc:248
 msgid "Keys"
 msgstr "Ključi"
 
-#: regedit.rc:233
+#: regedit.rc:249
 msgid "Value names"
 msgstr "Imena vrednosti"
 
-#: regedit.rc:234
+#: regedit.rc:250
 msgid "Value content"
 msgstr "Vsebina vrednosti"
 
-#: regedit.rc:235
+#: regedit.rc:251
 msgid "Whole string only"
 msgstr "Samo celoten niz"
 
-#: regedit.rc:242
+#: regedit.rc:258
 msgid "Add Favorite"
 msgstr "Dodaj med Priljubljene"
 
-#: regedit.rc:245 regedit.rc:256
+#: regedit.rc:261 regedit.rc:272
 msgid "Name:"
 msgstr "Ime:"
 
-#: regedit.rc:253
+#: regedit.rc:269
 msgid "Remove Favorite"
 msgstr "Odstrani iz Priljubljenih"
 
-#: regedit.rc:264
+#: regedit.rc:280
 msgid "Edit String"
 msgstr "Urejanje niza"
 
-#: regedit.rc:267 regedit.rc:280 regedit.rc:296 regedit.rc:309
+#: regedit.rc:283 regedit.rc:296 regedit.rc:312 regedit.rc:325
 msgid "Value name:"
 msgstr "Ime:"
 
-#: regedit.rc:269 regedit.rc:282 regedit.rc:298 regedit.rc:311
+#: regedit.rc:285 regedit.rc:298 regedit.rc:314 regedit.rc:327
 msgid "Value data:"
 msgstr "Vsebina:"
 
-#: regedit.rc:277
+#: regedit.rc:293
 msgid "Edit DWORD"
 msgstr "Urejanje vrednosti DWORD"
 
-#: regedit.rc:284
+#: regedit.rc:300
 msgid "Base"
 msgstr "Osnova"
 
-#: regedit.rc:285
+#: regedit.rc:301
 msgid "Hexadecimal"
 msgstr "Šestnajstiško"
 
-#: regedit.rc:286
+#: regedit.rc:302
 msgid "Decimal"
 msgstr "Desetiško"
 
-#: regedit.rc:293
+#: regedit.rc:309
 msgid "Edit Binary"
 msgstr "Urejanje binarne vrednosti"
 
-#: regedit.rc:306
+#: regedit.rc:322
 msgid "Edit Multi-String"
 msgstr "Urejanje več-nizne vrednosti"
 
@@ -12098,31 +12107,91 @@ msgstr "Podatki"
 msgid "Registry Editor"
 msgstr "Urejevalnik registra"
 
-#: regedit.rc:194
+#: regedit.rc:196
 msgid "Import Registry File"
 msgstr "Uvozi datoteko registra"
 
-#: regedit.rc:195
+#: regedit.rc:197
 msgid "Export Registry File"
 msgstr "Izvozi datoteko registra"
 
-#: regedit.rc:196
+#: regedit.rc:198
 msgid "Registry files (*.reg)"
 msgstr "Datoteke registra (*.reg)"
 
-#: regedit.rc:197
+#: regedit.rc:199
 msgid "Win9x/NT4 Registry files (REGEDIT4)"
 msgstr "Datoteke registra Win9x/NT4 (REGEDIT4)"
 
-#: regedit.rc:206
+#: regedit.rc:208
 msgid "(cannot display value)"
 msgstr "(vrednosti ni mogoče prikazati)"
 
-#: regedit.rc:207
+#: regedit.rc:209
 msgid "(unknown %d)"
 msgstr "(neznano %d)"
 
-#: regedit.rc:359
+#: regedit.rc:214
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to modify the selected registry value."
+msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
+
+#: regedit.rc:215
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to create a new registry key."
+msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
+
+#: regedit.rc:216
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to create a new registry value."
+msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
+
+#: regedit.rc:217
+msgid ""
+"Unable to rename the key '%1'.\n"
+"The specified key name already exists."
+msgstr ""
+
+#: regedit.rc:218
+msgid ""
+"Unable to rename the value '%1'.\n"
+"The specified value name already exists."
+msgstr ""
+
+#: regedit.rc:219
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to delete the selected registry key."
+msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
+
+#: regedit.rc:220
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to rename the selected registry key."
+msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
+
+#: regedit.rc:221
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to rename the selected registry value."
+msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
+
+#: regedit.rc:222
+msgid ""
+"The keys and values contained in %1 were successfully added to the registry."
+msgstr ""
+
+#: regedit.rc:223
+#, fuzzy
+#| msgid ""
+#| "Error: The system was unable to find the specified registry key or value\n"
+msgid "Unable to import %1. The specified file is not a valid registry file."
+msgstr "Napaka: sistem ni našel navedenega ključa ali vrednosti registra\n"
+
+#: regedit.rc:375
 msgid ""
 "Usage:\n"
 "  regedit [options] [filename] [reg_key]\n"
@@ -12153,105 +12222,105 @@ msgid ""
 "  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
 msgstr ""
 
-#: regedit.rc:360
+#: regedit.rc:376
 msgid "regedit: Invalid or unrecognized switch [%1]\n"
 msgstr ""
 
-#: regedit.rc:361
+#: regedit.rc:377
 msgid "Type \"regedit /?\" for help.\n"
 msgstr ""
 
-#: regedit.rc:362
+#: regedit.rc:378
 #, fuzzy
 #| msgid "No command was specified."
 msgid "regedit: No filename was specified.\n"
 msgstr "Ukaz ni bil naveden."
 
-#: regedit.rc:363
+#: regedit.rc:379
 msgid "regedit: No registry key was specified for removal.\n"
 msgstr ""
 
-#: regedit.rc:364
+#: regedit.rc:380
 msgid "regedit: The file '%1' was not found.\n"
 msgstr ""
 
-#: regedit.rc:365
+#: regedit.rc:381
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unable to open the file '%1'.\n"
 msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
 
-#: regedit.rc:366
+#: regedit.rc:382
 #, fuzzy
 #| msgid "Invalid handle operation.\n"
 msgid "regedit: Unhandled action.\n"
 msgstr "Neveljavno opravilo upravljanja.\n"
 
-#: regedit.rc:367
+#: regedit.rc:383
 msgid "regedit: Out of memory! (%1!S!, line %2!u!)\n"
 msgstr ""
 
-#: regedit.rc:368
+#: regedit.rc:384
 #, fuzzy
 #| msgid "Error: Invalid key name\n"
 msgid "regedit: Invalid hexadecimal value.\n"
 msgstr "Napaka: neveljavno ime ključa\n"
 
-#: regedit.rc:369
+#: regedit.rc:385
 msgid ""
 "regedit: Unable to convert hexadecimal data. An invalid value was "
 "encountered at '%1'.\n"
 msgstr ""
 
-#: regedit.rc:370
+#: regedit.rc:386
 msgid "regedit: Unrecognized escape sequence [\\%1!c!]\n"
 msgstr ""
 
-#: regedit.rc:371
+#: regedit.rc:387
 #, fuzzy
 #| msgid "Unsupported type.\n"
 msgid "regedit: Unsupported registry data type [%1]\n"
 msgstr "Nepodprta vrsta.\n"
 
-#: regedit.rc:372
+#: regedit.rc:388
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unexpected end of line in '%1'.\n"
 msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
 
-#: regedit.rc:373
+#: regedit.rc:389
 #, fuzzy
 #| msgid "No command was specified."
 msgid "regedit: The line '%1' was not recognized.\n"
 msgstr "Ukaz ni bil naveden."
 
-#: regedit.rc:374
+#: regedit.rc:390
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unable to add the registry value '%1' to '%2'.\n"
 msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
 
-#: regedit.rc:375
+#: regedit.rc:391
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unable to open the registry key '%1'.\n"
 msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
 
-#: regedit.rc:376
+#: regedit.rc:392
 #, fuzzy
 #| msgid "Unsupported type.\n"
 msgid "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
 msgstr "Nepodprta vrsta.\n"
 
-#: regedit.rc:377
+#: regedit.rc:393
 msgid "regedit: The registry value '%1' will be exported as binary data.\n"
 msgstr ""
 
-#: regedit.rc:378
+#: regedit.rc:394
 msgid "regedit: Incorrect registry class specification in '%1'.\n"
 msgstr ""
 
-#: regedit.rc:379
+#: regedit.rc:395
 #, fuzzy
 #| msgid ""
 #| "Error: The system was unable to find the specified registry key or value\n"
@@ -12259,7 +12328,7 @@ msgid ""
 "regedit: Unable to export '%1'. The specified registry key was not found.\n"
 msgstr "Napaka: sistem ni našel navedenega ključa ali vrednosti registra\n"
 
-#: regedit.rc:380
+#: regedit.rc:396
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unable to delete the registry class '%1'.\n"
@@ -12347,44 +12416,50 @@ msgstr ""
 "Prikaže podrobnosti o programu, številko različice ter avtorske pravice"
 
 #: regedit.rc:181
-msgid "Can't query value '%s'"
-msgstr "Ni mogoče napraviti poizvedbe vrednosti '%s'"
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to query the registry value '%1'."
+msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
 
 #: regedit.rc:182
-msgid "Can't edit keys of this type (%u)"
+#, fuzzy
+#| msgid "Can't edit keys of this type (%u)"
+msgid "Unable to edit registry keys of this type (%1!u!)."
 msgstr "Ključev te vrste (%u) ni mogoče urejati"
 
 #: regedit.rc:183
-msgid "Value is too big (%u)"
+#, fuzzy
+#| msgid "Value is too big (%u)"
+msgid "The value is too big (%1!u!)."
 msgstr "Vrednost je prevelika (%u)"
 
 #: regedit.rc:184
 msgid "Confirm Value Delete"
 msgstr "Potrditev brisanja vrednosti"
 
-#: regedit.rc:185
-msgid "Are you sure you want to delete value '%s'?"
-msgstr "Ali ste prepričani, da želite izbrisati vrednost '%s'?"
-
-#: regedit.rc:189
-msgid "Search string '%s' not found"
+#: regedit.rc:191
+#, fuzzy
+#| msgid "Search string '%s' not found"
+msgid "Search complete. The string '%1' was not found."
 msgstr "Iskanega niza '%s' ni mogoče najti"
 
 #: regedit.rc:186
 msgid "Are you sure you want to delete these values?"
 msgstr "Are ste prepričani, da želite izbrisati te vrednosti?"
 
-#: regedit.rc:187
+#: regedit.rc:189
 msgid "New Key #%d"
 msgstr "Nov ključ #%d"
 
-#: regedit.rc:188
+#: regedit.rc:190
 msgid "New Value #%d"
 msgstr "Nova vrednost #%d"
 
 #: regedit.rc:180
-msgid "Can't query key '%s'"
-msgstr "Ni mogoče pridobiti podatkov o ključu '%s'"
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to query the registry key '%1'."
+msgstr "Napaka: ni mogoče dodati ključa na oddaljen računalnik\n"
 
 #: regedit.rc:152
 msgid "Adds a new multi-string value"
@@ -12393,6 +12468,19 @@ msgstr "Doda novo več-nizno vrednost"
 #: regedit.rc:174
 msgid "Exports selected branch of the registry to a text file"
 msgstr "Izvozi izbrano vejo registra v besedilno datoteko"
+
+#: regedit.rc:187
+#, fuzzy
+#| msgid "Confirm Value Delete"
+msgid "Confirm Key Delete"
+msgstr "Potrditev brisanja vrednosti"
+
+#: regedit.rc:188
+#, fuzzy
+#| msgid "Are you sure you want to delete '%1'?"
+msgid ""
+"Are you sure you want to delete the registry key '%1' and all of its subkeys?"
+msgstr "Ali ste prepričani, da želite izbrisati predmet '%1'?"
 
 #: regsvr32.rc:32
 msgid ""

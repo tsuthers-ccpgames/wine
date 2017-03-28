@@ -949,7 +949,7 @@
 @ extern ??_7?$time_put@DV?$ostreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@6B@ MSVCP_time_put_char_vtable
 @ extern ??_7?$time_put@GV?$ostreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@6B@ MSVCP_time_put_short_vtable
 @ extern ??_7?$time_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@6B@ MSVCP_time_put_wchar_vtable
-# extern ??_7_Facet_base@std@@6B@
+@ extern ??_7_Facet_base@std@@6B@ MSVCP__Facet_base_vtable
 @ extern ??_7_Locimp@locale@std@@6B@ MSVCP_locale__Locimp_vtable
 @ extern ??_7_Pad@std@@6B@ MSVCP__Pad_vtable
 @ extern ??_7codecvt_base@std@@6B@ MSVCP_codecvt_base_vtable
@@ -2774,7 +2774,7 @@
 @ cdecl -arch=arm ?is@?$ctype@_W@std@@QBA_NF_W@Z(ptr long long) ctype_wchar_is_ch
 @ thiscall -arch=i386 ?is@?$ctype@_W@std@@QBE_NF_W@Z(ptr long long) ctype_wchar_is_ch
 @ cdecl -arch=win64 ?is@?$ctype@_W@std@@QEBA_NF_W@Z(ptr long long) ctype_wchar_is_ch
-@ stub ?is_current_task_group_canceling@Concurrency@@YA_NXZ
+@ cdecl ?is_current_task_group_canceling@Concurrency@@YA_NXZ() is_current_task_group_canceling
 @ cdecl -arch=arm ?isfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QAAXXZ(ptr) basic_istream_char_isfx
 @ thiscall -arch=i386 ?isfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QAEXXZ(ptr) basic_istream_char_isfx
 @ cdecl -arch=win64 ?isfx@?$basic_istream@DU?$char_traits@D@std@@@std@@QEAAXXZ(ptr) basic_istream_char_isfx
@@ -3760,7 +3760,7 @@
 @ stub _LXp_sqrtx
 @ stub _LXp_subx
 @ extern _LZero
-@ stub _Lock_shared_ptr_spin_lock
+@ cdecl _Lock_shared_ptr_spin_lock()
 @ cdecl _Mbrtowc(ptr ptr long ptr ptr)
 @ stub _Mtx_clear_owner
 @ cdecl _Mtx_current_owns(ptr)
@@ -3821,7 +3821,7 @@
 @ stub _Tss_delete
 @ stub _Tss_get
 @ stub _Tss_set
-@ stub _Unlock_shared_ptr_spin_lock
+@ cdecl _Unlock_shared_ptr_spin_lock()
 @ cdecl _Wcrtomb(ptr long ptr ptr)
 @ cdecl _Wcscoll(ptr ptr ptr ptr ptr)
 @ stub _Wcsxfrm

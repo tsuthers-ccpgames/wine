@@ -45,6 +45,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(win);
     (SWP_NOSIZE | SWP_NOMOVE | SWP_NOCLIENTSIZE | SWP_NOCLIENTMOVE | SWP_NOZORDER)
 #define SWP_AGG_STATUSFLAGS \
     (SWP_AGG_NOPOSCHANGE | SWP_FRAMECHANGED | SWP_HIDEWINDOW | SWP_SHOWWINDOW)
+#define SWP_AGG_NOCLIENTCHANGE \
+        (SWP_NOCLIENTSIZE | SWP_NOCLIENTMOVE)
 
 #define HAS_DLGFRAME(style,exStyle) \
     (((exStyle) & WS_EX_DLGMODALFRAME) || \
@@ -1641,7 +1643,8 @@ static BOOL SWP_DoWinPosChanging( WINDOWPOS* pWinpos, RECT* pNewWindowRect, RECT
 
     /* Send WM_WINDOWPOSCHANGING message */
 
-    if (!(pWinpos->flags & SWP_NOSENDCHANGING))
+    if (!(pWinpos->flags & SWP_NOSENDCHANGING)
+           && !((pWinpos->flags & SWP_AGG_NOCLIENTCHANGE) && (pWinpos->flags & SWP_SHOWWINDOW)))
         SendMessageW( pWinpos->hwnd, WM_WINDOWPOSCHANGING, 0, (LPARAM)pWinpos );
 
     if (!(wndPtr = WIN_GetPtr( pWinpos->hwnd )) ||
@@ -2229,16 +2232,7 @@ BOOL USER_SetWindowPos( WINDOWPOS * winpos )
                          &newWindowRect, &newClientRect, valid_rects ))
         return FALSE;
 
-    /* erase parent when hiding or resizing child */
-    if (!(orig_flags & SWP_DEFERERASE) &&
-        ((orig_flags & SWP_HIDEWINDOW) ||
-         (!(orig_flags & SWP_SHOWWINDOW) &&
-          (winpos->flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOGEOMETRYCHANGE)))
-    {
-        HWND parent = GetAncestor( winpos->hwnd, GA_PARENT );
-        if (!parent || parent == GetDesktopWindow()) parent = winpos->hwnd;
-        erase_now( parent, 0 );
-    }
+
 
     if( winpos->flags & SWP_HIDEWINDOW )
         HideCaret(winpos->hwnd);
@@ -2254,11 +2248,32 @@ BOOL USER_SetWindowPos( WINDOWPOS * winpos )
             SetForegroundWindow( winpos->hwnd );
     }
 
+    if(!(orig_flags & SWP_DEFERERASE))
+    {
+        /* erase parent when hiding or resizing child */
+        if ((orig_flags & SWP_HIDEWINDOW) ||
+         (!(orig_flags & SWP_SHOWWINDOW) &&
+          (winpos->flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOGEOMETRYCHANGE))
+        {
+            HWND parent = GetAncestor( winpos->hwnd, GA_PARENT );
+            if (!parent || parent == GetDesktopWindow()) parent = winpos->hwnd;
+            erase_now( parent, 0 );
+        }
+
+        /* Give newly shown windows a chance to redraw */
+        if(((winpos->flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOPOSCHANGE)
+                && !(orig_flags & SWP_AGG_NOCLIENTCHANGE) && (orig_flags & SWP_SHOWWINDOW))
+        {
+            erase_now(winpos->hwnd, 0);
+        }
+    }
+
       /* And last, send the WM_WINDOWPOSCHANGED message */
 
     TRACE("\tstatus flags = %04x\n", winpos->flags & SWP_AGG_STATUSFLAGS);
 
-    if (((winpos->flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOPOSCHANGE))
+    if (((winpos->flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOPOSCHANGE)
+            && !((orig_flags & SWP_AGG_NOCLIENTCHANGE) && (orig_flags & SWP_SHOWWINDOW)))
     {
         /* WM_WINDOWPOSCHANGED is sent even if SWP_NOSENDCHANGING is set
            and always contains final window position.
@@ -2430,7 +2445,6 @@ BOOL WINAPI EndDeferWindowPos( HDWP hdwp )
 {
     DWP *pDWP;
     WINDOWPOS *winpos;
-    BOOL res = TRUE;
     int i;
 
     TRACE("%p\n", hdwp);
@@ -2442,20 +2456,20 @@ BOOL WINAPI EndDeferWindowPos( HDWP hdwp )
         return FALSE;
     }
 
-    for (i = 0, winpos = pDWP->winPos; res && i < pDWP->actualCount; i++, winpos++)
+    for (i = 0, winpos = pDWP->winPos; i < pDWP->actualCount; i++, winpos++)
     {
         TRACE("hwnd %p, after %p, %d,%d (%dx%d), flags %08x\n",
                winpos->hwnd, winpos->hwndInsertAfter, winpos->x, winpos->y,
                winpos->cx, winpos->cy, winpos->flags);
 
         if (WIN_IsCurrentThread( winpos->hwnd ))
-            res = USER_SetWindowPos( winpos );
+            USER_SetWindowPos( winpos );
         else
-            res = SendMessageW( winpos->hwnd, WM_WINE_SETWINDOWPOS, 0, (LPARAM)winpos );
+            SendMessageW( winpos->hwnd, WM_WINE_SETWINDOWPOS, 0, (LPARAM)winpos );
     }
     HeapFree( GetProcessHeap(), 0, pDWP->winPos );
     HeapFree( GetProcessHeap(), 0, pDWP );
-    return res;
+    return TRUE;
 }
 
 

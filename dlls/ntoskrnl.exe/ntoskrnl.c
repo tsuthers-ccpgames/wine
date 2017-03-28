@@ -682,6 +682,15 @@ void WINAPI IoStartTimer(PDEVICE_OBJECT DeviceObject)
 
 
 /***********************************************************************
+ *           IoStopTimer   (NTOSKRNL.EXE.@)
+ */
+void WINAPI IoStopTimer(PDEVICE_OBJECT DeviceObject)
+{
+    FIXME( "stub: %p\n", DeviceObject );
+}
+
+
+/***********************************************************************
  *           IoAllocateIrp  (NTOSKRNL.EXE.@)
  */
 PIRP WINAPI IoAllocateIrp( CCHAR stack_size, BOOLEAN charge_quota )
@@ -1990,6 +1999,19 @@ NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
 }
 
 /***********************************************************************
+ *           KeWaitForMultipleObjects   (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI KeWaitForMultipleObjects(ULONG Count, PVOID Object[], WAIT_TYPE WaitType,
+                                         KWAIT_REASON WaitReason, KPROCESSOR_MODE WaitMode,
+                                         BOOLEAN Alertable, PLARGE_INTEGER Timeout,
+                                         PKWAIT_BLOCK WaitBlockArray)
+{
+    FIXME( "stub: %u, %p, %d, %d, %d, %d, %p, %p\n", Count, Object, WaitType, WaitReason, WaitMode,
+           Alertable, Timeout, WaitBlockArray );
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/***********************************************************************
  *           IoRegisterFileSystem   (NTOSKRNL.EXE.@)
  */
 VOID WINAPI IoRegisterFileSystem(PDEVICE_OBJECT DeviceObject)
@@ -3158,4 +3180,50 @@ BOOL WINAPI KeSetTimerEx( KTIMER *timer, LARGE_INTEGER duetime, LONG period, KDP
 {
     FIXME("stub: %p %s %u %p\n", timer, wine_dbgstr_longlong(duetime.QuadPart), period, dpc);
     return TRUE;
+}
+
+/***********************************************************************
+ *           IoCreateFile (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI IoCreateFile(HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
+                              IO_STATUS_BLOCK *io, LARGE_INTEGER *alloc_size, ULONG attributes, ULONG sharing,
+                              ULONG disposition, ULONG create_options, VOID *ea_buffer, ULONG ea_length,
+                              CREATE_FILE_TYPE file_type, VOID *parameters, ULONG options )
+{
+    FIXME(": stub\n");
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/***********************************************************************
+ *           KeClearEvent (NTOSKRNL.EXE.@)
+ */
+VOID WINAPI KeClearEvent(PRKEVENT event)
+{
+    FIXME("stub: %p\n", event);
+}
+
+/***********************************************************************
+ *           KeAcquireInStackQueuedSpinLock (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL2_ENTRYPOINT
+DEFINE_FASTCALL2_ENTRYPOINT( KeAcquireInStackQueuedSpinLock )
+void WINAPI __regs_KeAcquireInStackQueuedSpinLock( KSPIN_LOCK *spinlock, KLOCK_QUEUE_HANDLE *handle )
+#else
+void WINAPI KeAcquireInStackQueuedSpinLock( KSPIN_LOCK *spinlock, KLOCK_QUEUE_HANDLE *handle )
+#endif
+{
+    FIXME( "stub: %p %p\n", spinlock, handle );
+}
+
+/***********************************************************************
+ *           KeReleaseInStackQueuedSpinLock (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT( KeReleaseInStackQueuedSpinLock )
+void WINAPI __regs_KeReleaseInStackQueuedSpinLock( KLOCK_QUEUE_HANDLE *handle )
+#else
+void WINAPI KeReleaseInStackQueuedSpinLock( KLOCK_QUEUE_HANDLE *handle )
+#endif
+{
+    FIXME( "stub: %p\n", handle);
 }

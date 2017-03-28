@@ -745,6 +745,10 @@ static void update_library_argv0( const WCHAR *argv0 )
  *   resulting in an odd number of '\' followed by a '"'
  *   '\"'    -> '\\\"'
  *   '\\"'   -> '\\\\\"'
+ * - '\'s are followed by the closing '"' must be doubled,
+ *   resulting in an even number of '\' followed by a '"'
+ *   ' \'    -> '" \\"'
+ *   ' \\'    -> '" \\\\"'
  * - '\'s that are not followed by a '"' can be left as is
  *   'a\b'   == 'a\b'
  *   'a\\b'  == 'a\\b'
@@ -787,7 +791,7 @@ static BOOL build_command_line( WCHAR **argv )
         }
         len+=(a-*arg)+1 /* for the separating space */;
         if (has_space)
-            len+=2; /* for the quotes */
+            len+=2+bcount; /* for the quotes and doubling of '\' preceding the closing quote */
     }
 
     if (!(rupp->CommandLine.Buffer = RtlAllocateHeap( GetProcessHeap(), 0, len * sizeof(WCHAR))))
@@ -800,6 +804,7 @@ static BOOL build_command_line( WCHAR **argv )
     {
         BOOL has_space,has_quote;
         WCHAR* a;
+        int bcount;
 
         /* Check for quotes and spaces in this argument */
         has_space=has_quote=FALSE;
@@ -821,9 +826,7 @@ static BOOL build_command_line( WCHAR **argv )
         /* Now transfer it to the command line */
         if (has_space)
             *p++='"';
-        if (has_quote) {
-            int bcount;
-
+        if (has_quote || has_space) {
             bcount=0;
             a=*arg;
             while (*a!='\0') {
@@ -849,8 +852,14 @@ static BOOL build_command_line( WCHAR **argv )
             WCHAR* x = *arg;
             while ((*p=*x++)) p++;
         }
-        if (has_space)
+        if (has_space) {
+            int i;
+
+            /* Double all the '\' preceding the closing quote */
+            for (i=0;i<bcount;i++)
+                *p++='\\';
             *p++='"';
+        }
         *p++=' ';
     }
     if (p > rupp->CommandLine.Buffer)
@@ -1083,16 +1092,12 @@ static inline DWORD call_process_entry( PEB *peb, LPTHREAD_START_ROUTINE entry )
  *
  * Startup routine of a new process. Runs on the new process stack.
  */
-static DWORD WINAPI start_process( PEB *peb )
+static DWORD WINAPI start_process( LPTHREAD_START_ROUTINE entry )
 {
-    IMAGE_NT_HEADERS *nt;
-    LPTHREAD_START_ROUTINE entry;
+    BOOL being_debugged;
+    PEB *peb = NtCurrentTeb()->Peb;
 
-    nt = RtlImageNtHeader( peb->ImageBaseAddress );
-    entry = (LPTHREAD_START_ROUTINE)((char *)peb->ImageBaseAddress +
-                                     nt->OptionalHeader.AddressOfEntryPoint);
-
-    if (!nt->OptionalHeader.AddressOfEntryPoint)
+    if (!entry)
     {
         ERR( "%s doesn't have an entry point, it cannot be executed\n",
              debugstr_w(peb->ProcessParameters->ImagePathName.Buffer) );
@@ -1103,8 +1108,11 @@ static DWORD WINAPI start_process( PEB *peb )
         DPRINTF( "%04x:Starting process %s (entryproc=%p)\n", GetCurrentThreadId(),
                  debugstr_w(peb->ProcessParameters->ImagePathName.Buffer), entry );
 
+    if (!CheckRemoteDebuggerPresent( GetCurrentProcess(), &being_debugged ))
+        being_debugged = FALSE;
+
     SetLastError( 0 );  /* clear error code */
-    if (peb->BeingDebugged) DbgBreakPoint();
+    if (being_debugged) DbgBreakPoint();
     return call_process_entry( peb, entry );
 }
 
@@ -1696,6 +1704,12 @@ static startup_info_t *create_startup_info( LPCWSTR filename, LPCWSTR cmdline,
         hstdout = startup->hStdOutput;
         hstderr = startup->hStdError;
     }
+    else if (flags & DETACHED_PROCESS)
+    {
+        hstdin  = INVALID_HANDLE_VALUE;
+        hstdout = INVALID_HANDLE_VALUE;
+        hstderr = INVALID_HANDLE_VALUE;
+    }
     else
     {
         hstdin  = GetStdHandle( STD_INPUT_HANDLE );
@@ -1705,7 +1719,7 @@ static startup_info_t *create_startup_info( LPCWSTR filename, LPCWSTR cmdline,
     info->hstdin  = wine_server_obj_handle( hstdin );
     info->hstdout = wine_server_obj_handle( hstdout );
     info->hstderr = wine_server_obj_handle( hstderr );
-    if ((flags & (CREATE_NEW_CONSOLE | DETACHED_PROCESS)) != 0)
+    if ((flags & CREATE_NEW_CONSOLE) != 0)
     {
         /* this is temporary (for console handles). We have no way to control that the handle is invalid in child process otherwise */
         if (is_console_handle(hstdin))  info->hstdin  = wine_server_obj_handle( INVALID_HANDLE_VALUE );
@@ -4086,4 +4100,134 @@ UINT WINAPI GetSystemFirmwareTable(DWORD provider, DWORD id, PVOID buffer, DWORD
     FIXME("(%d %d %p %d):stub\n", provider, id, buffer, size);
     SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
     return 0;
+}
+
+struct proc_thread_attr
+{
+    DWORD_PTR attr;
+    SIZE_T size;
+    void *value;
+};
+
+struct _PROC_THREAD_ATTRIBUTE_LIST
+{
+    DWORD mask;  /* bitmask of items in list */
+    DWORD size;  /* max number of items in list */
+    DWORD count; /* number of items in list */
+    DWORD pad;
+    DWORD_PTR unk;
+    struct proc_thread_attr attrs[1];
+};
+
+/***********************************************************************
+ *           InitializeProcThreadAttributeList       (KERNEL32.@)
+ */
+BOOL WINAPI InitializeProcThreadAttributeList(struct _PROC_THREAD_ATTRIBUTE_LIST *list,
+                                              DWORD count, DWORD flags, SIZE_T *size)
+{
+    SIZE_T needed;
+    BOOL ret = FALSE;
+
+    TRACE("(%p %d %x %p)\n", list, count, flags, size);
+
+    needed = FIELD_OFFSET(struct _PROC_THREAD_ATTRIBUTE_LIST, attrs[count]);
+    if (list && *size >= needed)
+    {
+        list->mask = 0;
+        list->size = count;
+        list->count = 0;
+        list->unk = 0;
+        ret = TRUE;
+    }
+    else
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+
+    *size = needed;
+    return ret;
+}
+
+/***********************************************************************
+ *           UpdateProcThreadAttribute       (KERNEL32.@)
+ */
+BOOL WINAPI UpdateProcThreadAttribute(struct _PROC_THREAD_ATTRIBUTE_LIST *list,
+                                      DWORD flags, DWORD_PTR attr, void *value, SIZE_T size,
+                                      void *prev_ret, SIZE_T *size_ret)
+{
+    DWORD mask;
+    struct proc_thread_attr *entry;
+
+    TRACE("(%p %x %08lx %p %ld %p %p)\n", list, flags, attr, value, size, prev_ret, size_ret);
+
+    if (list->count >= list->size)
+    {
+        SetLastError(ERROR_GEN_FAILURE);
+        return FALSE;
+    }
+
+    switch (attr)
+    {
+    case PROC_THREAD_ATTRIBUTE_PARENT_PROCESS:
+        if (size != sizeof(HANDLE))
+        {
+            SetLastError(ERROR_BAD_LENGTH);
+            return FALSE;
+        }
+        break;
+
+    case PROC_THREAD_ATTRIBUTE_HANDLE_LIST:
+        if ((size / sizeof(HANDLE)) * sizeof(HANDLE) != size)
+        {
+            SetLastError(ERROR_BAD_LENGTH);
+            return FALSE;
+        }
+        break;
+
+    case PROC_THREAD_ATTRIBUTE_IDEAL_PROCESSOR:
+        if (size != sizeof(PROCESSOR_NUMBER))
+        {
+            SetLastError(ERROR_BAD_LENGTH);
+            return FALSE;
+        }
+        break;
+
+    default:
+        SetLastError(ERROR_NOT_SUPPORTED);
+        return FALSE;
+    }
+
+    mask = 1 << (attr & PROC_THREAD_ATTRIBUTE_NUMBER);
+
+    if (list->mask & mask)
+    {
+        SetLastError(ERROR_OBJECT_NAME_EXISTS);
+        return FALSE;
+    }
+
+    list->mask |= mask;
+
+    entry = list->attrs + list->count;
+    entry->attr = attr;
+    entry->size = size;
+    entry->value = value;
+    list->count++;
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *           DeleteProcThreadAttributeList       (KERNEL32.@)
+ */
+void WINAPI DeleteProcThreadAttributeList(struct _PROC_THREAD_ATTRIBUTE_LIST *list)
+{
+    return;
+}
+
+/**********************************************************************
+ *           BaseFlushAppcompatCache     (KERNEL32.@)
+ */
+BOOL WINAPI BaseFlushAppcompatCache(void)
+{
+    FIXME(": stub\n");
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
 }

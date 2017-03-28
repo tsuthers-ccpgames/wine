@@ -500,10 +500,19 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         [(WineWindow*)[self window] updateForGLSubviews];
     }
 
-    - (void) updateGLContexts
+    - (void) updateGLContexts:(BOOL)reattach
     {
         for (WineOpenGLContext* context in glContexts)
+        {
             context.needsUpdate = TRUE;
+            if (reattach)
+                context.needsReattach = TRUE;
+        }
+    }
+
+    - (void) updateGLContexts
+    {
+        [self updateGLContexts:NO];
     }
 
     - (BOOL) hasGLContext
@@ -605,6 +614,23 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         return NO;
     }
 
+    - (void) viewDidHide
+    {
+        [super viewDidHide];
+        if ([self hasGLContext])
+            [self invalidateHasGLDescendant];
+    }
+
+    - (void) viewDidUnhide
+    {
+        [super viewDidUnhide];
+        if ([self hasGLContext])
+        {
+            [self updateGLContexts:YES];
+            [self invalidateHasGLDescendant];
+        }
+    }
+
     - (void) completeText:(NSString*)text
     {
         macdrv_event* event;
@@ -649,12 +675,6 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                 [self invalidateHasGLDescendant];
         }
         [super willRemoveSubview:subview];
-    }
-
-    - (void) setHidden:(BOOL)hidden
-    {
-        [super setHidden:hidden];
-        [self invalidateHasGLDescendant];
     }
 
     /*
@@ -2404,7 +2424,18 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     /*
      * ---------- NSResponder method overrides ----------
      */
-    - (void) keyDown:(NSEvent *)theEvent { [self postKeyEvent:theEvent]; }
+    - (void) keyDown:(NSEvent *)theEvent
+    {
+        if ([theEvent isARepeat])
+        {
+            if (!allowKeyRepeats)
+                return;
+        }
+        else
+            allowKeyRepeats = YES;
+
+        [self postKeyEvent:theEvent];
+    }
 
     - (void) flagsChanged:(NSEvent *)theEvent
     {
@@ -2440,6 +2471,9 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
             if (changed & modifiers[i].mask)
             {
                 BOOL pressed = (modifierFlags & modifiers[i].mask) != 0;
+
+                if (pressed)
+                    allowKeyRepeats = NO;
 
                 if (i == last_changed)
                     lastModifierFlags = modifierFlags;
@@ -3340,7 +3374,7 @@ void macdrv_set_view_frame(macdrv_view v, CGRect rect)
 
     if (CGRectIsNull(rect)) rect = CGRectZero;
 
-    OnMainThread(^{
+    OnMainThreadAsync(^{
         NSRect newFrame = NSRectFromCGRect(cgrect_mac_from_win(rect));
         NSRect oldFrame = [view frame];
 
@@ -3387,7 +3421,7 @@ void macdrv_set_view_superview(macdrv_view v, macdrv_view s, macdrv_window w, ma
     if (!superview)
         superview = [window contentView];
 
-    OnMainThread(^{
+    OnMainThreadAsync(^{
         if (superview == [view superview])
         {
             NSArray* subviews = [superview subviews];
@@ -3430,8 +3464,9 @@ void macdrv_set_view_hidden(macdrv_view v, int hidden)
     NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
     WineContentView* view = (WineContentView*)v;
 
-    OnMainThread(^{
+    OnMainThreadAsync(^{
         [view setHidden:hidden];
+        [(WineWindow*)view.window updateForGLSubviews];
     });
 
     [pool release];

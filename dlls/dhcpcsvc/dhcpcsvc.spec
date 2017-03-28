@@ -1,7 +1,7 @@
 @ stub DhcpAcquireParameters
 @ stub DhcpAcquireParametersByBroadcast
-@ stub DhcpCApiCleanup
-@ stub DhcpCApiInitialize
+@ stdcall DhcpCApiCleanup()
+@ stdcall DhcpCApiInitialize(ptr)
 @ stub DhcpDeRegisterConnectionStateNotification
 @ stub DhcpDeRegisterOptions
 @ stub DhcpDeRegisterParamChange
@@ -31,7 +31,7 @@
 @ stub DhcpRenewIpAddressLeaseEx
 @ stub DhcpRequestCachedParams
 @ stub DhcpRequestOptions
-@ stub DhcpRequestParams
+@ stdcall DhcpRequestParams(long ptr wstr ptr int64 int64 ptr ptr wstr)
 @ stub DhcpSetMSFTVendorSpecificOptions
 @ stub DhcpStaticRefreshParams
 @ stub DhcpUndoRequestParams

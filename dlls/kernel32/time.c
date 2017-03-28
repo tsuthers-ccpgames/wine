@@ -1042,8 +1042,11 @@ int WINAPI GetCalendarInfoW(LCID Locale, CALID Calendar, CALTYPE CalType,
 int WINAPI GetCalendarInfoEx(LPCWSTR locale, CALID calendar, LPCWSTR lpReserved, CALTYPE caltype,
     LPWSTR data, int len, DWORD *value)
 {
+    static int once;
+
     LCID lcid = LocaleNameToLCID(locale, 0);
-    FIXME("(%s, %d, %p, 0x%08x, %p, %d, %p): semi-stub\n", debugstr_w(locale), calendar, lpReserved, caltype,
+    if (!once++)
+        FIXME("(%s, %d, %p, 0x%08x, %p, %d, %p): semi-stub\n", debugstr_w(locale), calendar, lpReserved, caltype,
         data, len, value);
     return GetCalendarInfoW(lcid, calendar, caltype, data, len, value);
 }
@@ -1305,11 +1308,8 @@ BOOL WINAPI FileTimeToDosDateTime( const FILETIME *ft, LPWORD fatdate,
     }
     unixtime = t;
     tm = gmtime( &unixtime );
-    if (fattime)
-        *fattime = (tm->tm_hour << 11) + (tm->tm_min << 5) + (tm->tm_sec / 2);
-    if (fatdate)
-        *fatdate = ((tm->tm_year - 80) << 9) + ((tm->tm_mon + 1) << 5)
-                   + tm->tm_mday;
+    *fattime = (tm->tm_hour << 11) + (tm->tm_min << 5) + (tm->tm_sec / 2);
+    *fatdate = ((tm->tm_year - 80) << 9) + ((tm->tm_mon + 1) << 5) + tm->tm_mday;
     return TRUE;
 }
 

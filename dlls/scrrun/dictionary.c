@@ -65,6 +65,7 @@ struct keyitem_pair {
 
 typedef struct
 {
+    struct provideclassinfo classinfo;
     IDictionary IDictionary_iface;
     LONG ref;
 
@@ -240,19 +241,19 @@ static HRESULT WINAPI dict_enum_QueryInterface(IEnumVARIANT *iface, REFIID riid,
 static ULONG WINAPI dict_enum_AddRef(IEnumVARIANT *iface)
 {
     struct dictionary_enum *This = impl_from_IEnumVARIANT(iface);
-    TRACE("(%p)\n", This);
-    return InterlockedIncrement(&This->ref);
+    ULONG ref = InterlockedIncrement(&This->ref);
+    TRACE("(%p)->(%u)\n", This, ref);
+    return ref;
 }
 
 static ULONG WINAPI dict_enum_Release(IEnumVARIANT *iface)
 {
     struct dictionary_enum *This = impl_from_IEnumVARIANT(iface);
-    LONG ref;
+    LONG ref = InterlockedDecrement(&This->ref);
 
-    TRACE("(%p)\n", This);
+    TRACE("(%p)->(%u)\n", This, ref);
 
-    ref = InterlockedDecrement(&This->ref);
-    if(ref == 0) {
+    if (!ref) {
         list_remove(&This->notify);
         IDictionary_Release(&This->dict->IDictionary_iface);
         heap_free(This);
@@ -386,6 +387,10 @@ static HRESULT WINAPI dictionary_QueryInterface(IDictionary *iface, REFIID riid,
     {
         *obj = &This->IDictionary_iface;
     }
+    else if (IsEqualIID(riid, &IID_IProvideClassInfo))
+    {
+        *obj = &This->classinfo.IProvideClassInfo_iface;
+    }
     else if ( IsEqualGUID( riid, &IID_IDispatchEx ))
     {
         TRACE("Interface IDispatchEx not supported - returning NULL\n");
@@ -404,27 +409,28 @@ static HRESULT WINAPI dictionary_QueryInterface(IDictionary *iface, REFIID riid,
         return E_NOINTERFACE;
     }
 
-    IDictionary_AddRef(iface);
+    IUnknown_AddRef((IUnknown*)*obj);
     return S_OK;
 }
 
 static ULONG WINAPI dictionary_AddRef(IDictionary *iface)
 {
     dictionary *This = impl_from_IDictionary(iface);
-    TRACE("(%p)\n", This);
+    ULONG ref = InterlockedIncrement(&This->ref);
 
-    return InterlockedIncrement(&This->ref);
+    TRACE("(%p)->(%u)\n", This, ref);
+
+    return ref;
 }
 
 static ULONG WINAPI dictionary_Release(IDictionary *iface)
 {
     dictionary *This = impl_from_IDictionary(iface);
-    LONG ref;
+    ULONG ref = InterlockedDecrement(&This->ref);
 
-    TRACE("(%p)\n", This);
+    TRACE("(%p)->(%u)\n", This, ref);
 
-    ref = InterlockedDecrement(&This->ref);
-    if(ref == 0) {
+    if (!ref) {
         IDictionary_RemoveAll(iface);
         heap_free(This);
     }
@@ -436,7 +442,7 @@ static HRESULT WINAPI dictionary_GetTypeInfoCount(IDictionary *iface, UINT *pcti
 {
     dictionary *This = impl_from_IDictionary(iface);
 
-    TRACE("(%p)->()\n", This);
+    TRACE("(%p)->(%p)\n", This, pctinfo);
 
     *pctinfo = 1;
     return S_OK;
@@ -885,7 +891,7 @@ HRESULT WINAPI Dictionary_CreateInstance(IClassFactory *factory,IUnknown *outer,
 {
     dictionary *This;
 
-    TRACE("(%p)\n", obj);
+    TRACE("(%p, %p, %s, %p)\n", factory, outer, debugstr_guid(riid), obj);
 
     *obj = NULL;
 
@@ -900,6 +906,7 @@ HRESULT WINAPI Dictionary_CreateInstance(IClassFactory *factory,IUnknown *outer,
     list_init(&This->notifier);
     memset(This->buckets, 0, sizeof(This->buckets));
 
+    init_classinfo(&CLSID_Dictionary, (IUnknown *)&This->IDictionary_iface, &This->classinfo);
     *obj = &This->IDictionary_iface;
 
     return S_OK;

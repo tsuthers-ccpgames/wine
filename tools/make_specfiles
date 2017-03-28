@@ -115,6 +115,7 @@ my @dll_groups =
   "api-ms-win-downlevel-advapi32-l2-1-0",
   "api-ms-win-security-base-l1-1-0",
   "api-ms-win-core-registry-l1-1-0",
+  "api-ms-win-core-registry-l2-1-0",
   "api-ms-win-eventing-classicprovider-l1-1-0",
   "api-ms-win-eventing-consumer-l1-1-0",
   "api-ms-win-eventing-controller-l1-1-0",
@@ -128,6 +129,7 @@ my @dll_groups =
   "api-ms-win-security-lsalookup-l2-1-1",
   "api-ms-win-security-lsapolicy-l1-1-0",
   "api-ms-win-security-sddl-l1-1-0",
+  "api-ms-win-security-systemfunctions-l1-1-0",
   "api-ms-win-service-core-l1-1-0",
   "api-ms-win-service-core-l1-1-1",
   "api-ms-win-service-management-l1-1-0",
@@ -137,11 +139,22 @@ my @dll_groups =
   "api-ms-win-service-winsvc-l1-2-0",
  ],
  [
+  "netapi32",
+  "ext-ms-win-domainjoin-netjoin-l1-1-0",
+ ],
+ [
   "ntdll",
   "api-ms-win-core-xstate-l1-1-0",
  ],
  [
+  "ntdll",
+  "powrprof",
+  "api-ms-win-power-base-l1-1-0",
+  "api-ms-win-power-setting-l1-1-0",
+ ],
+ [
   "kernel32",
+  "api-ms-win-appmodel-identity-l1-1-0",
   "api-ms-win-appmodel-runtime-l1-1-1",
   "api-ms-win-downlevel-normaliz-l1-1-0",
   "api-ms-win-core-processthreads-l1-1-0",
@@ -204,6 +217,7 @@ my @dll_groups =
   "api-ms-win-core-threadpool-l1-1-0",
   "api-ms-win-core-threadpool-l1-2-0",
   "api-ms-win-core-threadpool-legacy-l1-1-0",
+  "api-ms-win-core-threadpool-private-l1-1-0",
   "api-ms-win-core-timezone-l1-1-0",
   "api-ms-win-core-toolhelp-l1-1-0",
   "api-ms-win-core-sysinfo-l1-2-1",
@@ -239,8 +253,15 @@ my @dll_groups =
   "kernel32",
   "advapi32",
   "user32",
+  "shlwapi",
+  "version",
   "kernelbase",
   "api-ms-win-core-bem-l1-1-0",
+ ],
+ [
+  "kernelbase",
+  "api-ms-win-core-quirks-l1-1-0",
+  "api-ms-win-security-grouppolicy-l1-1-0",
  ],
  [
   "ole32",
@@ -313,6 +334,7 @@ my @dll_groups =
   "api-ms-win-core-winrt-errorprivate-l1-1-1",
   "api-ms-win-core-winrt-l1-1-0",
   "api-ms-win-core-winrt-registration-l1-1-0",
+  "api-ms-win-core-winrt-roparameterizediid-l1-1-0",
   "api-ms-win-core-winrt-string-l1-1-0",
  ],
  [
@@ -326,6 +348,10 @@ my @dll_groups =
  [
   "bcrypt",
   "ncrypt",
+ ],
+ [
+  "ntoskrnl.exe",
+  "hal",
  ],
 );
 
@@ -380,6 +406,7 @@ sub read_spec_file($)
 
         my $func = $descr{name};
         next if defined $funcs{$func};
+        next if $func eq "@";
         $funcs{$func} = \%descr;
     }
     close SPEC;

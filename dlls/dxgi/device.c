@@ -175,7 +175,7 @@ static HRESULT STDMETHODCALLTYPE dxgi_device_CreateSurface(IWineDXGIDevice *ifac
     hr = IWineDXGIDevice_QueryInterface(iface, &IID_IWineDXGIDeviceParent, (void **)&dxgi_device_parent);
     if (FAILED(hr))
     {
-        ERR("Device should implement IWineD3DDeviceParent\n");
+        ERR("Device should implement IWineDXGIDeviceParent\n");
         return E_FAIL;
     }
 
@@ -201,7 +201,7 @@ static HRESULT STDMETHODCALLTYPE dxgi_device_CreateSurface(IWineDXGIDevice *ifac
         IUnknown *parent;
 
         if (FAILED(hr = device_parent->ops->create_swapchain_texture(device_parent,
-                NULL, &surface_desc, &wined3d_texture)))
+                NULL, &surface_desc, 0, &wined3d_texture)))
         {
             ERR("Failed to create surface, hr %#x.\n", hr);
             goto fail;
@@ -405,7 +405,7 @@ HRESULT dxgi_device_init(struct dxgi_device *device, struct dxgi_device_layer *l
     if (FAILED(hr = IWineDXGIDevice_QueryInterface(&device->IWineDXGIDevice_iface,
             &IID_IWineDXGIDeviceParent, (void **)&dxgi_device_parent)))
     {
-        ERR("DXGI device should implement IWineD3DDeviceParent.\n");
+        ERR("DXGI device should implement IWineDXGIDeviceParent.\n");
         IUnknown_Release(device->child_layer);
         wined3d_private_store_cleanup(&device->private_store);
         wined3d_mutex_unlock();

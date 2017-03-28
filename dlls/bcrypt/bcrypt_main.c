@@ -36,6 +36,8 @@
 #include "ntsecapi.h"
 #include "bcrypt.h"
 
+#include "bcrypt_internal.h"
+
 #include "wine/debug.h"
 #include "wine/library.h"
 #include "wine/unicode.h"
@@ -53,12 +55,6 @@ MAKE_FUNCPTR(gnutls_global_deinit);
 MAKE_FUNCPTR(gnutls_global_init);
 MAKE_FUNCPTR(gnutls_global_set_log_function);
 MAKE_FUNCPTR(gnutls_global_set_log_level);
-MAKE_FUNCPTR(gnutls_hash);
-MAKE_FUNCPTR(gnutls_hash_deinit);
-MAKE_FUNCPTR(gnutls_hash_init);
-MAKE_FUNCPTR(gnutls_hmac);
-MAKE_FUNCPTR(gnutls_hmac_deinit);
-MAKE_FUNCPTR(gnutls_hmac_init);
 MAKE_FUNCPTR(gnutls_perror);
 #undef MAKE_FUNCPTR
 
@@ -88,12 +84,6 @@ static BOOL gnutls_initialize(void)
     LOAD_FUNCPTR(gnutls_global_init)
     LOAD_FUNCPTR(gnutls_global_set_log_function)
     LOAD_FUNCPTR(gnutls_global_set_log_level)
-    LOAD_FUNCPTR(gnutls_hash);
-    LOAD_FUNCPTR(gnutls_hash_deinit);
-    LOAD_FUNCPTR(gnutls_hash_init);
-    LOAD_FUNCPTR(gnutls_hmac);
-    LOAD_FUNCPTR(gnutls_hmac_deinit);
-    LOAD_FUNCPTR(gnutls_hmac_init);
     LOAD_FUNCPTR(gnutls_perror)
 #undef LOAD_FUNCPTR
 
@@ -153,16 +143,21 @@ enum alg_id
     ALG_ID_SHA512
 };
 
+#define MAX_HASH_OUTPUT_BYTES 64
+#define MAX_HASH_BLOCK_BITS 1024
+
 static const struct {
+    ULONG object_length;
     ULONG hash_length;
+    ULONG block_bits;
     const WCHAR *alg_name;
 } alg_props[] = {
-    /* ALG_ID_MD5    */ { 16, BCRYPT_MD5_ALGORITHM },
-    /* ALG_ID_RNG    */ {  0, BCRYPT_RNG_ALGORITHM },
-    /* ALG_ID_SHA1   */ { 20, BCRYPT_SHA1_ALGORITHM },
-    /* ALG_ID_SHA256 */ { 32, BCRYPT_SHA256_ALGORITHM },
-    /* ALG_ID_SHA384 */ { 48, BCRYPT_SHA384_ALGORITHM },
-    /* ALG_ID_SHA512 */ { 64, BCRYPT_SHA512_ALGORITHM }
+    /* ALG_ID_MD5    */ {  274,   16,  512, BCRYPT_MD5_ALGORITHM },
+    /* ALG_ID_RNG    */ {    0,    0,    0, BCRYPT_RNG_ALGORITHM },
+    /* ALG_ID_SHA1   */ {  278,   20,  512, BCRYPT_SHA1_ALGORITHM },
+    /* ALG_ID_SHA256 */ {  286,   32,  512, BCRYPT_SHA256_ALGORITHM },
+    /* ALG_ID_SHA384 */ {  382,   48, 1024, BCRYPT_SHA384_ALGORITHM },
+    /* ALG_ID_SHA512 */ {  382,   64, 1024, BCRYPT_SHA512_ALGORITHM }
 };
 
 struct algorithm
@@ -277,325 +272,140 @@ NTSTATUS WINAPI BCryptGetFipsAlgorithmMode(BOOLEAN *enabled)
     return STATUS_SUCCESS;
 }
 
-#ifdef HAVE_COMMONCRYPTO_COMMONDIGEST_H
-struct hash
+struct hash_impl
 {
-    struct object hdr;
-    enum alg_id   alg_id;
-    BOOL hmac;
     union
     {
-        CC_MD5_CTX    md5_ctx;
-        CC_SHA1_CTX   sha1_ctx;
-        CC_SHA256_CTX sha256_ctx;
-        CC_SHA512_CTX sha512_ctx;
-        CCHmacContext hmac_ctx;
+        MD5_CTX md5;
+        SHA_CTX sha1;
+        SHA256_CTX sha256;
+        SHA512_CTX sha512;
     } u;
 };
 
-static NTSTATUS hash_init( struct hash *hash )
+static NTSTATUS hash_init( struct hash_impl *hash, enum alg_id alg_id )
 {
-    switch (hash->alg_id)
+    switch (alg_id)
     {
     case ALG_ID_MD5:
-        CC_MD5_Init( &hash->u.md5_ctx );
+        MD5Init( &hash->u.md5 );
         break;
 
     case ALG_ID_SHA1:
-        CC_SHA1_Init( &hash->u.sha1_ctx );
+        A_SHAInit( &hash->u.sha1 );
         break;
 
     case ALG_ID_SHA256:
-        CC_SHA256_Init( &hash->u.sha256_ctx );
+        sha256_init( &hash->u.sha256 );
         break;
 
     case ALG_ID_SHA384:
-        CC_SHA384_Init( &hash->u.sha512_ctx );
+        sha384_init( &hash->u.sha512 );
         break;
 
     case ALG_ID_SHA512:
-        CC_SHA512_Init( &hash->u.sha512_ctx );
+        sha512_init( &hash->u.sha512 );
         break;
 
     default:
-        ERR( "unhandled id %u\n", hash->alg_id );
+        ERR( "unhandled id %u\n", alg_id );
         return STATUS_NOT_IMPLEMENTED;
     }
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS hmac_init( struct hash *hash, UCHAR *key, ULONG key_size )
+static NTSTATUS hash_update( struct hash_impl *hash, enum alg_id alg_id,
+                             UCHAR *input, ULONG size )
 {
-    CCHmacAlgorithm cc_algorithm;
-    switch (hash->alg_id)
+    switch (alg_id)
     {
     case ALG_ID_MD5:
-        cc_algorithm = kCCHmacAlgMD5;
+        MD5Update( &hash->u.md5, input, size );
         break;
 
     case ALG_ID_SHA1:
-        cc_algorithm = kCCHmacAlgSHA1;
+        A_SHAUpdate( &hash->u.sha1, input, size );
         break;
 
     case ALG_ID_SHA256:
-        cc_algorithm = kCCHmacAlgSHA256;
+        sha256_update( &hash->u.sha256, input, size );
         break;
 
     case ALG_ID_SHA384:
-        cc_algorithm = kCCHmacAlgSHA384;
+        sha384_update( &hash->u.sha512, input, size );
         break;
 
     case ALG_ID_SHA512:
-        cc_algorithm = kCCHmacAlgSHA512;
+        sha512_update( &hash->u.sha512, input, size );
         break;
 
     default:
-        ERR( "unhandled id %u\n", hash->alg_id );
-        return STATUS_NOT_IMPLEMENTED;
-    }
-
-    CCHmacInit( &hash->u.hmac_ctx, cc_algorithm, key, key_size );
-    return STATUS_SUCCESS;
-}
-
-
-static NTSTATUS hash_update( struct hash *hash, UCHAR *input, ULONG size )
-{
-    switch (hash->alg_id)
-    {
-    case ALG_ID_MD5:
-        CC_MD5_Update( &hash->u.md5_ctx, input, size );
-        break;
-
-    case ALG_ID_SHA1:
-        CC_SHA1_Update( &hash->u.sha1_ctx, input, size );
-        break;
-
-    case ALG_ID_SHA256:
-        CC_SHA256_Update( &hash->u.sha256_ctx, input, size );
-        break;
-
-    case ALG_ID_SHA384:
-        CC_SHA384_Update( &hash->u.sha512_ctx, input, size );
-        break;
-
-    case ALG_ID_SHA512:
-        CC_SHA512_Update( &hash->u.sha512_ctx, input, size );
-        break;
-
-    default:
-        ERR( "unhandled id %u\n", hash->alg_id );
+        ERR( "unhandled id %u\n", alg_id );
         return STATUS_NOT_IMPLEMENTED;
     }
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS hmac_update( struct hash *hash, UCHAR *input, ULONG size )
+static NTSTATUS hash_finish( struct hash_impl *hash, enum alg_id alg_id,
+                             UCHAR *output, ULONG size )
 {
-    CCHmacUpdate( &hash->u.hmac_ctx, input, size );
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS hash_finish( struct hash *hash, UCHAR *output, ULONG size )
-{
-    switch (hash->alg_id)
+    switch (alg_id)
     {
     case ALG_ID_MD5:
-        CC_MD5_Final( output, &hash->u.md5_ctx );
+        MD5Final( &hash->u.md5 );
+        memcpy( output, hash->u.md5.digest, 16 );
         break;
 
     case ALG_ID_SHA1:
-        CC_SHA1_Final( output, &hash->u.sha1_ctx );
+        A_SHAFinal( &hash->u.sha1, (ULONG *)output );
         break;
 
     case ALG_ID_SHA256:
-        CC_SHA256_Final( output, &hash->u.sha256_ctx );
+        sha256_finalize( &hash->u.sha256, output );
         break;
 
     case ALG_ID_SHA384:
-        CC_SHA384_Final( output, &hash->u.sha512_ctx );
+        sha384_finalize( &hash->u.sha512, output );
         break;
 
     case ALG_ID_SHA512:
-        CC_SHA512_Final( output, &hash->u.sha512_ctx );
+        sha512_finalize( &hash->u.sha512, output );
         break;
 
     default:
-        ERR( "unhandled id %u\n", hash->alg_id );
-        break;
+        ERR( "unhandled id %u\n", alg_id );
+        return STATUS_NOT_IMPLEMENTED;
     }
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS hmac_finish( struct hash *hash, UCHAR *output, ULONG size )
-{
-    CCHmacFinal( &hash->u.hmac_ctx, output );
-
-    return STATUS_SUCCESS;
-}
-#elif defined(HAVE_GNUTLS_HASH)
 struct hash
 {
     struct object    hdr;
     enum alg_id      alg_id;
-    BOOL hmac;
-    union
-    {
-        gnutls_hash_hd_t hash_handle;
-        gnutls_hmac_hd_t hmac_handle;
-    } u;
+    BOOL             hmac;
+    struct hash_impl outer;
+    struct hash_impl inner;
 };
-
-static NTSTATUS hash_init( struct hash *hash )
-{
-    gnutls_digest_algorithm_t alg;
-
-    if (!libgnutls_handle) return STATUS_INTERNAL_ERROR;
-
-    switch (hash->alg_id)
-    {
-    case ALG_ID_MD5:
-        alg = GNUTLS_DIG_MD5;
-        break;
-    case ALG_ID_SHA1:
-        alg = GNUTLS_DIG_SHA1;
-        break;
-
-    case ALG_ID_SHA256:
-        alg = GNUTLS_DIG_SHA256;
-        break;
-
-    case ALG_ID_SHA384:
-        alg = GNUTLS_DIG_SHA384;
-        break;
-
-    case ALG_ID_SHA512:
-        alg = GNUTLS_DIG_SHA512;
-        break;
-
-    default:
-        ERR( "unhandled id %u\n", hash->alg_id );
-        return STATUS_NOT_IMPLEMENTED;
-    }
-
-    if (pgnutls_hash_init( &hash->u.hash_handle, alg )) return STATUS_INTERNAL_ERROR;
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS hmac_init( struct hash *hash, UCHAR *key, ULONG key_size )
-{
-    gnutls_mac_algorithm_t alg;
-
-    if (!libgnutls_handle) return STATUS_INTERNAL_ERROR;
-
-    switch (hash->alg_id)
-    {
-    case ALG_ID_MD5:
-        alg = GNUTLS_MAC_MD5;
-        break;
-    case ALG_ID_SHA1:
-        alg = GNUTLS_MAC_SHA1;
-        break;
-
-    case ALG_ID_SHA256:
-        alg = GNUTLS_MAC_SHA256;
-        break;
-
-    case ALG_ID_SHA384:
-        alg = GNUTLS_MAC_SHA384;
-        break;
-
-    case ALG_ID_SHA512:
-        alg = GNUTLS_MAC_SHA512;
-        break;
-
-    default:
-        ERR( "unhandled id %u\n", hash->alg_id );
-        return STATUS_NOT_IMPLEMENTED;
-    }
-
-    if (pgnutls_hmac_init( &hash->u.hmac_handle, alg, key, key_size )) return STATUS_INTERNAL_ERROR;
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS hash_update( struct hash *hash, UCHAR *input, ULONG size )
-{
-    if (pgnutls_hash( hash->u.hash_handle, input, size )) return STATUS_INTERNAL_ERROR;
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS hmac_update( struct hash *hash, UCHAR *input, ULONG size )
-{
-    if (pgnutls_hmac( hash->u.hmac_handle, input, size )) return STATUS_INTERNAL_ERROR;
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS hash_finish( struct hash *hash, UCHAR *output, ULONG size )
-{
-    pgnutls_hash_deinit( hash->u.hash_handle, output );
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS hmac_finish( struct hash *hash, UCHAR *output, ULONG size )
-{
-    pgnutls_hmac_deinit( hash->u.hmac_handle, output );
-    return STATUS_SUCCESS;
-}
-#else
-struct hash
-{
-    struct object hdr;
-    BOOL hmac;
-    enum alg_id   alg_id;
-};
-
-static NTSTATUS hash_init( struct hash *hash )
-{
-    ERR( "support for hashes not available at build time\n" );
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-static NTSTATUS hmac_init( struct hash *hash, UCHAR *key, ULONG key_size )
-{
-    ERR( "support for hashes not available at build time\n" );
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-static NTSTATUS hash_update( struct hash *hash, UCHAR *input, ULONG size )
-{
-    ERR( "support for hashes not available at build time\n" );
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-static NTSTATUS hmac_update( struct hash *hash, UCHAR *input, ULONG size )
-{
-    ERR( "support for hashes not available at build time\n" );
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-static NTSTATUS hash_finish( struct hash *hash, UCHAR *output, ULONG size )
-{
-    ERR( "support for hashes not available at build time\n" );
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-static NTSTATUS hmac_finish( struct hash *hash, UCHAR *output, ULONG size )
-{
-    ERR( "support for hashes not available at build time\n" );
-    return STATUS_NOT_IMPLEMENTED;
-}
-#endif
-
-#define OBJECT_LENGTH_MD5       274
-#define OBJECT_LENGTH_SHA1      278
-#define OBJECT_LENGTH_SHA256    286
-#define OBJECT_LENGTH_SHA384    382
-#define OBJECT_LENGTH_SHA512    382
 
 static NTSTATUS generic_alg_property( enum alg_id id, const WCHAR *prop, UCHAR *buf, ULONG size, ULONG *ret_size )
 {
+    if (!strcmpW( prop, BCRYPT_OBJECT_LENGTH ))
+    {
+        if (!alg_props[id].object_length)
+            return STATUS_NOT_SUPPORTED;
+        *ret_size = sizeof(ULONG);
+        if (size < sizeof(ULONG))
+            return STATUS_BUFFER_TOO_SMALL;
+        if (buf)
+            *(ULONG *)buf = alg_props[id].object_length;
+        return STATUS_SUCCESS;
+    }
+
     if (!strcmpW( prop, BCRYPT_HASH_LENGTH ))
     {
+        if (!alg_props[id].hash_length)
+            return STATUS_NOT_SUPPORTED;
         *ret_size = sizeof(ULONG);
         if (size < sizeof(ULONG))
             return STATUS_BUFFER_TOO_SMALL;
@@ -620,78 +430,11 @@ static NTSTATUS generic_alg_property( enum alg_id id, const WCHAR *prop, UCHAR *
 static NTSTATUS get_alg_property( enum alg_id id, const WCHAR *prop, UCHAR *buf, ULONG size, ULONG *ret_size )
 {
     NTSTATUS status;
-    ULONG value;
 
     status = generic_alg_property( id, prop, buf, size, ret_size );
-    if (status != STATUS_NOT_IMPLEMENTED)
-        return status;
-
-    switch (id)
-    {
-    case ALG_ID_MD5:
-        if (!strcmpW( prop, BCRYPT_OBJECT_LENGTH ))
-        {
-            value = OBJECT_LENGTH_MD5;
-            break;
-        }
-        FIXME( "unsupported md5 algorithm property %s\n", debugstr_w(prop) );
-        return STATUS_NOT_IMPLEMENTED;
-
-    case ALG_ID_RNG:
-        if (!strcmpW( prop, BCRYPT_OBJECT_LENGTH )) return STATUS_NOT_SUPPORTED;
-        FIXME( "unsupported rng algorithm property %s\n", debugstr_w(prop) );
-        return STATUS_NOT_IMPLEMENTED;
-
-    case ALG_ID_SHA1:
-        if (!strcmpW( prop, BCRYPT_OBJECT_LENGTH ))
-        {
-            value = OBJECT_LENGTH_SHA1;
-            break;
-        }
-        FIXME( "unsupported sha1 algorithm property %s\n", debugstr_w(prop) );
-        return STATUS_NOT_IMPLEMENTED;
-
-    case ALG_ID_SHA256:
-        if (!strcmpW( prop, BCRYPT_OBJECT_LENGTH ))
-        {
-            value = OBJECT_LENGTH_SHA256;
-            break;
-        }
-        FIXME( "unsupported sha256 algorithm property %s\n", debugstr_w(prop) );
-        return STATUS_NOT_IMPLEMENTED;
-
-    case ALG_ID_SHA384:
-        if (!strcmpW( prop, BCRYPT_OBJECT_LENGTH ))
-        {
-            value = OBJECT_LENGTH_SHA384;
-            break;
-        }
-        FIXME( "unsupported sha384 algorithm property %s\n", debugstr_w(prop) );
-        return STATUS_NOT_IMPLEMENTED;
-
-    case ALG_ID_SHA512:
-        if (!strcmpW( prop, BCRYPT_OBJECT_LENGTH ))
-        {
-            value = OBJECT_LENGTH_SHA512;
-            break;
-        }
-        FIXME( "unsupported sha512 algorithm property %s\n", debugstr_w(prop) );
-        return STATUS_NOT_IMPLEMENTED;
-
-    default:
-        FIXME( "unsupported algorithm %u\n", id );
-        return STATUS_NOT_IMPLEMENTED;
-    }
-
-    if (size < sizeof(ULONG))
-    {
-        *ret_size = sizeof(ULONG);
-        return STATUS_BUFFER_TOO_SMALL;
-    }
-    if (buf) *(ULONG *)buf = value;
-    *ret_size = sizeof(ULONG);
-
-    return STATUS_SUCCESS;
+    if (status == STATUS_NOT_IMPLEMENTED)
+        FIXME( "unsupported property %s\n", debugstr_w(prop) );
+    return status;
 }
 
 static NTSTATUS get_hash_property( enum alg_id id, const WCHAR *prop, UCHAR *buf, ULONG size, ULONG *ret_size )
@@ -735,8 +478,11 @@ NTSTATUS WINAPI BCryptCreateHash( BCRYPT_ALG_HANDLE algorithm, BCRYPT_HASH_HANDL
                                   UCHAR *secret, ULONG secretlen, ULONG flags )
 {
     struct algorithm *alg = algorithm;
+    UCHAR buffer[MAX_HASH_BLOCK_BITS / 8] = {0};
     struct hash *hash;
+    int block_bytes;
     NTSTATUS status;
+    int i;
 
     TRACE( "%p, %p, %p, %u, %p, %u, %08x - stub\n", algorithm, handle, object, objectlen,
            secret, secretlen, flags );
@@ -754,15 +500,31 @@ NTSTATUS WINAPI BCryptCreateHash( BCRYPT_ALG_HANDLE algorithm, BCRYPT_HASH_HANDL
     hash->alg_id    = alg->id;
     hash->hmac      = alg->hmac;
 
-    if (hash->hmac)
+    /* initialize hash */
+    if ((status = hash_init( &hash->inner, hash->alg_id ))) goto end;
+    if (!hash->hmac) goto end;
+
+    /* initialize hmac */
+    if ((status = hash_init( &hash->outer, hash->alg_id ))) goto end;
+    block_bytes = alg_props[hash->alg_id].block_bits / 8;
+    if (secretlen > block_bytes)
     {
-        status = hmac_init( hash, secret, secretlen );
+        struct hash_impl temp;
+        if ((status = hash_init( &temp, hash->alg_id ))) goto end;
+        if ((status = hash_update( &temp, hash->alg_id, secret, secretlen ))) goto end;
+        if ((status = hash_finish( &temp, hash->alg_id, buffer,
+                                   alg_props[hash->alg_id].hash_length ))) goto end;
     }
     else
     {
-        status = hash_init( hash );
+        memcpy( buffer, secret, secretlen );
     }
+    for (i = 0; i < block_bytes; i++) buffer[i] ^= 0x5c;
+    if ((status = hash_update( &hash->outer, hash->alg_id, buffer, block_bytes ))) goto end;
+    for (i = 0; i < block_bytes; i++) buffer[i] ^= (0x5c ^ 0x36);
+    status = hash_update( &hash->inner, hash->alg_id, buffer, block_bytes );
 
+end:
     if (status != STATUS_SUCCESS)
     {
         HeapFree( GetProcessHeap(), 0, hash );
@@ -770,6 +532,27 @@ NTSTATUS WINAPI BCryptCreateHash( BCRYPT_ALG_HANDLE algorithm, BCRYPT_HASH_HANDL
     }
 
     *handle = hash;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS WINAPI BCryptDuplicateHash( BCRYPT_HASH_HANDLE handle, BCRYPT_HASH_HANDLE *handle_copy,
+                                     UCHAR *object, ULONG objectlen, ULONG flags )
+{
+    struct hash *hash_orig = handle;
+    struct hash *hash_copy;
+
+    TRACE( "%p, %p, %p, %u, %u\n", handle, handle_copy, object, objectlen, flags );
+
+    if (!hash_orig || hash_orig->hdr.magic != MAGIC_HASH) return STATUS_INVALID_HANDLE;
+    if (!handle_copy) return STATUS_INVALID_PARAMETER;
+    if (object) FIXME( "ignoring object buffer\n" );
+
+    if (!(hash_copy = HeapAlloc( GetProcessHeap(), 0, sizeof(*hash_copy) )))
+        return STATUS_NO_MEMORY;
+
+    memcpy( hash_copy, hash_orig, sizeof(*hash_orig) );
+
+    *handle_copy = hash_copy;
     return STATUS_SUCCESS;
 }
 
@@ -793,33 +576,28 @@ NTSTATUS WINAPI BCryptHashData( BCRYPT_HASH_HANDLE handle, UCHAR *input, ULONG s
     if (!hash || hash->hdr.magic != MAGIC_HASH) return STATUS_INVALID_HANDLE;
     if (!input) return STATUS_SUCCESS;
 
-    if (hash->hmac)
-    {
-        return hmac_update( hash, input, size );
-    }
-    else
-    {
-        return hash_update( hash, input, size );
-    }
+    return hash_update( &hash->inner, hash->alg_id, input, size );
 }
 
 NTSTATUS WINAPI BCryptFinishHash( BCRYPT_HASH_HANDLE handle, UCHAR *output, ULONG size, ULONG flags )
 {
+    UCHAR buffer[MAX_HASH_OUTPUT_BYTES];
     struct hash *hash = handle;
+    NTSTATUS status;
+    int hash_length;
 
     TRACE( "%p, %p, %u, %08x\n", handle, output, size, flags );
 
     if (!hash || hash->hdr.magic != MAGIC_HASH) return STATUS_INVALID_HANDLE;
     if (!output) return STATUS_INVALID_PARAMETER;
 
-    if (hash->hmac)
-    {
-        return hmac_finish( hash, output, size );
-    }
-    else
-    {
-        return hash_finish( hash, output, size );
-    }
+    if (!hash->hmac)
+        return hash_finish( &hash->inner, hash->alg_id, output, size );
+
+    hash_length = alg_props[hash->alg_id].hash_length;
+    if ((status = hash_finish( &hash->inner, hash->alg_id, buffer, hash_length ))) return status;
+    if ((status = hash_update( &hash->outer, hash->alg_id, buffer, hash_length ))) return status;
+    return hash_finish( &hash->outer, hash->alg_id, output, size );
 }
 
 NTSTATUS WINAPI BCryptHash( BCRYPT_ALG_HANDLE algorithm, UCHAR *secret, ULONG secretlen,

@@ -2046,6 +2046,12 @@ static const WCHAR MS_ENH_RSA_AES_PROV_XP_W[] = { 'M','i','c','r','o','s','o','f
 #define CRYPTPROTECT_AUDIT              0x0010
 #define CRYPTPROTECT_VERIFY_PROTECTION  0x0040
 
+/* Crypt{Protect,Unprotect}Memory */
+#define CRYPTPROTECTMEMORY_BLOCK_SIZE     16
+#define CRYPTPROTECTMEMORY_SAME_PROCESS   0x0000
+#define CRYPTPROTECTMEMORY_CROSS_PROCESS  0x0001
+#define CRYPTPROTECTMEMORY_SAME_LOGON     0x0002
+
 /* Blob Types */
 #define SIMPLEBLOB              0x1
 #define PUBLICKEYBLOB           0x6
@@ -3868,6 +3874,28 @@ typedef struct _CMSG_CTRL_KEY_TRANS_DECRYPT_PARA {
     PCMSG_KEY_TRANS_RECIPIENT_INFO pKeyTrans;
     DWORD                          dwRecipientIndex;
 } CMSG_CTRL_KEY_TRANS_DECRYPT_PARA, *PCMSG_CTRL_KEY_TRANS_DECRYPT_PARA;
+
+typedef struct _CERT_STRONG_SIGN_SERIALIZED_INFO {
+    DWORD    dwFlags;
+    WCHAR    *pwszCNGSignHashAlgids;
+    WCHAR    *pwszCNGPubKeyMinBitLengths;
+} CERT_STRONG_SIGN_SERIALIZED_INFO, *PCERT_STRONG_SIGN_SERIALIZED_INFO;
+
+typedef struct _CERT_STRONG_SIGN_PARA {
+    DWORD    cbSize;
+    DWORD    dwInfoChoice;
+    union {
+        void                               *pvInfo;
+        CERT_STRONG_SIGN_SERIALIZED_INFO   *pSerializedInfo;
+        char                               *pszOID;
+    } DUMMYUNIONNAME;
+} CERT_STRONG_SIGN_PARA, *PCERT_STRONG_SIGN_PARA;
+
+#define CERT_STRONG_SIGN_SERIALIZED_INFO_CHOICE  1
+#define CERT_STRONG_SIGN_OID_INFO_CHOICE         2
+
+#define CERT_STRONG_SIGN_ENABLE_CRL_CHECK       0x1
+#define CERT_STRONG_SIGN_ENABLE_OCSP_CHECK      0x2
 
 typedef BOOL (WINAPI *PFN_CMSG_GEN_CONTENT_ENCRYPT_KEY)(
  PCMSG_CONTENT_ENCRYPT_INFO pContentEncryptInfo, DWORD dwFlags,

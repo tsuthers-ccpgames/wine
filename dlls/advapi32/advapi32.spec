@@ -211,10 +211,10 @@
 @ stdcall CryptSetProviderExA(str long ptr long)
 @ stdcall CryptSetProviderExW(wstr long ptr long)
 @ stdcall CryptSetProviderW(wstr long)
-@ stdcall CryptSignHashA(long long ptr long ptr ptr)
-@ stdcall CryptSignHashW(long long ptr long ptr ptr)
-@ stdcall CryptVerifySignatureA(long ptr long long ptr long)
-@ stdcall CryptVerifySignatureW(long ptr long long ptr long)
+@ stdcall CryptSignHashA(long long str long ptr ptr)
+@ stdcall CryptSignHashW(long long wstr long ptr ptr)
+@ stdcall CryptVerifySignatureA(long ptr long long str long)
+@ stdcall CryptVerifySignatureW(long ptr long long wstr long)
 @ stdcall DecryptFileA(str long)
 @ stdcall DecryptFileW(wstr long)
 @ stdcall DeleteAce(ptr long)
@@ -273,7 +273,7 @@
 @ stdcall EventEnabled(int64 ptr)
 @ stdcall EventProviderEnabled(int64 long int64)
 @ stdcall EventRegister(ptr ptr ptr ptr) ntdll.EtwEventRegister
-@ stdcall EventSetInformation(int64 long ptr long)
+@ stdcall EventSetInformation(int64 long ptr long) ntdll.EtwEventSetInformation
 @ stdcall EventUnregister(int64) ntdll.EtwEventUnregister
 @ stdcall EventWrite(int64 ptr long ptr)
 # @ stub EventWriteEndScenario
@@ -411,12 +411,12 @@
 @ stdcall LookupAccountSidW(ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall LookupPrivilegeDisplayNameA(str str str ptr ptr)
 @ stdcall LookupPrivilegeDisplayNameW(wstr wstr wstr ptr ptr)
-@ stdcall LookupPrivilegeNameA(str ptr ptr long)
-@ stdcall LookupPrivilegeNameW(wstr ptr ptr long)
+@ stdcall LookupPrivilegeNameA(str ptr ptr ptr)
+@ stdcall LookupPrivilegeNameW(wstr ptr ptr ptr)
 @ stdcall LookupPrivilegeValueA(ptr ptr ptr)
 @ stdcall LookupPrivilegeValueW(ptr ptr ptr)
-# @ stub LookupSecurityDescriptorPartsA
-# @ stub LookupSecurityDescriptorPartsW
+@ stdcall LookupSecurityDescriptorPartsA(ptr ptr ptr ptr ptr ptr ptr)
+@ stdcall LookupSecurityDescriptorPartsW(ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall LsaAddAccountRights(ptr ptr ptr long)
 @ stub LsaAddPrivilegesToAccount
 # @ stub LsaClearAuditLog
@@ -452,7 +452,7 @@
 # @ stub LsaManageSidNameMapping
 @ stdcall LsaNtStatusToWinError(long)
 @ stub LsaOpenAccount
-@ stdcall LsaOpenPolicy(long long long long)
+@ stdcall LsaOpenPolicy(long ptr long long)
 # @ stub LsaOpenPolicySce
 @ stub LsaOpenSecret
 @ stub LsaOpenTrustedDomain
@@ -654,8 +654,8 @@
 @ stdcall RegSetValueW(long wstr long ptr long)
 @ stdcall RegUnLoadKeyA(long str)
 @ stdcall RegUnLoadKeyW(long wstr)
-@ stdcall RegisterEventSourceA(ptr ptr)
-@ stdcall RegisterEventSourceW(ptr ptr)
+@ stdcall RegisterEventSourceA(str str)
+@ stdcall RegisterEventSourceW(wstr wstr)
 # @ stub RegisterIdleTask
 @ stdcall RegisterServiceCtrlHandlerA(str ptr)
 @ stdcall RegisterServiceCtrlHandlerExA(str ptr ptr)
@@ -698,10 +698,10 @@
 # @ stub SetInformationCodeAuthzLevelW
 # @ stub SetInformationCodeAuthzPolicyW
 @ stdcall SetKernelObjectSecurity(long long ptr)
-@ stdcall SetNamedSecurityInfoA(str long ptr ptr ptr ptr ptr)
+@ stdcall SetNamedSecurityInfoA(str long long ptr ptr ptr ptr)
 # @ stub SetNamedSecurityInfoExA
 # @ stub SetNamedSecurityInfoExW
-@ stdcall SetNamedSecurityInfoW(wstr long ptr ptr ptr ptr ptr)
+@ stdcall SetNamedSecurityInfoW(wstr long long ptr ptr ptr ptr)
 @ stdcall SetPrivateObjectSecurity(long ptr ptr ptr long)
 # @ stub SetPrivateObjectSecurityEx
 # @ stub SetSecurityAccessMask
@@ -716,7 +716,7 @@
 # @ stub SetSecurityInfoExW
 @ stdcall SetServiceBits(long long long long)
 @ stdcall SetServiceObjectSecurity(long long ptr)
-@ stdcall SetServiceStatus(long long)
+@ stdcall SetServiceStatus(long ptr)
 @ stdcall SetThreadToken (ptr ptr)
 @ stdcall SetTokenInformation (long long ptr long)
 # @ stub SetTraceCallback
@@ -783,7 +783,7 @@
 # @ stub UninstallApplication
 @ stdcall UnlockServiceDatabase (ptr)
 # @ stub UnregisterIdleTask
-@ stdcall UnregisterTraceGuids(int64)
+@ stdcall UnregisterTraceGuids(int64) ntdll.EtwUnregisterTraceGuids
 @ stub UpdateTraceA
 @ stub UpdateTraceW
 # @ stub UsePinForEncryptedFilesA

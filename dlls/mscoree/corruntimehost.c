@@ -170,7 +170,7 @@ static HRESULT RuntimeHost_GetDefaultDomain(RuntimeHost *This, const WCHAR *conf
 
     slash = strrchr(base_dirA, '\\');
     if (slash)
-        *slash = 0;
+        *(slash + 1) = 0;
 
     TRACE("setting base_dir: %s, config_path: %s\n", base_dirA, config_pathA);
     mono_domain_set_config(This->default_domain, base_dirA, config_pathA);
@@ -1423,7 +1423,10 @@ __int32 WINAPI _CorExeMain(void)
 
     filenameA = WtoA(filename);
     if (!filenameA)
+    {
+        HeapFree(GetProcessHeap(), 0, argv);
         return -1;
+    }
 
     FixupVTable(GetModuleHandleW(NULL));
 

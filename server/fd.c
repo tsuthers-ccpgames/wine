@@ -2030,23 +2030,22 @@ void default_poll_event( struct fd *fd, int event )
     else if (!fd->inode) set_fd_events( fd, fd->fd_ops->get_poll_events( fd ) );
 }
 
-struct async *fd_queue_async( struct fd *fd, const async_data_t *data, int type )
+int fd_queue_async( struct fd *fd, struct async *async, int type )
 {
     struct async_queue *queue;
-    struct async *async;
 
     switch (type)
     {
     case ASYNC_TYPE_READ:
-        if (!fd->read_q && !(fd->read_q = create_async_queue( fd ))) return NULL;
+        if (!fd->read_q && !(fd->read_q = create_async_queue( fd ))) return 0;
         queue = fd->read_q;
         break;
     case ASYNC_TYPE_WRITE:
-        if (!fd->write_q && !(fd->write_q = create_async_queue( fd ))) return NULL;
+        if (!fd->write_q && !(fd->write_q = create_async_queue( fd ))) return 0;
         queue = fd->write_q;
         break;
     case ASYNC_TYPE_WAIT:
-        if (!fd->wait_q && !(fd->wait_q = create_async_queue( fd ))) return NULL;
+        if (!fd->wait_q && !(fd->wait_q = create_async_queue( fd ))) return 0;
         queue = fd->wait_q;
         break;
     default:
@@ -2054,14 +2053,16 @@ struct async *fd_queue_async( struct fd *fd, const async_data_t *data, int type 
         assert(0);
     }
 
-    if ((async = create_async( current, queue, data )) && type != ASYNC_TYPE_WAIT)
+    queue_async( queue, async );
+
+    if (type != ASYNC_TYPE_WAIT)
     {
         if (!fd->inode)
             set_fd_events( fd, fd->fd_ops->get_poll_events( fd ) );
         else  /* regular files are always ready for read and write */
             async_wake_up( queue, STATUS_ALERTED );
     }
-    return async;
+    return 1;
 }
 
 void fd_async_wake_up( struct fd *fd, int type, unsigned int status )
@@ -2087,20 +2088,14 @@ void fd_reselect_async( struct fd *fd, struct async_queue *queue )
     fd->fd_ops->reselect_async( fd, queue );
 }
 
-void no_fd_queue_async( struct fd *fd, const async_data_t *data, int type, int count )
+void no_fd_queue_async( struct fd *fd, struct async *async, int type, int count )
 {
     set_error( STATUS_OBJECT_TYPE_MISMATCH );
 }
 
-void default_fd_queue_async( struct fd *fd, const async_data_t *data, int type, int count )
+void default_fd_queue_async( struct fd *fd, struct async *async, int type, int count )
 {
-    struct async *async;
-
-    if ((async = fd_queue_async( fd, data, type )))
-    {
-        release_object( async );
-        set_error( STATUS_PENDING );
-    }
+    if (fd_queue_async( fd, async, type )) set_error( STATUS_PENDING );
 }
 
 /* default reselect_async() fd routine */
@@ -2113,17 +2108,6 @@ void default_fd_reselect_async( struct fd *fd, struct async_queue *queue )
         if (events) fd->fd_ops->poll_event( fd, events );
         else set_fd_events( fd, poll_events );
     }
-}
-
-/* default cancel_async() fd routine */
-int default_fd_cancel_async( struct fd *fd, struct process *process, struct thread *thread, client_ptr_t iosb )
-{
-    int n = 0;
-
-    n += async_wake_up_by( fd->read_q, process, thread, iosb, STATUS_CANCELLED );
-    n += async_wake_up_by( fd->write_q, process, thread, iosb, STATUS_CANCELLED );
-    n += async_wake_up_by( fd->wait_q, process, thread, iosb, STATUS_CANCELLED );
-    return n;
 }
 
 static inline int is_valid_mounted_device( struct stat *st )
@@ -2174,36 +2158,35 @@ static void unmount_device( struct fd *device_fd )
 }
 
 /* default read() routine */
-obj_handle_t no_fd_read( struct fd *fd, const async_data_t *async, int blocking, file_pos_t pos )
+obj_handle_t no_fd_read( struct fd *fd, struct async *async, int blocking, file_pos_t pos )
 {
     set_error( STATUS_OBJECT_TYPE_MISMATCH );
     return 0;
 }
 
 /* default write() routine */
-obj_handle_t no_fd_write( struct fd *fd, const async_data_t *async, int blocking,
-                          file_pos_t pos, data_size_t *written )
+obj_handle_t no_fd_write( struct fd *fd, struct async *async, int blocking, file_pos_t pos )
 {
     set_error( STATUS_OBJECT_TYPE_MISMATCH );
     return 0;
 }
 
 /* default flush() routine */
-obj_handle_t no_fd_flush( struct fd *fd, const async_data_t *async, int blocking )
+obj_handle_t no_fd_flush( struct fd *fd, struct async *async, int blocking )
 {
     set_error( STATUS_OBJECT_TYPE_MISMATCH );
     return 0;
 }
 
 /* default ioctl() routine */
-obj_handle_t no_fd_ioctl( struct fd *fd, ioctl_code_t code, const async_data_t *async, int blocking )
+obj_handle_t no_fd_ioctl( struct fd *fd, ioctl_code_t code, struct async *async, int blocking )
 {
     set_error( STATUS_OBJECT_TYPE_MISMATCH );
     return 0;
 }
 
 /* default ioctl() routine */
-obj_handle_t default_fd_ioctl( struct fd *fd, ioctl_code_t code, const async_data_t *async, int blocking )
+obj_handle_t default_fd_ioctl( struct fd *fd, ioctl_code_t code, struct async *async, int blocking )
 {
     switch(code)
     {
@@ -2386,12 +2369,17 @@ void fd_copy_completion( struct fd *src, struct fd *dst )
 DECL_HANDLER(flush)
 {
     struct fd *fd = get_handle_fd_obj( current->process, req->async.handle, 0 );
+    struct async *async;
 
-    if (fd)
+    if (!fd) return;
+
+    async = create_async( current, &req->async, NULL );
+    if (async)
     {
-        reply->event = fd->fd_ops->flush( fd, &req->async, req->blocking );
-        release_object( fd );
+        reply->event = fd->fd_ops->flush( fd, async, req->blocking );
+        release_object( async );
     }
+    release_object( fd );
 }
 
 /* open a file object */
@@ -2457,26 +2445,46 @@ DECL_HANDLER(get_handle_fd)
 DECL_HANDLER(read)
 {
     struct fd *fd = get_handle_fd_obj( current->process, req->async.handle, FILE_READ_DATA );
+    struct async *async;
+    struct iosb *iosb;
 
-    if (fd)
+    if (!fd) return;
+
+    if ((iosb = create_iosb( NULL, 0, get_reply_max_size() )))
     {
-        reply->wait    = fd->fd_ops->read( fd, &req->async, req->blocking, req->pos );
-        reply->options = fd->options;
-        release_object( fd );
+        async = create_async( current, &req->async, iosb );
+        if (async)
+        {
+            reply->wait    = fd->fd_ops->read( fd, async, req->blocking, req->pos );
+            reply->options = fd->options;
+            release_object( async );
+        }
+        release_object( iosb );
     }
+    release_object( fd );
 }
 
 /* perform a write on a file object */
 DECL_HANDLER(write)
 {
     struct fd *fd = get_handle_fd_obj( current->process, req->async.handle, FILE_WRITE_DATA );
+    struct async *async;
+    struct iosb *iosb;
 
-    if (fd)
+    if (!fd) return;
+
+    if ((iosb = create_iosb( get_req_data(), get_req_data_size(), 0 )))
     {
-        reply->wait    = fd->fd_ops->write( fd, &req->async, req->blocking, req->pos, &reply->size );
-        reply->options = fd->options;
-        release_object( fd );
+        async = create_async( current, &req->async, iosb );
+        if (async)
+        {
+            reply->wait    = fd->fd_ops->write( fd, async, req->blocking, req->pos );
+            reply->options = fd->options;
+            release_object( async );
+        }
+        release_object( iosb );
     }
+    release_object( fd );
 }
 
 /* perform an ioctl on a file */
@@ -2484,19 +2492,29 @@ DECL_HANDLER(ioctl)
 {
     unsigned int access = (req->code >> 14) & (FILE_READ_DATA|FILE_WRITE_DATA);
     struct fd *fd = get_handle_fd_obj( current->process, req->async.handle, access );
+    struct async *async;
+    struct iosb *iosb;
 
-    if (fd)
+    if (!fd) return;
+
+    if ((iosb = create_iosb( get_req_data(), get_req_data_size(), get_reply_max_size() )))
     {
-        reply->wait    = fd->fd_ops->ioctl( fd, req->code, &req->async, req->blocking );
-        reply->options = fd->options;
-        release_object( fd );
+        if ((async = create_async( current, &req->async, iosb )))
+        {
+            reply->wait    = fd->fd_ops->ioctl( fd, req->code, async, req->blocking );
+            reply->options = fd->options;
+            release_object( async );
+        }
+        release_object( iosb );
     }
+    release_object( fd );
 }
 
 /* create / reschedule an async I/O */
 DECL_HANDLER(register_async)
 {
     unsigned int access;
+    struct async *async;
     struct fd *fd;
 
     switch(req->type)
@@ -2514,21 +2532,11 @@ DECL_HANDLER(register_async)
 
     if ((fd = get_handle_fd_obj( current->process, req->async.handle, access )))
     {
-        if (get_unix_fd( fd ) != -1) fd->fd_ops->queue_async( fd, &req->async, req->type, req->count );
-        release_object( fd );
-    }
-}
-
-/* cancels all async I/O */
-DECL_HANDLER(cancel_async)
-{
-    struct fd *fd = get_handle_fd_obj( current->process, req->handle, 0 );
-    struct thread *thread = req->only_thread ? current : NULL;
-
-    if (fd)
-    {
-        int count = fd->fd_ops->cancel_async( fd, current->process, thread, req->iosb );
-        if (!count && req->iosb) set_error( STATUS_NOT_FOUND );
+        if (get_unix_fd( fd ) != -1 && (async = create_async( current, &req->async, NULL )))
+        {
+            fd->fd_ops->queue_async( fd, async, req->type, req->count );
+            release_object( async );
+        }
         release_object( fd );
     }
 }

@@ -130,6 +130,7 @@ static HRESULT WINAPI HTMLEvents_Invoke(IDispatch *iface, DISPID dispIdMember, R
         ok(hr == S_OK, "got 0x%08x\n", hr);
         if(!memcmp(state, completeW, sizeof(completeW)))
             loaded = TRUE;
+        SysFreeString(state);
     }
 
     return S_OK;
@@ -181,7 +182,7 @@ static void test_QueryInterface(void)
     ok(hres == S_OK, "QueryInterface(IID_IHTMLDocument) returned %x, expected S_OK\n", hres);
     hres = IHTMLDocument_QueryInterface(htmldoc, &IID_IUnknown, (void**)&unk);
     ok(hres == S_OK, "QueryInterface(IID_IUnknown) returned %x, expected S_OK\n", hres);
-    todo_wine ok(unk == xmlview, "Aggregation is not working as expected\n");
+    ok(unk == xmlview, "Aggregation is not working as expected\n");
     IUnknown_Release(unk);
     IHTMLDocument_Release(htmldoc);
 

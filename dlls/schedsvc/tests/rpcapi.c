@@ -33,7 +33,7 @@ static LONG CALLBACK rpc_exception_filter(EXCEPTION_POINTERS *ptrs)
 
     if (winetest_debug)
     {
-        fprintf(stdout, "rpcapi: 0 tests executed (0 marked as todo, 0 failures), 1 skipped.\n");
+        fprintf(stdout, "%04x:rpcapi: 0 tests executed (0 marked as todo, 0 failures), 1 skipped.\n", GetCurrentProcessId());
         fflush(stdout);
     }
     ExitProcess(0);
@@ -148,7 +148,9 @@ START_TEST(rpcapi)
     ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
 
     hr = SchRpcDelete(Wine, 0);
-    ok(hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), "expected ERROR_FILE_NOT_FOUND, got %#x\n", hr);
+    ok(hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
+       broken(hr == S_OK), /* Early versions of Win 10 */
+       "expected ERROR_FILE_NOT_FOUND, got %#x\n", hr);
 
     hr = SchRpcDelete(empty, 0);
     ok(hr == E_ACCESSDENIED /* win7 */ || hr == E_INVALIDARG /* vista */, "expected E_ACCESSDENIED, got %#x\n", hr);

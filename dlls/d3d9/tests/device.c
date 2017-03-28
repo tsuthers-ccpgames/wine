@@ -1437,15 +1437,15 @@ static void test_refcount(void)
     CHECK_CALL(hr, "GetSwapChain", device, ++refcount);
     if (pSwapChain)
     {
-        CHECK_REFCOUNT( pSwapChain, 1);
+        CHECK_REFCOUNT(pSwapChain, 1);
 
         hr = IDirect3DDevice9_GetRenderTarget(device, 0, &pRenderTarget);
         CHECK_CALL(hr, "GetRenderTarget", device, ++refcount);
-        CHECK_REFCOUNT( pSwapChain, 1);
-        if(pRenderTarget)
+        CHECK_REFCOUNT(pSwapChain, 1);
+        if (pRenderTarget)
         {
-            CHECK_SURFACE_CONTAINER( pRenderTarget, IID_IDirect3DSwapChain9, pSwapChain);
-            CHECK_REFCOUNT( pRenderTarget, 1);
+            CHECK_SURFACE_CONTAINER(pRenderTarget, IID_IDirect3DSwapChain9, pSwapChain);
+            CHECK_REFCOUNT(pRenderTarget, 1);
 
             CHECK_ADDREF_REFCOUNT(pRenderTarget, 2);
             CHECK_REFCOUNT(device, refcount);
@@ -1454,9 +1454,9 @@ static void test_refcount(void)
 
             hr = IDirect3DDevice9_GetRenderTarget(device, 0, &pRenderTarget);
             CHECK_CALL(hr, "GetRenderTarget", device, refcount);
-            CHECK_REFCOUNT( pRenderTarget, 2);
-            CHECK_RELEASE_REFCOUNT( pRenderTarget, 1);
-            CHECK_RELEASE_REFCOUNT( pRenderTarget, 0);
+            CHECK_REFCOUNT(pRenderTarget, 2);
+            CHECK_RELEASE_REFCOUNT(pRenderTarget, 1);
+            CHECK_RELEASE_REFCOUNT(pRenderTarget, 0);
             CHECK_REFCOUNT(device, --refcount);
 
             /* The render target is released with the device, so AddRef with refcount=0 is fine here. */
@@ -1464,24 +1464,28 @@ static void test_refcount(void)
             CHECK_REFCOUNT(device, ++refcount);
             CHECK_RELEASE_REFCOUNT(pRenderTarget, 0);
             CHECK_REFCOUNT(device, --refcount);
+            CHECK_RELEASE_REFCOUNT(pRenderTarget, 0);
+            CHECK_RELEASE_REFCOUNT(pRenderTarget, 0);
         }
 
         /* Render target and back buffer are identical. */
         hr = IDirect3DDevice9_GetBackBuffer(device, 0, 0, 0, &pBackBuffer);
         CHECK_CALL(hr, "GetBackBuffer", device, ++refcount);
-        if(pBackBuffer)
+        if (pBackBuffer)
         {
             CHECK_RELEASE_REFCOUNT(pBackBuffer, 0);
             ok(pRenderTarget == pBackBuffer, "RenderTarget=%p and BackBuffer=%p should be the same.\n",
-            pRenderTarget, pBackBuffer);
+                    pRenderTarget, pBackBuffer);
+            CHECK_RELEASE_REFCOUNT(pBackBuffer, 0);
+            CHECK_RELEASE_REFCOUNT(pBackBuffer, 0);
             pBackBuffer = NULL;
         }
         CHECK_REFCOUNT(device, --refcount);
 
         hr = IDirect3DDevice9_GetDepthStencilSurface(device, &pStencilSurface);
         CHECK_CALL(hr, "GetDepthStencilSurface", device, ++refcount);
-        CHECK_REFCOUNT( pSwapChain, 1);
-        if(pStencilSurface)
+        CHECK_REFCOUNT(pSwapChain, 1);
+        if (pStencilSurface)
         {
             CHECK_SURFACE_CONTAINER(pStencilSurface, IID_IDirect3DDevice9, device);
             CHECK_REFCOUNT( pStencilSurface, 1);
@@ -1491,7 +1495,7 @@ static void test_refcount(void)
             CHECK_RELEASE_REFCOUNT(pStencilSurface, 1);
             CHECK_REFCOUNT(device, refcount);
 
-            CHECK_RELEASE_REFCOUNT( pStencilSurface, 0);
+            CHECK_RELEASE_REFCOUNT(pStencilSurface, 0);
             CHECK_REFCOUNT(device, --refcount);
 
             /* The stencil surface is released with the device, so AddRef with refcount=0 is fine here. */
@@ -1499,17 +1503,23 @@ static void test_refcount(void)
             CHECK_REFCOUNT(device, ++refcount);
             CHECK_RELEASE_REFCOUNT(pStencilSurface, 0);
             CHECK_REFCOUNT(device, --refcount);
+            CHECK_RELEASE_REFCOUNT(pStencilSurface, 0);
+            CHECK_RELEASE_REFCOUNT(pStencilSurface, 0);
             pStencilSurface = NULL;
         }
 
-        CHECK_RELEASE_REFCOUNT( pSwapChain, 0);
+        CHECK_RELEASE_REFCOUNT(pSwapChain, 0);
         CHECK_REFCOUNT(device, --refcount);
+        CHECK_RELEASE_REFCOUNT(pSwapChain, 0);
+        CHECK_RELEASE_REFCOUNT(pSwapChain, 0);
 
         /* The implicit swapchwin is released with the device, so AddRef with refcount=0 is fine here. */
         CHECK_ADDREF_REFCOUNT(pSwapChain, 1);
         CHECK_REFCOUNT(device, ++refcount);
         CHECK_RELEASE_REFCOUNT(pSwapChain, 0);
         CHECK_REFCOUNT(device, --refcount);
+        CHECK_RELEASE_REFCOUNT(pSwapChain, 0);
+        CHECK_RELEASE_REFCOUNT(pSwapChain, 0);
         pSwapChain = NULL;
     }
 
@@ -1518,7 +1528,7 @@ static void test_refcount(void)
     CHECK_CALL(hr, "CreateIndexBuffer", device, ++refcount );
     if(pIndexBuffer)
     {
-        tmp = get_refcount( (IUnknown *)pIndexBuffer );
+        tmp = get_refcount((IUnknown *)pIndexBuffer);
 
         hr = IDirect3DDevice9_SetIndices(device, pIndexBuffer);
         CHECK_CALL( hr, "SetIndices", pIndexBuffer, tmp);
@@ -1635,17 +1645,17 @@ static void test_refcount(void)
     d3dpp.AutoDepthStencilFormat = D3DFMT_D24S8;
     hr = IDirect3DDevice9_CreateAdditionalSwapChain(device, &d3dpp, &pSwapChain);
     CHECK_CALL(hr, "CreateAdditionalSwapChain", device, ++refcount);
-    if(pSwapChain)
+    if (pSwapChain)
     {
         /* check implicit back buffer */
         hr = IDirect3DSwapChain9_GetBackBuffer(pSwapChain, 0, 0, &pBackBuffer);
         CHECK_CALL(hr, "GetBackBuffer", device, ++refcount);
-        CHECK_REFCOUNT( pSwapChain, 1);
-        if(pBackBuffer)
+        CHECK_REFCOUNT(pSwapChain, 1);
+        if (pBackBuffer)
         {
-            CHECK_SURFACE_CONTAINER( pBackBuffer, IID_IDirect3DSwapChain9, pSwapChain);
-            CHECK_REFCOUNT( pBackBuffer, 1);
-            CHECK_RELEASE_REFCOUNT( pBackBuffer, 0);
+            CHECK_SURFACE_CONTAINER(pBackBuffer, IID_IDirect3DSwapChain9, pSwapChain);
+            CHECK_REFCOUNT(pBackBuffer, 1);
+            CHECK_RELEASE_REFCOUNT(pBackBuffer, 0);
             CHECK_REFCOUNT(device, --refcount);
 
             /* The back buffer is released with the swapchain, so AddRef with refcount=0 is fine here. */
@@ -1653,9 +1663,11 @@ static void test_refcount(void)
             CHECK_REFCOUNT(device, ++refcount);
             CHECK_RELEASE_REFCOUNT(pBackBuffer, 0);
             CHECK_REFCOUNT(device, --refcount);
+            CHECK_RELEASE_REFCOUNT(pBackBuffer, 0);
+            CHECK_RELEASE_REFCOUNT(pBackBuffer, 0);
             pBackBuffer = NULL;
         }
-        CHECK_REFCOUNT( pSwapChain, 1);
+        CHECK_REFCOUNT(pSwapChain, 1);
     }
     hr = IDirect3DDevice9_CreateQuery(device, D3DQUERYTYPE_EVENT, &pQuery);
     CHECK_CALL(hr, "CreateQuery", device, ++refcount);
@@ -1669,12 +1681,14 @@ static void test_refcount(void)
      * Otherwise GetRenderTarget would re-allocate it and the pointer would change.*/
     hr = IDirect3DDevice9_GetRenderTarget(device, 0, &pRenderTarget2);
     CHECK_CALL(hr, "GetRenderTarget", device, ++refcount);
-    if(pRenderTarget2)
+    if (pRenderTarget2)
     {
         CHECK_RELEASE_REFCOUNT(pRenderTarget2, 0);
         ok(pRenderTarget == pRenderTarget2, "RenderTarget=%p and RenderTarget2=%p should be the same.\n",
-           pRenderTarget, pRenderTarget2);
+                pRenderTarget, pRenderTarget2);
         CHECK_REFCOUNT(device, --refcount);
+        CHECK_RELEASE_REFCOUNT(pRenderTarget2, 0);
+        CHECK_RELEASE_REFCOUNT(pRenderTarget2, 0);
         pRenderTarget2 = NULL;
     }
     pRenderTarget = NULL;
@@ -3367,7 +3381,7 @@ struct message
 
 static const struct message *expect_messages;
 static HWND device_window, focus_window;
-static LONG windowposchanged_received, syscommand_received;
+static LONG windowposchanged_received, syscommand_received, wm_size_received;
 
 struct wndproc_thread_param
 {
@@ -3423,6 +3437,8 @@ static LRESULT CALLBACK test_proc(HWND hwnd, UINT message, WPARAM wparam, LPARAM
         InterlockedIncrement(&windowposchanged_received);
     else if (message == WM_SYSCOMMAND)
         InterlockedIncrement(&syscommand_received);
+    else if (message == WM_SIZE)
+        InterlockedIncrement(&wm_size_received);
 
     return DefWindowProcA(hwnd, message, wparam, lparam);
 }
@@ -4224,11 +4240,14 @@ done:
 
 static void test_reset_fullscreen(void)
 {
-    WNDCLASSEXA wc = {0};
-    IDirect3DDevice9 *device = NULL;
-    IDirect3D9 *d3d;
-    ATOM atom;
     struct device_desc device_desc;
+    D3DDISPLAYMODE d3ddm, d3ddm2;
+    unsigned int mode_count, i;
+    IDirect3DDevice9 *device;
+    WNDCLASSEXA wc = {0};
+    IDirect3D9 *d3d;
+    HRESULT hr;
+    ATOM atom;
     static const struct message messages[] =
     {
         /* Windows usually sends wparam = TRUE, except on the testbot,
@@ -4278,6 +4297,34 @@ static void test_reset_fullscreen(void)
     flush_events();
     ok(expect_messages->message == 0, "Expected to receive message %#x.\n", expect_messages->message);
     expect_messages = NULL;
+
+    IDirect3D9_GetAdapterDisplayMode(d3d, D3DADAPTER_DEFAULT, &d3ddm);
+    mode_count = IDirect3D9_GetAdapterModeCount(d3d, D3DADAPTER_DEFAULT, d3ddm.Format);
+    for (i = 0; i < mode_count; ++i)
+    {
+        hr = IDirect3D9_EnumAdapterModes(d3d, D3DADAPTER_DEFAULT, d3ddm.Format, i, &d3ddm2);
+        ok(SUCCEEDED(hr), "Failed to enumerate display mode, hr %#x.\n", hr);
+
+        if (d3ddm2.Width != d3ddm.Width || d3ddm2.Height != d3ddm.Height)
+            break;
+    }
+    if (i == mode_count)
+    {
+        skip("Could not find a suitable display mode.\n");
+        goto cleanup;
+    }
+
+    wm_size_received = 0;
+
+    /* Fullscreen mode change. */
+    device_desc.width = d3ddm2.Width;
+    device_desc.height = d3ddm2.Height;
+    device_desc.device_window = device_window;
+    device_desc.flags = CREATE_DEVICE_FULLSCREEN;
+    ok(SUCCEEDED(reset_device(device, &device_desc)), "Failed to reset device.\n");
+
+    flush_events();
+    ok(!wm_size_received, "Received unexpected WM_SIZE message.\n");
 
 cleanup:
     if (device) IDirect3DDevice9_Release(device);
@@ -4357,14 +4404,15 @@ static const GUID d3d9_private_data_test_guid =
 static void test_fpu_setup(void)
 {
 #if defined(D3D9_TEST_SET_FPU_CW) && defined(D3D9_TEST_GET_FPU_CW)
+    static const BOOL is_64bit = sizeof(void *) > sizeof(int);
+    IUnknown dummy_object = {&dummy_object_vtbl};
     struct device_desc device_desc;
+    IDirect3DSurface9 *surface;
     IDirect3DDevice9 *device;
+    WORD cw, expected_cw;
     HWND window = NULL;
     IDirect3D9 *d3d9;
-    WORD cw;
-    IDirect3DSurface9 *surface;
     HRESULT hr;
-    IUnknown dummy_object = {&dummy_object_vtbl};
 
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_CAPTION, 0, 0,
             registry_mode.dmPelsWidth, registry_mode.dmPelsHeight, 0, 0, 0, 0);
@@ -4388,8 +4436,11 @@ static void test_fpu_setup(void)
         goto done;
     }
 
+    expected_cw = is_64bit ? 0xf60 : 0x7f;
+
     cw = get_fpu_cw();
-    ok(cw == 0x7f, "cw is %#x, expected 0x7f.\n", cw);
+    todo_wine_if(is_64bit)
+    ok(cw == expected_cw, "cw is %#x, expected %#x.\n", cw, expected_cw);
 
     hr = IDirect3DDevice9_GetRenderTarget(device, 0, &surface);
     ok(SUCCEEDED(hr), "Failed to get render target surface, hr %#x.\n", hr);
@@ -4398,7 +4449,8 @@ static void test_fpu_setup(void)
     hr = IDirect3DSurface9_SetPrivateData(surface, &d3d9_private_data_test_guid,
             &dummy_object, sizeof(IUnknown *), D3DSPD_IUNKNOWN);
     ok(SUCCEEDED(hr), "Failed to set private data, hr %#x.\n", hr);
-    ok(callback_cw == 0x7f, "Callback cw is %#x, expected 0x7f.\n", callback_cw);
+    todo_wine_if(is_64bit)
+    ok(callback_cw == expected_cw, "Callback cw is %#x, expected %#x.\n", callback_cw, expected_cw);
     ok(callback_tid == GetCurrentThreadId(), "Got unexpected thread id.\n");
     cw = get_fpu_cw();
     ok(cw == 0xf60, "cw is %#x, expected 0xf60.\n", cw);
@@ -5489,7 +5541,7 @@ static void test_query_support(void)
     DestroyWindow(window);
 }
 
-static void test_occlusion_query_states(void)
+static void test_occlusion_query(void)
 {
     static const float quad[] =
     {
@@ -5498,21 +5550,25 @@ static void test_occlusion_query_states(void)
          1.0f,  1.0f, 0.0f,
          1.0f, -1.0f, 0.0f,
     };
+    unsigned int data_size, i, count;
     struct device_desc device_desc;
     IDirect3DQuery9 *query = NULL;
-    unsigned int data_size, i;
     IDirect3DDevice9 *device;
+    IDirect3DSurface9 *rt;
     IDirect3D9 *d3d9;
+    D3DVIEWPORT9 vp;
     ULONG refcount;
+    D3DCAPS9 caps;
     HWND window;
     HRESULT hr;
     union
     {
         WORD word[4];
         DWORD dword[2];
-    } data;
+        UINT64 uint;
+    } data, expected;
     BOOL broken_occlusion = FALSE;
-    DWORD expected = registry_mode.dmPelsWidth * registry_mode.dmPelsHeight;
+    expected.uint = registry_mode.dmPelsWidth * registry_mode.dmPelsHeight;
 
     window = CreateWindowA("d3d9_test_wc", "d3d9_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
             0, 0, 640, 480, 0, 0, 0, 0);
@@ -5551,10 +5607,13 @@ static void test_occlusion_query_states(void)
     data_size = IDirect3DQuery9_GetDataSize(query);
     ok(data_size == sizeof(DWORD), "Unexpected data size %u.\n", data_size);
 
+    memset(&data, 0xff, sizeof(data));
     hr = IDirect3DQuery9_GetData(query, NULL, 0, D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DQuery9_GetData(query, &data, data_size, D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(data.dword[0] == 0xdddddddd && data.dword[1] == 0xffffffff,
+            "Got unexpected query result 0x%08x%08x.\n", data.dword[1], data.dword[0]);
 
     hr = IDirect3DQuery9_Issue(query, D3DISSUE_END);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -5591,7 +5650,7 @@ static void test_occlusion_query_states(void)
     memset(&data, 0xff, sizeof(data));
     hr = IDirect3DQuery9_GetData(query, &data, data_size, D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
-    ok(data.dword[0] == expected || broken(!data.dword[0]),
+    ok(data.dword[0] == expected.dword[0] || broken(!data.dword[0]),
             "Occlusion query returned an unexpected result (0x%.8x).\n", data.dword[0]);
     if (!data.dword[0])
     {
@@ -5603,16 +5662,16 @@ static void test_occlusion_query_states(void)
     hr = IDirect3DQuery9_GetData(query, &data, sizeof(WORD), D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     if (!broken_occlusion)
-        ok(data.word[0] == (WORD)expected,
+        ok(data.word[0] == expected.word[0],
                 "Occlusion query returned an unexpected result (0x%.8x).\n", data.dword[0]);
     ok(data.word[1] == 0xffff,
-            "data was modified outside of the expected size (0x%.8x).\n", data.dword[0]);
+            "Data was modified outside of the expected size (0x%.8x).\n", data.dword[0]);
 
     memset(&data, 0xf0, sizeof(data));
     hr = IDirect3DQuery9_GetData(query, &data, sizeof(data), D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     if (!broken_occlusion)
-        ok(data.dword[0] == expected,
+        ok(data.dword[0] == expected.dword[0],
                 "Occlusion query returned an unexpected result (0x%.8x).\n", data.dword[0]);
     /* Different drivers seem to return different data in those high bytes on Windows, but they all
        write something there and the extra data is consistent (I've seen 0x00000000 and 0xdddddddd
@@ -5642,8 +5701,73 @@ static void test_occlusion_query_states(void)
     hr = IDirect3DQuery9_Issue(query, D3DISSUE_END);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
 
-    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    if (broken_occlusion)
+        goto done;
 
+    hr = IDirect3DDevice9_GetDeviceCaps(device, &caps);
+    ok(SUCCEEDED(hr), "Failed to get device caps, hr %#x.\n", hr);
+
+    vp.X = 0;
+    vp.Y = 0;
+    vp.Width = min(caps.MaxTextureWidth, 8192);
+    vp.Height = min(caps.MaxTextureHeight, 8192);
+    vp.MinZ = 0.0f;
+    vp.MaxZ = 1.0f;
+    hr = IDirect3DDevice9_SetViewport(device, &vp);
+    ok(SUCCEEDED(hr), "Failed to set viewport, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice9_CreateRenderTarget(device, vp.Width, vp.Height,
+            D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, FALSE, &rt, NULL);
+    if (FAILED(hr))
+    {
+        skip("Failed to create render target (width %u, height %u), hr %#x.\n", vp.Width, vp.Height, hr);
+        goto done;
+    }
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetRenderTarget(device, 0, rt);
+    ok(SUCCEEDED(hr), "Failed to set render target, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetRenderState(device, D3DRS_ZENABLE, FALSE);
+    ok(hr == D3D_OK, "IDirect3DDevice9_SetRenderState returned %08x\n", hr);
+
+    expected.uint = vp.Width * vp.Height;
+    count = ((((UINT64)~0u) + 1) / expected.uint) + 1;
+    expected.uint *= count;
+
+    trace("Expects 0x%08x%08x samples.\n", expected.dword[1], expected.dword[0]);
+
+    hr = IDirect3DQuery9_Issue(query, D3DISSUE_BEGIN);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DDevice9_BeginScene(device);
+    ok(SUCCEEDED(hr), "Failed to begin scene, hr %#x.\n", hr);
+    for (i = 0; i < count; i++)
+    {
+        hr = IDirect3DDevice9_DrawPrimitiveUP(device, D3DPT_TRIANGLEFAN, 2, quad, 3 * sizeof(float));
+        ok(SUCCEEDED(hr), "Failed to draw, hr %#x.\n", hr);
+    }
+    hr = IDirect3DDevice9_EndScene(device);
+    ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
+    hr = IDirect3DQuery9_Issue(query, D3DISSUE_END);
+    ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
+
+    for (i = 0; i < 500; ++i)
+    {
+        if ((hr = IDirect3DQuery9_GetData(query, NULL, 0, D3DGETDATA_FLUSH)) != S_FALSE)
+            break;
+        Sleep(10);
+    }
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+
+    memset(&data, 0xff, sizeof(data));
+    hr = IDirect3DQuery9_GetData(query, &data, sizeof(data), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok((data.dword[0] == expected.dword[0] && data.dword[1] == expected.dword[1])
+            || (data.dword[0] == 0xffffffff && !data.dword[1])
+            || broken(data.dword[0] < 0xffffffff && !data.dword[1]),
+            "Got unexpected query result 0x%08x%08x.\n", data.dword[1], data.dword[0]);
+
+    IDirect3DSurface9_Release(rt);
+
+done:
     IDirect3DQuery9_Release(query);
     refcount = IDirect3DDevice9_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
@@ -5695,10 +5819,30 @@ static void test_timestamp_query(void)
     data_size = IDirect3DQuery9_GetDataSize(freq_query);
     ok(data_size == sizeof(UINT64), "Query data size is %u, 8 expected.\n", data_size);
 
+    memset(freq, 0xff, sizeof(freq));
+    hr = IDirect3DQuery9_GetData(freq_query, NULL, 0, D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_GetData(freq_query, freq, sizeof(DWORD), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(freq[0] == 0xdddddddd && freq[1] == 0xffffffff,
+            "Got unexpected query result 0x%08x%08x.\n", freq[1], freq[0]);
+
     hr = IDirect3DDevice9_CreateQuery(device, D3DQUERYTYPE_TIMESTAMPDISJOINT, &disjoint_query);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
     data_size = IDirect3DQuery9_GetDataSize(disjoint_query);
     ok(data_size == sizeof(BOOL), "Query data size is %u, 4 expected.\n", data_size);
+
+    memset(disjoint, 0xff, sizeof(disjoint));
+    hr = IDirect3DQuery9_GetData(disjoint_query, NULL, 0, D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_GetData(disjoint_query, &disjoint, sizeof(WORD), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(disjoint[0] == 0xdddd && disjoint[1] == 0xffff,
+            "Got unexpected query result 0x%04x%04x.\n", disjoint[1], disjoint[0]);
+    hr = IDirect3DQuery9_GetData(disjoint_query, &disjoint, sizeof(DWORD), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(disjoint[0] == 0xdddd && disjoint[1] == 0xdddd,
+            "Got unexpected query result 0x%04x%04x.\n", disjoint[1], disjoint[0]);
 
     hr = IDirect3DDevice9_CreateQuery(device, D3DQUERYTYPE_TIMESTAMP, &query);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -5719,16 +5863,23 @@ static void test_timestamp_query(void)
     hr = IDirect3DQuery9_GetData(freq_query, freq, sizeof(DWORD), D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     ok(freq[1] == 0xffffffff,
-            "freq was modified outside of the expected size (0x%.8x).\n", freq[1]);
+            "Freq was modified outside of the expected size (0x%.8x).\n", freq[1]);
     hr = IDirect3DQuery9_GetData(freq_query, &freq, sizeof(freq), D3DGETDATA_FLUSH);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
-    ok(freq[1] != 0xffffffff, "high bytes of freq were not modified (0x%.8x).\n",
+    ok(freq[1] != 0xffffffff, "High bytes of freq were not modified (0x%.8x).\n",
             freq[1]);
 
+    memset(timestamp, 0xff, sizeof(timestamp));
     hr = IDirect3DQuery9_GetData(query, NULL, 0, D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = IDirect3DQuery9_GetData(query, timestamp, sizeof(DWORD), D3DGETDATA_FLUSH);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(timestamp[0] == 0xdddddddd && timestamp[1] == 0xffffffff,
+            "Got unexpected query result 0x%08x%08x.\n", timestamp[1], timestamp[0]);
     hr = IDirect3DQuery9_GetData(query, timestamp, sizeof(timestamp), D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(timestamp[0] == 0xdddddddd && timestamp[1] == 0xdddddddd,
+            "Got unexpected query result 0x%08x%08x.\n", timestamp[1], timestamp[0]);
 
     hr = IDirect3DQuery9_Issue(disjoint_query, D3DISSUE_END);
     ok(hr == D3D_OK, "Got unexpected hr %#x.\n", hr);
@@ -5763,7 +5914,7 @@ static void test_timestamp_query(void)
     hr = IDirect3DQuery9_GetData(query, timestamp, sizeof(DWORD), D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     ok(timestamp[1] == 0xffffffff,
-            "timestamp was modified outside of the expected size (0x%.8x).\n",
+            "Timestamp was modified outside of the expected size (0x%.8x).\n",
             timestamp[1]);
 
     hr = IDirect3DQuery9_Issue(query, D3DISSUE_BEGIN);
@@ -5787,10 +5938,10 @@ static void test_timestamp_query(void)
     hr = IDirect3DQuery9_GetData(disjoint_query, disjoint, sizeof(WORD), D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     ok(disjoint[1] == 0xffff,
-            "disjoint was modified outside of the expected size (0x%.4hx).\n", disjoint[1]);
+            "Disjoint was modified outside of the expected size (0x%.4hx).\n", disjoint[1]);
     hr = IDirect3DQuery9_GetData(disjoint_query, disjoint, sizeof(disjoint), D3DGETDATA_FLUSH);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
-    ok(disjoint[1] != 0xffff, "high bytes of disjoint were not modified (0x%.4hx).\n", disjoint[1]);
+    ok(disjoint[1] != 0xffff, "High bytes of disjoint were not modified (0x%.4hx).\n", disjoint[1]);
 
     /* It's not strictly necessary for the TIMESTAMP query to be inside
      * a TIMESTAMP_DISJOINT query. */
@@ -6377,7 +6528,7 @@ float4 main(const float4 color : COLOR) : SV_TARGET
     hr = IDirect3DDevice9_CreatePixelShader(device, ps_3_224, &ps);
     ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
     hr = IDirect3DDevice9_CreatePixelShader(device, ps_2_0_boolint, &ps);
-    todo_wine ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
     if (ps)
         IDirect3DPixelShader9_Release(ps);
 
@@ -7194,12 +7345,12 @@ static void test_lockrect_invalid(void)
     IDirect3DDevice9 *device;
     IDirect3DTexture9 *texture;
     IDirect3DCubeTexture9 *cube_texture;
-    IDirect3D9 *d3d;
+    HRESULT hr, expected_hr;
     unsigned int i, r;
+    IDirect3D9 *d3d;
     ULONG refcount;
     HWND window;
     BYTE *base;
-    HRESULT hr;
     static const struct
     {
         D3DRESOURCETYPE type;
@@ -7272,6 +7423,9 @@ static void test_lockrect_invalid(void)
         base = locked_rect.pBits;
         hr = IDirect3DSurface9_UnlockRect(surface);
         ok(SUCCEEDED(hr), "Failed to unlock surface, hr %#x, type %s.\n", hr, resources[r].name);
+        expected_hr = resources[r].type == D3DRTYPE_TEXTURE ? D3D_OK : D3DERR_INVALIDCALL;
+        hr = IDirect3DSurface9_UnlockRect(surface);
+        ok(hr == expected_hr, "Got hr %#x, expected %#x, type %s.\n", hr, expected_hr, resources[r].name);
 
         for (i = 0; i < sizeof(test_data) / sizeof(*test_data); ++i)
         {
@@ -7383,6 +7537,8 @@ static void test_lockrect_invalid(void)
             ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x, type %s.\n", hr, resources[r].name);
             hr = IDirect3DTexture9_UnlockRect(texture, 0);
             ok(SUCCEEDED(hr), "Failed to unlock texture, hr %#x, type %s.\n", hr, resources[r].name);
+            hr = IDirect3DTexture9_UnlockRect(texture, 0);
+            ok(hr == D3D_OK, "Got unexpected hr %#x, type %s.\n", hr, resources[r].name);
 
             hr = IDirect3DTexture9_LockRect(texture, 0, &locked_rect, &test_data[0].rect, 0);
             ok(hr == D3D_OK, "Got unexpected hr %#x for rect %s, type %s.\n",
@@ -7417,6 +7573,8 @@ static void test_lockrect_invalid(void)
             ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x, type %s.\n", hr, resources[r].name);
             hr = IDirect3DCubeTexture9_UnlockRect(cube_texture, D3DCUBEMAP_FACE_NEGATIVE_X, 0);
             ok(SUCCEEDED(hr), "Failed to unlock texture, hr %#x, type %s.\n", hr, resources[r].name);
+            hr = IDirect3DCubeTexture9_UnlockRect(cube_texture, D3DCUBEMAP_FACE_NEGATIVE_X, 0);
+            todo_wine ok(hr == D3D_OK, "Got unexpected hr %#x, type %s.\n", hr, resources[r].name);
 
             hr = IDirect3DCubeTexture9_LockRect(cube_texture, D3DCUBEMAP_FACE_NEGATIVE_X, 0,
                     &locked_rect, &test_data[0].rect, 0);
@@ -11241,6 +11399,127 @@ static void test_get_render_target_data(void)
     DestroyWindow(window);
 }
 
+static void test_render_target_device_mismatch(void)
+{
+    IDirect3DDevice9 *device, *device2;
+    IDirect3DSurface9 *surface, *rt;
+    IDirect3D9 *d3d;
+    UINT refcount;
+    HWND window;
+    HRESULT hr;
+
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, NULL)))
+    {
+        skip("Failed to create a D3D device.\n");
+        IDirect3D9_Release(d3d);
+        DestroyWindow(window);
+        return;
+    }
+
+    hr = IDirect3DDevice9_GetRenderTarget(device, 0, &rt);
+    ok(SUCCEEDED(hr), "Failed to get render target, hr %#x.\n", hr);
+
+    device2 = create_device(d3d, window, NULL);
+    ok(!!device2, "Failed to create a D3D device.\n");
+
+    hr = IDirect3DDevice9_CreateRenderTarget(device2, 640, 480,
+            D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, FALSE, &surface, NULL);
+    ok(SUCCEEDED(hr), "Failed to create render target, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice9_SetRenderTarget(device, 0, surface);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+
+    IDirect3DSurface9_Release(surface);
+
+    hr = IDirect3DDevice9_GetRenderTarget(device2, 0, &surface);
+    ok(SUCCEEDED(hr), "Failed to get render target, hr %#x.\n", hr);
+
+    hr = IDirect3DDevice9_SetRenderTarget(device, 0, surface);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+
+    IDirect3DSurface9_Release(surface);
+
+    hr = IDirect3DDevice9_GetRenderTarget(device, 0, &surface);
+    ok(SUCCEEDED(hr), "Failed to get render target, hr %#x.\n", hr);
+    ok(surface == rt, "Got unexpected render target %p, expected %p.\n", surface, rt);
+    IDirect3DSurface9_Release(surface);
+    IDirect3DSurface9_Release(rt);
+
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    refcount = IDirect3DDevice9_Release(device2);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
+}
+
+static void test_format_unknown(void)
+{
+    IDirect3DDevice9 *device;
+    IDirect3D9 *d3d;
+    UINT refcount;
+    HWND window;
+    void *iface;
+    HRESULT hr;
+
+    window = CreateWindowA("static", "d3d9_test", WS_OVERLAPPEDWINDOW,
+            0, 0, 640, 480, NULL, NULL, NULL, NULL);
+    d3d = Direct3DCreate9(D3D_SDK_VERSION);
+    ok(!!d3d, "Failed to create a D3D object.\n");
+    if (!(device = create_device(d3d, window, NULL)))
+    {
+        skip("Failed to create a D3D device.\n");
+        IDirect3D9_Release(d3d);
+        DestroyWindow(window);
+        return;
+    }
+
+    iface = (void *)0xdeadbeef;
+    hr = IDirect3DDevice9_CreateRenderTarget(device, 64, 64,
+            D3DFMT_UNKNOWN, D3DMULTISAMPLE_NONE, 0, FALSE, (IDirect3DSurface9 **)&iface, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    ok(!iface, "Got unexpected iface %p.\n", iface);
+
+    iface = (void *)0xdeadbeef;
+    hr = IDirect3DDevice9_CreateDepthStencilSurface(device, 64, 64,
+            D3DFMT_UNKNOWN, D3DMULTISAMPLE_NONE, 0, TRUE, (IDirect3DSurface9 **)&iface, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    ok(!iface, "Got unexpected iface %p.\n", iface);
+
+    iface = (void *)0xdeadbeef;
+    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 64, 64,
+            D3DFMT_UNKNOWN, D3DPOOL_DEFAULT, (IDirect3DSurface9 **)&iface, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    ok(!iface, "Got unexpected iface %p.\n", iface);
+
+    iface = (void *)0xdeadbeef;
+    hr = IDirect3DDevice9_CreateTexture(device, 64, 64, 1, 0,
+            D3DFMT_UNKNOWN, D3DPOOL_DEFAULT, (IDirect3DTexture9 **)&iface, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    ok(!iface, "Got unexpected iface %p.\n", iface);
+
+    iface = (void *)0xdeadbeef;
+    hr = IDirect3DDevice9_CreateCubeTexture(device, 64, 1, 0,
+            D3DFMT_UNKNOWN, D3DPOOL_DEFAULT, (IDirect3DCubeTexture9 **)&iface, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    ok(!iface, "Got unexpected iface %p.\n", iface);
+
+    iface = (void *)0xdeadbeef;
+    hr = IDirect3DDevice9_CreateVolumeTexture(device, 64, 64, 1, 1, 0,
+            D3DFMT_UNKNOWN, D3DPOOL_DEFAULT, (IDirect3DVolumeTexture9 **)&iface, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got unexpected hr %#x.\n", hr);
+    ok(!iface, "Got unexpected iface %p.\n", iface);
+
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
+}
+
 START_TEST(device)
 {
     WNDCLASSA wc = {0};
@@ -11310,7 +11589,7 @@ START_TEST(device)
     test_vb_lock_flags();
     test_vertex_buffer_alignment();
     test_query_support();
-    test_occlusion_query_states();
+    test_occlusion_query();
     test_timestamp_query();
     test_get_set_vertex_shader();
     test_vertex_shader_constant();
@@ -11357,6 +11636,8 @@ START_TEST(device)
     test_check_device_format();
     test_miptree_layout();
     test_get_render_target_data();
+    test_render_target_device_mismatch();
+    test_format_unknown();
 
     UnregisterClassA("d3d9_test_wc", GetModuleHandleA(NULL));
 }

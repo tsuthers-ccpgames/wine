@@ -28,6 +28,8 @@
 #include "winsvc.h"
 #include "wine/test.h"
 
+#include "initguid.h"
+
 #define EXPECT_HR(hr,hr_exp) \
     ok(hr == hr_exp, "got 0x%08x, expected 0x%08x\n", hr, hr_exp)
 
@@ -37,6 +39,9 @@ static HRESULT (WINAPI *pSHGetFolderPathW)(HWND, int, HANDLE, DWORD, LPWSTR);
 static HRESULT (WINAPI *pSHGetNameFromIDList)(PCIDLIST_ABSOLUTE,SIGDN,PWSTR*);
 static HRESULT (WINAPI *pSHGetSpecialFolderLocation)(HWND, int, LPITEMIDLIST *);
 static DWORD (WINAPI *pGetLongPathNameW)(LPCWSTR, LPWSTR, DWORD);
+
+/* Updated Windows 7 has a new IShellDispatch6 in its typelib */
+DEFINE_GUID(IID_IWin7ShellDispatch6, 0x34936ba1, 0x67ad, 0x4c41, 0x99,0xb8, 0x8c,0x12,0xdf,0xf1,0xe9,0x74);
 
 static void init_function_pointers(void)
 {
@@ -53,6 +58,48 @@ static void init_function_pointers(void)
 
 static void test_namespace(void)
 {
+    static const ShellSpecialFolderConstants special_folders[] =
+    {
+        ssfDESKTOP,
+        ssfPROGRAMS,
+        ssfCONTROLS,
+        ssfPRINTERS,
+        ssfPERSONAL,
+        ssfFAVORITES,
+        ssfSTARTUP,
+        ssfRECENT,
+        ssfSENDTO,
+        ssfBITBUCKET,
+        ssfSTARTMENU,
+        ssfDESKTOPDIRECTORY,
+        ssfDRIVES,
+        ssfNETWORK,
+        ssfNETHOOD,
+        ssfFONTS,
+        ssfTEMPLATES,
+        ssfCOMMONSTARTMENU,
+        ssfCOMMONPROGRAMS,
+        ssfCOMMONSTARTUP,
+        ssfCOMMONDESKTOPDIR,
+        ssfAPPDATA,
+        ssfPRINTHOOD,
+        ssfLOCALAPPDATA,
+        ssfALTSTARTUP,
+        ssfCOMMONALTSTARTUP,
+        ssfCOMMONFAVORITES,
+        ssfINTERNETCACHE,
+        ssfCOOKIES,
+        ssfHISTORY,
+        ssfCOMMONAPPDATA,
+        ssfWINDOWS,
+        ssfSYSTEM,
+        ssfPROGRAMFILES,
+        ssfMYPICTURES,
+        ssfPROFILE,
+        ssfSYSTEMx86,
+        ssfPROGRAMFILESx86,
+    };
+
     static const WCHAR backslashW[] = {'\\',0};
     static const WCHAR clsidW[] = {
         ':',':','{','6','4','5','F','F','0','4','0','-','5','0','8','1','-',
@@ -68,7 +115,7 @@ static void test_namespace(void)
     FolderItem *item;
     VARIANT var;
     BSTR title, item_path;
-    int len;
+    int len, i;
 
     r = CoCreateInstance(&CLSID_Shell, NULL, CLSCTX_INPROC_SERVER,
      &IID_IShellDispatch, (LPVOID*)&sd);
@@ -87,6 +134,21 @@ static void test_namespace(void)
     ok(r == S_FALSE, "expected S_FALSE, got %08x\n", r);
     ok(folder == NULL, "expected NULL, got %p\n", folder);
 
+    /* test valid folder ids */
+    for (i = 0; i < sizeof(special_folders)/sizeof(special_folders[0]); i++)
+    {
+        V_VT(&var) = VT_I4;
+        V_I4(&var) = special_folders[i];
+        folder = (void*)0xdeadbeef;
+        r = IShellDispatch_NameSpace(sd, var, &folder);
+        if (special_folders[i] == ssfALTSTARTUP || special_folders[i] == ssfCOMMONALTSTARTUP)
+            ok(r == S_OK || broken(r == S_FALSE) /* winxp */, "Failed to get folder for index %#x, got %08x\n", special_folders[i], r);
+        else
+            ok(r == S_OK, "Failed to get folder for index %#x, got %08x\n", special_folders[i], r);
+        if (folder)
+            Folder_Release(folder);
+    }
+
     V_VT(&var) = VT_I4;
     V_I4(&var) = -1;
     folder = (void*)0xdeadbeef;
@@ -94,6 +156,8 @@ static void test_namespace(void)
     todo_wine {
     ok(r == S_FALSE, "expected S_FALSE, got %08x\n", r);
     ok(folder == NULL, "got %p\n", folder);
+    if (r == S_OK)
+        Folder_Release(folder);
 }
     V_VT(&var) = VT_I4;
     V_I4(&var) = ssfPROGRAMFILES;
@@ -530,6 +594,7 @@ static void test_ShellFolderViewDual(void)
         &IID_IShellDispatch5,
         &IID_IShellDispatch4,
         &IID_IShellDispatch2,
+        &IID_IWin7ShellDispatch6,
         &IID_NULL
     };
     IShellFolderViewDual *viewdual;

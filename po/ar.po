@@ -54,20 +54,21 @@ msgstr "&إزالة"
 msgid "Support Information"
 msgstr "معلومات الدّعم"
 
-#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:55 comdlg32.rc:232 comdlg32.rc:262
-#: comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398 comdlg32.rc:452 credui.rc:52
-#: cryptui.rc:263 cryptui.rc:275 cryptui.rc:365 dinput.rc:46 ieframe.rc:96
-#: localui.rc:44 localui.rc:57 mpr.rc:49 msacm32.rc:53 mshtml.rc:47
-#: mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62 oledlg.rc:94 serialui.rc:41
-#: setupapi.rc:59 shell32.rc:276 shell32.rc:300 shell32.rc:322 shell32.rc:341
-#: shlwapi.rc:44 user32.rc:83 user32.rc:98 wininet.rc:51 wininet.rc:71
-#: winspool.rc:42 net.rc:47 notepad.rc:117 oleview.rc:162 oleview.rc:175
-#: progman.rc:106 progman.rc:124 progman.rc:142 progman.rc:158 progman.rc:180
-#: progman.rc:199 progman.rc:216 regedit.rc:247 regedit.rc:258 regedit.rc:271
-#: regedit.rc:287 regedit.rc:300 regedit.rc:313 taskmgr.rc:442 taskmgr.rc:517
-#: winecfg.rc:214 winecfg.rc:224 wineconsole.rc:135 winefile.rc:128
-#: winefile.rc:151 winefile.rc:181 winemine.rc:71 winemine.rc:81 winemine.rc:95
-#: wordpad.rc:215 wordpad.rc:226 wordpad.rc:244 wordpad.rc:257
+#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:65 comctl32.rc:55 comdlg32.rc:232
+#: comdlg32.rc:262 comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398
+#: comdlg32.rc:452 credui.rc:52 cryptui.rc:263 cryptui.rc:275 cryptui.rc:365
+#: dinput.rc:46 ieframe.rc:96 localui.rc:44 localui.rc:57 mpr.rc:49
+#: msacm32.rc:53 mshtml.rc:47 mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62
+#: oledlg.rc:94 serialui.rc:41 setupapi.rc:59 shell32.rc:276 shell32.rc:300
+#: shell32.rc:322 shell32.rc:341 shlwapi.rc:44 user32.rc:83 user32.rc:98
+#: wininet.rc:51 wininet.rc:71 winspool.rc:42 net.rc:47 notepad.rc:117
+#: oleview.rc:161 oleview.rc:174 progman.rc:106 progman.rc:124 progman.rc:142
+#: progman.rc:158 progman.rc:180 progman.rc:199 progman.rc:216 regedit.rc:263
+#: regedit.rc:274 regedit.rc:287 regedit.rc:303 regedit.rc:316 regedit.rc:329
+#: taskmgr.rc:442 taskmgr.rc:517 winecfg.rc:214 winecfg.rc:224
+#: wineconsole.rc:135 winefile.rc:128 winefile.rc:151 winefile.rc:181
+#: winemine.rc:71 winemine.rc:81 winemine.rc:95 wordpad.rc:215 wordpad.rc:226
+#: wordpad.rc:244 wordpad.rc:257
 msgid "OK"
 msgstr "حسنًا"
 
@@ -131,23 +132,23 @@ msgstr ""
 msgid "&Install"
 msgstr "&تثبيت"
 
-#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:56
-#: comctl32.rc:71 comdlg32.rc:171 comdlg32.rc:193 comdlg32.rc:211
-#: comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306 comdlg32.rc:328
-#: comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399 comdlg32.rc:453
-#: comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264 cryptui.rc:276
-#: cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81 localui.rc:45
-#: localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48 mshtml.rc:58
-#: msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42 setupapi.rc:42
-#: setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312 shell32.rc:342
-#: shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52 wininet.rc:72
-#: winspool.rc:43 notepad.rc:118 oleview.rc:163 oleview.rc:176 progman.rc:107
-#: progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181 progman.rc:200
-#: progman.rc:217 regedit.rc:248 regedit.rc:259 regedit.rc:272 regedit.rc:288
-#: regedit.rc:301 regedit.rc:314 taskmgr.rc:443 taskmgr.rc:518 wineboot.rc:34
-#: winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136 winefile.rc:129
-#: winefile.rc:152 winefile.rc:182 winemine.rc:96 wordpad.rc:216 wordpad.rc:227
-#: wordpad.rc:245 wordpad.rc:258
+#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:66
+#: comctl32.rc:81 comctl32.rc:56 comdlg32.rc:171 comdlg32.rc:193
+#: comdlg32.rc:211 comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306
+#: comdlg32.rc:328 comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399
+#: comdlg32.rc:453 comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264
+#: cryptui.rc:276 cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81
+#: localui.rc:45 localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48
+#: mshtml.rc:58 msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42
+#: setupapi.rc:42 setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312
+#: shell32.rc:342 shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52
+#: wininet.rc:72 winspool.rc:43 notepad.rc:118 oleview.rc:162 oleview.rc:175
+#: progman.rc:107 progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181
+#: progman.rc:200 progman.rc:217 regedit.rc:264 regedit.rc:275 regedit.rc:288
+#: regedit.rc:304 regedit.rc:317 regedit.rc:330 taskmgr.rc:443 taskmgr.rc:518
+#: wineboot.rc:34 winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136
+#: winefile.rc:129 winefile.rc:152 winefile.rc:182 winemine.rc:96
+#: wordpad.rc:216 wordpad.rc:227 wordpad.rc:245 wordpad.rc:258
 msgid "Cancel"
 msgstr "ألغِ"
 
@@ -217,7 +218,7 @@ msgid "Programs (*.exe)"
 msgstr "برامج بتنسيق exe"
 
 #: appwiz.rc:43 avifil32.rc:33 cryptui.rc:83 shell32.rc:199 notepad.rc:76
-#: oleview.rc:104 progman.rc:82 regedit.rc:198 winedbg.rc:42 winhlp32.rc:90
+#: oleview.rc:103 progman.rc:82 regedit.rc:200 winedbg.rc:42 winhlp32.rc:90
 msgid "All files (*.*)"
 msgstr "كل الملفات (*.*)"
 
@@ -296,48 +297,48 @@ msgstr "غير مضغوط"
 msgid "Canceling..."
 msgstr "جاري إلغاء الامر..."
 
-#: comctl32.rc:52 winefile.rc:157
+#: comctl32.rc:62 winefile.rc:157
 msgid "Properties for %s"
 msgstr "خصائص %s"
 
-#: comctl32.rc:57 comdlg32.rc:264
+#: comctl32.rc:67 comdlg32.rc:264
 msgid "&Apply"
 msgstr "&تطبيق"
 
-#: comctl32.rc:58 comctl32.rc:72 comdlg32.rc:307 user32.rc:88
+#: comctl32.rc:68 comctl32.rc:82 comdlg32.rc:307 user32.rc:88
 msgid "Help"
 msgstr "مساعدة"
 
-#: comctl32.rc:65
+#: comctl32.rc:75
 msgid "Wizard"
 msgstr "المرشِد"
 
-#: comctl32.rc:68
+#: comctl32.rc:78
 msgid "< &Back"
 msgstr "< &السابق"
 
-#: comctl32.rc:69
+#: comctl32.rc:79
 msgid "&Next >"
 msgstr "&التالي >"
 
-#: comctl32.rc:70
+#: comctl32.rc:80
 msgid "Finish"
 msgstr "إنهاء"
 
-#: comctl32.rc:81
+#: comctl32.rc:91
 msgid "Customize Toolbar"
 msgstr "شريط أدوات مُخصص"
 
-#: comctl32.rc:84 cryptui.rc:351 ieframe.rc:43 oleview.rc:83 oleview.rc:188
-#: oleview.rc:201 oleview.rc:213 taskmgr.rc:139
+#: comctl32.rc:94 comctl32.rc:57 cryptui.rc:351 ieframe.rc:43 oleview.rc:83
+#: oleview.rc:187 oleview.rc:200 oleview.rc:212 taskmgr.rc:139
 msgid "&Close"
 msgstr "&إغلاق"
 
-#: comctl32.rc:85
+#: comctl32.rc:95
 msgid "R&eset"
 msgstr "إ&عادة الضبط"
 
-#: comctl32.rc:86 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
+#: comctl32.rc:96 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
 #: comdlg32.rc:329 comdlg32.rc:349 comdlg32.rc:361 comdlg32.rc:479
 #: comdlg32.rc:502 ieframe.rc:58 msacm32.rc:52 oledlg.rc:96 shell32.rc:128
 #: clock.rc:44 notepad.rc:60 notepad.rc:119 oleview.rc:72 progman.rc:55
@@ -347,29 +348,29 @@ msgstr "إ&عادة الضبط"
 msgid "&Help"
 msgstr "&مساعدة"
 
-#: comctl32.rc:87
+#: comctl32.rc:97
 msgid "Move &Up"
 msgstr "خطوة لأع&لى"
 
-#: comctl32.rc:88
+#: comctl32.rc:98
 msgid "Move &Down"
 msgstr "خطوة لأ&سفل"
 
-#: comctl32.rc:89
+#: comctl32.rc:99
 msgid "A&vailable buttons:"
 msgstr "الأزرار الم&توفرة:"
 
-#: comctl32.rc:91
+#: comctl32.rc:101
 msgid "&Add ->"
 msgstr "&أضف ->"
 
-#: comctl32.rc:92
+#: comctl32.rc:102
 #, fuzzy
 #| msgid "&Remove"
 msgid "<- &Remove"
 msgstr "&إزالة"
 
-#: comctl32.rc:93
+#: comctl32.rc:103
 msgid "&Toolbar buttons:"
 msgstr "أزرار شريط الأد&وات:"
 
@@ -382,7 +383,19 @@ msgctxt "hotkey"
 msgid "None"
 msgstr "لا شيء"
 
-#: comctl32.rc:31 cryptui.rc:230 regedit.rc:237 taskmgr.rc:434 winedbg.rc:60
+#: comctl32.rc:52 shell32.rc:309 shlwapi.rc:46 user32.rc:79
+msgid "&Yes"
+msgstr "ن&عم"
+
+#: comctl32.rc:53 shell32.rc:311 shlwapi.rc:47 user32.rc:80
+msgid "&No"
+msgstr "لا"
+
+#: comctl32.rc:54 user32.rc:82
+msgid "&Retry"
+msgstr "أ&عد المحاولة"
+
+#: comctl32.rc:31 cryptui.rc:230 regedit.rc:253 taskmgr.rc:434 winedbg.rc:60
 #: winedbg.rc:75 wordpad.rc:180
 msgid "Close"
 msgstr "إغلاق"
@@ -396,7 +409,7 @@ msgid "Go to today"
 msgstr "اذهب إلى اليوم"
 
 #: comdlg32.rc:157 comdlg32.rc:170 comdlg32.rc:459 comdlg32.rc:485
-#: shell32.rc:167 oleview.rc:102
+#: shell32.rc:167 oleview.rc:101
 msgid "Open"
 msgstr "ا&فتح"
 
@@ -441,7 +454,7 @@ msgstr "الطّابعة:"
 msgid "Print range"
 msgstr "مدى الطّباعة"
 
-#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:219
+#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:235
 msgid "&All"
 msgstr "ال&كل"
 
@@ -611,7 +624,7 @@ msgstr "أض&ف لونًا محددًا"
 msgid "&Define Custom Colors >>"
 msgstr "ع&رّف لونًا محددًا >>"
 
-#: comdlg32.rc:316 regedit.rc:226 regedit.rc:236
+#: comdlg32.rc:316 regedit.rc:242 regedit.rc:252
 msgid "Find"
 msgstr "بحث"
 
@@ -3046,7 +3059,7 @@ msgstr "رمزي"
 msgid "OEM/DOS"
 msgstr "دوس"
 
-#: gdi32.rc:45 wldap32.rc:110
+#: gdi32.rc:45 wldap32.rc:112
 msgid "Other"
 msgstr "آخر"
 
@@ -3684,6 +3697,14 @@ msgstr "يجب أن يكون طول المصفوفة عدد صحيح موجب م
 #: jscript.rc:68
 msgid "Array object expected"
 msgstr "عنصر مصفوفة متوقع"
+
+#: ../../include/wine/wine_common_ver.rc:129
+msgid "Wine kernel DLL"
+msgstr ""
+
+#: ../../include/wine/wine_common_ver.rc:134 winemac.rc:32 wineboot.rc:42
+msgid "Wine"
+msgstr "واين"
 
 #: winerror.mc:26
 msgid "Success.\n"
@@ -7383,11 +7404,11 @@ msgctxt "object state"
 msgid "has popup"
 msgstr ""
 
-#: oleaut32.rc:30 oleview.rc:147
+#: oleaut32.rc:30 oleview.rc:146
 msgid "True"
 msgstr "صحيح"
 
-#: oleaut32.rc:31 oleview.rc:148
+#: oleaut32.rc:31 oleview.rc:147
 msgid "False"
 msgstr "غير صحيح"
 
@@ -8056,17 +8077,9 @@ msgstr "أنش&ئ مجلدًا جديدًا"
 msgid "Message"
 msgstr "الرسالة"
 
-#: shell32.rc:309 shlwapi.rc:46 user32.rc:79
-msgid "&Yes"
-msgstr "ن&عم"
-
 #: shell32.rc:310
 msgid "Yes to &all"
 msgstr "نعم &للكل"
-
-#: shell32.rc:311 shlwapi.rc:47 user32.rc:80
-msgid "&No"
-msgstr "لا"
 
 #: shell32.rc:319
 msgid "About %s"
@@ -8151,7 +8164,7 @@ msgctxt "display name"
 msgid "Desktop"
 msgstr "سطح المكتب"
 
-#: shell32.rc:157 regedit.rc:203
+#: shell32.rc:157 regedit.rc:205
 msgid "My Computer"
 msgstr "الحاسوب"
 
@@ -8406,7 +8419,9 @@ msgid "Wine Control Panel"
 msgstr "لوحة تحكم واين"
 
 #: shell32.rc:195
-msgid "Unable to display Run File dialog box (internal error)"
+#, fuzzy
+#| msgid "Unable to display Run File dialog box (internal error)"
+msgid "Unable to display Run dialog box (internal error)"
 msgstr "غير قادر على عرض مربع حوار التشغيل ( خطأ داخلي )"
 
 #: shell32.rc:196
@@ -8596,10 +8611,6 @@ msgstr "ال&تالي\tCtrl+F6"
 msgid "&Abort"
 msgstr "أحب&ط"
 
-#: user32.rc:82
-msgid "&Retry"
-msgstr "أ&عد المحاولة"
-
 #: user32.rc:85
 msgid "&Ignore"
 msgstr "تجا&هل"
@@ -8619,10 +8630,6 @@ msgstr "اختر نافذة"
 #: user32.rc:72
 msgid "&More Windows..."
 msgstr "&نوافذ أخرى..."
-
-#: winemac.rc:32 wineboot.rc:42
-msgid "Wine"
-msgstr "واين"
 
 #: winemac.rc:33
 #, fuzzy
@@ -9332,239 +9339,245 @@ msgstr "ملف الإخراج موجود بالفعل ، إشعارك بالمو
 msgid "Unable to create the output file."
 msgstr "غير قادر على إنشاء ملف الإخراج."
 
-#: wldap32.rc:30
+#: wldap32.rc:32
 msgid "Success"
 msgstr "نجاح"
 
-#: wldap32.rc:31
+#: wldap32.rc:33
 msgid "Operations Error"
 msgstr "خطأ عملياتي"
 
-#: wldap32.rc:32
+#: wldap32.rc:34
 msgid "Protocol Error"
 msgstr "خطأ بروتوكولي"
 
-#: wldap32.rc:33
+#: wldap32.rc:35
 msgid "Time Limit Exceeded"
 msgstr "تم تجاوز الحدود الوقتية"
 
-#: wldap32.rc:34
+#: wldap32.rc:36
 msgid "Size Limit Exceeded"
 msgstr "تمت تجاوز حدود الحجم"
 
-#: wldap32.rc:35
+#: wldap32.rc:37
 msgid "Compare False"
 msgstr "لم تتحقق المقارنة"
 
-#: wldap32.rc:36
+#: wldap32.rc:38
 msgid "Compare True"
 msgstr "تحققت المقارنة"
 
-#: wldap32.rc:37
+#: wldap32.rc:39
 msgid "Authentication Method Not Supported"
 msgstr "نمط التحقق غير مدعوم"
 
-#: wldap32.rc:38
+#: wldap32.rc:40
 msgid "Strong Authentication Required"
 msgstr "تحقق قوي مطلوب"
 
-#: wldap32.rc:39
+#: wldap32.rc:41
 msgid "Referral (v2)"
 msgstr "دعوة (الجيل الثاني)"
 
-#: wldap32.rc:40
+#: wldap32.rc:42
 msgid "Referral"
 msgstr "دعوة"
 
-#: wldap32.rc:41
+#: wldap32.rc:43
 msgid "Administration Limit Exceeded"
 msgstr "تم تجاوز حدود الصلاحيات"
 
-#: wldap32.rc:42
+#: wldap32.rc:44
 msgid "Unavailable Critical Extension"
 msgstr "امتداد خطير غير متوفر"
 
-#: wldap32.rc:43
+#: wldap32.rc:45
 msgid "Confidentiality Required"
 msgstr "الموثوقية مطلوبة"
 
 #: wldap32.rc:46
+#, fuzzy
+#| msgid "Shutdown in progress.\n"
+msgid "SASL Bind in Progress"
+msgstr "جاري إيقاف التشغيل.\n"
+
+#: wldap32.rc:48
 msgid "No Such Attribute"
 msgstr "لا يشكل سمة"
 
-#: wldap32.rc:47
+#: wldap32.rc:49
 msgid "Undefined Type"
 msgstr "نوع غير معرف"
 
-#: wldap32.rc:48
+#: wldap32.rc:50
 msgid "Inappropriate Matching"
 msgstr "المطابقة غير ملائمة"
 
-#: wldap32.rc:49
+#: wldap32.rc:51
 msgid "Constraint Violation"
 msgstr "التنفيذ بالإكراه"
 
-#: wldap32.rc:50
+#: wldap32.rc:52
 msgid "Attribute Or Value Exists"
 msgstr "السمة أو القيمة موجودة"
 
-#: wldap32.rc:51
+#: wldap32.rc:53
 msgid "Invalid Syntax"
 msgstr "الصيغة غير سليمة"
 
-#: wldap32.rc:62
+#: wldap32.rc:64
 msgid "No Such Object"
 msgstr "لا يمثل عنصرًا"
 
-#: wldap32.rc:63
+#: wldap32.rc:65
 msgid "Alias Problem"
 msgstr "مشكلة بالاسم المستعار"
 
-#: wldap32.rc:64
+#: wldap32.rc:66
 msgid "Invalid DN Syntax"
 msgstr "صيغة DN غير سليمة"
 
-#: wldap32.rc:65
+#: wldap32.rc:67
 msgid "Is Leaf"
 msgstr "رقاقة"
 
-#: wldap32.rc:66
+#: wldap32.rc:68
 msgid "Alias Dereference Problem"
 msgstr "مشكلة بالاسم المستعار"
 
-#: wldap32.rc:78
+#: wldap32.rc:80
 msgid "Inappropriate Authentication"
 msgstr "التحقق غير ملائم"
 
-#: wldap32.rc:79
+#: wldap32.rc:81
 msgid "Invalid Credentials"
 msgstr "الاعتماديات غير سليمة"
 
-#: wldap32.rc:80
+#: wldap32.rc:82
 msgid "Insufficient Rights"
 msgstr "الحقوق غير متوفرة"
 
-#: wldap32.rc:81
+#: wldap32.rc:83
 msgid "Busy"
 msgstr "مشغول"
 
-#: wldap32.rc:82
+#: wldap32.rc:84
 msgid "Unavailable"
 msgstr "غير متوفر"
 
-#: wldap32.rc:83
+#: wldap32.rc:85
 msgid "Unwilling To Perform"
 msgstr "لا يبدو أنه يؤدي"
 
-#: wldap32.rc:84
+#: wldap32.rc:86
 msgid "Loop Detected"
 msgstr "حدثت الدوامة"
 
-#: wldap32.rc:90
+#: wldap32.rc:92
 msgid "Sort Control Missing"
 msgstr "تصنيف التحكم غير موجود"
 
-#: wldap32.rc:91
+#: wldap32.rc:93
 msgid "Index range error"
 msgstr "خطأ في مدى الفهرس"
 
-#: wldap32.rc:94
+#: wldap32.rc:96
 msgid "Naming Violation"
 msgstr "انتهاك في التسمية"
 
-#: wldap32.rc:95
+#: wldap32.rc:97
 msgid "Object Class Violation"
 msgstr "انتهاك في فئة العنصر"
 
-#: wldap32.rc:96
+#: wldap32.rc:98
 msgid "Not allowed on Non-leaf"
 msgstr "ليس مصرحًا ليكون غير رقيق"
 
-#: wldap32.rc:97
+#: wldap32.rc:99
 msgid "Not allowed on RDN"
 msgstr "ليس مصرحًا ليكون RDN"
 
-#: wldap32.rc:98
+#: wldap32.rc:100
 msgid "Already Exists"
 msgstr "موجود بالفعل"
 
-#: wldap32.rc:99
+#: wldap32.rc:101
 msgid "No Object Class Mods"
 msgstr "ليس وضع فئة عنصرية"
 
-#: wldap32.rc:100
+#: wldap32.rc:102
 msgid "Results Too Large"
 msgstr "النتائج كبيرة جدًا"
 
-#: wldap32.rc:101
+#: wldap32.rc:103
 msgid "Affects Multiple DSAs"
 msgstr "DSA متعددة"
 
-#: wldap32.rc:111
+#: wldap32.rc:113
 msgid "Server Down"
 msgstr "انهار الخادوم"
 
-#: wldap32.rc:112
+#: wldap32.rc:114
 msgid "Local Error"
 msgstr "خطأ محلي"
 
-#: wldap32.rc:113
+#: wldap32.rc:115
 msgid "Encoding Error"
 msgstr "خطأ في الترميز"
 
-#: wldap32.rc:114
+#: wldap32.rc:116
 msgid "Decoding Error"
 msgstr "خطأ في إلغاء الترميز"
 
-#: wldap32.rc:115
+#: wldap32.rc:117
 msgid "Timeout"
 msgstr "انتهى التوقيت"
 
-#: wldap32.rc:116
+#: wldap32.rc:118
 msgid "Auth Unknown"
 msgstr "التحقق غير معروف"
 
-#: wldap32.rc:117
+#: wldap32.rc:119
 msgid "Filter Error"
 msgstr "خطأ في التصفية"
 
-#: wldap32.rc:118
+#: wldap32.rc:120
 msgid "User Canceled"
 msgstr "ألغي المستخدم"
 
-#: wldap32.rc:119
+#: wldap32.rc:121
 msgid "Parameter Error"
 msgstr "خطأ في المعامل"
 
-#: wldap32.rc:120
+#: wldap32.rc:122
 msgid "No Memory"
 msgstr "لا توجد ذاكرة"
 
-#: wldap32.rc:121
+#: wldap32.rc:123
 msgid "Can't connect to the LDAP server"
 msgstr "لم يتمكن من الاتصال بخادوم LDAP"
 
-#: wldap32.rc:122
+#: wldap32.rc:124
 msgid "Operation not supported by this version of the LDAP protocol"
 msgstr "العملية غير مدعومة بواسطة هذه الإصدار من بروتوكول LDAP"
 
-#: wldap32.rc:123
+#: wldap32.rc:125
 msgid "Specified control was not found in message"
 msgstr "المتحكم المحدد غير موجود في الرسالة"
 
-#: wldap32.rc:124
+#: wldap32.rc:126
 msgid "No result present in message"
 msgstr "لا توجد نتائج في الرسالة"
 
-#: wldap32.rc:125
+#: wldap32.rc:127
 msgid "More results returned"
 msgstr "رسائل أخرى عادت"
 
-#: wldap32.rc:126
+#: wldap32.rc:128
 msgid "Loop while handling referrals"
 msgstr "حدثت دوامة أثناء التقاط التحويلات"
 
-#: wldap32.rc:127
+#: wldap32.rc:129
 msgid "Referral hop limit exceeded"
 msgstr "تم تجاوز الحد الأقصى للتحويلات"
 
@@ -11118,7 +11131,7 @@ msgctxt "accelerator Copy"
 msgid "C"
 msgstr "C"
 
-#: notepad.rc:134 regedit.rc:323 wordpad.rc:287
+#: notepad.rc:134 regedit.rc:339 wordpad.rc:287
 msgctxt "accelerator Find"
 msgid "F"
 msgstr "F"
@@ -11138,7 +11151,7 @@ msgctxt "accelerator Open"
 msgid "O"
 msgstr "O"
 
-#: notepad.rc:138 regedit.rc:324 wordpad.rc:300
+#: notepad.rc:138 regedit.rc:340 wordpad.rc:300
 msgctxt "accelerator Print"
 msgid "P"
 msgstr "P"
@@ -11327,31 +11340,31 @@ msgstr "احفظ &ك‍..."
 msgid "&Group by type kind"
 msgstr "تجميع &حسب النوع"
 
-#: oleview.rc:157
+#: oleview.rc:156
 msgid "Connect to another machine"
 msgstr "اتّصل بآلة أخرى"
 
-#: oleview.rc:160
+#: oleview.rc:159
 msgid "&Machine name:"
 msgstr "ا&سم الآلة:"
 
-#: oleview.rc:168
+#: oleview.rc:167
 msgid "System Configuration"
 msgstr "إعدادات النظام"
 
-#: oleview.rc:171
+#: oleview.rc:170
 msgid "System Settings"
 msgstr "إعدادات النظام"
 
-#: oleview.rc:172
+#: oleview.rc:171
 msgid "&Enable Distributed COM"
 msgstr "تف&عيل توزيع COM"
 
-#: oleview.rc:173
+#: oleview.rc:172
 msgid "Enable &Remote Connections (Win95 only)"
 msgstr "تفعيل الاتصالات البع&يدة (وندوز95 فقط)"
 
-#: oleview.rc:174
+#: oleview.rc:173
 msgid ""
 "These settings change only registry values.\n"
 "They have no effect on Wine performance."
@@ -11359,35 +11372,35 @@ msgstr ""
 "تطبق هذه الإعدادات تغييراتها عل قيم السجل فقط.\n"
 "ولا تؤثر على أداء واين."
 
-#: oleview.rc:181
+#: oleview.rc:180
 msgid "Default Interface Viewer"
 msgstr "عارض الواجهة الافتراضي"
 
-#: oleview.rc:184
+#: oleview.rc:183
 msgid "Interface"
 msgstr "الواجهة"
 
-#: oleview.rc:186
+#: oleview.rc:185
 msgid "IID:"
 msgstr "IID:"
 
-#: oleview.rc:189
+#: oleview.rc:188
 msgid "&View Type Info"
 msgstr "ع&رض معلومات النوع"
 
-#: oleview.rc:194
+#: oleview.rc:193
 msgid "IPersist Interface Viewer"
 msgstr "عارض الواجهة الحالي"
 
-#: oleview.rc:197 oleview.rc:209
+#: oleview.rc:196 oleview.rc:208
 msgid "Class Name:"
 msgstr "اسم الفئة:"
 
-#: oleview.rc:199 oleview.rc:211
+#: oleview.rc:198 oleview.rc:210
 msgid "CLSID:"
 msgstr "معرف الفئة:"
 
-#: oleview.rc:206
+#: oleview.rc:205
 msgid "IPersistStream Interface Viewer"
 msgstr "عارض تدفق الواجهة الحالي"
 
@@ -11395,7 +11408,7 @@ msgstr "عارض تدفق الواجهة الحالي"
 msgid "OleView"
 msgstr "عارض العناصر"
 
-#: oleview.rc:101
+#: oleview.rc:100
 msgid "ITypeLib viewer"
 msgstr "عارض مكتبة النوع"
 
@@ -11403,172 +11416,168 @@ msgstr "عارض مكتبة النوع"
 msgid "OleView - OLE/COM Object Viewer"
 msgstr "عارض العناصر OLE/COM"
 
-#: oleview.rc:100
-msgid "version 1.0"
-msgstr "الإصدارة 1.0"
-
-#: oleview.rc:103
+#: oleview.rc:102
 msgid "TypeLib files (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 msgstr "ملفات مكتبات النوع (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 
-#: oleview.rc:106
+#: oleview.rc:105
 msgid "Bind to file via a File Moniker"
 msgstr "اربط إلى ملف باستخدام مونيكر الملفات"
 
-#: oleview.rc:107
+#: oleview.rc:106
 msgid "Open a TypeLib file and view the contents"
 msgstr "افتح مكتبة النوع و اعرض محتوياتها"
 
-#: oleview.rc:108
+#: oleview.rc:107
 msgid "Change machine wide Distributed COM settings"
 msgstr "غيّر الآلة مع إعدادات توزيع COM العريض"
 
-#: oleview.rc:109
+#: oleview.rc:108
 msgid "Run the Wine registry editor"
 msgstr "شغل محرر سجل واين"
 
-#: oleview.rc:110
+#: oleview.rc:109
 msgid "Quit the application. Prompts to save changes"
 msgstr "اخرج من التطبيق . أكد حفظ التغييرات"
 
-#: oleview.rc:111
+#: oleview.rc:110
 msgid "Create an instance of the selected object"
 msgstr "أنشئ مرحلة للعنصر المختار"
 
-#: oleview.rc:112
+#: oleview.rc:111
 msgid "Create an instance of the selected object on a specific machine"
 msgstr "أنشئ مرحلة للعنصر المختار على جهاز محدد"
 
-#: oleview.rc:113
+#: oleview.rc:112
 msgid "Release the currently selected object instance"
 msgstr "أطلق مرحلة العنصر الحالي المختار"
 
-#: oleview.rc:114
+#: oleview.rc:113
 msgid "Copy the GUID of the currently selected item to the clipboard"
 msgstr "انسخ GUID الخاص بالعنصر المختار إلى الحافظة"
 
-#: oleview.rc:115
+#: oleview.rc:114
 msgid "Display the viewer for the selected item"
 msgstr "أظهر عارض العنصر المختار"
 
-#: oleview.rc:120
+#: oleview.rc:119
 msgid "Toggle between expert and novice display mode"
 msgstr "التنقل بين نمطي الخبير و المبتدئ"
 
-#: oleview.rc:121
+#: oleview.rc:120
 msgid ""
 "Toggle the display of component categories that are not meant to be visible"
 msgstr "التنقل في عرض تصنيف المكونات المراد عرضها"
 
-#: oleview.rc:122
+#: oleview.rc:121
 msgid "Show or hide the toolbar"
 msgstr "أظهر أو أخف شريط الأدوات"
 
-#: oleview.rc:123
+#: oleview.rc:122
 msgid "Show or hide the status bar"
 msgstr "أظهر أو أخف شريط الحالة"
 
-#: oleview.rc:124
+#: oleview.rc:123
 msgid "Refresh all lists"
 msgstr "حدث كل القوائم"
 
-#: oleview.rc:125
+#: oleview.rc:124
 msgid "Display program information, version number and copyright"
 msgstr "اعرض معلومات البرنامج و رقم اصداره و حقوقه"
 
-#: oleview.rc:116
+#: oleview.rc:115
 msgid "Ask for an in-process server when calling CoGetClassObject"
 msgstr "اسأل عن العملية الواردة للخادوم عند طلب CoGetClassObject"
 
-#: oleview.rc:117
+#: oleview.rc:116
 msgid "Ask for an in-process handler when calling CoGetClassObject"
 msgstr "اسأل عن لاقط العملية الواردة للخادوم عند طلب CoGetClassObject"
 
-#: oleview.rc:118
+#: oleview.rc:117
 msgid "Ask for a local server when calling CoGetClassObject"
 msgstr "اسأل عن الخادوم المحلي عند طلب CoGetClassObject"
 
-#: oleview.rc:119
+#: oleview.rc:118
 msgid "Ask for a remote server when calling CoGetClassObject"
 msgstr "اسأل عن الخادوم البعيد عند طلب CoGetClassObject"
 
-#: oleview.rc:131
+#: oleview.rc:130
 msgid "ObjectClasses"
 msgstr "فئات العناصر"
 
-#: oleview.rc:132
+#: oleview.rc:131
 msgid "Grouped by Component Category"
 msgstr "مجمعة حسب تصنيف المكون"
 
-#: oleview.rc:133
+#: oleview.rc:132
 msgid "OLE 1.0 Objects"
 msgstr "عناصر OLE 1.0"
 
-#: oleview.rc:134
+#: oleview.rc:133
 msgid "COM Library Objects"
 msgstr "عناصر مكتبات COM"
 
-#: oleview.rc:135
+#: oleview.rc:134
 msgid "All Objects"
 msgstr "جميع العناصر"
 
-#: oleview.rc:136
+#: oleview.rc:135
 msgid "Application IDs"
 msgstr "معرفات التطبيق"
 
-#: oleview.rc:137
+#: oleview.rc:136
 msgid "Type Libraries"
 msgstr "مكتبات النوع"
 
-#: oleview.rc:138
+#: oleview.rc:137
 msgid "ver."
 msgstr "الإصدار."
 
-#: oleview.rc:139
+#: oleview.rc:138
 msgid "Interfaces"
 msgstr "الواجهات"
 
-#: oleview.rc:141
+#: oleview.rc:140
 msgid "Registry"
 msgstr "السجل"
 
-#: oleview.rc:142
+#: oleview.rc:141
 msgid "Implementation"
 msgstr "التنفيذ"
 
-#: oleview.rc:143
+#: oleview.rc:142
 msgid "Activation"
 msgstr "التفعيل"
 
-#: oleview.rc:145
+#: oleview.rc:144
 msgid "CoGetClassObject failed."
 msgstr "فشل CoGetClassObject ."
 
-#: oleview.rc:146
+#: oleview.rc:145
 msgid "Unknown error"
 msgstr "خطأ غير معلوم"
 
-#: oleview.rc:149
+#: oleview.rc:148
 msgid "bytes"
 msgstr "بايتات"
 
-#: oleview.rc:151
+#: oleview.rc:150
 msgid "LoadTypeLib( %1 ) failed ($%2!x!)"
 msgstr "تحميل مكتبة النوع ( %1 ) فشل ($%2!x!)"
 
-#: oleview.rc:152
+#: oleview.rc:151
 msgid "Inherited Interfaces"
 msgstr "الواجهات الموروثة"
 
-#: oleview.rc:127
+#: oleview.rc:126
 msgid "Save as an .IDL or .H file"
 msgstr "حفظ كملف .IDL أو .H"
 
-#: oleview.rc:128
+#: oleview.rc:127
 msgid "Close window"
 msgstr "أغلق النافذة"
 
-#: oleview.rc:129
+#: oleview.rc:128
 msgid "Group typeinfos by kind"
 msgstr "تجميع معلومات النوع حسب الصنف"
 
@@ -11871,11 +11880,11 @@ msgstr "الملف المحدد موجود بالفعل ، هل ترغب باس�
 msgid "The registry operation was cancelled\n"
 msgstr ""
 
-#: reg.rc:53 regedit.rc:204
+#: reg.rc:53 regedit.rc:206
 msgid "(Default)"
 msgstr "(الافتراضي)"
 
-#: reg.rc:54
+#: reg.rc:54 regedit.rc:185
 #, fuzzy
 #| msgid "Are you sure you want to delete these values?"
 msgid "Are you sure you want to delete the registry value '%1'?"
@@ -11933,7 +11942,7 @@ msgstr ""
 msgid "Type \"REG %1 /?\" for help.\n"
 msgstr ""
 
-#: reg.rc:65 regedit.rc:205
+#: reg.rc:65 regedit.rc:207
 msgid "(value not set)"
 msgstr "(القيمة غير مضبوطة)"
 
@@ -12009,83 +12018,83 @@ msgstr "معلومات حول محرر السجل"
 msgid "Modify Binary Data..."
 msgstr "تعديل بيانات ثنائية..."
 
-#: regedit.rc:218
+#: regedit.rc:234
 msgid "Export registry"
 msgstr "تصدير السجل"
 
-#: regedit.rc:220
+#: regedit.rc:236
 msgid "S&elected branch:"
 msgstr "الف&رع المختار:"
 
-#: regedit.rc:229
+#: regedit.rc:245
 msgid "Find:"
 msgstr "ابحث:"
 
-#: regedit.rc:231
+#: regedit.rc:247
 msgid "Find in:"
 msgstr "ابحث في:"
 
-#: regedit.rc:232
+#: regedit.rc:248
 msgid "Keys"
 msgstr "المفاتيح"
 
-#: regedit.rc:233
+#: regedit.rc:249
 msgid "Value names"
 msgstr "أسماء القيمة"
 
-#: regedit.rc:234
+#: regedit.rc:250
 msgid "Value content"
 msgstr "محتوى القيمة"
 
-#: regedit.rc:235
+#: regedit.rc:251
 msgid "Whole string only"
 msgstr "التسلسلية فقط"
 
-#: regedit.rc:242
+#: regedit.rc:258
 msgid "Add Favorite"
 msgstr "أضف تفضيلًا"
 
-#: regedit.rc:245 regedit.rc:256
+#: regedit.rc:261 regedit.rc:272
 msgid "Name:"
 msgstr "الاسم:"
 
-#: regedit.rc:253
+#: regedit.rc:269
 msgid "Remove Favorite"
 msgstr "أزل التفضيل"
 
-#: regedit.rc:264
+#: regedit.rc:280
 msgid "Edit String"
 msgstr "تحرير السلسلة"
 
-#: regedit.rc:267 regedit.rc:280 regedit.rc:296 regedit.rc:309
+#: regedit.rc:283 regedit.rc:296 regedit.rc:312 regedit.rc:325
 msgid "Value name:"
 msgstr "اسم القيمة:"
 
-#: regedit.rc:269 regedit.rc:282 regedit.rc:298 regedit.rc:311
+#: regedit.rc:285 regedit.rc:298 regedit.rc:314 regedit.rc:327
 msgid "Value data:"
 msgstr "بيانات القيمة:"
 
-#: regedit.rc:277
+#: regedit.rc:293
 msgid "Edit DWORD"
 msgstr "تحرير DWORD"
 
-#: regedit.rc:284
+#: regedit.rc:300
 msgid "Base"
 msgstr "أساسي"
 
-#: regedit.rc:285
+#: regedit.rc:301
 msgid "Hexadecimal"
 msgstr "ست عشري"
 
-#: regedit.rc:286
+#: regedit.rc:302
 msgid "Decimal"
 msgstr "عشري"
 
-#: regedit.rc:293
+#: regedit.rc:309
 msgid "Edit Binary"
 msgstr "التحرير الثنائي"
 
-#: regedit.rc:306
+#: regedit.rc:322
 msgid "Edit Multi-String"
 msgstr "تحرير السلاسل المتعددة"
 
@@ -12122,31 +12131,91 @@ msgstr "البيانات"
 msgid "Registry Editor"
 msgstr "محرر السجل"
 
-#: regedit.rc:194
+#: regedit.rc:196
 msgid "Import Registry File"
 msgstr "استيراد ملف تسجيلي"
 
-#: regedit.rc:195
+#: regedit.rc:197
 msgid "Export Registry File"
 msgstr "تصدير ملف تسجيلي"
 
-#: regedit.rc:196
+#: regedit.rc:198
 msgid "Registry files (*.reg)"
 msgstr "الملفات التسجيلية (*.reg)"
 
-#: regedit.rc:197
+#: regedit.rc:199
 msgid "Win9x/NT4 Registry files (REGEDIT4)"
 msgstr "الملفات التسجيلية من الجيل الرابع win9x/nt4"
 
-#: regedit.rc:206
+#: regedit.rc:208
 msgid "(cannot display value)"
 msgstr "(القيمة غير قابلة للعرض)"
 
-#: regedit.rc:207
+#: regedit.rc:209
 msgid "(unknown %d)"
 msgstr "(%d غير معروف)"
 
-#: regedit.rc:359
+#: regedit.rc:214
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to modify the selected registry value."
+msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
+
+#: regedit.rc:215
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to create a new registry key."
+msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
+
+#: regedit.rc:216
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to create a new registry value."
+msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
+
+#: regedit.rc:217
+msgid ""
+"Unable to rename the key '%1'.\n"
+"The specified key name already exists."
+msgstr ""
+
+#: regedit.rc:218
+msgid ""
+"Unable to rename the value '%1'.\n"
+"The specified value name already exists."
+msgstr ""
+
+#: regedit.rc:219
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to delete the selected registry key."
+msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
+
+#: regedit.rc:220
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to rename the selected registry key."
+msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
+
+#: regedit.rc:221
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to rename the selected registry value."
+msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
+
+#: regedit.rc:222
+msgid ""
+"The keys and values contained in %1 were successfully added to the registry."
+msgstr ""
+
+#: regedit.rc:223
+#, fuzzy
+#| msgid ""
+#| "Error: The system was unable to find the specified registry key or value\n"
+msgid "Unable to import %1. The specified file is not a valid registry file."
+msgstr "خطأ : فشل النظام في العثور على المفتاح أو القيمة المحددة\n"
+
+#: regedit.rc:375
 msgid ""
 "Usage:\n"
 "  regedit [options] [filename] [reg_key]\n"
@@ -12177,105 +12246,105 @@ msgid ""
 "  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
 msgstr ""
 
-#: regedit.rc:360
+#: regedit.rc:376
 msgid "regedit: Invalid or unrecognized switch [%1]\n"
 msgstr ""
 
-#: regedit.rc:361
+#: regedit.rc:377
 msgid "Type \"regedit /?\" for help.\n"
 msgstr ""
 
-#: regedit.rc:362
+#: regedit.rc:378
 #, fuzzy
 #| msgid "No command was specified."
 msgid "regedit: No filename was specified.\n"
 msgstr "لم يتم تحديد أي أمر."
 
-#: regedit.rc:363
+#: regedit.rc:379
 msgid "regedit: No registry key was specified for removal.\n"
 msgstr ""
 
-#: regedit.rc:364
+#: regedit.rc:380
 msgid "regedit: The file '%1' was not found.\n"
 msgstr ""
 
-#: regedit.rc:365
+#: regedit.rc:381
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unable to open the file '%1'.\n"
 msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
 
-#: regedit.rc:366
+#: regedit.rc:382
 #, fuzzy
 #| msgid "Invalid handle operation.\n"
 msgid "regedit: Unhandled action.\n"
 msgstr "عملية اللقط غير سليمة.\n"
 
-#: regedit.rc:367
+#: regedit.rc:383
 msgid "regedit: Out of memory! (%1!S!, line %2!u!)\n"
 msgstr ""
 
-#: regedit.rc:368
+#: regedit.rc:384
 #, fuzzy
 #| msgid "Error: Invalid key name\n"
 msgid "regedit: Invalid hexadecimal value.\n"
 msgstr "خطأ : اسم المفتاح غير سليم\n"
 
-#: regedit.rc:369
+#: regedit.rc:385
 msgid ""
 "regedit: Unable to convert hexadecimal data. An invalid value was "
 "encountered at '%1'.\n"
 msgstr ""
 
-#: regedit.rc:370
+#: regedit.rc:386
 msgid "regedit: Unrecognized escape sequence [\\%1!c!]\n"
 msgstr ""
 
-#: regedit.rc:371
+#: regedit.rc:387
 #, fuzzy
 #| msgid "Unsupported type.\n"
 msgid "regedit: Unsupported registry data type [%1]\n"
 msgstr "النوع غير مدعوم.\n"
 
-#: regedit.rc:372
+#: regedit.rc:388
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unexpected end of line in '%1'.\n"
 msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
 
-#: regedit.rc:373
+#: regedit.rc:389
 #, fuzzy
 #| msgid "No command was specified."
 msgid "regedit: The line '%1' was not recognized.\n"
 msgstr "لم يتم تحديد أي أمر."
 
-#: regedit.rc:374
+#: regedit.rc:390
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unable to add the registry value '%1' to '%2'.\n"
 msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
 
-#: regedit.rc:375
+#: regedit.rc:391
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unable to open the registry key '%1'.\n"
 msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
 
-#: regedit.rc:376
+#: regedit.rc:392
 #, fuzzy
 #| msgid "Unsupported type.\n"
 msgid "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
 msgstr "النوع غير مدعوم.\n"
 
-#: regedit.rc:377
+#: regedit.rc:393
 msgid "regedit: The registry value '%1' will be exported as binary data.\n"
 msgstr ""
 
-#: regedit.rc:378
+#: regedit.rc:394
 msgid "regedit: Incorrect registry class specification in '%1'.\n"
 msgstr ""
 
-#: regedit.rc:379
+#: regedit.rc:395
 #, fuzzy
 #| msgid ""
 #| "Error: The system was unable to find the specified registry key or value\n"
@@ -12283,7 +12352,7 @@ msgid ""
 "regedit: Unable to export '%1'. The specified registry key was not found.\n"
 msgstr "خطأ : فشل النظام في العثور على المفتاح أو القيمة المحددة\n"
 
-#: regedit.rc:380
+#: regedit.rc:396
 #, fuzzy
 #| msgid "Error: Unable to add keys to remote machine\n"
 msgid "regedit: Unable to delete the registry class '%1'.\n"
@@ -12370,44 +12439,50 @@ msgid "Displays program information, version number and copyright"
 msgstr "عرض معلومات البرنامج و رقم إصداره و حقوقه"
 
 #: regedit.rc:181
-msgid "Can't query value '%s'"
-msgstr "تعذر التحقق من القيمة '%s'"
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to query the registry value '%1'."
+msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
 
 #: regedit.rc:182
-msgid "Can't edit keys of this type (%u)"
+#, fuzzy
+#| msgid "Can't edit keys of this type (%u)"
+msgid "Unable to edit registry keys of this type (%1!u!)."
 msgstr "تعذر تحرير المفاتيح من هذا النوع (%u)"
 
 #: regedit.rc:183
-msgid "Value is too big (%u)"
+#, fuzzy
+#| msgid "Value is too big (%u)"
+msgid "The value is too big (%1!u!)."
 msgstr "القيمة كبيرة جدًا (%u)"
 
 #: regedit.rc:184
 msgid "Confirm Value Delete"
 msgstr "تاكيد حذف القيمة"
 
-#: regedit.rc:185
-msgid "Are you sure you want to delete value '%s'?"
-msgstr "هل أنت متأكد من رغبتك في حذف القيمة '%s' ؟"
-
-#: regedit.rc:189
-msgid "Search string '%s' not found"
+#: regedit.rc:191
+#, fuzzy
+#| msgid "Search string '%s' not found"
+msgid "Search complete. The string '%1' was not found."
 msgstr "سلسلة البحث '%s' غير موجودة"
 
 #: regedit.rc:186
 msgid "Are you sure you want to delete these values?"
 msgstr "هل أنت متأكد من رغبتك في حذف هذه القيم ؟"
 
-#: regedit.rc:187
+#: regedit.rc:189
 msgid "New Key #%d"
 msgstr "مفتاح جديد #%d"
 
-#: regedit.rc:188
+#: regedit.rc:190
 msgid "New Value #%d"
 msgstr "قيمة جديدة #%d"
 
 #: regedit.rc:180
-msgid "Can't query key '%s'"
-msgstr "تعذر التحقق من المفتاح '%s'"
+#, fuzzy
+#| msgid "Error: Unable to add keys to remote machine\n"
+msgid "Unable to query the registry key '%1'."
+msgstr "خطأ : تعذر إضافة المفاتيح للجهاز البعيد\n"
 
 #: regedit.rc:152
 msgid "Adds a new multi-string value"
@@ -12416,6 +12491,19 @@ msgstr "إضافة قيمة جديدة متعددة السلاسل"
 #: regedit.rc:174
 msgid "Exports selected branch of the registry to a text file"
 msgstr "تصدير الفرع المختار من السجل إلى ملف نصي"
+
+#: regedit.rc:187
+#, fuzzy
+#| msgid "Confirm Value Delete"
+msgid "Confirm Key Delete"
+msgstr "تاكيد حذف القيمة"
+
+#: regedit.rc:188
+#, fuzzy
+#| msgid "Are you sure you want to delete '%1'?"
+msgid ""
+"Are you sure you want to delete the registry key '%1' and all of its subkeys?"
+msgstr "هل أنت متأكد من رغبتك في حذف '%1' ؟"
 
 #: regsvr32.rc:32
 msgid ""

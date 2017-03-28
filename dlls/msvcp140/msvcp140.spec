@@ -358,9 +358,9 @@
 @ cdecl -arch=arm ??0ios_base@std@@IAA@XZ(ptr) ios_base_ctor
 @ thiscall -arch=i386 ??0ios_base@std@@IAE@XZ(ptr) ios_base_ctor
 @ cdecl -arch=win64 ??0ios_base@std@@IEAA@XZ(ptr) ios_base_ctor
-@ stub -arch=arm ??0task_continuation_context@Concurrency@@AAA@XZ
-@ stub -arch=i386 ??0task_continuation_context@Concurrency@@AAE@XZ
-@ stub -arch=win64 ??0task_continuation_context@Concurrency@@AEAA@XZ
+@ cdecl -arch=arm ??0task_continuation_context@Concurrency@@AAA@XZ(ptr) task_continuation_context_ctor
+@ thiscall -arch=i386 ??0task_continuation_context@Concurrency@@AAE@XZ(ptr) task_continuation_context_ctor
+@ cdecl -arch=win64 ??0task_continuation_context@Concurrency@@AEAA@XZ(ptr) task_continuation_context_ctor
 @ stub -arch=arm ??0time_base@std@@QAA@I@Z
 @ stub -arch=i386 ??0time_base@std@@QAE@I@Z
 @ stub -arch=win64 ??0time_base@std@@QEAA@_K@Z
@@ -954,7 +954,7 @@
 @ extern ??_7?$time_put@DV?$ostreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@6B@ MSVCP_time_put_char_vtable
 @ extern ??_7?$time_put@GV?$ostreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@6B@ MSVCP_time_put_short_vtable
 @ extern ??_7?$time_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@6B@ MSVCP_time_put_wchar_vtable
-# extern ??_7_Facet_base@std@@6B@
+@ extern ??_7_Facet_base@std@@6B@ MSVCP__Facet_base_vtable
 @ extern ??_7_Locimp@locale@std@@6B@ MSVCP_locale__Locimp_vtable
 @ extern ??_7codecvt_base@std@@6B@ MSVCP_codecvt_base_vtable
 @ extern ??_7ctype_base@std@@6B@ MSVCP_ctype_base_vtable
@@ -1096,9 +1096,9 @@
 @ cdecl -arch=win64 ?_Addfac@_Locimp@locale@std@@AEAAXPEAVfacet@23@_K@Z(ptr ptr long) locale__Locimp__Addfac
 @ cdecl -arch=win32 ?_Addstd@ios_base@std@@SAXPAV12@@Z(ptr) ios_base_Addstd
 @ cdecl -arch=win64 ?_Addstd@ios_base@std@@SAXPEAV12@@Z(ptr) ios_base_Addstd
-@ stub -arch=arm ?_Assign@_ContextCallback@details@Concurrency@@AAAXPAX@Z
-@ stub -arch=i386 ?_Assign@_ContextCallback@details@Concurrency@@AAEXPAX@Z
-@ stub -arch=win64 ?_Assign@_ContextCallback@details@Concurrency@@AEAAXPEAX@Z
+@ cdecl -arch=arm ?_Assign@_ContextCallback@details@Concurrency@@AAAXPAX@Z(ptr ptr) _ContextCallback__Assign
+@ thiscall -arch=i386 ?_Assign@_ContextCallback@details@Concurrency@@AAEXPAX@Z(ptr ptr) _ContextCallback__Assign
+@ cdecl -arch=win64 ?_Assign@_ContextCallback@details@Concurrency@@AEAAXPEAX@Z(ptr ptr) _ContextCallback__Assign
 @ stub ?_Atexit@@YAXP6AXXZ@Z
 @ extern ?_BADOFF@std@@3_JB std_BADOFF
 @ cdecl -arch=arm ?_C_str@?$_Yarn@D@std@@QBAPBDXZ(ptr) _Yarn_char_c_str
@@ -1110,15 +1110,15 @@
 @ cdecl -arch=arm ?_C_str@?$_Yarn@_W@std@@QBAPB_WXZ(ptr) _Yarn_wchar__C_str
 @ thiscall -arch=i386 ?_C_str@?$_Yarn@_W@std@@QBEPB_WXZ(ptr) _Yarn_wchar__C_str
 @ cdecl -arch=win64 ?_C_str@?$_Yarn@_W@std@@QEBAPEB_WXZ(ptr) _Yarn_wchar__C_str
-@ stub -arch=arm ?_CallInContext@_ContextCallback@details@Concurrency@@QBAXV?$function@$$A6AXXZ@std@@_N@Z
-@ stub -arch=i386 ?_CallInContext@_ContextCallback@details@Concurrency@@QBEXV?$function@$$A6AXXZ@std@@_N@Z
-@ stub -arch=win64 ?_CallInContext@_ContextCallback@details@Concurrency@@QEBAXV?$function@$$A6AXXZ@std@@_N@Z
+@ cdecl -arch=arm ?_CallInContext@_ContextCallback@details@Concurrency@@QBAXV?$function@$$A6AXXZ@std@@_N@Z(ptr ptr long) _ContextCallback__CallInContext
+@ thiscall -arch=i386 ?_CallInContext@_ContextCallback@details@Concurrency@@QBEXV?$function@$$A6AXXZ@std@@_N@Z(ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr long) _ContextCallback__CallInContext
+@ cdecl -arch=win64 ?_CallInContext@_ContextCallback@details@Concurrency@@QEBAXV?$function@$$A6AXXZ@std@@_N@Z(ptr ptr long) _ContextCallback__CallInContext
 @ cdecl -arch=arm ?_Callfns@ios_base@std@@AAAXW4event@12@@Z(ptr long) ios_base_Callfns
 @ thiscall -arch=i386 ?_Callfns@ios_base@std@@AAEXW4event@12@@Z(ptr long) ios_base_Callfns
 @ cdecl -arch=win64 ?_Callfns@ios_base@std@@AEAAXW4event@12@@Z(ptr long) ios_base_Callfns
-@ stub -arch=arm ?_Capture@_ContextCallback@details@Concurrency@@AAAXXZ
-@ stub -arch=i386 ?_Capture@_ContextCallback@details@Concurrency@@AAEXXZ
-@ stub -arch=win64 ?_Capture@_ContextCallback@details@Concurrency@@AEAAXXZ
+@ cdecl -arch=arm ?_Capture@_ContextCallback@details@Concurrency@@AAAXXZ(ptr) _ContextCallback__Capture
+@ thiscall -arch=i386 ?_Capture@_ContextCallback@details@Concurrency@@AAEXXZ(ptr) _ContextCallback__Capture
+@ cdecl -arch=win64 ?_Capture@_ContextCallback@details@Concurrency@@AEAAXXZ(ptr) _ContextCallback__Capture
 @ extern -arch=win32 ?_Clocptr@_Locimp@locale@std@@0PAV123@A locale__Locimp__Clocptr
 @ extern -arch=win64 ?_Clocptr@_Locimp@locale@std@@0PEAV123@EA locale__Locimp__Clocptr
 @ cdecl -arch=arm ?_Decref@facet@locale@std@@UAAPAV_Facet_base@3@XZ(ptr) locale_facet__Decref
@@ -1442,7 +1442,7 @@
 @ cdecl -arch=win64 ?_Iput@?$num_put@GV?$ostreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@GU?$char_traits@G@std@@@2@V32@AEAVios_base@2@GPEAD_K@Z(ptr ptr ptr ptr long ptr long) num_put_short__Iput
 @ cdecl -arch=win32 ?_Iput@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@ABA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@AAVios_base@2@_WPADI@Z(ptr ptr long ptr ptr long ptr long) num_put_wchar__Iput
 @ cdecl -arch=win64 ?_Iput@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@AEAVios_base@2@_WPEAD_K@Z(ptr ptr ptr ptr long ptr long) num_put_wchar__Iput
-@ stub ?_IsCurrentOriginSTA@_ContextCallback@details@Concurrency@@CA_NXZ
+@ cdecl ?_IsCurrentOriginSTA@_ContextCallback@details@Concurrency@@CA_NXZ(ptr) _ContextCallback__IsCurrentOriginSTA
 @ stub ?_IsNonBlockingThread@_Task_impl_base@details@Concurrency@@SA_NXZ
 @ cdecl -arch=win32 ?_Locimp_Addfac@_Locimp@locale@std@@CAXPAV123@PAVfacet@23@I@Z(ptr ptr long) locale__Locimp__Locimp_Addfac
 @ cdecl -arch=win64 ?_Locimp_Addfac@_Locimp@locale@std@@CAXPEAV123@PEAVfacet@23@_K@Z(ptr ptr long) locale__Locimp__Locimp_Addfac
@@ -1475,24 +1475,24 @@
 @ cdecl -arch=win32 ?_Lockit_dtor@_Lockit@std@@CAXPAV12@@Z(ptr) _Lockit__Lockit_dtor
 @ cdecl -arch=win64 ?_Lockit_dtor@_Lockit@std@@CAXPEAV12@@Z(ptr) _Lockit__Lockit_dtor
 @ cdecl ?_Lockit_dtor@_Lockit@std@@SAXH@Z(long) _Lockit_free
-@ stub -arch=arm ?_LogCancelTask@_TaskEventLogger@details@Concurrency@@QAAXXZ
-@ stub -arch=i386 ?_LogCancelTask@_TaskEventLogger@details@Concurrency@@QAEXXZ
-@ stub -arch=win64 ?_LogCancelTask@_TaskEventLogger@details@Concurrency@@QEAAXXZ
-@ stub -arch=arm ?_LogScheduleTask@_TaskEventLogger@details@Concurrency@@QAAX_N@Z
-@ stub -arch=i386 ?_LogScheduleTask@_TaskEventLogger@details@Concurrency@@QAEX_N@Z
-@ stub -arch=win64 ?_LogScheduleTask@_TaskEventLogger@details@Concurrency@@QEAAX_N@Z
-@ stub -arch=arm ?_LogTaskCompleted@_TaskEventLogger@details@Concurrency@@QAAXXZ
-@ stub -arch=i386 ?_LogTaskCompleted@_TaskEventLogger@details@Concurrency@@QAEXXZ
-@ stub -arch=win64 ?_LogTaskCompleted@_TaskEventLogger@details@Concurrency@@QEAAXXZ
-@ stub -arch=arm ?_LogTaskExecutionCompleted@_TaskEventLogger@details@Concurrency@@QAAXXZ
-@ stub -arch=i386 ?_LogTaskExecutionCompleted@_TaskEventLogger@details@Concurrency@@QAEXXZ
-@ stub -arch=win64 ?_LogTaskExecutionCompleted@_TaskEventLogger@details@Concurrency@@QEAAXXZ
-@ stub -arch=arm ?_LogWorkItemCompleted@_TaskEventLogger@details@Concurrency@@QAAXXZ
-@ stub -arch=i386 ?_LogWorkItemCompleted@_TaskEventLogger@details@Concurrency@@QAEXXZ
-@ stub -arch=win64 ?_LogWorkItemCompleted@_TaskEventLogger@details@Concurrency@@QEAAXXZ
-@ stub -arch=arm ?_LogWorkItemStarted@_TaskEventLogger@details@Concurrency@@QAAXXZ
-@ stub -arch=win32 ?_LogWorkItemStarted@_TaskEventLogger@details@Concurrency@@QAEXXZ
-@ stub -arch=win64 ?_LogWorkItemStarted@_TaskEventLogger@details@Concurrency@@QEAAXXZ
+@ cdecl -arch=arm ?_LogCancelTask@_TaskEventLogger@details@Concurrency@@QAAXXZ(ptr) _TaskEventLogger__LogCancelTask
+@ thiscall -arch=i386 ?_LogCancelTask@_TaskEventLogger@details@Concurrency@@QAEXXZ(ptr) _TaskEventLogger__LogCancelTask
+@ cdecl -arch=win64 ?_LogCancelTask@_TaskEventLogger@details@Concurrency@@QEAAXXZ(ptr) _TaskEventLogger__LogCancelTask
+@ cdecl -arch=arm ?_LogScheduleTask@_TaskEventLogger@details@Concurrency@@QAAX_N@Z(ptr long) _TaskEventLogger__LogScheduleTask
+@ thiscall -arch=i386 ?_LogScheduleTask@_TaskEventLogger@details@Concurrency@@QAEX_N@Z(ptr long) _TaskEventLogger__LogScheduleTask
+@ cdecl -arch=win64 ?_LogScheduleTask@_TaskEventLogger@details@Concurrency@@QEAAX_N@Z(ptr long) _TaskEventLogger__LogScheduleTask
+@ cdecl -arch=arm ?_LogTaskCompleted@_TaskEventLogger@details@Concurrency@@QAAXXZ(ptr) _TaskEventLogger__LogTaskCompleted
+@ thiscall -arch=i386 ?_LogTaskCompleted@_TaskEventLogger@details@Concurrency@@QAEXXZ(ptr) _TaskEventLogger__LogTaskCompleted
+@ cdecl -arch=win64 ?_LogTaskCompleted@_TaskEventLogger@details@Concurrency@@QEAAXXZ(ptr) _TaskEventLogger__LogTaskCompleted
+@ cdecl -arch=arm ?_LogTaskExecutionCompleted@_TaskEventLogger@details@Concurrency@@QAAXXZ(ptr) _TaskEventLogger__LogTaskExecutionCompleted
+@ thiscall -arch=i386 ?_LogTaskExecutionCompleted@_TaskEventLogger@details@Concurrency@@QAEXXZ(ptr) _TaskEventLogger__LogTaskExecutionCompleted
+@ cdecl -arch=win64 ?_LogTaskExecutionCompleted@_TaskEventLogger@details@Concurrency@@QEAAXXZ(ptr) _TaskEventLogger__LogTaskExecutionCompleted
+@ cdecl -arch=arm ?_LogWorkItemCompleted@_TaskEventLogger@details@Concurrency@@QAAXXZ(ptr) _TaskEventLogger__LogWorkItemCompleted
+@ thiscall -arch=i386 ?_LogWorkItemCompleted@_TaskEventLogger@details@Concurrency@@QAEXXZ(ptr) _TaskEventLogger__LogWorkItemCompleted
+@ cdecl -arch=win64 ?_LogWorkItemCompleted@_TaskEventLogger@details@Concurrency@@QEAAXXZ(ptr) _TaskEventLogger__LogWorkItemCompleted
+@ cdecl -arch=arm ?_LogWorkItemStarted@_TaskEventLogger@details@Concurrency@@QAAXXZ(ptr) _TaskEventLogger__LogWorkItemStarted
+@ thiscall -arch=i386 ?_LogWorkItemStarted@_TaskEventLogger@details@Concurrency@@QAEXXZ(ptr) _TaskEventLogger__LogWorkItemStarted
+@ cdecl -arch=win64 ?_LogWorkItemStarted@_TaskEventLogger@details@Concurrency@@QEAAXXZ(ptr) _TaskEventLogger__LogWorkItemStarted
 @ stub -arch=win32 ?_MP_Add@std@@YAXQA_K_K@Z
 @ stub -arch=win64 ?_MP_Add@std@@YAXQEA_K_K@Z
 @ stub -arch=win32 ?_MP_Get@std@@YA_KQA_K@Z
@@ -1581,8 +1581,8 @@
 @ stub -arch=win32 ?_Raise_handler@std@@3P6AXABVexception@stdext@@@ZA
 @ stub -arch=win64 ?_Raise_handler@std@@3P6AXAEBVexception@stdext@@@ZEA
 @ cdecl ?_Random_device@std@@YAIXZ() _Random_device
-@ stub -arch=win32 ?_Release_chore@details@Concurrency@@YAXPAU_Threadpool_chore@12@@Z
-@ stub -arch=win64 ?_Release_chore@details@Concurrency@@YAXPEAU_Threadpool_chore@12@@Z
+@ cdecl -arch=win32 ?_Release_chore@details@Concurrency@@YAXPAU_Threadpool_chore@12@@Z(ptr) _Release_chore
+@ cdecl -arch=win64 ?_Release_chore@details@Concurrency@@YAXPEAU_Threadpool_chore@12@@Z(ptr) _Release_chore
 @ cdecl -arch=win32 ?_Rep@?$num_put@DV?$ostreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@ABA?AV?$ostreambuf_iterator@DU?$char_traits@D@std@@@2@V32@DI@Z(ptr ptr long ptr long long) num_put_char__Rep
 @ cdecl -arch=win64 ?_Rep@?$num_put@DV?$ostreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@DU?$char_traits@D@std@@@2@V32@D_K@Z(ptr ptr ptr long long) num_put_char__Rep
 @ cdecl -arch=win32 ?_Rep@?$num_put@GV?$ostreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@ABA?AV?$ostreambuf_iterator@GU?$char_traits@G@std@@@2@V32@GI@Z(ptr ptr long ptr long long) num_put_wchar__Rep
@@ -1590,16 +1590,16 @@
 @ cdecl -arch=win32 ?_Rep@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@ABA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@_WI@Z(ptr ptr long ptr long long) num_put_wchar__Rep
 @ cdecl -arch=win64 ?_Rep@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@_W_K@Z(ptr ptr ptr long long) num_put_wchar__Rep
 @ stub ?_ReportUnobservedException@details@Concurrency@@YAXXZ
-@ stub -arch=win32 ?_Reschedule_chore@details@Concurrency@@YAHPBU_Threadpool_chore@12@@Z
-@ stub -arch=win64 ?_Reschedule_chore@details@Concurrency@@YAHPEBU_Threadpool_chore@12@@Z
-@ stub -arch=arm ?_Reset@_ContextCallback@details@Concurrency@@AAAXXZ
-@ stub -arch=i386 ?_Reset@_ContextCallback@details@Concurrency@@AAEXXZ
-@ stub -arch=win64 ?_Reset@_ContextCallback@details@Concurrency@@AEAAXXZ
+@ cdecl -arch=win32 ?_Reschedule_chore@details@Concurrency@@YAHPBU_Threadpool_chore@12@@Z(ptr) _Reschedule_chore
+@ cdecl -arch=win64 ?_Reschedule_chore@details@Concurrency@@YAHPEBU_Threadpool_chore@12@@Z(ptr) _Reschedule_chore
+@ cdecl -arch=arm ?_Reset@_ContextCallback@details@Concurrency@@AAAXXZ(ptr) _ContextCallback__Reset
+@ thiscall -arch=i386 ?_Reset@_ContextCallback@details@Concurrency@@AAEXXZ(ptr) _ContextCallback__Reset
+@ cdecl -arch=win64 ?_Reset@_ContextCallback@details@Concurrency@@AEAAXXZ(ptr) _ContextCallback__Reset
 @ stub ?_Rethrow_future_exception@std@@YAXVexception_ptr@1@@Z
 @ stub -arch=win32 ?_Rng_abort@std@@YAXPBD@Z
 @ stub -arch=win64 ?_Rng_abort@std@@YAXPEBD@Z
-@ stub -arch=win32 ?_Schedule_chore@details@Concurrency@@YAHPAU_Threadpool_chore@12@@Z
-@ stub -arch=win64 ?_Schedule_chore@details@Concurrency@@YAHPEAU_Threadpool_chore@12@@Z
+@ cdecl -arch=win32 ?_Schedule_chore@details@Concurrency@@YAHPAU_Threadpool_chore@12@@Z(ptr) _Schedule_chore
+@ cdecl -arch=win64 ?_Schedule_chore@details@Concurrency@@YAHPEAU_Threadpool_chore@12@@Z(ptr) _Schedule_chore
 @ cdecl -arch=win32 ?_Setgloballocale@locale@std@@CAXPAX@Z(ptr) locale__Setgloballocale
 @ cdecl -arch=win64 ?_Setgloballocale@locale@std@@CAXPEAX@Z(ptr) locale__Setgloballocale
 @ stub -arch=win32 ?_Src@?1??_Getffld@?$num_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@ABAHPADAAV?$istreambuf_iterator@DU?$char_traits@D@std@@@3@1AAVios_base@3@PAH@Z@4QBDB
@@ -1691,12 +1691,12 @@
 @ cdecl -arch=win64 ?_Xruntime_error@std@@YAXPEBD@Z(str) _Xruntime_error
 @ stub -arch=win32 ?__ExceptionPtrAssign@@YAXPAXPBX@Z
 @ stub -arch=win64 ?__ExceptionPtrAssign@@YAXPEAXPEBX@Z
-@ stub -arch=win32 ?__ExceptionPtrCompare@@YA_NPBX0@Z
-@ stub -arch=win64 ?__ExceptionPtrCompare@@YA_NPEBX0@Z
+@ cdecl -arch=win32 ?__ExceptionPtrCompare@@YA_NPBX0@Z(ptr ptr) msvcr120.?__ExceptionPtrCompare@@YA_NPBX0@Z
+@ cdecl -arch=win64 ?__ExceptionPtrCompare@@YA_NPEBX0@Z(ptr ptr) msvcr120.?__ExceptionPtrCompare@@YA_NPEBX0@Z
 @ cdecl -arch=win32 ?__ExceptionPtrCopy@@YAXPAXPBX@Z(ptr ptr) msvcr120.?__ExceptionPtrCopy@@YAXPAXPBX@Z
 @ cdecl -arch=win64 ?__ExceptionPtrCopy@@YAXPEAXPEBX@Z(ptr ptr) msvcr120.?__ExceptionPtrCopy@@YAXPEAXPEBX@Z
-@ stub -arch=win32 ?__ExceptionPtrCopyException@@YAXPAXPBX1@Z
-@ stub -arch=win64 ?__ExceptionPtrCopyException@@YAXPEAXPEBX1@Z
+@ cdecl -arch=win32 ?__ExceptionPtrCopyException@@YAXPAXPBX1@Z(ptr ptr ptr) msvcr120.?__ExceptionPtrCopyException@@YAXPAXPBX1@Z
+@ cdecl -arch=win64 ?__ExceptionPtrCopyException@@YAXPEAXPEBX1@Z(ptr ptr ptr) msvcr120.?__ExceptionPtrCopyException@@YAXPEAXPEBX1@Z
 @ cdecl -arch=win32 ?__ExceptionPtrCreate@@YAXPAX@Z(ptr) msvcr120.?__ExceptionPtrCreate@@YAXPAX@Z
 @ cdecl -arch=win64 ?__ExceptionPtrCreate@@YAXPEAX@Z(ptr) msvcr120.?__ExceptionPtrCreate@@YAXPEAX@Z
 @ cdecl -arch=win32 ?__ExceptionPtrCurrentException@@YAXPAX@Z(ptr) msvcr120.?__ExceptionPtrCurrentException@@YAXPAX@Z
@@ -3668,7 +3668,7 @@
 @ extern _LSnan _LSnan
 @ stub _Last_write_time
 @ stub _Link
-@ stub _Lock_shared_ptr_spin_lock
+@ cdecl _Lock_shared_ptr_spin_lock()
 @ stub _Lstat
 @ stub _Make_dir
 @ cdecl _Mbrtowc(ptr ptr long ptr ptr) _Mbrtowc
@@ -3738,7 +3738,7 @@
 @ cdecl _Towlower(long ptr) _Towlower
 @ cdecl _Towupper(long ptr) _Towupper
 @ stub _Unlink
-@ stub _Unlock_shared_ptr_spin_lock
+@ cdecl _Unlock_shared_ptr_spin_lock()
 @ stub _WStod
 @ stub _WStodx
 @ stub _WStof
@@ -3760,8 +3760,8 @@
 @ cdecl __crtCreateEventExW(ptr wstr long long) MSVCP__crtCreateEventExW
 @ cdecl __crtCreateSemaphoreExW(ptr long long wstr long long) MSVCP__crtCreateSemaphoreExW
 @ stub __crtCreateSymbolicLinkW
-@ stub __crtCreateThreadpoolTimer
-@ stub __crtCreateThreadpoolWait
+@ cdecl __crtCreateThreadpoolTimer(ptr ptr ptr) MSVCP__crtCreateThreadpoolTimer
+@ cdecl __crtCreateThreadpoolWait(ptr ptr ptr) MSVCP__crtCreateThreadpoolWait
 @ stub __crtFlushProcessWriteBuffers
 @ stub __crtFreeLibraryWhenCallbackReturns
 @ stub __crtGetCurrentProcessorNumber
@@ -3776,8 +3776,8 @@
 @ stub __crtLCMapStringEx
 @ cdecl __crtLCMapStringW(long long wstr long ptr long long long) msvcrt.__crtLCMapStringW
 @ stub __crtSetFileInformationByHandle
-@ stub __crtSetThreadpoolTimer
-@ stub __crtSetThreadpoolWait
+@ cdecl __crtSetThreadpoolTimer(ptr ptr long long) MSVCP__crtSetThreadpoolTimer
+@ cdecl __crtSetThreadpoolWait(ptr long ptr) MSVCP__crtSetThreadpoolWait
 @ stub __crtWaitForThreadpoolTimerCallbacks
 @ stub __set_stl_sync_api_mode
 @ cdecl xtime_get(ptr long) xtime_get

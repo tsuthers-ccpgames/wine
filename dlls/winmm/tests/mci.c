@@ -198,7 +198,7 @@ static void test_mciParser(HWND hwnd)
 
     buf[0]='z';
     err = mciSendStringA("", buf, sizeof(buf), NULL);
-    todo_wine ok(err==MCIERR_MISSING_COMMAND_STRING,"empty string: %s\n", dbg_mcierr(err));
+    ok(err==MCIERR_MISSING_COMMAND_STRING,"empty string: %s\n", dbg_mcierr(err));
     ok(!buf[0], "error buffer %s\n", buf);
 
     buf[0]='d';
@@ -364,6 +364,10 @@ static void test_mciParser(HWND hwnd)
     err = mciSendStringA("capability x device type", buf, sizeof(buf), hwnd);
     ok(!err,"capability device type: %s\n", dbg_mcierr(err));
     if(!err) ok(!strcmp(buf, "waveaudio"), "capability device type is %s\n", buf);
+
+    err = mciSendStringA("info a version", buf, sizeof(buf), hwnd);
+    ok(!err,"info version: %s\n", dbg_mcierr(err));
+    if(!err) ok(!strcmp(buf, "1.1"), "info version is %s\n", buf);
 
     err = mciSendCommandA(wDeviceID, MCI_CLOSE, 0, 0);
     ok(!err,"mciCommand close returned %s\n", dbg_mcierr(err));

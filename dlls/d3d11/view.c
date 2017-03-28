@@ -520,7 +520,24 @@ static HRESULT set_srv_desc_from_resource(D3D11_SHADER_RESOURCE_VIEW_DESC *desc,
             ID3D11Texture2D_Release(texture);
 
             desc->Format = texture_desc.Format;
-            if (texture_desc.ArraySize == 1)
+            if (texture_desc.MiscFlags & D3D11_RESOURCE_MISC_TEXTURECUBE)
+            {
+                if (texture_desc.ArraySize >= 12)
+                {
+                    desc->ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY;
+                    desc->u.TextureCubeArray.MostDetailedMip = 0;
+                    desc->u.TextureCubeArray.MipLevels = texture_desc.MipLevels;
+                    desc->u.TextureCubeArray.First2DArrayFace = 0;
+                    desc->u.TextureCubeArray.NumCubes = texture_desc.ArraySize / 6;
+                }
+                else
+                {
+                    desc->ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+                    desc->u.TextureCube.MostDetailedMip = 0;
+                    desc->u.TextureCube.MipLevels = texture_desc.MipLevels;
+                }
+            }
+            else if (texture_desc.ArraySize == 1)
             {
                 if (texture_desc.SampleDesc.Count == 1)
                 {
@@ -996,7 +1013,6 @@ static ULONG STDMETHODCALLTYPE d3d11_depthstencil_view_Release(ID3D11DepthStenci
     {
         wined3d_mutex_lock();
         wined3d_rendertarget_view_decref(view->wined3d_view);
-        ID3D11Resource_Release(view->resource);
         ID3D11Device_Release(view->device);
         wined3d_private_store_cleanup(&view->private_store);
         wined3d_mutex_unlock();
@@ -1209,7 +1225,7 @@ static const struct ID3D10DepthStencilViewVtbl d3d10_depthstencil_view_vtbl =
     d3d10_depthstencil_view_GetDesc,
 };
 
-static void wined3d_depth_stencil_view_desc_from_d3d11(struct wined3d_rendertarget_view_desc *wined3d_desc,
+static void wined3d_depth_stencil_view_desc_from_d3d11(struct wined3d_view_desc *wined3d_desc,
         const D3D11_DEPTH_STENCIL_VIEW_DESC *desc)
 {
     wined3d_desc->format_id = wined3dformat_from_dxgi_format(desc->Format);
@@ -1217,6 +1233,8 @@ static void wined3d_depth_stencil_view_desc_from_d3d11(struct wined3d_rendertarg
     if (desc->Flags)
         FIXME("Unhandled depth stencil view flags %#x.\n", desc->Flags);
 
+    wined3d_desc->flags = 0;
+    wined3d_desc->u.texture.level_count = 1;
     switch (desc->ViewDimension)
     {
         case D3D11_DSV_DIMENSION_TEXTURE1D:
@@ -1226,6 +1244,7 @@ static void wined3d_depth_stencil_view_desc_from_d3d11(struct wined3d_rendertarg
             break;
 
         case D3D11_DSV_DIMENSION_TEXTURE1DARRAY:
+            wined3d_desc->flags = WINED3D_VIEW_TEXTURE_ARRAY;
             wined3d_desc->u.texture.level_idx = desc->u.Texture1DArray.MipSlice;
             wined3d_desc->u.texture.layer_idx = desc->u.Texture1DArray.FirstArraySlice;
             wined3d_desc->u.texture.layer_count = desc->u.Texture1DArray.ArraySize;
@@ -1238,6 +1257,7 @@ static void wined3d_depth_stencil_view_desc_from_d3d11(struct wined3d_rendertarg
             break;
 
         case D3D11_DSV_DIMENSION_TEXTURE2DARRAY:
+            wined3d_desc->flags = WINED3D_VIEW_TEXTURE_ARRAY;
             wined3d_desc->u.texture.level_idx = desc->u.Texture2DArray.MipSlice;
             wined3d_desc->u.texture.layer_idx = desc->u.Texture2DArray.FirstArraySlice;
             wined3d_desc->u.texture.layer_count = desc->u.Texture2DArray.ArraySize;
@@ -1250,6 +1270,7 @@ static void wined3d_depth_stencil_view_desc_from_d3d11(struct wined3d_rendertarg
             break;
 
         case D3D11_DSV_DIMENSION_TEXTURE2DMSARRAY:
+            wined3d_desc->flags = WINED3D_VIEW_TEXTURE_ARRAY;
             wined3d_desc->u.texture.level_idx = 0;
             wined3d_desc->u.texture.layer_idx = desc->u.Texture2DMSArray.FirstArraySlice;
             wined3d_desc->u.texture.layer_count = desc->u.Texture2DMSArray.ArraySize;
@@ -1267,8 +1288,8 @@ static void wined3d_depth_stencil_view_desc_from_d3d11(struct wined3d_rendertarg
 static HRESULT d3d_depthstencil_view_init(struct d3d_depthstencil_view *view, struct d3d_device *device,
         ID3D11Resource *resource, const D3D11_DEPTH_STENCIL_VIEW_DESC *desc)
 {
-    struct wined3d_rendertarget_view_desc wined3d_desc;
     struct wined3d_resource *wined3d_resource;
+    struct wined3d_view_desc wined3d_desc;
     HRESULT hr;
 
     view->ID3D11DepthStencilView_iface.lpVtbl = &d3d11_depthstencil_view_vtbl;
@@ -1307,7 +1328,6 @@ static HRESULT d3d_depthstencil_view_init(struct d3d_depthstencil_view *view, st
     wined3d_private_store_init(&view->private_store);
     wined3d_mutex_unlock();
     view->resource = resource;
-    ID3D11Resource_AddRef(resource);
     view->device = &device->ID3D11Device_iface;
     ID3D11Device_AddRef(view->device);
 
@@ -1414,7 +1434,6 @@ static ULONG STDMETHODCALLTYPE d3d11_rendertarget_view_Release(ID3D11RenderTarge
     {
         wined3d_mutex_lock();
         wined3d_rendertarget_view_decref(view->wined3d_view);
-        ID3D11Resource_Release(view->resource);
         ID3D11Device_Release(view->device);
         wined3d_private_store_cleanup(&view->private_store);
         wined3d_mutex_unlock();
@@ -1624,11 +1643,13 @@ static const struct ID3D10RenderTargetViewVtbl d3d10_rendertarget_view_vtbl =
     d3d10_rendertarget_view_GetDesc,
 };
 
-static void wined3d_rendertarget_view_desc_from_d3d11(struct wined3d_rendertarget_view_desc *wined3d_desc,
+static void wined3d_rendertarget_view_desc_from_d3d11(struct wined3d_view_desc *wined3d_desc,
         const D3D11_RENDER_TARGET_VIEW_DESC *desc)
 {
     wined3d_desc->format_id = wined3dformat_from_dxgi_format(desc->Format);
 
+    wined3d_desc->flags = 0;
+    wined3d_desc->u.texture.level_count = 1;
     switch (desc->ViewDimension)
     {
         case D3D11_RTV_DIMENSION_BUFFER:
@@ -1643,6 +1664,7 @@ static void wined3d_rendertarget_view_desc_from_d3d11(struct wined3d_rendertarge
             break;
 
         case D3D11_RTV_DIMENSION_TEXTURE1DARRAY:
+            wined3d_desc->flags = WINED3D_VIEW_TEXTURE_ARRAY;
             wined3d_desc->u.texture.level_idx = desc->u.Texture1DArray.MipSlice;
             wined3d_desc->u.texture.layer_idx = desc->u.Texture1DArray.FirstArraySlice;
             wined3d_desc->u.texture.layer_count = desc->u.Texture1DArray.ArraySize;
@@ -1655,6 +1677,7 @@ static void wined3d_rendertarget_view_desc_from_d3d11(struct wined3d_rendertarge
             break;
 
         case D3D11_RTV_DIMENSION_TEXTURE2DARRAY:
+            wined3d_desc->flags = WINED3D_VIEW_TEXTURE_ARRAY;
             wined3d_desc->u.texture.level_idx = desc->u.Texture2DArray.MipSlice;
             wined3d_desc->u.texture.layer_idx = desc->u.Texture2DArray.FirstArraySlice;
             wined3d_desc->u.texture.layer_count = desc->u.Texture2DArray.ArraySize;
@@ -1667,6 +1690,7 @@ static void wined3d_rendertarget_view_desc_from_d3d11(struct wined3d_rendertarge
             break;
 
         case D3D11_RTV_DIMENSION_TEXTURE2DMSARRAY:
+            wined3d_desc->flags = WINED3D_VIEW_TEXTURE_ARRAY;
             wined3d_desc->u.texture.level_idx = 0;
             wined3d_desc->u.texture.layer_idx = desc->u.Texture2DMSArray.FirstArraySlice;
             wined3d_desc->u.texture.layer_count = desc->u.Texture2DMSArray.ArraySize;
@@ -1690,8 +1714,8 @@ static void wined3d_rendertarget_view_desc_from_d3d11(struct wined3d_rendertarge
 static HRESULT d3d_rendertarget_view_init(struct d3d_rendertarget_view *view, struct d3d_device *device,
         ID3D11Resource *resource, const D3D11_RENDER_TARGET_VIEW_DESC *desc)
 {
-    struct wined3d_rendertarget_view_desc wined3d_desc;
     struct wined3d_resource *wined3d_resource;
+    struct wined3d_view_desc wined3d_desc;
     HRESULT hr;
 
     view->ID3D11RenderTargetView_iface.lpVtbl = &d3d11_rendertarget_view_vtbl;
@@ -1730,7 +1754,6 @@ static HRESULT d3d_rendertarget_view_init(struct d3d_rendertarget_view *view, st
     wined3d_private_store_init(&view->private_store);
     wined3d_mutex_unlock();
     view->resource = resource;
-    ID3D11Resource_AddRef(resource);
     view->device = &device->ID3D11Device_iface;
     ID3D11Device_AddRef(view->device);
 
@@ -1838,7 +1861,6 @@ static ULONG STDMETHODCALLTYPE d3d11_shader_resource_view_Release(ID3D11ShaderRe
     {
         wined3d_mutex_lock();
         wined3d_shader_resource_view_decref(view->wined3d_view);
-        ID3D11Resource_Release(view->resource);
         ID3D11Device_Release(view->device);
         wined3d_private_store_cleanup(&view->private_store);
         wined3d_mutex_unlock();
@@ -2071,7 +2093,7 @@ static unsigned int wined3d_view_flags_from_d3d11_bufferex_flags(unsigned int d3
     return wined3d_flags;
 }
 
-static HRESULT wined3d_shader_resource_view_desc_from_d3d11(struct wined3d_shader_resource_view_desc *wined3d_desc,
+static HRESULT wined3d_shader_resource_view_desc_from_d3d11(struct wined3d_view_desc *wined3d_desc,
         const D3D11_SHADER_RESOURCE_VIEW_DESC *desc)
 {
     wined3d_desc->format_id = wined3dformat_from_dxgi_format(desc->Format);
@@ -2169,8 +2191,8 @@ static HRESULT wined3d_shader_resource_view_desc_from_d3d11(struct wined3d_shade
 static HRESULT d3d_shader_resource_view_init(struct d3d_shader_resource_view *view, struct d3d_device *device,
         ID3D11Resource *resource, const D3D11_SHADER_RESOURCE_VIEW_DESC *desc)
 {
-    struct wined3d_shader_resource_view_desc wined3d_desc;
     struct wined3d_resource *wined3d_resource;
+    struct wined3d_view_desc wined3d_desc;
     HRESULT hr;
 
     view->ID3D11ShaderResourceView_iface.lpVtbl = &d3d11_shader_resource_view_vtbl;
@@ -2211,7 +2233,6 @@ static HRESULT d3d_shader_resource_view_init(struct d3d_shader_resource_view *vi
     wined3d_private_store_init(&view->private_store);
     wined3d_mutex_unlock();
     view->resource = resource;
-    ID3D11Resource_AddRef(resource);
     view->device = &device->ID3D11Device_iface;
     ID3D11Device_AddRef(view->device);
 
@@ -2304,7 +2325,6 @@ static ULONG STDMETHODCALLTYPE d3d11_unordered_access_view_Release(ID3D11Unorder
     {
         wined3d_mutex_lock();
         wined3d_unordered_access_view_decref(view->wined3d_view);
-        ID3D11Resource_Release(view->resource);
         ID3D11Device_Release(view->device);
         wined3d_private_store_cleanup(&view->private_store);
         wined3d_mutex_unlock();
@@ -2402,12 +2422,13 @@ static unsigned int wined3d_view_flags_from_d3d11_buffer_uav_flags(unsigned int 
     return wined3d_flags;
 }
 
-static HRESULT wined3d_unordered_access_view_desc_from_d3d11(struct wined3d_unordered_access_view_desc *wined3d_desc,
+static HRESULT wined3d_unordered_access_view_desc_from_d3d11(struct wined3d_view_desc *wined3d_desc,
         const D3D11_UNORDERED_ACCESS_VIEW_DESC *desc)
 {
     wined3d_desc->format_id = wined3dformat_from_dxgi_format(desc->Format);
-    wined3d_desc->flags = 0;
 
+    wined3d_desc->flags = 0;
+    wined3d_desc->u.texture.level_count = 1;
     switch (desc->ViewDimension)
     {
         case D3D11_UAV_DIMENSION_BUFFER:
@@ -2459,8 +2480,8 @@ static HRESULT wined3d_unordered_access_view_desc_from_d3d11(struct wined3d_unor
 static HRESULT d3d11_unordered_access_view_init(struct d3d11_unordered_access_view *view,
         struct d3d_device *device, ID3D11Resource *resource, const D3D11_UNORDERED_ACCESS_VIEW_DESC *desc)
 {
-    struct wined3d_unordered_access_view_desc wined3d_desc;
     struct wined3d_resource *wined3d_resource;
+    struct wined3d_view_desc wined3d_desc;
     HRESULT hr;
 
     view->ID3D11UnorderedAccessView_iface.lpVtbl = &d3d11_unordered_access_view_vtbl;
@@ -2499,7 +2520,7 @@ static HRESULT d3d11_unordered_access_view_init(struct d3d11_unordered_access_vi
 
     wined3d_private_store_init(&view->private_store);
     wined3d_mutex_unlock();
-    ID3D11Resource_AddRef(view->resource = resource);
+    view->resource = resource;
     ID3D11Device_AddRef(view->device = &device->ID3D11Device_iface);
 
     return S_OK;
@@ -2525,4 +2546,13 @@ HRESULT d3d11_unordered_access_view_create(struct d3d_device *device, ID3D11Reso
     *view = object;
 
     return S_OK;
+}
+
+struct d3d11_unordered_access_view *unsafe_impl_from_ID3D11UnorderedAccessView(ID3D11UnorderedAccessView *iface)
+{
+    if (!iface)
+        return NULL;
+    assert(iface->lpVtbl == &d3d11_unordered_access_view_vtbl);
+
+    return impl_from_ID3D11UnorderedAccessView(iface);
 }

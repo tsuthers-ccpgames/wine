@@ -339,6 +339,41 @@ static void test_WsSetOutputToBuffer(void)
     WsFreeHeap( heap );
 }
 
+static char strbuf[512];
+static const char *debugstr_bytes( const BYTE *bytes, ULONG len )
+{
+    const BYTE *src = bytes;
+    char *dst = strbuf;
+
+    while (len)
+    {
+        BYTE c = *src++;
+        if (dst - strbuf > sizeof(strbuf) - 7) break;
+        switch (c)
+        {
+        case '\n': *dst++ = '\\'; *dst++ = 'n'; break;
+        case '\r': *dst++ = '\\'; *dst++ = 'r'; break;
+        case '\t': *dst++ = '\\'; *dst++ = 't'; break;
+        default:
+            if (c >= ' ' && c < 127) *dst++ = c;
+            else
+            {
+                sprintf( dst, "\\%02x", c );
+                dst += 3;
+            }
+        }
+        len--;
+    }
+    if (len)
+    {
+        *dst++ = '.';
+        *dst++ = '.';
+        *dst++ = '.';
+    }
+    *dst = 0;
+    return strbuf;
+}
+
 static void check_output( WS_XML_WRITER *writer, const char *expected, unsigned int line )
 {
     WS_BYTES bytes;
@@ -351,7 +386,8 @@ static void check_output( WS_XML_WRITER *writer, const char *expected, unsigned 
     ok( hr == S_OK, "%u: got %08x\n", line, hr );
     ok( bytes.length == len, "%u: got %u expected %u\n", line, bytes.length, len );
     if (bytes.length != len) return;
-    ok( !memcmp( bytes.bytes, expected, len ), "%u: got %s expected %s\n", line, bytes.bytes, expected );
+    ok( !memcmp( bytes.bytes, expected, len ),
+        "%u: got %s expected %s\n", line, debugstr_bytes(bytes.bytes, bytes.length), expected );
 }
 
 static void test_WsWriteStartElement(void)
@@ -2029,9 +2065,28 @@ static void test_text_types(void)
     WsFreeWriter( writer );
 }
 
+static BOOL get_fpword( unsigned short *ret )
+{
+#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
+    unsigned short fpword;
+    __asm__ __volatile__( "fstcw %0" : "=m" (fpword) );
+    *ret = fpword;
+    return TRUE;
+#endif
+    return FALSE;
+}
+
+static void set_fpword( unsigned short fpword )
+{
+#if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
+    __asm__ __volatile__( "fldcw %0" : : "m" (fpword) );
+#endif
+}
+
 static void test_double(void)
 {
     WS_XML_STRING localname = {1, (BYTE *)"t"}, ns = {0, NULL};
+    unsigned short fpword;
     static const struct
     {
         double      val;
@@ -2118,6 +2173,34 @@ static void test_double(void)
     hr = WsWriteEndElement( writer, NULL );
     ok( hr == S_OK, "got %08x\n", hr );
     check_output( writer, "<t>-INF</t>", __LINE__ );
+
+    if (!get_fpword( &fpword ))
+    {
+        skip( "can't get floating point control word\n" );
+        WsFreeWriter( writer );
+        return;
+    }
+    ok( fpword == 0x27f, "got %04x\n", fpword );
+    set_fpword( 0x1f7f );
+    get_fpword( &fpword );
+    ok( fpword == 0x1f7f, "got %04x\n", fpword );
+
+    hr = set_output( writer );
+    ok( hr == S_OK, "got %08x\n", hr );
+    hr = WsWriteStartElement( writer, NULL, &localname, &ns, NULL );
+    ok( hr == S_OK, "got %08x\n", hr );
+
+    text.value = 100000000000000;
+    hr = WsWriteText( writer, &text.text, NULL );
+    ok( hr == S_OK, "got %08x\n", hr );
+
+    hr = WsWriteEndElement( writer, NULL );
+    ok( hr == S_OK, "got %08x\n", hr );
+    check_output( writer, "<t>100000000000000</t>", __LINE__ );
+
+    get_fpword( &fpword );
+    ok( fpword == 0x1f7f, "got %04x\n", fpword );
+    set_fpword( 0x27f );
 
     WsFreeWriter( writer );
 }
@@ -2633,6 +2716,10 @@ static void test_datetime(void)
         { 0x701ce51ced5d800, WS_DATETIME_FORMAT_LOCAL, S_OK, "<t>1601-01-01T07:00:00+00:00</t>",
           "<t>1601-01-01T01:00:00-06:00</t>" /* win7 */ },
         { 0, WS_DATETIME_FORMAT_NONE + 1, WS_E_INVALID_FORMAT },
+        { 0x38a080649c000, WS_DATETIME_FORMAT_UTC, S_OK, "<t>0004-02-28T00:00:00Z</t>" },
+        { 0x38ad130b38000, WS_DATETIME_FORMAT_UTC, S_OK, "<t>0004-02-29T00:00:00Z</t>" },
+        { 0x8c1505f0e438000, WS_DATETIME_FORMAT_UTC, S_OK, "<t>2000-02-29T00:00:00Z</t>" },
+        { 0x8d46035e7870000, WS_DATETIME_FORMAT_UTC, S_OK, "<t>2017-03-01T00:00:00Z</t>" },
     };
     HRESULT hr;
     WS_XML_WRITER *writer;

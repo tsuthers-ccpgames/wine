@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2016-11-10 09:53+0300\n"
+"PO-Revision-Date: 2017-02-20 15:18+0300\n"
 "Last-Translator: Nikolay Sivov <nsivov@codeweavers.com>\n"
 "Language-Team: Russian\n"
 "Language: ru\n"
@@ -57,20 +57,21 @@ msgstr "&Удалить"
 msgid "Support Information"
 msgstr "Сведения о поддержке"
 
-#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:55 comdlg32.rc:232 comdlg32.rc:262
-#: comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398 comdlg32.rc:452 credui.rc:52
-#: cryptui.rc:263 cryptui.rc:275 cryptui.rc:365 dinput.rc:46 ieframe.rc:96
-#: localui.rc:44 localui.rc:57 mpr.rc:49 msacm32.rc:53 mshtml.rc:47
-#: mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62 oledlg.rc:94 serialui.rc:41
-#: setupapi.rc:59 shell32.rc:276 shell32.rc:300 shell32.rc:322 shell32.rc:341
-#: shlwapi.rc:44 user32.rc:83 user32.rc:98 wininet.rc:51 wininet.rc:71
-#: winspool.rc:42 net.rc:47 notepad.rc:117 oleview.rc:162 oleview.rc:175
-#: progman.rc:106 progman.rc:124 progman.rc:142 progman.rc:158 progman.rc:180
-#: progman.rc:199 progman.rc:216 regedit.rc:247 regedit.rc:258 regedit.rc:271
-#: regedit.rc:287 regedit.rc:300 regedit.rc:313 taskmgr.rc:442 taskmgr.rc:517
-#: winecfg.rc:214 winecfg.rc:224 wineconsole.rc:135 winefile.rc:128
-#: winefile.rc:151 winefile.rc:181 winemine.rc:71 winemine.rc:81 winemine.rc:95
-#: wordpad.rc:215 wordpad.rc:226 wordpad.rc:244 wordpad.rc:257
+#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:65 comctl32.rc:55 comdlg32.rc:232
+#: comdlg32.rc:262 comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398
+#: comdlg32.rc:452 credui.rc:52 cryptui.rc:263 cryptui.rc:275 cryptui.rc:365
+#: dinput.rc:46 ieframe.rc:96 localui.rc:44 localui.rc:57 mpr.rc:49
+#: msacm32.rc:53 mshtml.rc:47 mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62
+#: oledlg.rc:94 serialui.rc:41 setupapi.rc:59 shell32.rc:276 shell32.rc:300
+#: shell32.rc:322 shell32.rc:341 shlwapi.rc:44 user32.rc:83 user32.rc:98
+#: wininet.rc:51 wininet.rc:71 winspool.rc:42 net.rc:47 notepad.rc:117
+#: oleview.rc:161 oleview.rc:174 progman.rc:106 progman.rc:124 progman.rc:142
+#: progman.rc:158 progman.rc:180 progman.rc:199 progman.rc:216 regedit.rc:263
+#: regedit.rc:274 regedit.rc:287 regedit.rc:303 regedit.rc:316 regedit.rc:329
+#: taskmgr.rc:442 taskmgr.rc:517 winecfg.rc:214 winecfg.rc:224
+#: wineconsole.rc:135 winefile.rc:128 winefile.rc:151 winefile.rc:181
+#: winemine.rc:71 winemine.rc:81 winemine.rc:95 wordpad.rc:215 wordpad.rc:226
+#: wordpad.rc:244 wordpad.rc:257
 msgid "OK"
 msgstr "ОК"
 
@@ -138,23 +139,23 @@ msgstr ""
 msgid "&Install"
 msgstr "&Установить"
 
-#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:56
-#: comctl32.rc:71 comdlg32.rc:171 comdlg32.rc:193 comdlg32.rc:211
-#: comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306 comdlg32.rc:328
-#: comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399 comdlg32.rc:453
-#: comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264 cryptui.rc:276
-#: cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81 localui.rc:45
-#: localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48 mshtml.rc:58
-#: msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42 setupapi.rc:42
-#: setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312 shell32.rc:342
-#: shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52 wininet.rc:72
-#: winspool.rc:43 notepad.rc:118 oleview.rc:163 oleview.rc:176 progman.rc:107
-#: progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181 progman.rc:200
-#: progman.rc:217 regedit.rc:248 regedit.rc:259 regedit.rc:272 regedit.rc:288
-#: regedit.rc:301 regedit.rc:314 taskmgr.rc:443 taskmgr.rc:518 wineboot.rc:34
-#: winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136 winefile.rc:129
-#: winefile.rc:152 winefile.rc:182 winemine.rc:96 wordpad.rc:216 wordpad.rc:227
-#: wordpad.rc:245 wordpad.rc:258
+#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:66
+#: comctl32.rc:81 comctl32.rc:56 comdlg32.rc:171 comdlg32.rc:193
+#: comdlg32.rc:211 comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306
+#: comdlg32.rc:328 comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399
+#: comdlg32.rc:453 comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264
+#: cryptui.rc:276 cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81
+#: localui.rc:45 localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48
+#: mshtml.rc:58 msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42
+#: setupapi.rc:42 setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312
+#: shell32.rc:342 shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52
+#: wininet.rc:72 winspool.rc:43 notepad.rc:118 oleview.rc:162 oleview.rc:175
+#: progman.rc:107 progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181
+#: progman.rc:200 progman.rc:217 regedit.rc:264 regedit.rc:275 regedit.rc:288
+#: regedit.rc:304 regedit.rc:317 regedit.rc:330 taskmgr.rc:443 taskmgr.rc:518
+#: wineboot.rc:34 winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136
+#: winefile.rc:129 winefile.rc:152 winefile.rc:182 winemine.rc:96
+#: wordpad.rc:216 wordpad.rc:227 wordpad.rc:245 wordpad.rc:258
 msgid "Cancel"
 msgstr "Отмена"
 
@@ -226,7 +227,7 @@ msgid "Programs (*.exe)"
 msgstr "Программы (*.exe)"
 
 #: appwiz.rc:43 avifil32.rc:33 cryptui.rc:83 shell32.rc:199 notepad.rc:76
-#: oleview.rc:104 progman.rc:82 regedit.rc:198 winedbg.rc:42 winhlp32.rc:90
+#: oleview.rc:103 progman.rc:82 regedit.rc:200 winedbg.rc:42 winhlp32.rc:90
 msgid "All files (*.*)"
 msgstr "Все файлы (*.*)"
 
@@ -306,48 +307,48 @@ msgstr "без сжатия"
 msgid "Canceling..."
 msgstr "Отмена..."
 
-#: comctl32.rc:52 winefile.rc:157
+#: comctl32.rc:62 winefile.rc:157
 msgid "Properties for %s"
 msgstr "Свойства %s"
 
-#: comctl32.rc:57 comdlg32.rc:264
+#: comctl32.rc:67 comdlg32.rc:264
 msgid "&Apply"
 msgstr "При&менить"
 
-#: comctl32.rc:58 comctl32.rc:72 comdlg32.rc:307 user32.rc:88
+#: comctl32.rc:68 comctl32.rc:82 comdlg32.rc:307 user32.rc:88
 msgid "Help"
 msgstr "&Справка"
 
-#: comctl32.rc:65
+#: comctl32.rc:75
 msgid "Wizard"
 msgstr "Мастер"
 
-#: comctl32.rc:68
+#: comctl32.rc:78
 msgid "< &Back"
 msgstr "< &Назад"
 
-#: comctl32.rc:69
+#: comctl32.rc:79
 msgid "&Next >"
 msgstr "&Далее >"
 
-#: comctl32.rc:70
+#: comctl32.rc:80
 msgid "Finish"
 msgstr "Готово"
 
-#: comctl32.rc:81
+#: comctl32.rc:91
 msgid "Customize Toolbar"
 msgstr "Настройка панели инструментов"
 
-#: comctl32.rc:84 cryptui.rc:351 ieframe.rc:43 oleview.rc:83 oleview.rc:188
-#: oleview.rc:201 oleview.rc:213 taskmgr.rc:139
+#: comctl32.rc:94 comctl32.rc:57 cryptui.rc:351 ieframe.rc:43 oleview.rc:83
+#: oleview.rc:187 oleview.rc:200 oleview.rc:212 taskmgr.rc:139
 msgid "&Close"
 msgstr "&Закрыть"
 
-#: comctl32.rc:85
+#: comctl32.rc:95
 msgid "R&eset"
 msgstr "С&бросить"
 
-#: comctl32.rc:86 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
+#: comctl32.rc:96 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
 #: comdlg32.rc:329 comdlg32.rc:349 comdlg32.rc:361 comdlg32.rc:479
 #: comdlg32.rc:502 ieframe.rc:58 msacm32.rc:52 oledlg.rc:96 shell32.rc:128
 #: clock.rc:44 notepad.rc:60 notepad.rc:119 oleview.rc:72 progman.rc:55
@@ -357,27 +358,27 @@ msgstr "С&бросить"
 msgid "&Help"
 msgstr "&Справка"
 
-#: comctl32.rc:87
+#: comctl32.rc:97
 msgid "Move &Up"
 msgstr "Переместить вв&ерх"
 
-#: comctl32.rc:88
+#: comctl32.rc:98
 msgid "Move &Down"
 msgstr "Переместить &вниз"
 
-#: comctl32.rc:89
+#: comctl32.rc:99
 msgid "A&vailable buttons:"
 msgstr "Доступные &кнопки:"
 
-#: comctl32.rc:91
+#: comctl32.rc:101
 msgid "&Add ->"
 msgstr "&Добавить ->"
 
-#: comctl32.rc:92
+#: comctl32.rc:102
 msgid "<- &Remove"
 msgstr "<- &Удалить"
 
-#: comctl32.rc:93
+#: comctl32.rc:103
 msgid "&Toolbar buttons:"
 msgstr "Кнопки &панели инструментов:"
 
@@ -390,7 +391,19 @@ msgctxt "hotkey"
 msgid "None"
 msgstr "Нет"
 
-#: comctl32.rc:31 cryptui.rc:230 regedit.rc:237 taskmgr.rc:434 winedbg.rc:60
+#: comctl32.rc:52 shell32.rc:309 shlwapi.rc:46 user32.rc:79
+msgid "&Yes"
+msgstr "&Да"
+
+#: comctl32.rc:53 shell32.rc:311 shlwapi.rc:47 user32.rc:80
+msgid "&No"
+msgstr "&Нет"
+
+#: comctl32.rc:54 user32.rc:82
+msgid "&Retry"
+msgstr "По&втор"
+
+#: comctl32.rc:31 cryptui.rc:230 regedit.rc:253 taskmgr.rc:434 winedbg.rc:60
 #: winedbg.rc:75 wordpad.rc:180
 msgid "Close"
 msgstr "Закрыть"
@@ -404,7 +417,7 @@ msgid "Go to today"
 msgstr "Текущая дата"
 
 #: comdlg32.rc:157 comdlg32.rc:170 comdlg32.rc:459 comdlg32.rc:485
-#: shell32.rc:167 oleview.rc:102
+#: shell32.rc:167 oleview.rc:101
 msgid "Open"
 msgstr "Открыть"
 
@@ -449,7 +462,7 @@ msgstr "Принтер:"
 msgid "Print range"
 msgstr "Печатать"
 
-#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:219
+#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:235
 msgid "&All"
 msgstr "&Все"
 
@@ -619,7 +632,7 @@ msgstr "&Добавить в набор"
 msgid "&Define Custom Colors >>"
 msgstr "&Определить цвет >>"
 
-#: comdlg32.rc:316 regedit.rc:226 regedit.rc:236
+#: comdlg32.rc:316 regedit.rc:242 regedit.rc:252
 msgid "Find"
 msgstr "Поиск"
 
@@ -3060,7 +3073,7 @@ msgstr "Символьный"
 msgid "OEM/DOS"
 msgstr "OEM/DOS"
 
-#: gdi32.rc:45 wldap32.rc:110
+#: gdi32.rc:45 wldap32.rc:112
 msgid "Other"
 msgstr "Другой"
 
@@ -3692,6 +3705,14 @@ msgstr "Длиной массива должно быть конечное по�
 #: jscript.rc:68
 msgid "Array object expected"
 msgstr "Ожидается объект типа «Array»"
+
+#: ../../include/wine/wine_common_ver.rc:129
+msgid "Wine kernel DLL"
+msgstr ""
+
+#: ../../include/wine/wine_common_ver.rc:134 winemac.rc:32 wineboot.rc:42
+msgid "Wine"
+msgstr "Wine"
 
 #: winerror.mc:26
 msgid "Success.\n"
@@ -7344,11 +7365,11 @@ msgctxt "object state"
 msgid "has popup"
 msgstr "есть всплывающая подсказка"
 
-#: oleaut32.rc:30 oleview.rc:147
+#: oleaut32.rc:30 oleview.rc:146
 msgid "True"
 msgstr "Правда"
 
-#: oleaut32.rc:31 oleview.rc:148
+#: oleaut32.rc:31 oleview.rc:147
 msgid "False"
 msgstr "Ложь"
 
@@ -8015,17 +8036,9 @@ msgstr "Создать &новую папку"
 msgid "Message"
 msgstr "Сообщение"
 
-#: shell32.rc:309 shlwapi.rc:46 user32.rc:79
-msgid "&Yes"
-msgstr "&Да"
-
 #: shell32.rc:310
 msgid "Yes to &all"
 msgstr "Да для &всех"
-
-#: shell32.rc:311 shlwapi.rc:47 user32.rc:80
-msgid "&No"
-msgstr "&Нет"
 
 #: shell32.rc:319
 msgid "About %s"
@@ -8109,7 +8122,7 @@ msgctxt "display name"
 msgid "Desktop"
 msgstr "Рабочий стол"
 
-#: shell32.rc:157 regedit.rc:203
+#: shell32.rc:157 regedit.rc:205
 msgid "My Computer"
 msgstr "Мой компьютер"
 
@@ -8364,8 +8377,8 @@ msgid "Wine Control Panel"
 msgstr "Панель Управления Wine"
 
 #: shell32.rc:195
-msgid "Unable to display Run File dialog box (internal error)"
-msgstr "Невозможно отобразить диалог Запуск файла (внутренняя ошибка)"
+msgid "Unable to display Run dialog box (internal error)"
+msgstr "Не удалось отобразить диалог запуска программ (внутренняя ошибка)"
 
 #: shell32.rc:196
 msgid "Unable to display Browse dialog box (internal error)"
@@ -8556,10 +8569,6 @@ msgstr "С&ледующее\tCtrl+F6"
 msgid "&Abort"
 msgstr "&Отменить"
 
-#: user32.rc:82
-msgid "&Retry"
-msgstr "По&втор"
-
 #: user32.rc:85
 msgid "&Ignore"
 msgstr "&Пропустить"
@@ -8579,10 +8588,6 @@ msgstr "Выбор окна"
 #: user32.rc:72
 msgid "&More Windows..."
 msgstr "&Ещё окна..."
-
-#: winemac.rc:32 wineboot.rc:42
-msgid "Wine"
-msgstr "Wine"
 
 #: winemac.rc:33
 msgid "Hide %@"
@@ -9295,239 +9300,243 @@ msgstr "Такой файл уже существует. Нажмите OK чт�
 msgid "Unable to create the output file."
 msgstr "Невозможно создать выходной файл."
 
-#: wldap32.rc:30
+#: wldap32.rc:32
 msgid "Success"
 msgstr "Успех"
 
-#: wldap32.rc:31
+#: wldap32.rc:33
 msgid "Operations Error"
 msgstr "Ошибка операции"
 
-#: wldap32.rc:32
+#: wldap32.rc:34
 msgid "Protocol Error"
 msgstr "Ошибка протокола"
 
-#: wldap32.rc:33
+#: wldap32.rc:35
 msgid "Time Limit Exceeded"
 msgstr "Превышено ограничение по времени"
 
-#: wldap32.rc:34
+#: wldap32.rc:36
 msgid "Size Limit Exceeded"
 msgstr "Превышено ограничение по размеру"
 
-#: wldap32.rc:35
+#: wldap32.rc:37
 msgid "Compare False"
 msgstr "Сравнение неверно"
 
-#: wldap32.rc:36
+#: wldap32.rc:38
 msgid "Compare True"
 msgstr "Сравнение верно"
 
-#: wldap32.rc:37
+#: wldap32.rc:39
 msgid "Authentication Method Not Supported"
 msgstr "Метод авторизации не поддерживается"
 
-#: wldap32.rc:38
+#: wldap32.rc:40
 msgid "Strong Authentication Required"
 msgstr "Требуется строгая авторизация"
 
-#: wldap32.rc:39
+#: wldap32.rc:41
 msgid "Referral (v2)"
 msgstr "Ссылка (v2)"
 
-#: wldap32.rc:40
+#: wldap32.rc:42
 msgid "Referral"
 msgstr "Ссылка"
 
-#: wldap32.rc:41
+#: wldap32.rc:43
 msgid "Administration Limit Exceeded"
 msgstr "Превышено ограничение администрирования"
 
-#: wldap32.rc:42
+#: wldap32.rc:44
 msgid "Unavailable Critical Extension"
 msgstr "Критическое расширение недоступно"
 
-#: wldap32.rc:43
+#: wldap32.rc:45
 msgid "Confidentiality Required"
 msgstr "Требуется конфиденциальность"
 
 #: wldap32.rc:46
+msgid "SASL Bind in Progress"
+msgstr "Выполняется привязка с помощью SASL"
+
+#: wldap32.rc:48
 msgid "No Such Attribute"
 msgstr "Нет такого атрибута"
 
-#: wldap32.rc:47
+#: wldap32.rc:49
 msgid "Undefined Type"
 msgstr "Неопределённый тип"
 
-#: wldap32.rc:48
+#: wldap32.rc:50
 msgid "Inappropriate Matching"
 msgstr "Неподходящее соответствие"
 
-#: wldap32.rc:49
+#: wldap32.rc:51
 msgid "Constraint Violation"
 msgstr "Нарушение ограничения"
 
-#: wldap32.rc:50
+#: wldap32.rc:52
 msgid "Attribute Or Value Exists"
 msgstr "Атрибут или значение существует"
 
-#: wldap32.rc:51
+#: wldap32.rc:53
 msgid "Invalid Syntax"
 msgstr "Неверный синтаксис"
 
-#: wldap32.rc:62
+#: wldap32.rc:64
 msgid "No Such Object"
 msgstr "Нет такого объекта"
 
-#: wldap32.rc:63
+#: wldap32.rc:65
 msgid "Alias Problem"
 msgstr "Проблема с псевдонимом"
 
-#: wldap32.rc:64
+#: wldap32.rc:66
 msgid "Invalid DN Syntax"
 msgstr "Неверный DN синтаксис"
 
-#: wldap32.rc:65
+#: wldap32.rc:67
 msgid "Is Leaf"
 msgstr "Это лист дерева"
 
-#: wldap32.rc:66
+#: wldap32.rc:68
 msgid "Alias Dereference Problem"
 msgstr "Проблема обращения по псевдониму"
 
-#: wldap32.rc:78
+#: wldap32.rc:80
 msgid "Inappropriate Authentication"
 msgstr "Неподходящая авторизация"
 
-#: wldap32.rc:79
+#: wldap32.rc:81
 msgid "Invalid Credentials"
 msgstr "Неверное удостоверение личности"
 
-#: wldap32.rc:80
+#: wldap32.rc:82
 msgid "Insufficient Rights"
 msgstr "Недостаточно прав"
 
-#: wldap32.rc:81
+#: wldap32.rc:83
 msgid "Busy"
 msgstr "Занято"
 
-#: wldap32.rc:82
+#: wldap32.rc:84
 msgid "Unavailable"
 msgstr "Недоступно"
 
-#: wldap32.rc:83
+#: wldap32.rc:85
 msgid "Unwilling To Perform"
 msgstr "Не желает выполнить"
 
-#: wldap32.rc:84
+#: wldap32.rc:86
 msgid "Loop Detected"
 msgstr "Обнаружено зацикливание"
 
-#: wldap32.rc:90
+#: wldap32.rc:92
 msgid "Sort Control Missing"
 msgstr "Отсутствует управление сортировкой"
 
-#: wldap32.rc:91
+#: wldap32.rc:93
 msgid "Index range error"
 msgstr "Ошибка диапазона индекса"
 
-#: wldap32.rc:94
+#: wldap32.rc:96
 msgid "Naming Violation"
 msgstr "Нарушение правил наименования"
 
-#: wldap32.rc:95
+#: wldap32.rc:97
 msgid "Object Class Violation"
 msgstr "Нарушение класса объекта"
 
-#: wldap32.rc:96
+#: wldap32.rc:98
 msgid "Not allowed on Non-leaf"
 msgstr "Не разрешено не на листе дерева"
 
-#: wldap32.rc:97
+#: wldap32.rc:99
 msgid "Not allowed on RDN"
 msgstr "Не разрешено на RDN"
 
-#: wldap32.rc:98
+#: wldap32.rc:100
 msgid "Already Exists"
 msgstr "Уже существует"
 
-#: wldap32.rc:99
+#: wldap32.rc:101
 msgid "No Object Class Mods"
 msgstr "Нет режимов класса объекта"
 
-#: wldap32.rc:100
+#: wldap32.rc:102
 msgid "Results Too Large"
 msgstr "Результаты слишком велики"
 
-#: wldap32.rc:101
+#: wldap32.rc:103
 msgid "Affects Multiple DSAs"
 msgstr "Влияет на несколько DSA"
 
-#: wldap32.rc:111
+#: wldap32.rc:113
 msgid "Server Down"
 msgstr "Сервер недоступен"
 
-#: wldap32.rc:112
+#: wldap32.rc:114
 msgid "Local Error"
 msgstr "Локальная ошибка"
 
-#: wldap32.rc:113
+#: wldap32.rc:115
 msgid "Encoding Error"
 msgstr "Ошибка кодирования"
 
-#: wldap32.rc:114
+#: wldap32.rc:116
 msgid "Decoding Error"
 msgstr "Ошибка декодирования"
 
-#: wldap32.rc:115
+#: wldap32.rc:117
 msgid "Timeout"
 msgstr "Тайм-аут"
 
-#: wldap32.rc:116
+#: wldap32.rc:118
 msgid "Auth Unknown"
 msgstr "Неизвестная авторизация"
 
-#: wldap32.rc:117
+#: wldap32.rc:119
 msgid "Filter Error"
 msgstr "Ошибка фильтра"
 
-#: wldap32.rc:118
+#: wldap32.rc:120
 msgid "User Canceled"
 msgstr "Отменено пользователем"
 
-#: wldap32.rc:119
+#: wldap32.rc:121
 msgid "Parameter Error"
 msgstr "Ошибка параметра"
 
-#: wldap32.rc:120
+#: wldap32.rc:122
 msgid "No Memory"
 msgstr "Нет памяти"
 
-#: wldap32.rc:121
+#: wldap32.rc:123
 msgid "Can't connect to the LDAP server"
 msgstr "Невозможно подключиться к LDAP серверу"
 
-#: wldap32.rc:122
+#: wldap32.rc:124
 msgid "Operation not supported by this version of the LDAP protocol"
 msgstr "Операция не поддерживается этой версией протокола LDAP"
 
-#: wldap32.rc:123
+#: wldap32.rc:125
 msgid "Specified control was not found in message"
 msgstr "Указанный управляющий элемент не найден в сообщении"
 
-#: wldap32.rc:124
+#: wldap32.rc:126
 msgid "No result present in message"
 msgstr "Результата нет в сообщении"
 
-#: wldap32.rc:125
+#: wldap32.rc:127
 msgid "More results returned"
 msgstr "Ещё есть результаты"
 
-#: wldap32.rc:126
+#: wldap32.rc:128
 msgid "Loop while handling referrals"
 msgstr "Зацикливание при обработке ссылок"
 
-#: wldap32.rc:127
+#: wldap32.rc:129
 msgid "Referral hop limit exceeded"
 msgstr "Предел числа пересылки ссылок превышен"
 
@@ -10881,7 +10890,7 @@ msgctxt "accelerator Copy"
 msgid "C"
 msgstr "C"
 
-#: notepad.rc:134 regedit.rc:323 wordpad.rc:287
+#: notepad.rc:134 regedit.rc:339 wordpad.rc:287
 msgctxt "accelerator Find"
 msgid "F"
 msgstr "F"
@@ -10901,7 +10910,7 @@ msgctxt "accelerator Open"
 msgid "O"
 msgstr "O"
 
-#: notepad.rc:138 regedit.rc:324 wordpad.rc:300
+#: notepad.rc:138 regedit.rc:340 wordpad.rc:300
 msgctxt "accelerator Print"
 msgid "P"
 msgstr "P"
@@ -11090,31 +11099,31 @@ msgstr "&Сохранить как..."
 msgid "&Group by type kind"
 msgstr "&Группировать по типу"
 
-#: oleview.rc:157
+#: oleview.rc:156
 msgid "Connect to another machine"
 msgstr "Подключиться к другому компьютеру"
 
-#: oleview.rc:160
+#: oleview.rc:159
 msgid "&Machine name:"
 msgstr "&Имя компьютера:"
 
-#: oleview.rc:168
+#: oleview.rc:167
 msgid "System Configuration"
 msgstr "Конфигурация системы"
 
-#: oleview.rc:171
+#: oleview.rc:170
 msgid "System Settings"
 msgstr "Настройки системы"
 
-#: oleview.rc:172
+#: oleview.rc:171
 msgid "&Enable Distributed COM"
 msgstr "&Разрешить распределённый COM"
 
-#: oleview.rc:173
+#: oleview.rc:172
 msgid "Enable &Remote Connections (Win95 only)"
 msgstr "Разрешить &удалённые подключения (только Win95)"
 
-#: oleview.rc:174
+#: oleview.rc:173
 msgid ""
 "These settings change only registry values.\n"
 "They have no effect on Wine performance."
@@ -11122,35 +11131,35 @@ msgstr ""
 "Эти настройки изменяют только значения реестра и\n"
 "не оказывают влияния на производительность Wine."
 
-#: oleview.rc:181
+#: oleview.rc:180
 msgid "Default Interface Viewer"
 msgstr "Интерфейс по умолчанию"
 
-#: oleview.rc:184
+#: oleview.rc:183
 msgid "Interface"
 msgstr "Интерфейс"
 
-#: oleview.rc:186
+#: oleview.rc:185
 msgid "IID:"
 msgstr "IID:"
 
-#: oleview.rc:189
+#: oleview.rc:188
 msgid "&View Type Info"
 msgstr "&Информация о типе"
 
-#: oleview.rc:194
+#: oleview.rc:193
 msgid "IPersist Interface Viewer"
 msgstr "Интерфейс IPersist"
 
-#: oleview.rc:197 oleview.rc:209
+#: oleview.rc:196 oleview.rc:208
 msgid "Class Name:"
 msgstr "Имя класса:"
 
-#: oleview.rc:199 oleview.rc:211
+#: oleview.rc:198 oleview.rc:210
 msgid "CLSID:"
 msgstr "CLSID:"
 
-#: oleview.rc:206
+#: oleview.rc:205
 msgid "IPersistStream Interface Viewer"
 msgstr "Интерфейс IPersistStream"
 
@@ -11158,7 +11167,7 @@ msgstr "Интерфейс IPersistStream"
 msgid "OleView"
 msgstr "OleView"
 
-#: oleview.rc:101
+#: oleview.rc:100
 msgid "ITypeLib viewer"
 msgstr "Просмотр ITypeLib"
 
@@ -11166,173 +11175,169 @@ msgstr "Просмотр ITypeLib"
 msgid "OleView - OLE/COM Object Viewer"
 msgstr "OleView - просмотрщик объектов OLE/COM"
 
-#: oleview.rc:100
-msgid "version 1.0"
-msgstr "версия 1.0"
-
-#: oleview.rc:103
+#: oleview.rc:102
 msgid "TypeLib files (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 msgstr "Файлы TypeLib (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 
-#: oleview.rc:106
+#: oleview.rc:105
 msgid "Bind to file via a File Moniker"
 msgstr "Привязать к файлу через File Moniker"
 
-#: oleview.rc:107
+#: oleview.rc:106
 msgid "Open a TypeLib file and view the contents"
 msgstr "Открыть файл TypeLib и просмотреть содержимое"
 
-#: oleview.rc:108
+#: oleview.rc:107
 msgid "Change machine wide Distributed COM settings"
 msgstr "Изменить общесистемные настройки Distributed COM"
 
-#: oleview.rc:109
+#: oleview.rc:108
 msgid "Run the Wine registry editor"
 msgstr "Запустить Редактор реестра Wine"
 
-#: oleview.rc:110
+#: oleview.rc:109
 msgid "Quit the application. Prompts to save changes"
 msgstr "Выйти из приложения с предложением сохранить изменения"
 
-#: oleview.rc:111
+#: oleview.rc:110
 msgid "Create an instance of the selected object"
 msgstr "Создать экземпляр выбранного объекта"
 
-#: oleview.rc:112
+#: oleview.rc:111
 msgid "Create an instance of the selected object on a specific machine"
 msgstr "Создать экземпляр выбранного объекта на указанной машине"
 
-#: oleview.rc:113
+#: oleview.rc:112
 msgid "Release the currently selected object instance"
 msgstr "Удалить экземпляр выбранного объекта"
 
-#: oleview.rc:114
+#: oleview.rc:113
 msgid "Copy the GUID of the currently selected item to the clipboard"
 msgstr "Копировать GUID выделенного элемента в буфер"
 
-#: oleview.rc:115
+#: oleview.rc:114
 msgid "Display the viewer for the selected item"
 msgstr "Открыть просмотр для выбранного пункта"
 
-#: oleview.rc:120
+#: oleview.rc:119
 msgid "Toggle between expert and novice display mode"
 msgstr "Переключиться между режимом эксперт/новичок"
 
-#: oleview.rc:121
+#: oleview.rc:120
 msgid ""
 "Toggle the display of component categories that are not meant to be visible"
 msgstr ""
 "Переключить отображение категорий компонентов, которые не должны быть видимы"
 
-#: oleview.rc:122
+#: oleview.rc:121
 msgid "Show or hide the toolbar"
 msgstr "Показать/скрыть панель инструментов"
 
-#: oleview.rc:123
+#: oleview.rc:122
 msgid "Show or hide the status bar"
 msgstr "Показать/скрыть строку состояния"
 
-#: oleview.rc:124
+#: oleview.rc:123
 msgid "Refresh all lists"
 msgstr "Обновить все списки"
 
-#: oleview.rc:125
+#: oleview.rc:124
 msgid "Display program information, version number and copyright"
 msgstr "Отобразить информацию о программе, номер версии и копирайт"
 
-#: oleview.rc:116
+#: oleview.rc:115
 msgid "Ask for an in-process server when calling CoGetClassObject"
 msgstr "Использовать сервер «в процессе» при вызове CoGetClassObject"
 
-#: oleview.rc:117
+#: oleview.rc:116
 msgid "Ask for an in-process handler when calling CoGetClassObject"
 msgstr "Использовать обработчик «в процессе» при вызове CoGetClassObject"
 
-#: oleview.rc:118
+#: oleview.rc:117
 msgid "Ask for a local server when calling CoGetClassObject"
 msgstr "Использовать локальный сервер при вызове CoGetClassObject"
 
-#: oleview.rc:119
+#: oleview.rc:118
 msgid "Ask for a remote server when calling CoGetClassObject"
 msgstr "Использовать удалённый сервер при вызове CoGetClassObject"
 
-#: oleview.rc:131
+#: oleview.rc:130
 msgid "ObjectClasses"
 msgstr "Классы объектов"
 
-#: oleview.rc:132
+#: oleview.rc:131
 msgid "Grouped by Component Category"
 msgstr "Группировка по категориям"
 
-#: oleview.rc:133
+#: oleview.rc:132
 msgid "OLE 1.0 Objects"
 msgstr "Объекты OLE 1.0"
 
-#: oleview.rc:134
+#: oleview.rc:133
 msgid "COM Library Objects"
 msgstr "Объекты библиотеки COM"
 
-#: oleview.rc:135
+#: oleview.rc:134
 msgid "All Objects"
 msgstr "Все объекты"
 
-#: oleview.rc:136
+#: oleview.rc:135
 msgid "Application IDs"
 msgstr "ID приложения"
 
-#: oleview.rc:137
+#: oleview.rc:136
 msgid "Type Libraries"
 msgstr "Библиотеки типов"
 
-#: oleview.rc:138
+#: oleview.rc:137
 msgid "ver."
 msgstr "вер."
 
-#: oleview.rc:139
+#: oleview.rc:138
 msgid "Interfaces"
 msgstr "Интерфейсы"
 
-#: oleview.rc:141
+#: oleview.rc:140
 msgid "Registry"
 msgstr "Реестр"
 
-#: oleview.rc:142
+#: oleview.rc:141
 msgid "Implementation"
 msgstr "Реализация"
 
-#: oleview.rc:143
+#: oleview.rc:142
 msgid "Activation"
 msgstr "Активация"
 
-#: oleview.rc:145
+#: oleview.rc:144
 msgid "CoGetClassObject failed."
 msgstr "CoGetClassObject завершилась неудачно."
 
-#: oleview.rc:146
+#: oleview.rc:145
 msgid "Unknown error"
 msgstr "Неизвестная ошибка"
 
-#: oleview.rc:149
+#: oleview.rc:148
 msgid "bytes"
 msgstr "байт"
 
-#: oleview.rc:151
+#: oleview.rc:150
 msgid "LoadTypeLib( %1 ) failed ($%2!x!)"
 msgstr "При вызове LoadTypeLib( %1 ) произошла ошибка ($%2!x!)"
 
-#: oleview.rc:152
+#: oleview.rc:151
 msgid "Inherited Interfaces"
 msgstr "Унаследованные интерфейсы"
 
-#: oleview.rc:127
+#: oleview.rc:126
 msgid "Save as an .IDL or .H file"
 msgstr "Сохранить как .IDL или .H файл"
 
-#: oleview.rc:128
+#: oleview.rc:127
 msgid "Close window"
 msgstr "Закрыть окно"
 
-#: oleview.rc:129
+#: oleview.rc:128
 msgid "Group typeinfos by kind"
 msgstr "Группировать типы по видам"
 
@@ -11632,11 +11637,11 @@ msgstr "Значение «%1» уже существует. Вы хотите �
 msgid "The registry operation was cancelled\n"
 msgstr "Операция с реестром была отменена\n"
 
-#: reg.rc:53 regedit.rc:204
+#: reg.rc:53 regedit.rc:206
 msgid "(Default)"
 msgstr "(По умолчанию)"
 
-#: reg.rc:54
+#: reg.rc:54 regedit.rc:185
 msgid "Are you sure you want to delete the registry value '%1'?"
 msgstr "Вы точно хотите удалить параметр реестра «%1»?"
 
@@ -11686,7 +11691,7 @@ msgstr "Для справки введите «REG /?».\n"
 msgid "Type \"REG %1 /?\" for help.\n"
 msgstr "Для справки введите «REG %1 /?».\n"
 
-#: reg.rc:65 regedit.rc:205
+#: reg.rc:65 regedit.rc:207
 msgid "(value not set)"
 msgstr "(значение не задано)"
 
@@ -11762,83 +11767,83 @@ msgstr "&О редакторе реестра"
 msgid "Modify Binary Data..."
 msgstr "Изменить &двоичные данные..."
 
-#: regedit.rc:218
+#: regedit.rc:234
 msgid "Export registry"
 msgstr "Экспорт реестра"
 
-#: regedit.rc:220
+#: regedit.rc:236
 msgid "S&elected branch:"
 msgstr "В&ыбранную ветку:"
 
-#: regedit.rc:229
+#: regedit.rc:245
 msgid "Find:"
 msgstr "Найти:"
 
-#: regedit.rc:231
+#: regedit.rc:247
 msgid "Find in:"
 msgstr "Искать в:"
 
-#: regedit.rc:232
+#: regedit.rc:248
 msgid "Keys"
 msgstr "Именах разделов"
 
-#: regedit.rc:233
+#: regedit.rc:249
 msgid "Value names"
 msgstr "Именах параметров"
 
-#: regedit.rc:234
+#: regedit.rc:250
 msgid "Value content"
 msgstr "Значениях параметров"
 
-#: regedit.rc:235
+#: regedit.rc:251
 msgid "Whole string only"
 msgstr "Всю строку целиком"
 
-#: regedit.rc:242
+#: regedit.rc:258
 msgid "Add Favorite"
 msgstr "Добавление в избранное"
 
-#: regedit.rc:245 regedit.rc:256
+#: regedit.rc:261 regedit.rc:272
 msgid "Name:"
 msgstr "Имя:"
 
-#: regedit.rc:253
+#: regedit.rc:269
 msgid "Remove Favorite"
 msgstr "Удаление из избранного"
 
-#: regedit.rc:264
+#: regedit.rc:280
 msgid "Edit String"
 msgstr "Изменение строкового параметра"
 
-#: regedit.rc:267 regedit.rc:280 regedit.rc:296 regedit.rc:309
+#: regedit.rc:283 regedit.rc:296 regedit.rc:312 regedit.rc:325
 msgid "Value name:"
 msgstr "Имя параметра:"
 
-#: regedit.rc:269 regedit.rc:282 regedit.rc:298 regedit.rc:311
+#: regedit.rc:285 regedit.rc:298 regedit.rc:314 regedit.rc:327
 msgid "Value data:"
 msgstr "Значение:"
 
-#: regedit.rc:277
+#: regedit.rc:293
 msgid "Edit DWORD"
 msgstr "Изменение параметра DWORD"
 
-#: regedit.rc:284
+#: regedit.rc:300
 msgid "Base"
 msgstr "Представление"
 
-#: regedit.rc:285
+#: regedit.rc:301
 msgid "Hexadecimal"
 msgstr "16-ричное"
 
-#: regedit.rc:286
+#: regedit.rc:302
 msgid "Decimal"
 msgstr "Десятичное"
 
-#: regedit.rc:293
+#: regedit.rc:309
 msgid "Edit Binary"
 msgstr "Изменение двоичного параметра"
 
-#: regedit.rc:306
+#: regedit.rc:322
 msgid "Edit Multi-String"
 msgstr "Изменить многостроковые данные"
 
@@ -11876,31 +11881,80 @@ msgstr "Значение"
 msgid "Registry Editor"
 msgstr "Редактор реестра"
 
-#: regedit.rc:194
+#: regedit.rc:196
 msgid "Import Registry File"
 msgstr "Импорт файла реестра"
 
-#: regedit.rc:195
+#: regedit.rc:197
 msgid "Export Registry File"
 msgstr "Экспорт файла реестра"
 
-#: regedit.rc:196
+#: regedit.rc:198
 msgid "Registry files (*.reg)"
 msgstr "Файлы реестра (*.reg)"
 
-#: regedit.rc:197
+#: regedit.rc:199
 msgid "Win9x/NT4 Registry files (REGEDIT4)"
 msgstr "Файлы реестра Win9x/NT4 (REGEDIT4)"
 
-#: regedit.rc:206
+#: regedit.rc:208
 msgid "(cannot display value)"
 msgstr "(невозможно отобразить)"
 
-#: regedit.rc:207
+#: regedit.rc:209
 msgid "(unknown %d)"
 msgstr "(неизвестно %d)"
 
-#: regedit.rc:359
+#: regedit.rc:214
+msgid "Unable to modify the selected registry value."
+msgstr "Не удалось изменить выбранное значение."
+
+#: regedit.rc:215
+msgid "Unable to create a new registry key."
+msgstr "Не удалось создать ключ реестра."
+
+#: regedit.rc:216
+msgid "Unable to create a new registry value."
+msgstr "Не удалось создать новое значение."
+
+#: regedit.rc:217
+msgid ""
+"Unable to rename the key '%1'.\n"
+"The specified key name already exists."
+msgstr ""
+"Не удалось переименовать ключ «%1».\n"
+"Ключ с указанным именем уже существует."
+
+#: regedit.rc:218
+msgid ""
+"Unable to rename the value '%1'.\n"
+"The specified value name already exists."
+msgstr ""
+"Не удалось переименовать значение «%1».\n"
+"Значение с указанным именем уже существует."
+
+#: regedit.rc:219
+msgid "Unable to delete the selected registry key."
+msgstr "Не удалось удалить выбранный ключ реестра."
+
+#: regedit.rc:220
+msgid "Unable to rename the selected registry key."
+msgstr "Не удалось переименовать выбранный ключ реестра."
+
+#: regedit.rc:221
+msgid "Unable to rename the selected registry value."
+msgstr "Не удалось переименовать выбранное значение реестра."
+
+#: regedit.rc:222
+msgid ""
+"The keys and values contained in %1 were successfully added to the registry."
+msgstr "Ключи и значения из «%1» были успешно добавлены в реестр."
+
+#: regedit.rc:223
+msgid "Unable to import %1. The specified file is not a valid registry file."
+msgstr "Не удалось импортировать «%1». Некорректный файл реестра."
+
+#: regedit.rc:375
 msgid ""
 "Usage:\n"
 "  regedit [options] [filename] [reg_key]\n"
@@ -11957,43 +12011,43 @@ msgstr ""
 "  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
 "  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
 
-#: regedit.rc:360
+#: regedit.rc:376
 msgid "regedit: Invalid or unrecognized switch [%1]\n"
 msgstr "regedit: неверный или неизвестный параметр [%1]\n"
 
-#: regedit.rc:361
+#: regedit.rc:377
 msgid "Type \"regedit /?\" for help.\n"
 msgstr "Для справки введите «regedit /?».\n"
 
-#: regedit.rc:362
+#: regedit.rc:378
 msgid "regedit: No filename was specified.\n"
 msgstr "regedit: имя файла не указано.\n"
 
-#: regedit.rc:363
+#: regedit.rc:379
 msgid "regedit: No registry key was specified for removal.\n"
 msgstr "regedit: не указан удаляемый ключ.\n"
 
-#: regedit.rc:364
+#: regedit.rc:380
 msgid "regedit: The file '%1' was not found.\n"
 msgstr "regedit: файл «%1» не найден.\n"
 
-#: regedit.rc:365
+#: regedit.rc:381
 msgid "regedit: Unable to open the file '%1'.\n"
 msgstr "regedit: не удалось открыть файл «%1».\n"
 
-#: regedit.rc:366
+#: regedit.rc:382
 msgid "regedit: Unhandled action.\n"
 msgstr "regedit: операция не поддерживается.\n"
 
-#: regedit.rc:367
+#: regedit.rc:383
 msgid "regedit: Out of memory! (%1!S!, line %2!u!)\n"
 msgstr "regedit: недостаточно памяти! (%1!S!, строка %2!u!)\n"
 
-#: regedit.rc:368
+#: regedit.rc:384
 msgid "regedit: Invalid hexadecimal value.\n"
 msgstr "regedit: неверное шестнадцатеричное значение.\n"
 
-#: regedit.rc:369
+#: regedit.rc:385
 msgid ""
 "regedit: Unable to convert hexadecimal data. An invalid value was "
 "encountered at '%1'.\n"
@@ -12001,48 +12055,48 @@ msgstr ""
 "regedit: не удалось преобразовать данные в шестнадцатеричном формате. "
 "Неверное значение «%1».\n"
 
-#: regedit.rc:370
+#: regedit.rc:386
 msgid "regedit: Unrecognized escape sequence [\\%1!c!]\n"
 msgstr "regedit: неизвестная управляющая последовательность [\\%1!c!]\n"
 
-#: regedit.rc:371
+#: regedit.rc:387
 msgid "regedit: Unsupported registry data type [%1]\n"
 msgstr "regedit: тип данных [%1] не поддерживается\n"
 
-#: regedit.rc:372
+#: regedit.rc:388
 msgid "regedit: Unexpected end of line in '%1'.\n"
 msgstr "regedit: неожиданный конец строки в «%1».\n"
 
-#: regedit.rc:373
+#: regedit.rc:389
 msgid "regedit: The line '%1' was not recognized.\n"
 msgstr "regedit: строка «%1» не распознана.\n"
 
-#: regedit.rc:374
+#: regedit.rc:390
 msgid "regedit: Unable to add the registry value '%1' to '%2'.\n"
 msgstr "regedit: не удалось добавить значение «%1» в «%2».\n"
 
-#: regedit.rc:375
+#: regedit.rc:391
 msgid "regedit: Unable to open the registry key '%1'.\n"
 msgstr "regedit: не удалось открыть ключ «%1».\n"
 
-#: regedit.rc:376
+#: regedit.rc:392
 msgid "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
 msgstr "regedit: «%2» содержит неподдерживаемый тип данных [%1].\n"
 
-#: regedit.rc:377
+#: regedit.rc:393
 msgid "regedit: The registry value '%1' will be exported as binary data.\n"
 msgstr "regedit: значение «%1» будет экспортировано в бинарном виде.\n"
 
-#: regedit.rc:378
+#: regedit.rc:394
 msgid "regedit: Incorrect registry class specification in '%1'.\n"
 msgstr "regedit: неверный формат имени ключа «%1».\n"
 
-#: regedit.rc:379
+#: regedit.rc:395
 msgid ""
 "regedit: Unable to export '%1'. The specified registry key was not found.\n"
 msgstr "regedit: не удалось экспортировать «%1». Указанный ключ не найден.\n"
 
-#: regedit.rc:380
+#: regedit.rc:396
 msgid "regedit: Unable to delete the registry class '%1'.\n"
 msgstr "regedit: не удалось удалить класс «%1».\n"
 
@@ -12127,44 +12181,40 @@ msgid "Displays program information, version number and copyright"
 msgstr "Отображает информацию о программе, номер версии и список авторов"
 
 #: regedit.rc:181
-msgid "Can't query value '%s'"
-msgstr "Невозможно запросить значение «%s»"
+msgid "Unable to query the registry value '%1'."
+msgstr "Не удалось прочитать значение реестра «%1»."
 
 #: regedit.rc:182
-msgid "Can't edit keys of this type (%u)"
-msgstr "Редактирование разделов типа (%u) не поддерживается"
+msgid "Unable to edit registry keys of this type (%1!u!)."
+msgstr "Редактирование значений типа (%1!u!) не поддерживается."
 
 #: regedit.rc:183
-msgid "Value is too big (%u)"
-msgstr "Значение слишком велико (%u)"
+msgid "The value is too big (%1!u!)."
+msgstr "Значение слишком велико (%1!u!)."
 
 #: regedit.rc:184
 msgid "Confirm Value Delete"
-msgstr "Подтверждение"
+msgstr "Подтверждение удаления значения"
 
-#: regedit.rc:185
-msgid "Are you sure you want to delete value '%s'?"
-msgstr "Удалить значение «%s»?"
-
-#: regedit.rc:189
-msgid "Search string '%s' not found"
-msgstr "Искомая строка «%s» не найдена"
+#: regedit.rc:191
+msgid "Search complete. The string '%1' was not found."
+msgstr "Поиск завершён. Строка «%1» не найдена."
 
 #: regedit.rc:186
 msgid "Are you sure you want to delete these values?"
 msgstr "Вы уверены что хотите удалить эти значения?"
 
-#: regedit.rc:187
+#: regedit.rc:189
 msgid "New Key #%d"
 msgstr "Новый раздел #%d"
 
-#: regedit.rc:188
+#: regedit.rc:190
 msgid "New Value #%d"
 msgstr "Новое значение #%d"
 
 #: regedit.rc:180
-msgid "Can't query key '%s'"
-msgstr "Невозможно запросить раздел «%s»"
+msgid "Unable to query the registry key '%1'."
+msgstr "Не удалось прочитать ключ реестра «%1»."
 
 #: regedit.rc:152
 msgid "Adds a new multi-string value"
@@ -12173,6 +12223,15 @@ msgstr "Добавляет новое многостроковое значен�
 #: regedit.rc:174
 msgid "Exports selected branch of the registry to a text file"
 msgstr "Экспортирует выделенную ветку реестра в текстовый файл"
+
+#: regedit.rc:187
+msgid "Confirm Key Delete"
+msgstr "Подтверждение удаления ключа"
+
+#: regedit.rc:188
+msgid ""
+"Are you sure you want to delete the registry key '%1' and all of its subkeys?"
+msgstr "Вы точно хотите удалить ключ реестра «%1» и все вложенные ключи?"
 
 #: regsvr32.rc:32
 msgid ""

@@ -447,7 +447,7 @@ static HRESULT WINAPI xmlwriter_QueryInterface(IXmlWriter *iface, REFIID riid, v
 {
     xmlwriter *This = impl_from_IXmlWriter(iface);
 
-    TRACE("%p %s %p\n", This, debugstr_guid(riid), ppvObject);
+    TRACE("(%p)->(%s %p)\n", This, debugstr_guid(riid), ppvObject);
 
     if (IsEqualGUID(riid, &IID_IUnknown) ||
         IsEqualGUID(riid, &IID_IXmlWriter))
@@ -463,23 +463,23 @@ static HRESULT WINAPI xmlwriter_QueryInterface(IXmlWriter *iface, REFIID riid, v
 static ULONG WINAPI xmlwriter_AddRef(IXmlWriter *iface)
 {
     xmlwriter *This = impl_from_IXmlWriter(iface);
-    TRACE("%p\n", This);
-    return InterlockedIncrement(&This->ref);
+    ULONG ref = InterlockedIncrement(&This->ref);
+    TRACE("(%p)->(%u)\n", This, ref);
+    return ref;
 }
 
 static ULONG WINAPI xmlwriter_Release(IXmlWriter *iface)
 {
     xmlwriter *This = impl_from_IXmlWriter(iface);
-    LONG ref;
+    ULONG ref = InterlockedDecrement(&This->ref);
 
-    TRACE("%p\n", This);
+    TRACE("(%p)->(%u)\n", This, ref);
 
-    ref = InterlockedDecrement(&This->ref);
     if (ref == 0) {
         struct element *element, *element2;
         IMalloc *imalloc = This->imalloc;
 
-        IXmlWriter_Flush(iface);
+        writeroutput_flush_stream(This->output);
         if (This->output) IUnknown_Release(&This->output->IXmlWriterOutput_iface);
 
         /* element stack */
@@ -1203,16 +1203,49 @@ static HRESULT WINAPI xmlwriter_WriteStartElement(IXmlWriter *iface, LPCWSTR pre
     return S_OK;
 }
 
-static HRESULT WINAPI xmlwriter_WriteString(IXmlWriter *iface, LPCWSTR pwszText)
+static void write_escaped_string(xmlwriter *writer, const WCHAR *string)
+{
+    static const WCHAR ampW[] = {'&','a','m','p',';'};
+    static const WCHAR ltW[] = {'&','l','t',';'};
+    static const WCHAR gtW[] = {'&','g','t',';'};
+
+    while (*string)
+    {
+        switch (*string)
+        {
+        case '<':
+            write_output_buffer(writer->output, ltW, ARRAY_SIZE(ltW));
+            break;
+        case '&':
+            write_output_buffer(writer->output, ampW, ARRAY_SIZE(ampW));
+            break;
+        case '>':
+            write_output_buffer(writer->output, gtW, ARRAY_SIZE(gtW));
+            break;
+        default:
+            write_output_buffer(writer->output, string, 1);
+        }
+
+        string++;
+    }
+}
+
+static HRESULT WINAPI xmlwriter_WriteString(IXmlWriter *iface, const WCHAR *string)
 {
     xmlwriter *This = impl_from_IXmlWriter(iface);
 
-    FIXME("%p %s\n", This, wine_dbgstr_w(pwszText));
+    TRACE("%p %s\n", This, debugstr_w(string));
+
+    if (!string)
+        return S_OK;
 
     switch (This->state)
     {
     case XmlWriterState_Initial:
         return E_UNEXPECTED;
+    case XmlWriterState_ElemStarted:
+        writer_close_starttag(This);
+        break;
     case XmlWriterState_Ready:
     case XmlWriterState_DocClosed:
         This->state = XmlWriterState_DocClosed;
@@ -1221,7 +1254,8 @@ static HRESULT WINAPI xmlwriter_WriteString(IXmlWriter *iface, LPCWSTR pwszText)
         ;
     }
 
-    return E_NOTIMPL;
+    write_escaped_string(This, string);
+    return S_OK;
 }
 
 static HRESULT WINAPI xmlwriter_WriteSurrogateCharEntity(IXmlWriter *iface, WCHAR wchLow, WCHAR wchHigh)

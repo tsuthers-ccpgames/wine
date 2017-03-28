@@ -67,6 +67,7 @@ static NTSTATUS (WINAPI *pNtWriteFile)(HANDLE hFile, HANDLE hEvent,
 static NTSTATUS (WINAPI *pNtCancelIoFile)(HANDLE hFile, PIO_STATUS_BLOCK io_status);
 static NTSTATUS (WINAPI *pNtCancelIoFileEx)(HANDLE hFile, PIO_STATUS_BLOCK iosb, PIO_STATUS_BLOCK io_status);
 static NTSTATUS (WINAPI *pNtClose)( PHANDLE );
+static NTSTATUS (WINAPI *pNtFsControlFile) (HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, PVOID apc_context, PIO_STATUS_BLOCK io, ULONG code, PVOID in_buffer, ULONG in_size, PVOID out_buffer, ULONG out_size);
 
 static NTSTATUS (WINAPI *pNtCreateIoCompletion)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, ULONG);
 static NTSTATUS (WINAPI *pNtOpenIoCompletion)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
@@ -79,6 +80,7 @@ static NTSTATUS (WINAPI *pNtQueryDirectoryFile)(HANDLE,HANDLE,PIO_APC_ROUTINE,PV
                                                 PVOID,ULONG,FILE_INFORMATION_CLASS,BOOLEAN,PUNICODE_STRING,BOOLEAN);
 static NTSTATUS (WINAPI *pNtQueryVolumeInformationFile)(HANDLE,PIO_STATUS_BLOCK,PVOID,ULONG,FS_INFORMATION_CLASS);
 static NTSTATUS (WINAPI *pNtQueryFullAttributesFile)(const OBJECT_ATTRIBUTES*, FILE_NETWORK_OPEN_INFORMATION*);
+static NTSTATUS (WINAPI *pNtFlushBuffersFile)(HANDLE, IO_STATUS_BLOCK*);
 
 static inline BOOL is_signaled( HANDLE obj )
 {
@@ -1270,7 +1272,7 @@ static void test_iocp_fileio(HANDLE h)
             ok( completionKey == CKEY_SECOND, "Invalid completion key: %lx\n", completionKey );
             ok( ioSb.Information == 0, "Invalid ioSb.Information: %ld\n", ioSb.Information );
             /* wine sends wrong status here */
-            todo_wine ok( U(ioSb).Status == STATUS_PIPE_BROKEN, "Invalid ioSb.Status: %x\n", U(ioSb).Status);
+            ok( U(ioSb).Status == STATUS_PIPE_BROKEN, "Invalid ioSb.Status: %x\n", U(ioSb).Status);
             ok( completionValue == (ULONG_PTR)&o, "Invalid completion value: %lx\n", completionValue );
         }
     }
@@ -3261,6 +3263,199 @@ static void test_file_all_name_information(void)
     HeapFree( GetProcessHeap(), 0, file_name );
 }
 
+static void test_file_completion_information(void)
+{
+    static const char buf[] = "testdata";
+    FILE_IO_COMPLETION_NOTIFICATION_INFORMATION info;
+    OVERLAPPED ov, *pov;
+    IO_STATUS_BLOCK io;
+    NTSTATUS status;
+    DWORD num_bytes;
+    HANDLE port, h;
+    ULONG_PTR key;
+    BOOL ret;
+    int i;
+
+    if (!(h = create_temp_file(0))) return;
+
+    status = pNtSetInformationFile(h, &io, &info, sizeof(info) - 1, FileIoCompletionNotificationInformation);
+    todo_wine
+    ok(status == STATUS_INFO_LENGTH_MISMATCH || status == STATUS_INVALID_INFO_CLASS /* XP */,
+       "expected STATUS_INFO_LENGTH_MISMATCH, got %08x\n", status);
+    if (status == STATUS_INVALID_INFO_CLASS || status == STATUS_NOT_IMPLEMENTED)
+    {
+        skip("FileIoCompletionNotificationInformation class not supported\n");
+        CloseHandle(h);
+        return;
+    }
+
+    info.Flags = FILE_SKIP_COMPLETION_PORT_ON_SUCCESS;
+    status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
+    ok(status == STATUS_INVALID_PARAMETER, "expected STATUS_INVALID_PARAMETER, got %08x\n", status);
+
+    CloseHandle(h);
+    if (!(h = create_temp_file(FILE_FLAG_OVERLAPPED))) return;
+
+    info.Flags = FILE_SKIP_SET_EVENT_ON_HANDLE;
+    status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
+
+    info.Flags = FILE_SKIP_SET_USER_EVENT_ON_FAST_IO;
+    status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
+
+    CloseHandle(h);
+    if (!(h = create_temp_file(FILE_FLAG_OVERLAPPED))) return;
+
+    memset(&ov, 0, sizeof(ov));
+    ov.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
+    port = CreateIoCompletionPort(h, NULL, 0xdeadbeef, 0);
+    ok(port != NULL, "CreateIoCompletionPort failed, error %u\n", GetLastError());
+
+    for (i = 0; i < 10; i++)
+    {
+        SetLastError(0xdeadbeef);
+        ret = WriteFile(h, buf, sizeof(buf), &num_bytes, &ov);
+        if (ret || GetLastError() != ERROR_IO_PENDING) break;
+        ret = GetOverlappedResult(h, &ov, &num_bytes, TRUE);
+        ok(ret, "GetOverlappedResult failed, error %u\n", GetLastError());
+        ret = GetQueuedCompletionStatus(port, &num_bytes, &key, &pov, 1000);
+        ok(ret, "GetQueuedCompletionStatus failed, error %u\n", GetLastError());
+        ret = FALSE;
+    }
+    if (ret)
+    {
+        ok(num_bytes == sizeof(buf), "expected sizeof(buf), got %u\n", num_bytes);
+
+        key = 0;
+        pov = NULL;
+        ret = GetQueuedCompletionStatus(port, &num_bytes, &key, &pov, 1000);
+        ok(ret, "GetQueuedCompletionStatus failed, error %u\n", GetLastError());
+        ok(key == 0xdeadbeef, "expected 0xdeadbeef, got %lx\n", key);
+        ok(pov == &ov, "expected %p, got %p\n", &ov, pov);
+    }
+    else
+        win_skip("WriteFile never returned TRUE\n");
+
+    info.Flags = FILE_SKIP_COMPLETION_PORT_ON_SUCCESS;
+    status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
+
+    for (i = 0; i < 10; i++)
+    {
+        SetLastError(0xdeadbeef);
+        ret = WriteFile(h, buf, sizeof(buf), &num_bytes, &ov);
+        if (ret || GetLastError() != ERROR_IO_PENDING) break;
+        ret = GetOverlappedResult(h, &ov, &num_bytes, TRUE);
+        ok(ret, "GetOverlappedResult failed, error %u\n", GetLastError());
+        ret = FALSE;
+    }
+    if (ret)
+    {
+        ok(num_bytes == sizeof(buf), "expected sizeof(buf), got %u\n", num_bytes);
+
+        pov = (void *)0xdeadbeef;
+        ret = GetQueuedCompletionStatus(port, &num_bytes, &key, &pov, 500);
+        ok(!ret, "GetQueuedCompletionStatus succeeded\n");
+        ok(pov == NULL, "expected NULL, got %p\n", pov);
+    }
+    else
+        win_skip("WriteFile never returned TRUE\n");
+
+    info.Flags = 0;
+    status = pNtSetInformationFile(h, &io, &info, sizeof(info), FileIoCompletionNotificationInformation);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status);
+
+    for (i = 0; i < 10; i++)
+    {
+        SetLastError(0xdeadbeef);
+        ret = WriteFile(h, buf, sizeof(buf), &num_bytes, &ov);
+        if (ret || GetLastError() != ERROR_IO_PENDING) break;
+        ret = GetOverlappedResult(h, &ov, &num_bytes, TRUE);
+        ok(ret, "GetOverlappedResult failed, error %u\n", GetLastError());
+        ret = GetQueuedCompletionStatus(port, &num_bytes, &key, &pov, 1000);
+        ok(ret, "GetQueuedCompletionStatus failed, error %u\n", GetLastError());
+        ret = FALSE;
+    }
+    if (ret)
+    {
+        ok(num_bytes == sizeof(buf), "expected sizeof(buf), got %u\n", num_bytes);
+
+        pov = (void *)0xdeadbeef;
+        ret = GetQueuedCompletionStatus(port, &num_bytes, &key, &pov, 1000);
+        ok(!ret, "GetQueuedCompletionStatus succeeded\n");
+        ok(pov == NULL, "expected NULL, got %p\n", pov);
+    }
+    else
+        win_skip("WriteFile never returned TRUE\n");
+
+    CloseHandle(ov.hEvent);
+    CloseHandle(port);
+    CloseHandle(h);
+}
+
+static void test_file_id_information(void)
+{
+    BY_HANDLE_FILE_INFORMATION info;
+    FILE_ID_INFORMATION fid;
+    IO_STATUS_BLOCK io;
+    NTSTATUS status;
+    DWORD *dwords;
+    HANDLE h;
+    BOOL ret;
+
+    if (!(h = create_temp_file(0))) return;
+
+    memset( &fid, 0x11, sizeof(fid) );
+    status = pNtQueryInformationFile( h, &io, &fid, sizeof(fid), FileIdInformation );
+    if (status == STATUS_NOT_IMPLEMENTED || status == STATUS_INVALID_INFO_CLASS)
+    {
+        win_skip( "FileIdInformation not supported\n" );
+        CloseHandle( h );
+        return;
+    }
+
+    memset( &info, 0x22, sizeof(info) );
+    ret = GetFileInformationByHandle( h, &info );
+    ok( ret, "GetFileInformationByHandle failed\n" );
+
+    dwords = (DWORD *)&fid.VolumeSerialNumber;
+    ok( dwords[0] == info.dwVolumeSerialNumber, "expected %08x, got %08x\n",
+        info.dwVolumeSerialNumber, dwords[0] );
+    ok( dwords[1] != 0x11111111, "expected != 0x11111111\n" );
+
+    dwords = (DWORD *)&fid.FileId;
+    ok( dwords[0] == info.nFileIndexLow, "expected %08x, got %08x\n", info.nFileIndexLow, dwords[0] );
+    ok( dwords[1] == info.nFileIndexHigh, "expected %08x, got %08x\n", info.nFileIndexHigh, dwords[1] );
+    ok( dwords[2] == 0, "expected 0, got %08x\n", dwords[2] );
+    ok( dwords[3] == 0, "expected 0, got %08x\n", dwords[3] );
+
+    CloseHandle( h );
+}
+
+static void test_file_access_information(void)
+{
+    FILE_ACCESS_INFORMATION info;
+    IO_STATUS_BLOCK io;
+    NTSTATUS status;
+    HANDLE h;
+
+    if (!(h = create_temp_file(0))) return;
+
+    status = pNtQueryInformationFile( h, &io, &info, sizeof(info) - 1, FileAccessInformation );
+    ok( status == STATUS_INFO_LENGTH_MISMATCH, "expected STATUS_INFO_LENGTH_MISMATCH, got %08x\n", status );
+
+    status = pNtQueryInformationFile( (HANDLE)0xdeadbeef, &io, &info, sizeof(info), FileAccessInformation );
+    ok( status == STATUS_INVALID_HANDLE, "expected STATUS_INVALID_HANDLE, got %08x\n", status );
+
+    memset(&info, 0x11, sizeof(info));
+    status = pNtQueryInformationFile( h, &io, &info, sizeof(info), FileAccessInformation );
+    ok( status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08x\n", status );
+    ok( info.AccessFlags == 0x13019f, "got %08x\n", info.AccessFlags );
+
+    CloseHandle( h );
+}
+
 static void test_query_volume_information_file(void)
 {
     NTSTATUS status;
@@ -3451,17 +3646,35 @@ static void test_read_write(void)
 {
     static const char contents[14] = "1234567890abcd";
     char buf[256];
-    HANDLE hfile;
+    HANDLE hfile, event;
     OVERLAPPED ovl;
     IO_STATUS_BLOCK iob;
     DWORD ret, bytes, status, off;
     LARGE_INTEGER offset;
     LONG i;
 
+    event = CreateEventA( NULL, TRUE, FALSE, NULL );
+
     U(iob).Status = -1;
     iob.Information = -1;
     offset.QuadPart = 0;
     status = pNtReadFile(INVALID_HANDLE_VALUE, 0, NULL, NULL, &iob, buf, sizeof(buf), &offset, NULL);
+    ok(status == STATUS_OBJECT_TYPE_MISMATCH || status == STATUS_INVALID_HANDLE, "expected STATUS_OBJECT_TYPE_MISMATCH, got %#x\n", status);
+    ok(U(iob).Status == -1, "expected -1, got %#x\n", U(iob).Status);
+    ok(iob.Information == -1, "expected -1, got %lu\n", iob.Information);
+
+    U(iob).Status = -1;
+    iob.Information = -1;
+    offset.QuadPart = 0;
+    status = pNtReadFile(INVALID_HANDLE_VALUE, 0, NULL, NULL, &iob, NULL, sizeof(buf), &offset, NULL);
+    ok(status == STATUS_OBJECT_TYPE_MISMATCH || status == STATUS_INVALID_HANDLE, "expected STATUS_OBJECT_TYPE_MISMATCH, got %#x\n", status);
+    ok(U(iob).Status == -1, "expected -1, got %#x\n", U(iob).Status);
+    ok(iob.Information == -1, "expected -1, got %lu\n", iob.Information);
+
+    U(iob).Status = -1;
+    iob.Information = -1;
+    offset.QuadPart = 0;
+    status = pNtWriteFile(INVALID_HANDLE_VALUE, 0, NULL, NULL, &iob, buf, sizeof(buf), &offset, NULL);
     ok(status == STATUS_OBJECT_TYPE_MISMATCH || status == STATUS_INVALID_HANDLE, "expected STATUS_OBJECT_TYPE_MISMATCH, got %#x\n", status);
     ok(U(iob).Status == -1, "expected -1, got %#x\n", U(iob).Status);
     ok(iob.Information == -1, "expected -1, got %lu\n", iob.Information);
@@ -3486,10 +3699,37 @@ static void test_read_write(void)
 
     U(iob).Status = -1;
     iob.Information = -1;
+    SetEvent(event);
+    status = pNtWriteFile(hfile, event, NULL, NULL, &iob, NULL, sizeof(contents), NULL, NULL);
+    ok(status == STATUS_INVALID_USER_BUFFER, "expected STATUS_INVALID_USER_BUFFER, got %#x\n", status);
+    ok(U(iob).Status == -1, "expected -1, got %#x\n", U(iob).Status);
+    ok(iob.Information == -1, "expected -1, got %lu\n", iob.Information);
+    ok(!is_signaled(event), "event is not signaled\n");
+
+    U(iob).Status = -1;
+    iob.Information = -1;
     status = pNtReadFile(hfile, 0, NULL, NULL, &iob, NULL, sizeof(contents), NULL, NULL);
     ok(status == STATUS_ACCESS_VIOLATION, "expected STATUS_ACCESS_VIOLATION, got %#x\n", status);
     ok(U(iob).Status == -1, "expected -1, got %#x\n", U(iob).Status);
     ok(iob.Information == -1, "expected -1, got %lu\n", iob.Information);
+
+    U(iob).Status = -1;
+    iob.Information = -1;
+    SetEvent(event);
+    status = pNtReadFile(hfile, event, NULL, NULL, &iob, NULL, sizeof(contents), NULL, NULL);
+    ok(status == STATUS_ACCESS_VIOLATION, "expected STATUS_ACCESS_VIOLATION, got %#x\n", status);
+    ok(U(iob).Status == -1, "expected -1, got %#x\n", U(iob).Status);
+    ok(iob.Information == -1, "expected -1, got %lu\n", iob.Information);
+    ok(is_signaled(event), "event is not signaled\n");
+
+    U(iob).Status = -1;
+    iob.Information = -1;
+    SetEvent(event);
+    status = pNtReadFile(hfile, event, NULL, NULL, &iob, (void*)0xdeadbeef, sizeof(contents), NULL, NULL);
+    ok(status == STATUS_ACCESS_VIOLATION, "expected STATUS_ACCESS_VIOLATION, got %#x\n", status);
+    ok(U(iob).Status == -1, "expected -1, got %#x\n", U(iob).Status);
+    ok(iob.Information == -1, "expected -1, got %lu\n", iob.Information);
+    ok(is_signaled(event), "event is not signaled\n");
 
     U(iob).Status = -1;
     iob.Information = -1;
@@ -4156,7 +4396,78 @@ static void test_read_write(void)
     off = SetFilePointer(hfile, 0, NULL, FILE_CURRENT);
     ok(off == 0, "expected 0, got %u\n", off);
 
+    CloseHandle(event);
     CloseHandle(hfile);
+}
+
+static void test_ioctl(void)
+{
+    HANDLE event = CreateEventA(NULL, TRUE, FALSE, NULL);
+    IO_STATUS_BLOCK iosb;
+    HANDLE file;
+    NTSTATUS status;
+
+    file = create_temp_file(FILE_FLAG_OVERLAPPED);
+    ok(file != INVALID_HANDLE_VALUE, "could not create temp file\n");
+
+    SetEvent(event);
+    status = pNtFsControlFile(file, event, NULL, NULL, &iosb, 0xdeadbeef, 0, 0, 0, 0);
+    todo_wine
+    ok(status == STATUS_INVALID_DEVICE_REQUEST, "NtFsControlFile returned %x\n", status);
+    ok(!is_signaled(event), "event is signaled\n");
+
+    status = pNtFsControlFile(file, (HANDLE)0xdeadbeef, NULL, NULL, &iosb, 0xdeadbeef, 0, 0, 0, 0);
+    ok(status == STATUS_INVALID_HANDLE, "NtFsControlFile returned %x\n", status);
+
+    CloseHandle(event);
+    CloseHandle(file);
+}
+
+static void test_flush_buffers_file(void)
+{
+    char path[MAX_PATH], buffer[MAX_PATH];
+    HANDLE hfile, hfileread;
+    NTSTATUS status;
+    IO_STATUS_BLOCK io_status_block;
+
+    GetTempPathA(MAX_PATH, path);
+    GetTempFileNameA(path, "foo", 0, buffer);
+    hfile = CreateFileA(buffer, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL, 0);
+    ok(hfile != INVALID_HANDLE_VALUE, "failed to create temp file.\n" );
+
+    hfileread = CreateFileA(buffer, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+            OPEN_EXISTING, 0, NULL);
+    ok(hfileread != INVALID_HANDLE_VALUE, "could not open temp file, error %d.\n", GetLastError());
+
+    status = pNtFlushBuffersFile(hfile, NULL);
+    todo_wine
+    ok(status == STATUS_ACCESS_VIOLATION, "expected STATUS_ACCESS_VIOLATION, got %#x.\n", status);
+
+    status = pNtFlushBuffersFile(hfile, (IO_STATUS_BLOCK *)0xdeadbeaf);
+    todo_wine
+    ok(status == STATUS_ACCESS_VIOLATION, "expected STATUS_ACCESS_VIOLATION, got %#x.\n", status);
+
+    status = pNtFlushBuffersFile(hfile, &io_status_block);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#x.\n", status);
+
+    status = pNtFlushBuffersFile(hfileread, &io_status_block);
+    ok(status == STATUS_ACCESS_DENIED, "expected STATUS_ACCESS_DENIED, got %#x.\n", status);
+
+    status = pNtFlushBuffersFile(NULL, &io_status_block);
+    ok(status == STATUS_INVALID_HANDLE, "expected STATUS_INVALID_HANDLE, got %#x.\n", status);
+
+    CloseHandle(hfileread);
+    CloseHandle(hfile);
+    hfile = CreateFileA(buffer, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+            OPEN_EXISTING, 0, NULL);
+    ok(hfile != INVALID_HANDLE_VALUE, "could not open temp file, error %d.\n", GetLastError());
+
+    status = pNtFlushBuffersFile(hfile, &io_status_block);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %#x.\n", status);
+
+    CloseHandle(hfile);
+    DeleteFileA(buffer);
 }
 
 START_TEST(file)
@@ -4185,6 +4496,7 @@ START_TEST(file)
     pNtCancelIoFile         = (void *)GetProcAddress(hntdll, "NtCancelIoFile");
     pNtCancelIoFileEx       = (void *)GetProcAddress(hntdll, "NtCancelIoFileEx");
     pNtClose                = (void *)GetProcAddress(hntdll, "NtClose");
+    pNtFsControlFile        = (void *)GetProcAddress(hntdll, "NtFsControlFile");
     pNtCreateIoCompletion   = (void *)GetProcAddress(hntdll, "NtCreateIoCompletion");
     pNtOpenIoCompletion     = (void *)GetProcAddress(hntdll, "NtOpenIoCompletion");
     pNtQueryIoCompletion    = (void *)GetProcAddress(hntdll, "NtQueryIoCompletion");
@@ -4195,6 +4507,7 @@ START_TEST(file)
     pNtQueryDirectoryFile   = (void *)GetProcAddress(hntdll, "NtQueryDirectoryFile");
     pNtQueryVolumeInformationFile = (void *)GetProcAddress(hntdll, "NtQueryVolumeInformationFile");
     pNtQueryFullAttributesFile = (void *)GetProcAddress(hntdll, "NtQueryFullAttributesFile");
+    pNtFlushBuffersFile = (void *)GetProcAddress(hntdll, "NtFlushBuffersFile");
 
     test_read_write();
     test_NtCreateFile();
@@ -4214,6 +4527,11 @@ START_TEST(file)
     test_file_rename_information();
     test_file_link_information();
     test_file_disposition_information();
+    test_file_completion_information();
+    test_file_id_information();
+    test_file_access_information();
     test_query_volume_information_file();
     test_query_attribute_information_file();
+    test_ioctl();
+    test_flush_buffers_file();
 }

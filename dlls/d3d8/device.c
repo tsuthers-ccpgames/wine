@@ -227,6 +227,76 @@ static BOOL wined3d_swapchain_desc_from_present_parameters(struct wined3d_swapch
     return TRUE;
 }
 
+void d3dcaps_from_wined3dcaps(D3DCAPS8 *caps, const WINED3DCAPS *wined3d_caps)
+{
+    caps->DeviceType                = (D3DDEVTYPE)wined3d_caps->DeviceType;
+    caps->AdapterOrdinal            = wined3d_caps->AdapterOrdinal;
+    caps->Caps                      = wined3d_caps->Caps;
+    caps->Caps2                     = wined3d_caps->Caps2;
+    caps->Caps3                     = wined3d_caps->Caps3;
+    caps->PresentationIntervals     = wined3d_caps->PresentationIntervals;
+    caps->CursorCaps                = wined3d_caps->CursorCaps;
+    caps->DevCaps                   = wined3d_caps->DevCaps;
+    caps->PrimitiveMiscCaps         = wined3d_caps->PrimitiveMiscCaps;
+    caps->RasterCaps                = wined3d_caps->RasterCaps;
+    caps->ZCmpCaps                  = wined3d_caps->ZCmpCaps;
+    caps->SrcBlendCaps              = wined3d_caps->SrcBlendCaps;
+    caps->DestBlendCaps             = wined3d_caps->DestBlendCaps;
+    caps->AlphaCmpCaps              = wined3d_caps->AlphaCmpCaps;
+    caps->ShadeCaps                 = wined3d_caps->ShadeCaps;
+    caps->TextureCaps               = wined3d_caps->TextureCaps;
+    caps->TextureFilterCaps         = wined3d_caps->TextureFilterCaps;
+    caps->CubeTextureFilterCaps     = wined3d_caps->CubeTextureFilterCaps;
+    caps->VolumeTextureFilterCaps   = wined3d_caps->VolumeTextureFilterCaps;
+    caps->TextureAddressCaps        = wined3d_caps->TextureAddressCaps;
+    caps->VolumeTextureAddressCaps  = wined3d_caps->VolumeTextureAddressCaps;
+    caps->LineCaps                  = wined3d_caps->LineCaps;
+    caps->MaxTextureWidth           = wined3d_caps->MaxTextureWidth;
+    caps->MaxTextureHeight          = wined3d_caps->MaxTextureHeight;
+    caps->MaxVolumeExtent           = wined3d_caps->MaxVolumeExtent;
+    caps->MaxTextureRepeat          = wined3d_caps->MaxTextureRepeat;
+    caps->MaxTextureAspectRatio     = wined3d_caps->MaxTextureAspectRatio;
+    caps->MaxAnisotropy             = wined3d_caps->MaxAnisotropy;
+    caps->MaxVertexW                = wined3d_caps->MaxVertexW;
+    caps->GuardBandLeft             = wined3d_caps->GuardBandLeft;
+    caps->GuardBandTop              = wined3d_caps->GuardBandTop;
+    caps->GuardBandRight            = wined3d_caps->GuardBandRight;
+    caps->GuardBandBottom           = wined3d_caps->GuardBandBottom;
+    caps->ExtentsAdjust             = wined3d_caps->ExtentsAdjust;
+    caps->StencilCaps               = wined3d_caps->StencilCaps;
+    caps->FVFCaps                   = wined3d_caps->FVFCaps;
+    caps->TextureOpCaps             = wined3d_caps->TextureOpCaps;
+    caps->MaxTextureBlendStages     = wined3d_caps->MaxTextureBlendStages;
+    caps->MaxSimultaneousTextures   = wined3d_caps->MaxSimultaneousTextures;
+    caps->VertexProcessingCaps      = wined3d_caps->VertexProcessingCaps;
+    caps->MaxActiveLights           = wined3d_caps->MaxActiveLights;
+    caps->MaxUserClipPlanes         = wined3d_caps->MaxUserClipPlanes;
+    caps->MaxVertexBlendMatrices    = wined3d_caps->MaxVertexBlendMatrices;
+    caps->MaxVertexBlendMatrixIndex = wined3d_caps->MaxVertexBlendMatrixIndex;
+    caps->MaxPointSize              = wined3d_caps->MaxPointSize;
+    caps->MaxPrimitiveCount         = wined3d_caps->MaxPrimitiveCount;
+    caps->MaxVertexIndex            = wined3d_caps->MaxVertexIndex;
+    caps->MaxStreams                = wined3d_caps->MaxStreams;
+    caps->MaxStreamStride           = wined3d_caps->MaxStreamStride;
+    caps->VertexShaderVersion       = wined3d_caps->VertexShaderVersion;
+    caps->MaxVertexShaderConst      = wined3d_caps->MaxVertexShaderConst;
+    caps->PixelShaderVersion        = wined3d_caps->PixelShaderVersion;
+    caps->MaxPixelShaderValue       = wined3d_caps->PixelShader1xMaxValue;
+
+    /* D3D8 doesn't support SM 2.0 or higher, so clamp to 1.x */
+    if (caps->PixelShaderVersion)
+        caps->PixelShaderVersion = D3DPS_VERSION(1, 4);
+    else
+        caps->PixelShaderVersion = D3DPS_VERSION(0, 0);
+    if (caps->VertexShaderVersion)
+        caps->VertexShaderVersion = D3DVS_VERSION(1, 1);
+    else
+        caps->VertexShaderVersion = D3DVS_VERSION(0, 0);
+    caps->MaxVertexShaderConst = min(D3D8_MAX_VERTEX_SHADER_CONSTANTF, caps->MaxVertexShaderConst);
+
+    caps->StencilCaps &= ~WINED3DSTENCILCAPS_TWOSIDED;
+}
+
 /* Handle table functions */
 static DWORD d3d8_allocate_handle(struct d3d8_handle_table *t, void *object, enum d3d8_handle_type type)
 {
@@ -458,7 +528,7 @@ static HRESULT WINAPI d3d8_device_GetDirect3D(IDirect3DDevice8 *iface, IDirect3D
 static HRESULT WINAPI d3d8_device_GetDeviceCaps(IDirect3DDevice8 *iface, D3DCAPS8 *caps)
 {
     struct d3d8_device *device = impl_from_IDirect3DDevice8(iface);
-    WINED3DCAPS *wined3d_caps;
+    WINED3DCAPS wined3d_caps;
     HRESULT hr;
 
     TRACE("iface %p, caps %p.\n", iface, caps);
@@ -466,16 +536,11 @@ static HRESULT WINAPI d3d8_device_GetDeviceCaps(IDirect3DDevice8 *iface, D3DCAPS
     if (!caps)
         return D3DERR_INVALIDCALL;
 
-    if (!(wined3d_caps = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*wined3d_caps))))
-        return D3DERR_INVALIDCALL; /* well this is what MSDN says to return */
-
     wined3d_mutex_lock();
-    hr = wined3d_device_get_device_caps(device->wined3d_device, wined3d_caps);
+    hr = wined3d_device_get_device_caps(device->wined3d_device, &wined3d_caps);
     wined3d_mutex_unlock();
 
-    fixup_caps(wined3d_caps);
-    WINECAPSTOD3D8CAPS(caps, wined3d_caps)
-    HeapFree(GetProcessHeap(), 0, wined3d_caps);
+    d3dcaps_from_wined3dcaps(caps, &wined3d_caps);
 
     return hr;
 }
@@ -791,6 +856,9 @@ static HRESULT WINAPI d3d8_device_CreateTexture(IDirect3DDevice8 *iface,
     TRACE("iface %p, width %u, height %u, levels %u, usage %#x, format %#x, pool %#x, texture %p.\n",
             iface, width, height, levels, usage, format, pool, texture);
 
+    if (!format)
+        return D3DERR_INVALIDCALL;
+
     *texture = NULL;
     object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object));
     if (!object)
@@ -821,6 +889,9 @@ static HRESULT WINAPI d3d8_device_CreateVolumeTexture(IDirect3DDevice8 *iface,
     TRACE("iface %p, width %u, height %u, depth %u, levels %u, usage %#x, format %#x, pool %#x, texture %p.\n",
             iface, width, height, depth, levels, usage, format, pool, texture);
 
+    if (!format)
+        return D3DERR_INVALIDCALL;
+
     *texture = NULL;
     object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object));
     if (!object)
@@ -849,6 +920,9 @@ static HRESULT WINAPI d3d8_device_CreateCubeTexture(IDirect3DDevice8 *iface, UIN
 
     TRACE("iface %p, edge_length %u, levels %u, usage %#x, format %#x, pool %#x, texture %p.\n",
             iface, edge_length, levels, usage, format, pool, texture);
+
+    if (!format)
+        return D3DERR_INVALIDCALL;
 
     *texture = NULL;
     object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object));
@@ -981,6 +1055,9 @@ static HRESULT WINAPI d3d8_device_CreateRenderTarget(IDirect3DDevice8 *iface, UI
     TRACE("iface %p, width %u, height %u, format %#x, multisample_type %#x, lockable %#x, surface %p.\n",
             iface, width, height, format, multisample_type, lockable, surface);
 
+    if (!format)
+        return D3DERR_INVALIDCALL;
+
     *surface = NULL;
     if (lockable)
         flags |= WINED3D_TEXTURE_CREATE_MAPPABLE;
@@ -997,6 +1074,9 @@ static HRESULT WINAPI d3d8_device_CreateDepthStencilSurface(IDirect3DDevice8 *if
 
     TRACE("iface %p, width %u, height %u, format %#x, multisample_type %#x, surface %p.\n",
             iface, width, height, format, multisample_type, surface);
+
+    if (!format)
+        return D3DERR_INVALIDCALL;
 
     *surface = NULL;
 
@@ -1156,10 +1236,16 @@ static HRESULT WINAPI d3d8_device_SetRenderTarget(IDirect3DDevice8 *iface,
     struct d3d8_device *device = impl_from_IDirect3DDevice8(iface);
     struct d3d8_surface *rt_impl = unsafe_impl_from_IDirect3DSurface8(render_target);
     struct d3d8_surface *ds_impl = unsafe_impl_from_IDirect3DSurface8(depth_stencil);
-    struct wined3d_rendertarget_view *original_dsv;
+    struct wined3d_rendertarget_view *original_dsv, *rtv;
     HRESULT hr = D3D_OK;
 
     TRACE("iface %p, render_target %p, depth_stencil %p.\n", iface, render_target, depth_stencil);
+
+    if (rt_impl && d3d8_surface_get_device(rt_impl) != device)
+    {
+        WARN("Render target surface does not match device.\n");
+        return D3DERR_INVALIDCALL;
+    }
 
     wined3d_mutex_lock();
 
@@ -1172,7 +1258,6 @@ static HRESULT WINAPI d3d8_device_SetRenderTarget(IDirect3DDevice8 *iface,
         /* If no render target is passed in check the size against the current RT */
         if (!render_target)
         {
-
             if (!(original_rtv = wined3d_device_get_rendertarget_view(device->wined3d_device, 0)))
             {
                 wined3d_mutex_unlock();
@@ -1200,16 +1285,17 @@ static HRESULT WINAPI d3d8_device_SetRenderTarget(IDirect3DDevice8 *iface,
             WARN("Multisample settings do not match, returning D3DERR_INVALIDCALL\n");
             wined3d_mutex_unlock();
             return D3DERR_INVALIDCALL;
-
         }
     }
 
     original_dsv = wined3d_device_get_depth_stencil_view(device->wined3d_device);
-    wined3d_device_set_depth_stencil_view(device->wined3d_device,
-            ds_impl ? d3d8_surface_get_rendertarget_view(ds_impl) : NULL);
-    if (render_target && FAILED(hr = wined3d_device_set_rendertarget_view(device->wined3d_device, 0,
-            d3d8_surface_get_rendertarget_view(rt_impl), TRUE)))
+    rtv = ds_impl ? d3d8_surface_acquire_rendertarget_view(ds_impl) : NULL;
+    wined3d_device_set_depth_stencil_view(device->wined3d_device, rtv);
+    d3d8_surface_release_rendertarget_view(ds_impl, rtv);
+    rtv = render_target ? d3d8_surface_acquire_rendertarget_view(rt_impl) : NULL;
+    if (render_target && FAILED(hr = wined3d_device_set_rendertarget_view(device->wined3d_device, 0, rtv, TRUE)))
         wined3d_device_set_depth_stencil_view(device->wined3d_device, original_dsv);
+    d3d8_surface_release_rendertarget_view(rt_impl, rtv);
 
     wined3d_mutex_unlock();
 
@@ -1597,7 +1683,7 @@ static HRESULT WINAPI d3d8_device_EndStateBlock(IDirect3DDevice8 *iface, DWORD *
     hr = wined3d_device_end_stateblock(device->wined3d_device, &stateblock);
     if (FAILED(hr))
     {
-        WARN("IWineD3DDevice_EndStateBlock returned an error\n");
+        WARN("Failed to end the state block, %#x.\n", hr);
         wined3d_mutex_unlock();
         return hr;
     }
@@ -1713,7 +1799,7 @@ static HRESULT WINAPI d3d8_device_CreateStateBlock(IDirect3DDevice8 *iface,
     if (FAILED(hr))
     {
         wined3d_mutex_unlock();
-        ERR("IWineD3DDevice_CreateStateBlock failed, hr %#x\n", hr);
+        ERR("Failed to create the state block, hr %#x\n", hr);
         return hr;
     }
 
@@ -2118,18 +2204,16 @@ static HRESULT WINAPI d3d8_device_DrawIndexedPrimitiveUP(IDirect3DDevice8 *iface
         UINT primitive_count, const void *index_data, D3DFORMAT index_format,
         const void *vertex_data, UINT vertex_stride)
 {
-    struct d3d8_device *device = impl_from_IDirect3DDevice8(iface);
-    HRESULT hr;
     UINT idx_count = vertex_count_from_primitive_count(primitive_type, primitive_count);
+    struct d3d8_device *device = impl_from_IDirect3DDevice8(iface);
     UINT idx_fmt_size = index_format == D3DFMT_INDEX16 ? 2 : 4;
+    UINT vtx_size = vertex_count * vertex_stride;
     UINT idx_size = idx_count * idx_fmt_size;
     struct wined3d_map_desc wined3d_map_desc;
     struct wined3d_box wined3d_box = {0};
     struct wined3d_resource *ib, *vb;
-    UINT ib_pos;
-
-    UINT vtx_size = vertex_count * vertex_stride;
-    UINT vb_pos, align;
+    UINT vb_pos, ib_pos, align;
+    HRESULT hr;
 
     TRACE("iface %p, primitive_type %#x, min_vertex_idx %u, vertex_count %u, primitive_count %u, "
             "index_data %p, index_format %#x, vertex_data %p, vertex_stride %u.\n",
@@ -2162,7 +2246,7 @@ static HRESULT WINAPI d3d8_device_DrawIndexedPrimitiveUP(IDirect3DDevice8 *iface
     if (FAILED(hr = wined3d_resource_map(vb, 0, &wined3d_map_desc, &wined3d_box,
             vb_pos ? WINED3D_MAP_NOOVERWRITE : WINED3D_MAP_DISCARD)))
         goto done;
-    memcpy(wined3d_map_desc.data, vertex_data, vtx_size);
+    memcpy(wined3d_map_desc.data, (char *)vertex_data + min_vertex_idx * vertex_stride, vtx_size);
     wined3d_resource_unmap(vb, 0);
     device->vertex_buffer_pos = vb_pos + vtx_size;
 
@@ -2194,7 +2278,7 @@ static HRESULT WINAPI d3d8_device_DrawIndexedPrimitiveUP(IDirect3DDevice8 *iface
 
     wined3d_device_set_index_buffer(device->wined3d_device, device->index_buffer,
             wined3dformat_from_d3dformat(index_format), 0);
-    wined3d_device_set_base_vertex_index(device->wined3d_device, vb_pos / vertex_stride);
+    wined3d_device_set_base_vertex_index(device->wined3d_device, vb_pos / vertex_stride - min_vertex_idx);
 
     wined3d_device_set_primitive_type(device->wined3d_device, primitive_type);
     hr = wined3d_device_draw_indexed_primitive(device->wined3d_device, ib_pos / idx_fmt_size, idx_count);
@@ -3032,17 +3116,19 @@ static HRESULT CDECL device_parent_volume_created(struct wined3d_device_parent *
 }
 
 static HRESULT CDECL device_parent_create_swapchain_texture(struct wined3d_device_parent *device_parent,
-        void *container_parent, const struct wined3d_resource_desc *desc, struct wined3d_texture **texture)
+        void *container_parent, const struct wined3d_resource_desc *desc, DWORD texture_flags,
+        struct wined3d_texture **texture)
 {
     struct d3d8_device *device = device_from_device_parent(device_parent);
     struct d3d8_surface *d3d_surface;
     HRESULT hr;
 
-    TRACE("device_parent %p, container_parent %p, desc %p, texture %p.\n",
-            device_parent, container_parent, desc, texture);
+    TRACE("device_parent %p, container_parent %p, desc %p, texture flags %#x, texture %p.\n",
+            device_parent, container_parent, desc, texture_flags, texture);
 
-    if (FAILED(hr = wined3d_texture_create(device->wined3d_device, desc, 1, 1, WINED3D_TEXTURE_CREATE_MAPPABLE,
-            NULL, &device->IDirect3DDevice8_iface, &d3d8_null_wined3d_parent_ops, texture)))
+    if (FAILED(hr = wined3d_texture_create(device->wined3d_device, desc, 1, 1,
+            texture_flags | WINED3D_TEXTURE_CREATE_MAPPABLE,  NULL, &device->IDirect3DDevice8_iface,
+            &d3d8_null_wined3d_parent_ops, texture)))
     {
         WARN("Failed to create texture, hr %#x.\n", hr);
         return hr;

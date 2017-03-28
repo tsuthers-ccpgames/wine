@@ -36,12 +36,15 @@
 #include "shlobj.h"
 #include "shellapi.h"
 #include "wine/unicode.h"
+#include "wine/list.h"
 
 /*******************************************
 *  global SHELL32.DLL variables
 */
 extern HMODULE	huser32 DECLSPEC_HIDDEN;
 extern HINSTANCE shell32_hInstance DECLSPEC_HIDDEN;
+
+extern CLSID CLSID_ShellImageDataFactory;
 
 /* Iconcache */
 #define INVALID_INDEX -1
@@ -109,6 +112,8 @@ HRESULT IShellLink_ConstructFromFile(IUnknown * pUnkOuter, REFIID riid, LPCITEMI
 
 LPEXTRACTICONA	IExtractIconA_Constructor(LPCITEMIDLIST) DECLSPEC_HIDDEN;
 LPEXTRACTICONW	IExtractIconW_Constructor(LPCITEMIDLIST) DECLSPEC_HIDDEN;
+
+HRESULT WINAPI CustomDestinationList_Constructor(IUnknown *outer, REFIID riid, void **obj) DECLSPEC_HIDDEN;
 
 /* initialisation for FORMATETC */
 #define InitFormatEtc(fe, cf, med) \
@@ -181,19 +186,18 @@ BOOL SHELL_IsShortcut(LPCITEMIDLIST) DECLSPEC_HIDDEN;
 
 
 /* IEnumIDList stuff */
-struct enumlist
+struct pidl_enum_entry
 {
-        struct enumlist *pNext;
-        LPITEMIDLIST    pidl;
+    struct list entry;
+    LPITEMIDLIST pidl;
 };
 
 typedef struct
 {
-        IEnumIDList     IEnumIDList_iface;
-        LONG            ref;
-        struct enumlist *mpFirst;
-        struct enumlist *mpLast;
-        struct enumlist *mpCurrent;
+    IEnumIDList  IEnumIDList_iface;
+    LONG         ref;
+    struct list  pidls;
+    struct list *current;
 } IEnumIDListImpl;
 
 /* Creates an IEnumIDList; add LPITEMIDLISTs to it with AddToEnumList. */
@@ -220,5 +224,15 @@ enum tid_t {
 HRESULT get_typeinfo(enum tid_t, ITypeInfo**) DECLSPEC_HIDDEN;
 void release_typelib(void) DECLSPEC_HIDDEN;
 void release_desktop_folder(void) DECLSPEC_HIDDEN;
+
+static inline WCHAR *strdupW(const WCHAR *src)
+{
+    WCHAR *dest;
+    if (!src) return NULL;
+    dest = HeapAlloc(GetProcessHeap(), 0, (lstrlenW(src) + 1) * sizeof(*dest));
+    if (dest)
+        lstrcpyW(dest, src);
+    return dest;
+}
 
 #endif

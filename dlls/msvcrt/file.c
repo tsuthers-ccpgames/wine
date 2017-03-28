@@ -2171,8 +2171,8 @@ int CDECL MSVCRT__wsopen_dispatch( const MSVCRT_wchar_t* path, int oflags, int s
 
   if (oflags & MSVCRT__O_CREAT)
   {
-    if(pmode & ~(MSVCRT__S_IREAD | MSVCRT__S_IWRITE))
-      FIXME(": pmode 0x%04x ignored\n", pmode);
+    if (secure && !MSVCRT_CHECK_PMT(!(pmode & ~(MSVCRT__S_IREAD | MSVCRT__S_IWRITE))))
+      return MSVCRT_EINVAL;
 
     if (oflags & MSVCRT__O_EXCL)
       creation = CREATE_NEW;
@@ -2430,19 +2430,19 @@ int CDECL MSVCRT__wopen(const MSVCRT_wchar_t *path,int flags,...)
 /*********************************************************************
  *		_creat (MSVCRT.@)
  */
-int CDECL MSVCRT__creat(const char *path, int flags)
+int CDECL MSVCRT__creat(const char *path, int pmode)
 {
-  int usedFlags = (flags & MSVCRT__O_TEXT)| MSVCRT__O_CREAT| MSVCRT__O_WRONLY| MSVCRT__O_TRUNC;
-  return MSVCRT__open(path, usedFlags);
+  int flags = MSVCRT__O_CREAT | MSVCRT__O_TRUNC | MSVCRT__O_RDWR;
+  return MSVCRT__open(path, flags, pmode);
 }
 
 /*********************************************************************
  *		_wcreat (MSVCRT.@)
  */
-int CDECL MSVCRT__wcreat(const MSVCRT_wchar_t *path, int flags)
+int CDECL MSVCRT__wcreat(const MSVCRT_wchar_t *path, int pmode)
 {
-  int usedFlags = (flags & MSVCRT__O_TEXT)| MSVCRT__O_CREAT| MSVCRT__O_WRONLY| MSVCRT__O_TRUNC;
-  return MSVCRT__wopen(path, usedFlags);
+  int flags = MSVCRT__O_CREAT | MSVCRT__O_TRUNC | MSVCRT__O_RDWR;
+  return MSVCRT__wopen(path, flags, pmode);
 }
 
 /*********************************************************************

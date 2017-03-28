@@ -737,6 +737,12 @@ typedef enum _BUS_QUERY_ID_TYPE {
   BusQueryDeviceSerialNumber
 } BUS_QUERY_ID_TYPE, *PBUS_QUERY_ID_TYPE;
 
+typedef enum _CREATE_FILE_TYPE {
+  CreateFileTypeNone,
+  CreateFileTypeNamedPipe,
+  CreateFileTypeMailslot
+} CREATE_FILE_TYPE;
+
 typedef enum {
   DevicePropertyDeviceDescription,
   DevicePropertyHardwareID,
@@ -1203,6 +1209,16 @@ typedef struct _CALLBACK_OBJECT
     BOOLEAN AllowMultipleCallbacks;
     UCHAR reserved[3];
 } CALLBACK_OBJECT, *PCALLBACK_OBJECT;
+
+typedef struct _KSPIN_LOCK_QUEUE {
+    struct _KSPIN_LOCK_QUEUE * volatile Next;
+    volatile PKSPIN_LOCK Lock;
+} KSPIN_LOCK_QUEUE, *PKSPIN_LOCK_QUEUE;
+
+typedef struct _KLOCK_QUEUE_HANDLE {
+    KSPIN_LOCK_QUEUE LockQueue;
+    KIRQL OldIrql;
+} KLOCK_QUEUE_HANDLE, *PKLOCK_QUEUE_HANDLE;
 
 typedef NTSTATUS (NTAPI EX_CALLBACK_FUNCTION)(void *CallbackContext, void *Argument1, void *Argument2);
 typedef EX_CALLBACK_FUNCTION *PEX_CALLBACK_FUNCTION;

@@ -334,10 +334,10 @@ static BOOL InitOpenFileName(HWND hWnd, OPENFILENAMEW *pofn)
 
 static BOOL import_registry_filename(LPWSTR filename)
 {
-    static const WCHAR mode_r[] = {'r',0};
+    static const WCHAR rb_mode[] = {'r','b',0};
 
     BOOL Success;
-    FILE* reg_file = _wfopen(filename, mode_r);
+    FILE* reg_file = _wfopen(filename, rb_mode);
 
     if(!reg_file)
         return FALSE;
@@ -354,18 +354,30 @@ static BOOL ImportRegistryFile(HWND hWnd)
 {
     OPENFILENAMEW ofn;
     WCHAR title[128];
+    HKEY root_key = NULL;
+    WCHAR *key_path;
 
     InitOpenFileName(hWnd, &ofn);
     ofn.Flags |= OFN_ENABLESIZING;
     LoadStringW(hInst, IDS_FILEDIALOG_IMPORT_TITLE, title, COUNT_OF(title));
     ofn.lpstrTitle = title;
     if (GetOpenFileNameW(&ofn)) {
-        if (!import_registry_filename(ofn.lpstrFile))
+        if (!import_registry_filename(ofn.lpstrFile)) {
+            messagebox(hWnd, MB_OK|MB_ICONERROR, IDS_APP_TITLE, IDS_IMPORT_FAILED, ofn.lpstrFile);
             return FALSE;
+        } else {
+            messagebox(hWnd, MB_OK|MB_ICONINFORMATION, IDS_APP_TITLE,
+                       IDS_IMPORT_SUCCESSFUL, ofn.lpstrFile);
+        }
     } else {
         CheckCommDlgError(hWnd);
     }
     RefreshTreeView(g_pChildWnd->hTreeWnd);
+
+    key_path = GetItemPath(g_pChildWnd->hTreeWnd, 0, &root_key);
+    RefreshListView(g_pChildWnd->hListWnd, root_key, key_path, NULL);
+    HeapFree(GetProcessHeap(), 0, key_path);
+
     return TRUE;
 }
 
@@ -475,7 +487,7 @@ static BOOL CopyKeyName(HWND hWnd, LPCWSTR keyName)
             LPVOID pLoc = GlobalLock(hClipData);
             lstrcpyW(pLoc, keyName);
             GlobalUnlock(hClipData);
-            hClipData = SetClipboardData(CF_UNICODETEXT, hClipData);
+            SetClipboardData(CF_UNICODETEXT, hClipData);
 
         } else {
             /* error emptying clipboard*/
@@ -707,8 +719,8 @@ static BOOL _CmdWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             curIndex = SendMessageW(g_pChildWnd->hListWnd, LVM_GETNEXTITEM, curIndex, MAKELPARAM(LVNI_SELECTED, 0));
             if(curIndex != -1 && firstItem) {
-                if (MessageBoxW(hWnd, MAKEINTRESOURCEW(IDS_DELETE_BOX_TEXT_MULTIPLE),
-                                MAKEINTRESOURCEW(IDS_DELETE_BOX_TITLE),
+                if (MessageBoxW(hWnd, MAKEINTRESOURCEW(IDS_DELETE_VALUE_TEXT_MULTIPLE),
+                                MAKEINTRESOURCEW(IDS_DELETE_VALUE_TITLE),
                                 MB_YESNO | MB_ICONEXCLAMATION) != IDYES)
                     break;
             }
@@ -730,6 +742,7 @@ static BOOL _CmdWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     }
     case ID_EDIT_MODIFY:
+    case ID_EDIT_MODIFY_BIN:
     {
         LPCWSTR valueName = GetValueName(g_pChildWnd->hListWnd);
         WCHAR* keyPath = GetItemPath(g_pChildWnd->hTreeWnd, 0, &hKeyRoot);
@@ -772,7 +785,7 @@ static BOOL _CmdWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                     SetFocus(g_pChildWnd->hTreeWnd);
                 }
             } else {
-                error(hWnd, IDS_NOTFOUND, searchString);
+                messagebox(hWnd, MB_OK|MB_ICONINFORMATION, IDS_APP_TITLE, IDS_NOTFOUND, searchString);
             }
         }
         break;

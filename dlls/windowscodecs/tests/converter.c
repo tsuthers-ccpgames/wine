@@ -25,6 +25,7 @@
 #include "windef.h"
 #include "objbase.h"
 #include "wincodec.h"
+#include "wincodecsdk.h"
 #include "wine/test.h"
 
 typedef struct bitmap_data {
@@ -418,15 +419,23 @@ typedef struct property_opt_test_data
     VARTYPE initial_var_type;
     int i_init_val;
     float f_init_val;
+    BOOL skippable;
 } property_opt_test_data;
 
 static const WCHAR wszTiffCompressionMethod[] = {'T','i','f','f','C','o','m','p','r','e','s','s','i','o','n','M','e','t','h','o','d',0};
 static const WCHAR wszCompressionQuality[] = {'C','o','m','p','r','e','s','s','i','o','n','Q','u','a','l','i','t','y',0};
 static const WCHAR wszInterlaceOption[] = {'I','n','t','e','r','l','a','c','e','O','p','t','i','o','n',0};
+static const WCHAR wszFilterOption[] = {'F','i','l','t','e','r','O','p','t','i','o','n',0};
 
 static const struct property_opt_test_data testdata_tiff_props[] = {
     { wszTiffCompressionMethod, VT_UI1,         VT_UI1,  WICTiffCompressionDontCare },
     { wszCompressionQuality,    VT_R4,          VT_EMPTY },
+    { NULL }
+};
+
+static const struct property_opt_test_data testdata_png_props[] = {
+    { wszInterlaceOption, VT_BOOL, VT_BOOL, 0 },
+    { wszFilterOption,    VT_UI1,  VT_UI1, WICPngFilterUnspecified, 0.0f, TRUE /* not supported on XP/2k3 */},
     { NULL }
 };
 
@@ -455,6 +464,13 @@ static void test_specific_encoder_properties(IPropertyBag2 *options, const prope
         pb.pstrName = (LPOLESTR)data[i].name;
 
         hr = IPropertyBag2_Read(options, 1, &pb, NULL, &pvarValue, &phrError);
+
+        if (data[i].skippable && idx == -1)
+        {
+            win_skip("Property %s is not supported on this machine.\n", wine_dbgstr_w(data[i].name));
+            i++;
+            continue;
+        }
 
         ok(idx >= 0, "Property %s not in output of GetPropertyInfo\n",
            wine_dbgstr_w(data[i].name));
@@ -543,8 +559,10 @@ static void test_encoder_properties(const CLSID* clsid_encoder, IPropertyBag2 *o
            (int)cProperties, (int)cProperties2);
     }
 
-    if (clsid_encoder == &CLSID_WICTiffEncoder)
+    if (IsEqualCLSID(clsid_encoder, &CLSID_WICTiffEncoder))
         test_specific_encoder_properties(options, testdata_tiff_props, all_props, cProperties2);
+    else if (IsEqualCLSID(clsid_encoder, &CLSID_WICPngEncoder))
+        test_specific_encoder_properties(options, testdata_png_props, all_props, cProperties2);
 
     for (i=0; i < cProperties2; i++)
     {
@@ -559,6 +577,50 @@ struct setting {
     VARTYPE vt;
     void *value;
 };
+
+#define EXPECT_REF(obj,ref) _expect_ref((IUnknown*)obj, ref, __LINE__)
+static void _expect_ref(IUnknown* obj, ULONG ref, int line)
+{
+    ULONG rc;
+    IUnknown_AddRef(obj);
+    rc = IUnknown_Release(obj);
+    ok_(__FILE__,line)(rc == ref, "expected refcount %d, got %d\n", ref, rc);
+}
+
+static void test_set_frame_palette(IWICBitmapFrameEncode *frameencode)
+{
+    IWICComponentFactory *factory;
+    IWICPalette *palette;
+    HRESULT hr;
+
+    hr = CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER,
+        &IID_IWICComponentFactory, (void **)&factory);
+    ok(hr == S_OK, "CoCreateInstance failed, hr=%x\n", hr);
+
+    hr = IWICBitmapFrameEncode_SetPalette(frameencode, NULL);
+    ok(hr == E_INVALIDARG, "SetPalette failed, hr=%x\n", hr);
+
+    hr = IWICComponentFactory_CreatePalette(factory, &palette);
+    ok(hr == S_OK, "CreatePalette failed, hr=%x\n", hr);
+
+    hr = IWICBitmapFrameEncode_SetPalette(frameencode, palette);
+todo_wine
+    ok(hr == WINCODEC_ERR_NOTINITIALIZED, "Unexpected hr=%x\n", hr);
+
+    hr = IWICPalette_InitializePredefined(palette, WICBitmapPaletteTypeFixedHalftone256, FALSE);
+    ok(hr == S_OK, "InitializePredefined failed, hr=%x\n", hr);
+
+    EXPECT_REF(palette, 1);
+    hr = IWICBitmapFrameEncode_SetPalette(frameencode, palette);
+    ok(hr == S_OK, "SetPalette failed, hr=%x\n", hr);
+    EXPECT_REF(palette, 1);
+
+    hr = IWICBitmapFrameEncode_SetPalette(frameencode, NULL);
+    ok(hr == E_INVALIDARG, "SetPalette failed, hr=%x\n", hr);
+
+    IWICPalette_Release(palette);
+    IWICComponentFactory_Release(factory);
+}
 
 static void test_multi_encoder(const struct bitmap_data **srcs, const CLSID* clsid_encoder,
     const struct bitmap_data **dsts, const CLSID *clsid_decoder, WICRect *rc,
@@ -637,6 +699,9 @@ static void test_multi_encoder(const struct bitmap_data **srcs, const CLSID* cls
 
                     hr = IWICBitmapFrameEncode_SetSize(frameencode, srcs[i]->width, srcs[i]->height);
                     ok(SUCCEEDED(hr), "SetSize failed, hr=%x\n", hr);
+
+                    if (IsEqualGUID(clsid_encoder, &CLSID_WICPngEncoder))
+                        test_set_frame_palette(frameencode);
 
                     hr = IWICBitmapFrameEncode_WriteSource(frameencode, &src_obj->IWICBitmapSource_iface, rc);
                     if (rc && (rc->Width <= 0 || rc->Height <= 0))

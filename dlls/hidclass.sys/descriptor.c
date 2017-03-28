@@ -383,7 +383,7 @@ static void debug_print_preparsed(WINE_HIDP_PREPARSED_DATA *data)
     }
 }
 
-static int getValue(int bsize, int source)
+static int getValue(int bsize, int source, BOOL allow_negative)
 {
     int mask = 0xff;
     int negative = 0x80;
@@ -401,7 +401,7 @@ static int getValue(int bsize, int source)
         outofrange = (outofrange<<8);
     }
     value = (source&mask);
-    if (value&negative)
+    if (allow_negative && value&negative)
         value = -1 * (outofrange - value);
     return value;
 }
@@ -410,7 +410,7 @@ static void parse_io_feature(unsigned int bSize, int itemVal, int bTag,
                              unsigned int *feature_index,
                              struct feature *feature)
 {
-    if (bSize <= 0)
+    if (bSize == 0)
     {
         return;
     }
@@ -566,34 +566,34 @@ static int parse_descriptor(BYTE *descriptor, unsigned int index, unsigned int l
                 switch(bTag)
                 {
                     case TAG_GLOBAL_USAGE_PAGE:
-                        caps->UsagePage = getValue(bSize, itemVal);
+                        caps->UsagePage = getValue(bSize, itemVal, FALSE);
                         break;
                     case TAG_GLOBAL_LOGICAL_MINIMUM:
-                        caps->LogicalMin = getValue(bSize, itemVal);
+                        caps->LogicalMin = getValue(bSize, itemVal, TRUE);
                         break;
                     case TAG_GLOBAL_LOGICAL_MAXIMUM:
-                        caps->LogicalMax = getValue(bSize, itemVal);
+                        caps->LogicalMax = getValue(bSize, itemVal, TRUE);
                         break;
                     case TAG_GLOBAL_PHYSICAL_MINIMUM:
-                        caps->PhysicalMin = getValue(bSize, itemVal);
+                        caps->PhysicalMin = getValue(bSize, itemVal, TRUE);
                         break;
                     case TAG_GLOBAL_PHYSICAL_MAXIMUM:
-                        caps->PhysicalMax = getValue(bSize, itemVal);
+                        caps->PhysicalMax = getValue(bSize, itemVal, TRUE);
                         break;
                     case TAG_GLOBAL_UNIT_EXPONENT:
-                        caps->UnitsExp = getValue(bSize, itemVal);
+                        caps->UnitsExp = getValue(bSize, itemVal, TRUE);
                         break;
                     case TAG_GLOBAL_UNIT:
-                        caps->Units = getValue(bSize, itemVal);
+                        caps->Units = getValue(bSize, itemVal, TRUE);
                         break;
                     case TAG_GLOBAL_REPORT_SIZE:
-                        caps->BitSize = getValue(bSize, itemVal);
+                        caps->BitSize = getValue(bSize, itemVal, FALSE);
                         break;
                     case TAG_GLOBAL_REPORT_ID:
-                        caps->ReportID = getValue(bSize, itemVal);
+                        caps->ReportID = getValue(bSize, itemVal, FALSE);
                         break;
                     case TAG_GLOBAL_REPORT_COUNT:
-                        caps->ReportCount = getValue(bSize, itemVal);
+                        caps->ReportCount = getValue(bSize, itemVal, FALSE);
                         break;
                     case TAG_GLOBAL_PUSH:
                     {
@@ -633,46 +633,46 @@ static int parse_descriptor(BYTE *descriptor, unsigned int index, unsigned int l
                             FIXME("More than %i individual usages defined\n",USAGE_MAX);
                         else
                         {
-                            caps->u.NotRange.Usage[caps->usage_count++] = getValue(bSize, itemVal);
+                            caps->u.NotRange.Usage[caps->usage_count++] = getValue(bSize, itemVal, FALSE);
                             caps->IsRange = FALSE;
                         }
                         break;
                     case TAG_LOCAL_USAGE_MINIMUM:
                         caps->usage_count = 1;
-                        caps->u.Range.UsageMin = getValue(bSize, itemVal);
+                        caps->u.Range.UsageMin = getValue(bSize, itemVal, FALSE);
                         caps->IsRange = TRUE;
                         break;
                     case TAG_LOCAL_USAGE_MAXIMUM:
                         caps->usage_count = 1;
-                        caps->u.Range.UsageMax = getValue(bSize, itemVal);
+                        caps->u.Range.UsageMax = getValue(bSize, itemVal, FALSE);
                         caps->IsRange = TRUE;
                         break;
                     case TAG_LOCAL_DESIGNATOR_INDEX:
-                        caps->u.NotRange.DesignatorIndex = getValue(bSize, itemVal);
+                        caps->u.NotRange.DesignatorIndex = getValue(bSize, itemVal, FALSE);
                         caps->IsDesignatorRange = FALSE;
                         break;
                     case TAG_LOCAL_DESIGNATOR_MINIMUM:
-                        caps->u.Range.DesignatorMin = getValue(bSize, itemVal);
+                        caps->u.Range.DesignatorMin = getValue(bSize, itemVal, FALSE);
                         caps->IsDesignatorRange = TRUE;
                         break;
                     case TAG_LOCAL_DESIGNATOR_MAXIMUM:
-                        caps->u.Range.DesignatorMax = getValue(bSize, itemVal);
+                        caps->u.Range.DesignatorMax = getValue(bSize, itemVal, FALSE);
                         caps->IsDesignatorRange = TRUE;
                         break;
                     case TAG_LOCAL_STRING_INDEX:
-                        caps->u.NotRange.StringIndex = getValue(bSize, itemVal);
+                        caps->u.NotRange.StringIndex = getValue(bSize, itemVal, FALSE);
                         caps->IsStringRange = FALSE;
                         break;
                     case TAG_LOCAL_STRING_MINIMUM:
-                        caps->u.Range.StringMin = getValue(bSize, itemVal);
+                        caps->u.Range.StringMin = getValue(bSize, itemVal, FALSE);
                         caps->IsStringRange = TRUE;
                         break;
                     case TAG_LOCAL_STRING_MAXIMUM:
-                        caps->u.Range.StringMax = getValue(bSize, itemVal);
+                        caps->u.Range.StringMax = getValue(bSize, itemVal, FALSE);
                         caps->IsStringRange = TRUE;
                         break;
                     case TAG_LOCAL_DELIMITER:
-                        caps->Delim = getValue(bSize, itemVal);
+                        caps->Delim = getValue(bSize, itemVal, FALSE);
                         break;
                     default:
                         ERR("Unknown (bTag: 0x%x, bType: 0x%x)\n", bTag, bType);
@@ -694,7 +694,7 @@ static inline void new_report(WINE_HID_REPORT *wine_report, struct feature* feat
     wine_report->elementCount = 0;
 }
 
-static void build_elements(WINE_HID_REPORT *wine_report, struct feature* feature, DWORD *bitOffset)
+static void build_elements(WINE_HID_REPORT *wine_report, struct feature* feature, DWORD *bitOffset, unsigned int *data_index)
 {
     unsigned int i;
 
@@ -729,6 +729,9 @@ static void build_elements(WINE_HID_REPORT *wine_report, struct feature* feature
                 wine_element->caps.button.u.Range.StringMax = feature->caps.u.Range.StringMax;
                 wine_element->caps.button.u.Range.DesignatorMin = feature->caps.u.Range.DesignatorMin;
                 wine_element->caps.button.u.Range.DesignatorMax = feature->caps.u.Range.DesignatorMax;
+                wine_element->caps.button.u.Range.DataIndexMin = *data_index;
+                wine_element->caps.button.u.Range.DataIndexMax = *data_index + wine_element->bitCount - 1;
+                *data_index = *data_index + wine_element->bitCount;
             }
             else
             {
@@ -737,6 +740,8 @@ static void build_elements(WINE_HID_REPORT *wine_report, struct feature* feature
                 wine_element->caps.button.u.NotRange.Usage = feature->caps.u.NotRange.Usage[i];
                 wine_element->caps.button.u.NotRange.StringIndex = feature->caps.u.NotRange.StringIndex;
                 wine_element->caps.button.u.NotRange.DesignatorIndex = feature->caps.u.NotRange.DesignatorIndex;
+                wine_element->caps.button.u.NotRange.DataIndex = *data_index;
+                *data_index = *data_index + 1;
             }
         }
         else
@@ -776,12 +781,21 @@ static void build_elements(WINE_HID_REPORT *wine_report, struct feature* feature
                 wine_element->caps.value.u.Range.StringMax = feature->caps.u.Range.StringMax;
                 wine_element->caps.value.u.Range.DesignatorMin = feature->caps.u.Range.DesignatorMin;
                 wine_element->caps.value.u.Range.DesignatorMax = feature->caps.u.Range.DesignatorMax;
+                wine_element->caps.value.u.Range.DataIndexMin = *data_index;
+                wine_element->caps.value.u.Range.DataIndexMax = *data_index +
+                    (wine_element->caps.value.u.Range.UsageMax -
+                     wine_element->caps.value.u.Range.UsageMin);
+                *data_index = *data_index +
+                    (wine_element->caps.value.u.Range.UsageMax -
+                     wine_element->caps.value.u.Range.UsageMin) + 1;
             }
             else
             {
                 wine_element->caps.value.u.NotRange.Usage = feature->caps.u.NotRange.Usage[i];
                 wine_element->caps.value.u.NotRange.StringIndex = feature->caps.u.NotRange.StringIndex;
                 wine_element->caps.value.u.NotRange.DesignatorIndex = feature->caps.u.NotRange.DesignatorIndex;
+                wine_element->caps.value.u.NotRange.DataIndex = *data_index;
+                *data_index = *data_index + 1;
             }
         }
 
@@ -821,6 +835,7 @@ static WINE_HIDP_PREPARSED_DATA* build_PreparseData(
     unsigned int i;
     unsigned int element_count;
     unsigned int size = 0;
+    unsigned int data_index;
 
     if (features[0]->caps.ReportID != 0)
     {
@@ -915,14 +930,13 @@ static WINE_HIDP_PREPARSED_DATA* build_PreparseData(
     wine_report = data->InputReports;
     if (i_count)
     {
+        data_index = 0;
         bitLength = 0;
         new_report(wine_report, input_features[0]);
         data->dwInputReportCount++;
 
-        if (input_features[0]->caps.ReportID != 0)
-            bitOffset = 8;
-        else
-            bitOffset = 0;
+        /* Room for the reportID */
+        bitOffset = 8;
 
         for (i = 0; i < i_count; i++)
         {
@@ -933,31 +947,27 @@ static WINE_HIDP_PREPARSED_DATA* build_PreparseData(
                 new_report(wine_report, input_features[i]);
                 data->dwInputReportCount++;
                 bitLength = max(bitOffset, bitLength);
-                if (input_features[i]->caps.ReportID != 0)
-                    bitOffset = 8;
-                else
-                    bitOffset = 0;
+                bitOffset = 8;
             }
-            build_elements(wine_report, input_features[i], &bitOffset);
+            build_elements(wine_report, input_features[i], &bitOffset, &data_index);
             count_elements(input_features[i], &data->caps.NumberInputButtonCaps,
                 &data->caps.NumberInputValueCaps);
         }
         wine_report->dwSize += (sizeof(WINE_HID_ELEMENT) * wine_report->elementCount);
         bitLength = max(bitOffset, bitLength);
         data->caps.InputReportByteLength = ((bitLength + 7) & ~7)/8;
+        data->caps.NumberInputDataIndices = data_index;
     }
 
     if (o_count)
     {
+        data_index = 0;
         bitLength = 0;
         wine_report = (WINE_HID_REPORT*)(((BYTE*)wine_report)+wine_report->dwSize);
         data->dwOutputReportOffset = (BYTE*)wine_report - (BYTE*)data->InputReports;
         new_report(wine_report, output_features[0]);
         data->dwOutputReportCount++;
-        if (output_features[0]->caps.ReportID != 0)
-            bitOffset = 8;
-        else
-            bitOffset = 0;
+        bitOffset = 8;
 
         for (i = 0; i < o_count; i++)
         {
@@ -968,31 +978,27 @@ static WINE_HIDP_PREPARSED_DATA* build_PreparseData(
                 new_report(wine_report, output_features[i]);
                 data->dwOutputReportCount++;
                 bitLength = max(bitOffset, bitLength);
-                if (output_features[0]->caps.ReportID != 0)
-                    bitOffset = 8;
-                else
-                    bitOffset = 0;
+                bitOffset = 8;
             }
-            build_elements(wine_report, output_features[i], &bitOffset);
+            build_elements(wine_report, output_features[i], &bitOffset, &data_index);
             count_elements(output_features[i], &data->caps.NumberOutputButtonCaps,
                 &data->caps.NumberOutputValueCaps);
         }
         wine_report->dwSize += (sizeof(WINE_HID_ELEMENT) * wine_report->elementCount);
         bitLength = max(bitOffset, bitLength);
         data->caps.OutputReportByteLength = ((bitLength + 7) & ~7)/8;
+        data->caps.NumberOutputDataIndices = data_index;
     }
 
     if (f_count)
     {
+        data_index = 0;
         bitLength = 0;
         wine_report = (WINE_HID_REPORT*)(((BYTE*)wine_report)+wine_report->dwSize);
         data->dwFeatureReportOffset = (BYTE*)wine_report - (BYTE*)data->InputReports;
         new_report(wine_report, feature_features[0]);
         data->dwFeatureReportCount++;
-        if (feature_features[0]->caps.ReportID != 0)
-            bitOffset = 8;
-        else
-            bitOffset = 0;
+        bitOffset = 8;
 
         for (i = 0; i < f_count; i++)
         {
@@ -1003,17 +1009,15 @@ static WINE_HIDP_PREPARSED_DATA* build_PreparseData(
                 new_report(wine_report, feature_features[i]);
                 data->dwFeatureReportCount++;
                 bitLength = max(bitOffset, bitLength);
-                if (feature_features[0]->caps.ReportID != 0)
-                    bitOffset = 8;
-                else
-                    bitOffset = 0;
+                bitOffset = 8;
             }
-            build_elements(wine_report, feature_features[i], &bitOffset);
+            build_elements(wine_report, feature_features[i], &bitOffset, &data_index);
             count_elements(feature_features[i], &data->caps.NumberFeatureButtonCaps,
                 &data->caps.NumberFeatureValueCaps);
         }
         bitLength = max(bitOffset, bitLength);
         data->caps.FeatureReportByteLength = ((bitLength + 7) & ~7)/8;
+        data->caps.NumberFeatureDataIndices = data_index;
     }
 
     return data;

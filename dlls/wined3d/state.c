@@ -60,7 +60,7 @@ ULONG CDECL wined3d_rasterizer_state_decref(struct wined3d_rasterizer_state *sta
     TRACE("%p decreasing refcount to %u.\n", state, refcount);
 
     if (!refcount)
-        wined3d_cs_emit_destroy_object(device->cs, wined3d_rasterizer_state_destroy_object, state);
+        wined3d_cs_destroy_object(device->cs, wined3d_rasterizer_state_destroy_object, state);
 
     return refcount;
 }
@@ -406,6 +406,14 @@ static GLenum gl_blend_factor(enum wined3d_blend factor, const struct wined3d_fo
             return GL_CONSTANT_COLOR_EXT;
         case WINED3D_BLEND_INVBLENDFACTOR:
             return GL_ONE_MINUS_CONSTANT_COLOR_EXT;
+        case WINED3D_BLEND_SRC1COLOR:
+            return GL_SRC1_COLOR;
+        case WINED3D_BLEND_INVSRC1COLOR:
+            return GL_ONE_MINUS_SRC1_COLOR;
+        case WINED3D_BLEND_SRC1ALPHA:
+            return GL_SRC1_ALPHA;
+        case WINED3D_BLEND_INVSRC1ALPHA:
+            return GL_ONE_MINUS_SRC1_ALPHA;
         default:
             FIXME("Unhandled blend factor %#x.\n", factor);
             return GL_NONE;
@@ -838,15 +846,15 @@ static void state_stencil(struct wined3d_context *context, const struct wined3d_
     DWORD onesided_enable;
     DWORD twosided_enable;
     GLint func;
-    GLint func_ccw;
+    GLint func_back;
     GLint ref;
     GLuint mask;
     GLint stencilFail;
-    GLint stencilFail_ccw;
+    GLint stencilFail_back;
     GLint stencilPass;
-    GLint stencilPass_ccw;
+    GLint stencilPass_back;
     GLint depthFail;
-    GLint depthFail_ccw;
+    GLint depthFail_back;
 
     /* No stencil test without a stencil buffer. */
     if (!state->fb->depth_stencil)
@@ -860,23 +868,23 @@ static void state_stencil(struct wined3d_context *context, const struct wined3d_
     twosided_enable = state->render_states[WINED3D_RS_TWOSIDEDSTENCILMODE];
     if (!(func = wined3d_gl_compare_func(state->render_states[WINED3D_RS_STENCILFUNC])))
         func = GL_ALWAYS;
-    if (!(func_ccw = wined3d_gl_compare_func(state->render_states[WINED3D_RS_CCW_STENCILFUNC])))
-        func_ccw = GL_ALWAYS;
+    if (!(func_back = wined3d_gl_compare_func(state->render_states[WINED3D_RS_BACK_STENCILFUNC])))
+        func_back = GL_ALWAYS;
     ref = state->render_states[WINED3D_RS_STENCILREF];
     mask = state->render_states[WINED3D_RS_STENCILMASK];
     stencilFail = gl_stencil_op(state->render_states[WINED3D_RS_STENCILFAIL]);
     depthFail = gl_stencil_op(state->render_states[WINED3D_RS_STENCILZFAIL]);
     stencilPass = gl_stencil_op(state->render_states[WINED3D_RS_STENCILPASS]);
-    stencilFail_ccw = gl_stencil_op(state->render_states[WINED3D_RS_CCW_STENCILFAIL]);
-    depthFail_ccw = gl_stencil_op(state->render_states[WINED3D_RS_CCW_STENCILZFAIL]);
-    stencilPass_ccw = gl_stencil_op(state->render_states[WINED3D_RS_CCW_STENCILPASS]);
+    stencilFail_back = gl_stencil_op(state->render_states[WINED3D_RS_BACK_STENCILFAIL]);
+    depthFail_back = gl_stencil_op(state->render_states[WINED3D_RS_BACK_STENCILZFAIL]);
+    stencilPass_back = gl_stencil_op(state->render_states[WINED3D_RS_BACK_STENCILPASS]);
 
     TRACE("(onesided %d, twosided %d, ref %x, mask %x, "
-          "GL_FRONT: func: %x, fail %x, zfail %x, zpass %x "
-          "GL_BACK: func: %x, fail %x, zfail %x, zpass %x )\n",
-    onesided_enable, twosided_enable, ref, mask,
-    func, stencilFail, depthFail, stencilPass,
-    func_ccw, stencilFail_ccw, depthFail_ccw, stencilPass_ccw);
+            "GL_FRONT: func: %x, fail %x, zfail %x, zpass %x "
+            "GL_BACK: func: %x, fail %x, zfail %x, zpass %x)\n",
+            onesided_enable, twosided_enable, ref, mask,
+            func, stencilFail, depthFail, stencilPass,
+            func_back, stencilFail_back, depthFail_back, stencilPass_back);
 
     if (twosided_enable && onesided_enable)
     {
@@ -887,8 +895,8 @@ static void state_stencil(struct wined3d_context *context, const struct wined3d_
         {
             GL_EXTCALL(glStencilFuncSeparate(GL_FRONT, func, ref, mask));
             GL_EXTCALL(glStencilOpSeparate(GL_FRONT, stencilFail, depthFail, stencilPass));
-            GL_EXTCALL(glStencilFuncSeparate(GL_BACK, func_ccw, ref, mask));
-            GL_EXTCALL(glStencilOpSeparate(GL_BACK, stencilFail_ccw, depthFail_ccw, stencilPass_ccw));
+            GL_EXTCALL(glStencilFuncSeparate(GL_BACK, func_back, ref, mask));
+            GL_EXTCALL(glStencilOpSeparate(GL_BACK, stencilFail_back, depthFail_back, stencilPass_back));
             checkGLcall("setting two sided stencil state");
         }
         else if (gl_info->supported[EXT_STENCIL_TWO_SIDE])
@@ -900,22 +908,22 @@ static void state_stencil(struct wined3d_context *context, const struct wined3d_
              * to set it back
              */
             renderstate_stencil_twosided(context, GL_BACK,
-                    func_ccw, ref, mask, stencilFail_ccw, depthFail_ccw, stencilPass_ccw);
+                    func_back, ref, mask, stencilFail_back, depthFail_back, stencilPass_back);
             renderstate_stencil_twosided(context, GL_FRONT,
                     func, ref, mask, stencilFail, depthFail, stencilPass);
         }
         else if (gl_info->supported[ATI_SEPARATE_STENCIL])
         {
-            GL_EXTCALL(glStencilFuncSeparateATI(func, func_ccw, ref, mask));
+            GL_EXTCALL(glStencilFuncSeparateATI(func, func_back, ref, mask));
             checkGLcall("glStencilFuncSeparateATI(...)");
             GL_EXTCALL(glStencilOpSeparateATI(GL_FRONT, stencilFail, depthFail, stencilPass));
             checkGLcall("glStencilOpSeparateATI(GL_FRONT, ...)");
-            GL_EXTCALL(glStencilOpSeparateATI(GL_BACK, stencilFail_ccw, depthFail_ccw, stencilPass_ccw));
+            GL_EXTCALL(glStencilOpSeparateATI(GL_BACK, stencilFail_back, depthFail_back, stencilPass_back));
             checkGLcall("glStencilOpSeparateATI(GL_BACK, ...)");
         }
         else
         {
-            ERR("Separate (two sided) stencil not supported on this version of opengl. Caps weren't honored?\n");
+            FIXME("Separate (two sided) stencil not supported on this version of OpenGL. Caps weren't honored?\n");
         }
     }
     else if(onesided_enable)
@@ -3315,7 +3323,7 @@ static void tex_coordindex(struct wined3d_context *context, const struct wined3d
         return;
     }
 
-    if (mapped_stage >= gl_info->limits.fragment_samplers)
+    if (mapped_stage >= min(gl_info->limits.samplers[WINED3D_SHADER_TYPE_PIXEL], MAX_FRAGMENT_SAMPLERS))
     {
         WARN("stage %u not mapped to a valid texture unit (%u)\n", stage, mapped_stage);
         return;
@@ -3481,27 +3489,25 @@ static void sampler_texmatrix(struct wined3d_context *context, const struct wine
 
     TRACE("context %p, state %p, state_id %#x.\n", context, state, state_id);
 
-    if(!texture) return;
+    if (!texture)
+        return;
+
     /* The fixed function np2 texture emulation uses the texture matrix to fix up the coordinates
      * wined3d_texture_apply_state_changes() multiplies the set matrix with a fixup matrix. Before the
-     * scaling is reapplied or removed, the texture matrix has to be reapplied
-     *
-     * The mapped stage is already active because the sampler() function below, which is part of the
-     * misc pipeline
+     * scaling is reapplied or removed, the texture matrix has to be reapplied.
      */
     if (sampler < MAX_TEXTURES)
     {
-        const BOOL texIsPow2 = !(texture->flags & WINED3D_TEXTURE_POW2_MAT_IDENT);
+        const BOOL tex_is_pow2 = !(texture->flags & WINED3D_TEXTURE_POW2_MAT_IDENT);
 
-        if (texIsPow2 || (context->lastWasPow2Texture & (1u << sampler)))
+        if (tex_is_pow2 || (context->lastWasPow2Texture & (1u << sampler)))
         {
-            if (texIsPow2)
+            if (tex_is_pow2)
                 context->lastWasPow2Texture |= 1u << sampler;
             else
                 context->lastWasPow2Texture &= ~(1u << sampler);
 
-            transform_texture(context, state,
-                    STATE_TEXTURESTAGE(context->tex_unit_map[sampler], WINED3D_TSS_TEXTURE_TRANSFORM_FLAGS));
+            transform_texture(context, state, STATE_TEXTURESTAGE(sampler, WINED3D_TSS_TEXTURE_TRANSFORM_FLAGS));
         }
     }
 }
@@ -3553,6 +3559,7 @@ static void wined3d_sampler_desc_from_sampler_states(struct wined3d_sampler_desc
     desc->lod_bias = lod_bias.f;
     desc->min_lod = -1000.0f;
     desc->max_lod = 1000.0f;
+    desc->mip_base_level = sampler_states[WINED3D_SAMP_MAX_MIP_LEVEL];
     desc->max_anisotropy = sampler_states[WINED3D_SAMP_MAX_ANISOTROPY];
     if ((sampler_states[WINED3D_SAMP_MAG_FILTER] != WINED3D_TEXF_ANISOTROPIC
                 && sampler_states[WINED3D_SAMP_MIN_FILTER] != WINED3D_TEXF_ANISOTROPIC
@@ -3589,84 +3596,50 @@ static void sampler(struct wined3d_context *context, const struct wined3d_state 
 
     TRACE("Sampler %u.\n", sampler_idx);
 
-
     if (mapped_stage == WINED3D_UNMAPPED_STAGE)
     {
         TRACE("No sampler mapped to stage %u. Returning.\n", sampler_idx);
         return;
     }
 
-    if (mapped_stage >= gl_info->limits.combined_samplers)
-    {
+    if (mapped_stage >= gl_info->limits.graphics_samplers)
         return;
-    }
     context_active_texture(context, gl_info, mapped_stage);
 
     if (state->textures[sampler_idx])
     {
-        struct wined3d_texture *texture = state->textures[sampler_idx];
         BOOL srgb = state->sampler_states[sampler_idx][WINED3D_SAMP_SRGB_TEXTURE];
         const DWORD *sampler_states = state->sampler_states[sampler_idx];
+        struct wined3d_texture *texture = state->textures[sampler_idx];
+        struct wined3d_device *device = context->device;
         struct wined3d_sampler_desc desc;
-        struct gl_texture *gl_tex;
-        unsigned int base_level;
+        struct wined3d_sampler *sampler;
+        struct wine_rb_entry *entry;
 
         wined3d_sampler_desc_from_sampler_states(&desc, context, sampler_states, texture);
 
         wined3d_texture_bind(texture, context, srgb);
-        if (!gl_info->supported[ARB_SAMPLER_OBJECTS])
+
+        if ((entry = wine_rb_get(&device->samplers, &desc)))
         {
-            wined3d_texture_apply_sampler_desc(texture, &desc, context);
+            sampler = WINE_RB_ENTRY_VALUE(entry, struct wined3d_sampler, entry);
         }
         else
         {
-            struct wined3d_device *device = context->device;
-            struct wined3d_sampler *sampler;
-            struct wine_rb_entry *entry;
-
-            if ((entry = wine_rb_get(&device->samplers, &desc)))
+            if (FAILED(wined3d_sampler_create(device, &desc, NULL, &sampler)))
             {
-                sampler = WINE_RB_ENTRY_VALUE(entry, struct wined3d_sampler, entry);
+                ERR("Failed to create sampler.\n");
+                return;
             }
-            else
+            if (wine_rb_put(&device->samplers, &desc, &sampler->entry) == -1)
             {
-                if (FAILED(wined3d_sampler_create(device, &desc, NULL, &sampler)))
-                {
-                    ERR("Failed to create sampler.\n");
-                    sampler = NULL;
-                }
-                else
-                {
-                    if (wine_rb_put(&device->samplers, &desc, &sampler->entry) == -1)
-                        ERR("Failed to insert sampler.\n");
-                }
-            }
-
-            if (sampler)
-            {
-                GL_EXTCALL(glBindSampler(mapped_stage, sampler->name));
-                checkGLcall("glBindSampler");
+                ERR("Failed to insert sampler.\n");
+                wined3d_sampler_decref(sampler);
+                return;
             }
         }
 
-        if (texture->flags & WINED3D_TEXTURE_COND_NP2)
-            base_level = 0;
-        else if (desc.mip_filter == WINED3D_TEXF_NONE)
-            base_level = texture->lod;
-        else
-            base_level = min(max(sampler_states[WINED3D_SAMP_MAX_MIP_LEVEL],
-                    texture->lod), texture->level_count - 1);
-
-        gl_tex = wined3d_texture_get_gl_texture(texture, texture->flags & WINED3D_TEXTURE_IS_SRGB);
-        if (base_level != gl_tex->base_level)
-        {
-            /* Note that WINED3D_SAMP_MAX_MIP_LEVEL specifies the largest mipmap
-             * (default 0), while GL_TEXTURE_MAX_LEVEL specifies the smallest
-             * mipmap used (default 1000). So WINED3D_SAMP_MAX_MIP_LEVEL
-             * corresponds to GL_TEXTURE_BASE_LEVEL. */
-            gl_info->gl_ops.gl.p_glTexParameteri(texture->target, GL_TEXTURE_BASE_LEVEL, base_level);
-            gl_tex->base_level = base_level;
-        }
+        wined3d_sampler_bind(sampler, mapped_stage, texture, context);
 
         /* Trigger shader constant reloading (for NP2 texcoord fixup) */
         if (!(texture->flags & WINED3D_TEXTURE_POW2_MAT_IDENT))
@@ -3723,9 +3696,15 @@ void apply_pixelshader(struct wined3d_context *context, const struct wined3d_sta
     context->shader_update_mask |= 1u << WINED3D_SHADER_TYPE_PIXEL;
 }
 
-static void state_geometry_shader(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
+static void state_compute_shader(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
-    context->shader_update_mask |= 1u << WINED3D_SHADER_TYPE_GEOMETRY;
+    context->shader_update_mask |= 1u << WINED3D_SHADER_TYPE_COMPUTE;
+}
+
+static void state_shader(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
+{
+    enum wined3d_shader_type shader_type = state_id - STATE_SHADER(0);
+    context->shader_update_mask |= 1u << shader_type;
 }
 
 static void shader_bumpenv(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
@@ -4933,12 +4912,17 @@ void state_srgbwrite(struct wined3d_context *context, const struct wined3d_state
 
 static void state_cb(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
 {
-    enum wined3d_shader_type shader_type = state_id - STATE_CONSTANT_BUFFER(0);
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    enum wined3d_shader_type shader_type;
     struct wined3d_buffer *buffer;
     unsigned int i, base, count;
 
     TRACE("context %p, state %p, state_id %#x.\n", context, state, state_id);
+
+    if (STATE_IS_GRAPHICS_CONSTANT_BUFFER(state_id))
+        shader_type = state_id - STATE_GRAPHICS_CONSTANT_BUFFER(0);
+    else
+        shader_type = WINED3D_SHADER_TYPE_COMPUTE;
 
     wined3d_gl_limits_get_uniform_block_range(&gl_info->limits, shader_type, &base, &count);
     for (i = 0; i < count; ++i)
@@ -4964,6 +4948,32 @@ static void state_shader_resource_binding(struct wined3d_context *context,
     context->update_shader_resource_bindings = 1;
 }
 
+static void state_cs_resource_binding(struct wined3d_context *context,
+        const struct wined3d_state *state, DWORD state_id)
+{
+    TRACE("context %p, state %p, state_id %#x.\n", context, state, state_id);
+    context->update_compute_shader_resource_bindings = 1;
+}
+
+static void state_uav_binding(struct wined3d_context *context,
+        const struct wined3d_state *state, DWORD state_id)
+{
+    TRACE("context %p, state %p, state_id %#x.\n", context, state, state_id);
+    context->update_unordered_access_view_bindings = 1;
+}
+
+static void state_cs_uav_binding(struct wined3d_context *context,
+        const struct wined3d_state *state, DWORD state_id)
+{
+    TRACE("context %p, state %p, state_id %#x.\n", context, state, state_id);
+    context->update_compute_unordered_access_view_bindings = 1;
+}
+
+static void state_uav_warn(struct wined3d_context *context, const struct wined3d_state *state, DWORD state_id)
+{
+    WARN("ARB_image_load_store is not supported by OpenGL implementation.\n");
+}
+
 const struct StateEntryTemplate misc_state_template[] =
 {
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),  { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),  state_cb,           }, ARB_UNIFORM_BUFFER_OBJECT       },
@@ -4972,7 +4982,14 @@ const struct StateEntryTemplate misc_state_template[] =
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),{ STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),state_cb_warn,      }, WINED3D_GL_EXT_NONE             },
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   state_cb,           }, ARB_UNIFORM_BUFFER_OBJECT       },
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   state_cb_warn,      }, WINED3D_GL_EXT_NONE             },
-    { STATE_SHADER_RESOURCE_BINDING,                      { STATE_SHADER_RESOURCE_BINDING,                      state_shader_resource_binding}, WINED3D_GL_EXT_NONE    },
+    { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_COMPUTE), { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_COMPUTE), state_cb,           }, ARB_UNIFORM_BUFFER_OBJECT       },
+    { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_COMPUTE), { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_COMPUTE), state_cb_warn,      }, WINED3D_GL_EXT_NONE             },
+    { STATE_GRAPHICS_SHADER_RESOURCE_BINDING,             { STATE_GRAPHICS_SHADER_RESOURCE_BINDING,             state_shader_resource_binding}, WINED3D_GL_EXT_NONE    },
+    { STATE_GRAPHICS_UNORDERED_ACCESS_VIEW_BINDING,       { STATE_GRAPHICS_UNORDERED_ACCESS_VIEW_BINDING,       state_uav_binding   }, ARB_SHADER_IMAGE_LOAD_STORE     },
+    { STATE_GRAPHICS_UNORDERED_ACCESS_VIEW_BINDING,       { STATE_GRAPHICS_UNORDERED_ACCESS_VIEW_BINDING,       state_uav_warn      }, WINED3D_GL_EXT_NONE             },
+    { STATE_COMPUTE_SHADER_RESOURCE_BINDING,              { STATE_COMPUTE_SHADER_RESOURCE_BINDING,              state_cs_resource_binding}, WINED3D_GL_EXT_NONE        },
+    { STATE_COMPUTE_UNORDERED_ACCESS_VIEW_BINDING,        { STATE_COMPUTE_UNORDERED_ACCESS_VIEW_BINDING,        state_cs_uav_binding}, ARB_SHADER_IMAGE_LOAD_STORE     },
+    { STATE_COMPUTE_UNORDERED_ACCESS_VIEW_BINDING,        { STATE_COMPUTE_UNORDERED_ACCESS_VIEW_BINDING,        state_uav_warn      }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_SRCBLEND),                  { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          NULL                }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_DESTBLEND),                 { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          NULL                }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          { STATE_RENDER(WINED3D_RS_ALPHABLENDENABLE),          state_blend         }, WINED3D_GL_EXT_NONE             },
@@ -5082,10 +5099,10 @@ const struct StateEntryTemplate misc_state_template[] =
     { STATE_RENDER(WINED3D_RS_STENCILWRITEMASK),          { STATE_RENDER(WINED3D_RS_STENCILWRITEMASK),          state_stencilwrite2s}, EXT_STENCIL_TWO_SIDE            },
     { STATE_RENDER(WINED3D_RS_STENCILWRITEMASK),          { STATE_RENDER(WINED3D_RS_STENCILWRITEMASK),          state_stencilwrite  }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_TWOSIDEDSTENCILMODE),       { STATE_RENDER(WINED3D_RS_STENCILENABLE),             NULL                }, WINED3D_GL_EXT_NONE             },
-    { STATE_RENDER(WINED3D_RS_CCW_STENCILFAIL),           { STATE_RENDER(WINED3D_RS_STENCILENABLE),             NULL                }, WINED3D_GL_EXT_NONE             },
-    { STATE_RENDER(WINED3D_RS_CCW_STENCILZFAIL),          { STATE_RENDER(WINED3D_RS_STENCILENABLE),             NULL                }, WINED3D_GL_EXT_NONE             },
-    { STATE_RENDER(WINED3D_RS_CCW_STENCILPASS),           { STATE_RENDER(WINED3D_RS_STENCILENABLE),             NULL                }, WINED3D_GL_EXT_NONE             },
-    { STATE_RENDER(WINED3D_RS_CCW_STENCILFUNC),           { STATE_RENDER(WINED3D_RS_STENCILENABLE),             NULL                }, WINED3D_GL_EXT_NONE             },
+    { STATE_RENDER(WINED3D_RS_BACK_STENCILFAIL),          { STATE_RENDER(WINED3D_RS_STENCILENABLE),             NULL                }, WINED3D_GL_EXT_NONE             },
+    { STATE_RENDER(WINED3D_RS_BACK_STENCILZFAIL),         { STATE_RENDER(WINED3D_RS_STENCILENABLE),             NULL                }, WINED3D_GL_EXT_NONE             },
+    { STATE_RENDER(WINED3D_RS_BACK_STENCILPASS),          { STATE_RENDER(WINED3D_RS_STENCILENABLE),             NULL                }, WINED3D_GL_EXT_NONE             },
+    { STATE_RENDER(WINED3D_RS_BACK_STENCILFUNC),          { STATE_RENDER(WINED3D_RS_STENCILENABLE),             NULL                }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_WRAP0),                     { STATE_RENDER(WINED3D_RS_WRAP0),                     state_wrap          }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_WRAP1),                     { STATE_RENDER(WINED3D_RS_WRAP0),                     NULL                }, WINED3D_GL_EXT_NONE             },
     { STATE_RENDER(WINED3D_RS_WRAP2),                     { STATE_RENDER(WINED3D_RS_WRAP0),                     NULL                }, WINED3D_GL_EXT_NONE             },
@@ -5162,7 +5179,8 @@ const struct StateEntryTemplate misc_state_template[] =
     { STATE_BASEVERTEXINDEX,                              { STATE_STREAMSRC,                                    NULL,               }, WINED3D_GL_EXT_NONE             },
     { STATE_FRAMEBUFFER,                                  { STATE_FRAMEBUFFER,                                  context_state_fb    }, WINED3D_GL_EXT_NONE             },
     { STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL),            { STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL),            context_state_drawbuf},WINED3D_GL_EXT_NONE             },
-    { STATE_SHADER(WINED3D_SHADER_TYPE_GEOMETRY),         { STATE_SHADER(WINED3D_SHADER_TYPE_GEOMETRY),         state_geometry_shader}, WINED3D_GL_EXT_NONE             },
+    { STATE_SHADER(WINED3D_SHADER_TYPE_GEOMETRY),         { STATE_SHADER(WINED3D_SHADER_TYPE_GEOMETRY),         state_shader        }, WINED3D_GL_EXT_NONE             },
+    { STATE_SHADER(WINED3D_SHADER_TYPE_COMPUTE),          { STATE_SHADER(WINED3D_SHADER_TYPE_COMPUTE),          state_compute_shader}, WINED3D_GL_EXT_NONE             },
     {0 /* Terminate */,                                   { 0,                                                  0                   }, WINED3D_GL_EXT_NONE             },
 };
 
@@ -5944,10 +5962,15 @@ static void validate_state_table(struct StateEntry *state_table)
         STATE_SHADER(WINED3D_SHADER_TYPE_VERTEX),
         STATE_SHADER(WINED3D_SHADER_TYPE_GEOMETRY),
         STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL),
+        STATE_SHADER(WINED3D_SHADER_TYPE_COMPUTE),
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),
-        STATE_SHADER_RESOURCE_BINDING,
+        STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_COMPUTE),
+        STATE_COMPUTE_SHADER_RESOURCE_BINDING,
+        STATE_GRAPHICS_SHADER_RESOURCE_BINDING,
+        STATE_COMPUTE_UNORDERED_ACCESS_VIEW_BINDING,
+        STATE_GRAPHICS_UNORDERED_ACCESS_VIEW_BINDING,
         STATE_VIEWPORT,
         STATE_LIGHT_TYPE,
         STATE_SCISSORRECT,

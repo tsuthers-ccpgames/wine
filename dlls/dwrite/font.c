@@ -19,6 +19,8 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
+
+#include <assert.h>
 #include <math.h>
 
 #define COBJMACROS
@@ -89,6 +91,8 @@ struct dwrite_font_data {
     WCHAR *facename;
 
     USHORT simulations;
+
+    LOGFONTW lf;
 
     /* used to mark font as tested when scanning for simulation candidate */
     BOOL bold_sim_tested : 1;
@@ -162,7 +166,7 @@ struct dwrite_glyphrunanalysis {
     IDWriteGlyphRunAnalysis IDWriteGlyphRunAnalysis_iface;
     LONG ref;
 
-    DWRITE_RENDERING_MODE rendering_mode;
+    DWRITE_RENDERING_MODE1 rendering_mode;
     DWRITE_GLYPH_RUN run; /* glyphAdvances and glyphOffsets are not used */
     DWRITE_MATRIX m;
     FLOAT ppdip;
@@ -208,7 +212,7 @@ struct dwrite_colorglyphenum {
 enum fontface_flags {
     FONTFACE_IS_SYMBOL             = 1 << 0,
     FONTFACE_IS_MONOSPACED         = 1 << 1,
-    FONTFACE_HAS_KERN_PAIRS        = 1 << 2,
+    FONTFACE_HAS_KERNING_PAIRS     = 1 << 2,
     FONTFACE_HAS_VERTICAL_VARIANTS = 1 << 3
 };
 
@@ -239,6 +243,8 @@ struct dwrite_fontface {
     DWRITE_FONT_STRETCH stretch;
     DWRITE_FONT_WEIGHT weight;
     DWRITE_PANOSE panose;
+
+    LOGFONTW lf;
 };
 
 struct dwrite_fontfile {
@@ -733,11 +739,20 @@ static inline int round_metric(FLOAT metric)
     return (int)floorf(metric + 0.5f);
 }
 
+static UINT32 fontface_get_horz_metric_adjustment(const struct dwrite_fontface *fontface)
+{
+    if (!(fontface->simulations & DWRITE_FONT_SIMULATIONS_BOLD))
+        return 0;
+
+    return (fontface->metrics.designUnitsPerEm + 49) / 50;
+}
+
 static HRESULT WINAPI dwritefontface_GetGdiCompatibleGlyphMetrics(IDWriteFontFace4 *iface, FLOAT emSize, FLOAT ppdip,
     DWRITE_MATRIX const *m, BOOL use_gdi_natural, UINT16 const *glyphs, UINT32 glyph_count,
     DWRITE_GLYPH_METRICS *metrics, BOOL is_sideways)
 {
     struct dwrite_fontface *This = impl_from_IDWriteFontFace4(iface);
+    UINT32 adjustment = fontface_get_horz_metric_adjustment(This);
     DWRITE_MEASURING_MODE mode;
     FLOAT scale, size;
     HRESULT hr;
@@ -756,13 +771,17 @@ static HRESULT WINAPI dwritefontface_GetGdiCompatibleGlyphMetrics(IDWriteFontFac
     for (i = 0; i < glyph_count; i++) {
         DWRITE_GLYPH_METRICS *ret = metrics + i;
         DWRITE_GLYPH_METRICS design;
+        BOOL has_contours;
 
         hr = IDWriteFontFace4_GetDesignGlyphMetrics(iface, glyphs + i, 1, &design, is_sideways);
         if (FAILED(hr))
             return hr;
 
-        ret->advanceWidth = freetype_get_glyph_advance(iface, size, glyphs[i], mode);
-        ret->advanceWidth = round_metric(ret->advanceWidth * This->metrics.designUnitsPerEm / size);
+        ret->advanceWidth = freetype_get_glyph_advance(iface, size, glyphs[i], mode, &has_contours);
+        if (has_contours)
+            ret->advanceWidth = round_metric(ret->advanceWidth * This->metrics.designUnitsPerEm / size + adjustment);
+        else
+            ret->advanceWidth = round_metric(ret->advanceWidth * This->metrics.designUnitsPerEm / size);
 
 #define SCALE_METRIC(x) ret->x = round_metric(round_metric((design.x) * scale) / scale)
         SCALE_METRIC(leftSideBearing);
@@ -872,6 +891,7 @@ static HRESULT WINAPI dwritefontface1_GetDesignGlyphAdvances(IDWriteFontFace4 *i
     UINT32 glyph_count, UINT16 const *glyphs, INT32 *advances, BOOL is_sideways)
 {
     struct dwrite_fontface *This = impl_from_IDWriteFontFace4(iface);
+    UINT32 adjustment = fontface_get_horz_metric_adjustment(This);
     UINT32 i;
 
     TRACE("(%p)->(%u %p %p %d)\n", This, glyph_count, glyphs, advances, is_sideways);
@@ -879,8 +899,14 @@ static HRESULT WINAPI dwritefontface1_GetDesignGlyphAdvances(IDWriteFontFace4 *i
     if (is_sideways)
         FIXME("sideways mode not supported\n");
 
-    for (i = 0; i < glyph_count; i++)
-        advances[i] = freetype_get_glyph_advance(iface, This->metrics.designUnitsPerEm, glyphs[i], DWRITE_MEASURING_MODE_NATURAL);
+    for (i = 0; i < glyph_count; i++) {
+        BOOL has_contours;
+
+        advances[i] = freetype_get_glyph_advance(iface, This->metrics.designUnitsPerEm, glyphs[i],
+                DWRITE_MEASURING_MODE_NATURAL, &has_contours);
+        if (has_contours)
+            advances[i] += adjustment;
+    }
 
     return S_OK;
 }
@@ -890,6 +916,7 @@ static HRESULT WINAPI dwritefontface1_GetGdiCompatibleGlyphAdvances(IDWriteFontF
     BOOL is_sideways, UINT32 glyph_count, UINT16 const *glyphs, INT32 *advances)
 {
     struct dwrite_fontface *This = impl_from_IDWriteFontFace4(iface);
+    UINT32 adjustment = fontface_get_horz_metric_adjustment(This);
     DWRITE_MEASURING_MODE mode;
     UINT32 i;
 
@@ -912,8 +939,13 @@ static HRESULT WINAPI dwritefontface1_GetGdiCompatibleGlyphAdvances(IDWriteFontF
 
     mode = use_gdi_natural ? DWRITE_MEASURING_MODE_GDI_NATURAL : DWRITE_MEASURING_MODE_GDI_CLASSIC;
     for (i = 0; i < glyph_count; i++) {
-        advances[i] = freetype_get_glyph_advance(iface, em_size, glyphs[i], mode);
-        advances[i] = round_metric(advances[i] * This->metrics.designUnitsPerEm / em_size);
+        BOOL has_contours;
+
+        advances[i] = freetype_get_glyph_advance(iface, em_size, glyphs[i], mode, &has_contours);
+        if (has_contours)
+            advances[i] = round_metric(advances[i] * This->metrics.designUnitsPerEm / em_size + adjustment);
+        else
+            advances[i] = round_metric(advances[i] * This->metrics.designUnitsPerEm / em_size);
     }
 
     return S_OK;
@@ -935,7 +967,7 @@ static HRESULT WINAPI dwritefontface1_GetKerningPairAdjustments(IDWriteFontFace4
         return E_INVALIDARG;
     }
 
-    if (This->flags & FONTFACE_HAS_KERN_PAIRS) {
+    if (!(This->flags & FONTFACE_HAS_KERNING_PAIRS)) {
         memset(adjustments, 0, count*sizeof(INT32));
         return S_OK;
     }
@@ -951,7 +983,7 @@ static BOOL WINAPI dwritefontface1_HasKerningPairs(IDWriteFontFace4 *iface)
 {
     struct dwrite_fontface *This = impl_from_IDWriteFontFace4(iface);
     TRACE("(%p)\n", This);
-    return !!(This->flags & FONTFACE_HAS_KERN_PAIRS);
+    return !!(This->flags & FONTFACE_HAS_KERNING_PAIRS);
 }
 
 static HRESULT WINAPI dwritefontface1_GetRecommendedRenderingMode(IDWriteFontFace4 *iface,
@@ -1161,7 +1193,7 @@ static HRESULT WINAPI dwritefontface3_GetRecommendedRenderingMode(IDWriteFontFac
 
     emSize *= max(dpiX, dpiY) / 96.0f;
 
-    *rendering_mode = DWRITE_RENDERING_MODE_DEFAULT;
+    *rendering_mode = DWRITE_RENDERING_MODE1_DEFAULT;
     *gridfit_mode = DWRITE_GRID_FIT_MODE_DEFAULT;
     if (params) {
         IDWriteRenderingParams3 *params3;
@@ -1672,6 +1704,34 @@ static const IDWriteFont3Vtbl dwritefontvtbl = {
     dwritefont3_HasCharacter,
     dwritefont3_GetLocality
 };
+
+static struct dwrite_font *unsafe_impl_from_IDWriteFont(IDWriteFont *iface)
+{
+    if (!iface)
+        return NULL;
+    assert(iface->lpVtbl == (IDWriteFontVtbl*)&dwritefontvtbl);
+    return CONTAINING_RECORD(iface, struct dwrite_font, IDWriteFont3_iface);
+}
+
+static struct dwrite_fontface *unsafe_impl_from_IDWriteFontFace(IDWriteFontFace *iface)
+{
+    if (!iface)
+        return NULL;
+    assert(iface->lpVtbl == (IDWriteFontFaceVtbl*)&dwritefontfacevtbl);
+    return CONTAINING_RECORD(iface, struct dwrite_fontface, IDWriteFontFace4_iface);
+}
+
+void get_logfont_from_font(IDWriteFont *iface, LOGFONTW *lf)
+{
+    struct dwrite_font *font = unsafe_impl_from_IDWriteFont(iface);
+    *lf = font->data->lf;
+}
+
+void get_logfont_from_fontface(IDWriteFontFace *iface, LOGFONTW *lf)
+{
+    struct dwrite_fontface *fontface = unsafe_impl_from_IDWriteFontFace(iface);
+    *lf = fontface->lf;
+}
 
 static HRESULT create_font(struct dwrite_font_data *data, IDWriteFontFamily1 *family, IDWriteFont3 **font)
 {
@@ -3229,7 +3289,7 @@ static HRESULT init_font_data(const struct fontface_desc *desc, IDWriteLocalized
     stream_desc.face_index = desc->index;
     opentype_get_font_properties(&stream_desc, &props);
     opentype_get_font_metrics(&stream_desc, &data->metrics, NULL);
-    opentype_get_font_facename(&stream_desc, &data->names);
+    opentype_get_font_facename(&stream_desc, props.lf.lfFaceName, &data->names);
 
     /* get family name from font file */
     hr = opentype_get_font_familyname(&stream_desc, family_name);
@@ -3244,6 +3304,7 @@ static HRESULT init_font_data(const struct fontface_desc *desc, IDWriteLocalized
     data->stretch = props.stretch;
     data->weight = props.weight;
     data->panose = props.panose;
+    data->lf = props.lf;
 
     fontstrings_get_en_string(*family_name, familyW, sizeof(familyW)/sizeof(WCHAR));
     fontstrings_get_en_string(data->names, faceW, sizeof(faceW)/sizeof(WCHAR));
@@ -3382,6 +3443,7 @@ static void fontfamily_add_bold_simulated_face(struct dwrite_fontfamily_data *fa
 
             if (init_font_data_from_font(family->fonts[heaviest], DWRITE_FONT_SIMULATIONS_BOLD, facenameW, &boldface) == S_OK) {
                 boldface->bold_sim_tested = 1;
+                boldface->lf.lfWeight += (FW_BOLD - FW_REGULAR) / 2 + 1;
                 fontfamily_add_font(family, boldface);
             }
         }
@@ -3446,6 +3508,7 @@ static void fontfamily_add_oblique_simulated_face(struct dwrite_fontfamily_data 
 
         if (init_font_data_from_font(family->fonts[regular], DWRITE_FONT_SIMULATIONS_OBLIQUE, facenameW, &obliqueface) == S_OK) {
             obliqueface->oblique_sim_tested = 1;
+            obliqueface->lf.lfItalic = 1;
             fontfamily_add_font(family, obliqueface);
         }
     }
@@ -3808,10 +3871,12 @@ static HRESULT WINAPI systemfontfileenumerator_MoveNext(IDWriteFontFileEnumerato
     /* iterate until we find next string value */
     while (1) {
         DWORD type = 0, count, val_count;
+
         val_count = max_val_count;
+        value[0] = 0;
         if (RegEnumValueW(enumerator->hkey, enumerator->index, value, &val_count, NULL, &type, NULL, &count))
             break;
-        if (type == REG_SZ) {
+        if (type == REG_SZ && *value && *value != '@') {
             *current = TRUE;
             break;
         }
@@ -4245,7 +4310,7 @@ HRESULT create_fontface(const struct fontface_desc *desc, IDWriteFontFace4 **ret
     if (is_symbol)
         fontface->flags |= FONTFACE_IS_SYMBOL;
     if (freetype_has_kerning_pairs(&fontface->IDWriteFontFace4_iface))
-        fontface->flags |= FONTFACE_HAS_KERN_PAIRS;
+        fontface->flags |= FONTFACE_HAS_KERNING_PAIRS;
     if (freetype_is_monospaced(&fontface->IDWriteFontFace4_iface))
         fontface->flags |= FONTFACE_IS_MONOSPACED;
     if (opentype_has_vertical_variants(&fontface->IDWriteFontFace4_iface))
@@ -4261,6 +4326,7 @@ HRESULT create_fontface(const struct fontface_desc *desc, IDWriteFontFace4 **ret
         fontface->style = desc->font_data->style;
         fontface->stretch = desc->font_data->stretch;
         fontface->panose = desc->font_data->panose;
+        fontface->lf = desc->font_data->lf;
     }
     else {
         IDWriteLocalizedStrings *names;
@@ -4276,6 +4342,7 @@ HRESULT create_fontface(const struct fontface_desc *desc, IDWriteFontFace4 **ret
         fontface->style = data->style;
         fontface->stretch = data->stretch;
         fontface->panose = data->panose;
+        fontface->lf = data->lf;
 
         IDWriteLocalizedStrings_Release(names);
         release_font_data(data);
@@ -4716,6 +4783,19 @@ static ULONG WINAPI glyphrunanalysis_Release(IDWriteGlyphRunAnalysis *iface)
     return ref;
 }
 
+static BOOL is_natural_rendering_mode(DWRITE_RENDERING_MODE1 mode)
+{
+    switch (mode)
+    {
+    case DWRITE_RENDERING_MODE1_NATURAL:
+    case DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC:
+    case DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC_DOWNSAMPLED:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 static void glyphrunanalysis_get_texturebounds(struct dwrite_glyphrunanalysis *analysis, RECT *bounds)
 {
     struct dwrite_glyphbitmap glyph_bitmap;
@@ -4746,8 +4826,7 @@ static void glyphrunanalysis_get_texturebounds(struct dwrite_glyphrunanalysis *a
     memset(&glyph_bitmap, 0, sizeof(glyph_bitmap));
     glyph_bitmap.fontface = fontface3;
     glyph_bitmap.emsize = analysis->run.fontEmSize * analysis->ppdip;
-    glyph_bitmap.nohint = analysis->rendering_mode == DWRITE_RENDERING_MODE_NATURAL ||
-        analysis->rendering_mode == DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC;
+    glyph_bitmap.nohint = is_natural_rendering_mode(analysis->rendering_mode);
     if (analysis->flags & RUNANALYSIS_USE_TRANSFORM)
         glyph_bitmap.m = &analysis->m;
 
@@ -4795,8 +4874,8 @@ static HRESULT WINAPI glyphrunanalysis_GetAlphaTextureBounds(IDWriteGlyphRunAnal
         return E_INVALIDARG;
     }
 
-    if ((type == DWRITE_TEXTURE_ALIASED_1x1 && This->rendering_mode != DWRITE_RENDERING_MODE_ALIASED) ||
-        (type == DWRITE_TEXTURE_CLEARTYPE_3x1 && This->rendering_mode == DWRITE_RENDERING_MODE_ALIASED)) {
+    if ((type == DWRITE_TEXTURE_ALIASED_1x1 && This->rendering_mode != DWRITE_RENDERING_MODE1_ALIASED) ||
+        (type == DWRITE_TEXTURE_CLEARTYPE_3x1 && This->rendering_mode == DWRITE_RENDERING_MODE1_ALIASED)) {
         memset(bounds, 0, sizeof(*bounds));
         return S_OK;
     }
@@ -4820,36 +4899,40 @@ static inline BYTE *get_pixel_ptr(BYTE *ptr, DWRITE_TEXTURE_TYPE type, const REC
             runbounds->left - bounds->left;
 }
 
-static void glyphrunanalysis_render(struct dwrite_glyphrunanalysis *analysis, DWRITE_TEXTURE_TYPE type)
+static HRESULT glyphrunanalysis_render(struct dwrite_glyphrunanalysis *analysis, DWRITE_TEXTURE_TYPE type)
 {
     static const BYTE masks[8] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
     struct dwrite_glyphbitmap glyph_bitmap;
-    IDWriteFontFace4 *fontface2;
+    IDWriteFontFace4 *fontface;
     D2D_POINT_2F origin;
     UINT32 i, size;
     BOOL is_rtl;
     HRESULT hr;
     RECT *bbox;
 
-    hr = IDWriteFontFace_QueryInterface(analysis->run.fontFace, &IID_IDWriteFontFace4, (void**)&fontface2);
+    hr = IDWriteFontFace_QueryInterface(analysis->run.fontFace, &IID_IDWriteFontFace4, (void **)&fontface);
     if (FAILED(hr)) {
         WARN("failed to get IDWriteFontFace4, 0x%08x\n", hr);
-        return;
+        return hr;
     }
 
     size = (analysis->bounds.right - analysis->bounds.left)*(analysis->bounds.bottom - analysis->bounds.top);
     if (type == DWRITE_TEXTURE_CLEARTYPE_3x1)
         size *= 3;
-    analysis->bitmap = heap_alloc_zero(size);
+    if (!(analysis->bitmap = heap_alloc_zero(size))) {
+        WARN("Failed to allocate run bitmap, %s, type %s.\n", wine_dbgstr_rect(&analysis->bounds),
+                type == DWRITE_TEXTURE_CLEARTYPE_3x1 ? "3x1" : "1x1");
+        IDWriteFontFace4_Release(fontface);
+        return E_OUTOFMEMORY;
+    }
 
     origin.x = origin.y = 0.0f;
     is_rtl = analysis->run.bidiLevel & 1;
 
     memset(&glyph_bitmap, 0, sizeof(glyph_bitmap));
-    glyph_bitmap.fontface = fontface2;
+    glyph_bitmap.fontface = fontface;
     glyph_bitmap.emsize = analysis->run.fontEmSize * analysis->ppdip;
-    glyph_bitmap.nohint = analysis->rendering_mode == DWRITE_RENDERING_MODE_NATURAL ||
-        analysis->rendering_mode == DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC;
+    glyph_bitmap.nohint = is_natural_rendering_mode(analysis->rendering_mode);
     glyph_bitmap.type = type;
     if (analysis->flags & RUNANALYSIS_USE_TRANSFORM)
         glyph_bitmap.m = &analysis->m;
@@ -4935,7 +5018,7 @@ static void glyphrunanalysis_render(struct dwrite_glyphrunanalysis *analysis, DW
         origin.y += advance->y;
     }
 
-    IDWriteFontFace4_Release(fontface2);
+    IDWriteFontFace4_Release(fontface);
 
     analysis->flags |= RUNANALYSIS_BITMAP_READY;
 
@@ -4952,6 +5035,8 @@ static void glyphrunanalysis_render(struct dwrite_glyphrunanalysis *analysis, DW
     analysis->ascenderoffsets = NULL;
     analysis->run.glyphIndices = NULL;
     analysis->run.fontFace = NULL;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI glyphrunanalysis_CreateAlphaTexture(IDWriteGlyphRunAnalysis *iface, DWRITE_TEXTURE_TYPE type,
@@ -4977,14 +5062,15 @@ static HRESULT WINAPI glyphrunanalysis_CreateAlphaTexture(IDWriteGlyphRunAnalysi
     /* validate requested texture type with rendering mode */
     switch (This->rendering_mode)
     {
-    case DWRITE_RENDERING_MODE_ALIASED:
+    case DWRITE_RENDERING_MODE1_ALIASED:
         if (type != DWRITE_TEXTURE_ALIASED_1x1)
             return DWRITE_E_UNSUPPORTEDOPERATION;
         break;
-    case DWRITE_RENDERING_MODE_GDI_CLASSIC:
-    case DWRITE_RENDERING_MODE_GDI_NATURAL:
-    case DWRITE_RENDERING_MODE_NATURAL:
-    case DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC:
+    case DWRITE_RENDERING_MODE1_GDI_CLASSIC:
+    case DWRITE_RENDERING_MODE1_GDI_NATURAL:
+    case DWRITE_RENDERING_MODE1_NATURAL:
+    case DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC:
+    case DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC_DOWNSAMPLED:
         if (type != DWRITE_TEXTURE_CLEARTYPE_3x1)
             return DWRITE_E_UNSUPPORTEDOPERATION;
         break;
@@ -5002,8 +5088,12 @@ static HRESULT WINAPI glyphrunanalysis_CreateAlphaTexture(IDWriteGlyphRunAnalysi
         BYTE *src, *dst;
         int y;
 
-        if (!(This->flags & RUNANALYSIS_BITMAP_READY))
-            glyphrunanalysis_render(This, type);
+        if (!(This->flags & RUNANALYSIS_BITMAP_READY)) {
+            HRESULT hr;
+
+            if (FAILED(hr = glyphrunanalysis_render(This, type)))
+                return hr;
+        }
 
         src = get_pixel_ptr(This->bitmap, type, &runbounds, &This->bounds);
         dst = get_pixel_ptr(bitmap, type, &runbounds, bounds);
@@ -5030,8 +5120,8 @@ static HRESULT WINAPI glyphrunanalysis_GetAlphaBlendParams(IDWriteGlyphRunAnalys
 
     switch (This->rendering_mode)
     {
-    case DWRITE_RENDERING_MODE_GDI_CLASSIC:
-    case DWRITE_RENDERING_MODE_GDI_NATURAL:
+    case DWRITE_RENDERING_MODE1_GDI_CLASSIC:
+    case DWRITE_RENDERING_MODE1_GDI_NATURAL:
     {
         UINT value = 0;
         SystemParametersInfoW(SPI_GETFONTSMOOTHINGCONTRAST, 0, &value, 0);
@@ -5040,9 +5130,12 @@ static HRESULT WINAPI glyphrunanalysis_GetAlphaBlendParams(IDWriteGlyphRunAnalys
         *cleartypelevel = 1.0f;
         break;
     }
-    case DWRITE_RENDERING_MODE_ALIASED:
-    case DWRITE_RENDERING_MODE_NATURAL:
-    case DWRITE_RENDERING_MODE_NATURAL_SYMMETRIC:
+    case DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC_DOWNSAMPLED:
+        WARN("Downsampled mode is ignored.\n");
+        /* fallthrough */
+    case DWRITE_RENDERING_MODE1_ALIASED:
+    case DWRITE_RENDERING_MODE1_NATURAL:
+    case DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC:
         *gamma = IDWriteRenderingParams_GetGamma(params);
         *contrast = IDWriteRenderingParams_GetEnhancedContrast(params);
         *cleartypelevel = IDWriteRenderingParams_GetClearTypeLevel(params);
@@ -5092,7 +5185,9 @@ HRESULT create_glyphrunanalysis(const struct glyphrunanalysis_desc *desc, IDWrit
     *ret = NULL;
 
     /* check for valid rendering mode */
-    if ((UINT32)desc->rendering_mode >= DWRITE_RENDERING_MODE_OUTLINE || desc->rendering_mode == DWRITE_RENDERING_MODE_DEFAULT)
+    if ((UINT32)desc->rendering_mode >= DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC_DOWNSAMPLED ||
+            desc->rendering_mode == DWRITE_RENDERING_MODE1_OUTLINE ||
+            desc->rendering_mode == DWRITE_RENDERING_MODE1_DEFAULT)
         return E_INVALIDARG;
 
     analysis = heap_alloc(sizeof(*analysis));

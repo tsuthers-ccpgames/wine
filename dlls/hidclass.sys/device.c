@@ -22,6 +22,7 @@
 
 #include <stdarg.h>
 #define NONAMELESSUNION
+#define NONAMELESSSTRUCT
 #include "hid.h"
 #include "wine/unicode.h"
 #include "winreg.h"
@@ -184,7 +185,7 @@ void HID_DeleteDevice(HID_MINIDRIVER_REGISTRATION *driver, DEVICE_OBJECT *device
     entry = RemoveHeadList(&ext->irp_queue);
     while(entry != &ext->irp_queue)
     {
-        irp = CONTAINING_RECORD(entry, IRP, Tail.Overlay.ListEntry);
+        irp = CONTAINING_RECORD(entry, IRP, Tail.Overlay.s.ListEntry);
         irp->IoStatus.u.Status = STATUS_DEVICE_REMOVED;
         IoCompleteRequest(irp, IO_NO_INCREMENT);
         entry = RemoveHeadList(&ext->irp_queue);
@@ -195,6 +196,32 @@ void HID_DeleteDevice(HID_MINIDRIVER_REGISTRATION *driver, DEVICE_OBJECT *device
     HeapFree(GetProcessHeap(), 0, ext->link_name);
 
     IoDeleteDevice(device);
+}
+
+static NTSTATUS copy_packet_into_buffer(HID_XFER_PACKET *packet, BYTE* buffer, ULONG buffer_length, ULONG *out_length)
+{
+    BOOL zero_id = (packet->reportId == 0);
+
+    *out_length = 0;
+
+    if ((zero_id && buffer_length > packet->reportBufferLen) ||
+        (!zero_id && buffer_length >= packet->reportBufferLen))
+    {
+        if (packet->reportId != 0)
+        {
+            memcpy(buffer, packet->reportBuffer, packet->reportBufferLen);
+            *out_length = packet->reportBufferLen;
+        }
+        else
+        {
+            buffer[0] = 0;
+            memcpy(&buffer[1], packet->reportBuffer, packet->reportBufferLen);
+            *out_length = packet->reportBufferLen + 1;
+        }
+        return STATUS_SUCCESS;
+    }
+    else
+        return STATUS_BUFFER_OVERFLOW;
 }
 
 static void HID_Device_processQueue(DEVICE_OBJECT *device)
@@ -211,26 +238,20 @@ static void HID_Device_processQueue(DEVICE_OBJECT *device)
     while(entry != &ext->irp_queue)
     {
         int ptr;
-        irp = CONTAINING_RECORD(entry, IRP, Tail.Overlay.ListEntry);
+        irp = CONTAINING_RECORD(entry, IRP, Tail.Overlay.s.ListEntry);
         ptr = PtrToUlong( irp->Tail.Overlay.OriginalFileObject->FsContext );
 
         RingBuffer_Read(ext->ring_buffer, ptr, packet, &buffer_size);
         if (buffer_size)
         {
+            NTSTATUS rc;
+            ULONG out_length;
             IO_STACK_LOCATION *irpsp = IoGetCurrentIrpStackLocation(irp);
             packet->reportBuffer = (BYTE *)packet + sizeof(*packet);
             TRACE_(hid_report)("Processing Request (%i)\n",ptr);
-            if (irpsp->Parameters.Read.Length >= packet->reportBufferLen)
-            {
-                memcpy(irp->AssociatedIrp.SystemBuffer, packet->reportBuffer, packet->reportBufferLen);
-                irp->IoStatus.Information = packet->reportBufferLen;
-                irp->IoStatus.u.Status = STATUS_SUCCESS;
-            }
-            else
-            {
-                irp->IoStatus.Information = 0;
-                irp->IoStatus.u.Status = STATUS_BUFFER_OVERFLOW;
-            }
+            rc = copy_packet_into_buffer(packet, irp->AssociatedIrp.SystemBuffer, irpsp->Parameters.Read.Length, &out_length);
+            irp->IoStatus.u.Status = rc;
+            irp->IoStatus.Information = out_length;
         }
         else
         {
@@ -331,7 +352,10 @@ static DWORD CALLBACK hid_device_thread(void *args)
             if (!exit_now && irp->IoStatus.u.Status == STATUS_SUCCESS)
             {
                 packet->reportBufferLen = irp->IoStatus.Information;
-                packet->reportId = packet->reportBuffer[0];
+                if (ext->preparseData->InputReports[0].reportID)
+                    packet->reportId = packet->reportBuffer[0];
+                else
+                    packet->reportId = 0;
                 RingBuffer_Write(ext->ring_buffer, packet);
                 HID_Device_processQueue(device);
             }
@@ -461,9 +485,17 @@ static NTSTATUS HID_set_to_device(DEVICE_OBJECT *device, IRP *irp)
     NTSTATUS rc;
 
     TRACE_(hid_report)("Device %p Buffer length %i Buffer %p\n", device, irpsp->Parameters.DeviceIoControl.InputBufferLength, irp->AssociatedIrp.SystemBuffer);
-    packet.reportBuffer = irp->AssociatedIrp.SystemBuffer;
-    packet.reportId = ((char*)irp->AssociatedIrp.SystemBuffer)[0];
-    packet.reportBufferLen = irpsp->Parameters.DeviceIoControl.InputBufferLength;
+    packet.reportId = ((BYTE*)irp->AssociatedIrp.SystemBuffer)[0];
+    if (packet.reportId == 0)
+    {
+        packet.reportBuffer = &((BYTE*)irp->AssociatedIrp.SystemBuffer)[1];
+        packet.reportBufferLen = irpsp->Parameters.DeviceIoControl.InputBufferLength - 1;
+    }
+    else
+    {
+        packet.reportBuffer = irp->AssociatedIrp.SystemBuffer;
+        packet.reportBufferLen = irpsp->Parameters.DeviceIoControl.InputBufferLength;
+    }
     TRACE_(hid_report)("(id %i, len %i buffer %p)\n", packet.reportId, packet.reportBufferLen, packet.reportBuffer);
 
     rc = call_minidriver(irpsp->Parameters.DeviceIoControl.IoControlCode,
@@ -552,19 +584,30 @@ NTSTATUS WINAPI HID_Device_ioctl(DEVICE_OBJECT *device, IRP *irp)
         }
         case IOCTL_HID_GET_INPUT_REPORT:
         {
-            HID_XFER_PACKET packet;
+            HID_XFER_PACKET *packet;
+            UINT packet_size = sizeof(*packet) + irpsp->Parameters.DeviceIoControl.OutputBufferLength;
             BYTE *buffer = MmGetSystemAddressForMdlSafe(irp->MdlAddress, NormalPagePriority);
+            ULONG out_length;
+
+            packet = HeapAlloc(GetProcessHeap(), 0, packet_size);
 
             if (extension->preparseData->InputReports[0].reportID)
-                packet.reportId = buffer[0];
+                packet->reportId = buffer[0];
             else
-                packet.reportId = 0;
-            packet.reportBuffer = buffer;
-            packet.reportBufferLen = irpsp->Parameters.DeviceIoControl.OutputBufferLength;
+                packet->reportId = 0;
+            packet->reportBuffer = (BYTE *)packet + sizeof(*packet);
+            packet->reportBufferLen = irpsp->Parameters.DeviceIoControl.OutputBufferLength - 1;
 
-            call_minidriver(IOCTL_HID_GET_INPUT_REPORT, device, NULL, 0, &packet, sizeof(packet));
-            irp->IoStatus.Information = packet.reportBufferLen;
-            irp->IoStatus.u.Status = STATUS_SUCCESS;
+            rc = call_minidriver(IOCTL_HID_GET_INPUT_REPORT, device, NULL, 0, packet, sizeof(*packet));
+            if (rc == STATUS_SUCCESS)
+            {
+                rc = copy_packet_into_buffer(packet, buffer, irpsp->Parameters.DeviceIoControl.OutputBufferLength, &out_length);
+                irp->IoStatus.Information = out_length;
+            }
+            else
+                irp->IoStatus.Information = 0;
+            irp->IoStatus.u.Status = rc;
+            HeapFree(GetProcessHeap(), 0, packet);
             break;
         }
         case IOCTL_SET_NUM_DEVICE_INPUT_BUFFERS:
@@ -631,30 +674,25 @@ NTSTATUS WINAPI HID_Device_read(DEVICE_OBJECT *device, IRP *irp)
     ptr = PtrToUlong( irp->Tail.Overlay.OriginalFileObject->FsContext );
 
     irp->IoStatus.Information = 0;
-    RingBuffer_Read(ext->ring_buffer, ptr, packet, &buffer_size);
+    RingBuffer_ReadNew(ext->ring_buffer, ptr, packet, &buffer_size);
 
     if (buffer_size)
     {
         IO_STACK_LOCATION *irpsp = IoGetCurrentIrpStackLocation( irp );
+        NTSTATUS rc;
+        ULONG out_length;
         packet->reportBuffer = (BYTE *)packet + sizeof(*packet);
         TRACE_(hid_report)("Got Packet %p %i\n", packet->reportBuffer, packet->reportBufferLen);
-        if (irpsp->Parameters.Read.Length >= packet->reportBufferLen)
-        {
-            memcpy(irp->AssociatedIrp.SystemBuffer, packet->reportBuffer, packet->reportBufferLen);
-            irp->IoStatus.Information = packet->reportBufferLen;
-            irp->IoStatus.u.Status = STATUS_SUCCESS;
-        }
-        else
-        {
-            irp->IoStatus.Information = 0;
-            irp->IoStatus.u.Status = STATUS_BUFFER_OVERFLOW;
-        }
-        IoCompleteRequest( irp, IO_NO_INCREMENT );
+
+        rc = copy_packet_into_buffer(packet, irp->AssociatedIrp.SystemBuffer, irpsp->Parameters.Read.Length, &out_length);
+        irp->IoStatus.Information = out_length;
+        irp->IoStatus.u.Status = rc;
+        IoCompleteRequest(irp, IO_NO_INCREMENT);
     }
     else
     {
         TRACE_(hid_report)("Queue irp\n");
-        InsertTailList(&ext->irp_queue, &irp->Tail.Overlay.ListEntry);
+        InsertTailList(&ext->irp_queue, &irp->Tail.Overlay.s.ListEntry);
         rc = STATUS_PENDING;
     }
     HeapFree(GetProcessHeap(), 0, packet);
@@ -671,9 +709,17 @@ NTSTATUS WINAPI HID_Device_write(DEVICE_OBJECT *device, IRP *irp)
     irp->IoStatus.Information = 0;
 
     TRACE_(hid_report)("Device %p Buffer length %i Buffer %p\n", device, irpsp->Parameters.Write.Length, irp->AssociatedIrp.SystemBuffer);
-    packet.reportBuffer = irp->AssociatedIrp.SystemBuffer;
-    packet.reportId = ((char*)irp->AssociatedIrp.SystemBuffer)[0];
-    packet.reportBufferLen = irpsp->Parameters.Write.Length;
+    packet.reportId = ((BYTE*)irp->AssociatedIrp.SystemBuffer)[0];
+    if (packet.reportId == 0)
+    {
+        packet.reportBuffer = &((BYTE*)irp->AssociatedIrp.SystemBuffer)[1];
+        packet.reportBufferLen = irpsp->Parameters.Write.Length - 1;
+    }
+    else
+    {
+        packet.reportBuffer = irp->AssociatedIrp.SystemBuffer;
+        packet.reportBufferLen = irpsp->Parameters.Write.Length;
+    }
     TRACE_(hid_report)("(id %i, len %i buffer %p)\n", packet.reportId, packet.reportBufferLen, packet.reportBuffer);
 
     rc = call_minidriver(IOCTL_HID_WRITE_REPORT, device, NULL, 0, &packet, sizeof(packet));

@@ -623,14 +623,8 @@ static HRESULT WINAPI gdiinterop_ConvertFontToLOGFONT(IDWriteGdiInterop1 *iface,
     IDWriteFont *font, LOGFONTW *logfont, BOOL *is_systemfont)
 {
     struct gdiinterop *This = impl_from_IDWriteGdiInterop1(iface);
-    static const WCHAR enusW[] = {'e','n','-','u','s',0};
-    DWRITE_FONT_SIMULATIONS simulations;
     IDWriteFontCollection *collection;
-    IDWriteLocalizedStrings *name;
     IDWriteFontFamily *family;
-    DWRITE_FONT_STYLE style;
-    UINT32 index;
-    BOOL exists;
     HRESULT hr;
 
     TRACE("(%p)->(%p %p %p)\n", This, font, logfont, is_systemfont);
@@ -654,91 +648,30 @@ static HRESULT WINAPI gdiinterop_ConvertFontToLOGFONT(IDWriteGdiInterop1 *iface,
     *is_systemfont = is_system_collection(collection);
     IDWriteFontCollection_Release(collection);
 
-    simulations = IDWriteFont_GetSimulations(font);
-    style = IDWriteFont_GetStyle(font);
-
+    get_logfont_from_font(font, logfont);
     logfont->lfCharSet = DEFAULT_CHARSET;
-    logfont->lfWeight = IDWriteFont_GetWeight(font);
-    logfont->lfItalic = style == DWRITE_FONT_STYLE_ITALIC || (simulations & DWRITE_FONT_SIMULATIONS_OBLIQUE);
     logfont->lfOutPrecision = OUT_OUTLINE_PRECIS;
-    logfont->lfFaceName[0] = 0;
 
-    exists = FALSE;
-    hr = IDWriteFont_GetInformationalStrings(font, DWRITE_INFORMATIONAL_STRING_WIN32_FAMILY_NAMES, &name, &exists);
-    if (FAILED(hr) || !exists)
-        return hr;
-
-    hr = IDWriteLocalizedStrings_FindLocaleName(name, enusW, &index, &exists);
-    if (hr == S_OK)
-        hr = IDWriteLocalizedStrings_GetString(name, index, logfont->lfFaceName, sizeof(logfont->lfFaceName)/sizeof(WCHAR));
-    IDWriteLocalizedStrings_Release(name);
     return hr;
 }
 
 static HRESULT WINAPI gdiinterop_ConvertFontFaceToLOGFONT(IDWriteGdiInterop1 *iface,
     IDWriteFontFace *fontface, LOGFONTW *logfont)
 {
-    static const WCHAR enusW[] = {'e','n','-','u','s',0};
     struct gdiinterop *This = impl_from_IDWriteGdiInterop1(iface);
-    IDWriteLocalizedStrings *familynames;
-    DWRITE_FONT_SIMULATIONS simulations;
-    struct file_stream_desc stream_desc;
-    struct dwrite_font_props props;
-    IDWriteFontFileStream *stream;
-    IDWriteFontFile *file = NULL;
-    UINT32 index;
-    BOOL exists;
-    HRESULT hr;
 
     TRACE("(%p)->(%p %p)\n", This, fontface, logfont);
 
     memset(logfont, 0, sizeof(*logfont));
 
-    index = 1;
-    hr = IDWriteFontFace_GetFiles(fontface, &index, &file);
-    if (FAILED(hr) || !file)
-        return hr;
+    if (!fontface)
+        return E_INVALIDARG;
 
-    hr = get_filestream_from_file(file, &stream);
-    if (FAILED(hr)) {
-        IDWriteFontFile_Release(file);
-        return hr;
-    }
-
-    stream_desc.stream = stream;
-    stream_desc.face_type = IDWriteFontFace_GetType(fontface);
-    stream_desc.face_index = IDWriteFontFace_GetIndex(fontface);
-    opentype_get_font_properties(&stream_desc, &props);
-    hr = opentype_get_font_familyname(&stream_desc, &familynames);
-    IDWriteFontFile_Release(file);
-    IDWriteFontFileStream_Release(stream);
-    if (FAILED(hr))
-        return hr;
-
-    simulations = IDWriteFontFace_GetSimulations(fontface);
-
+    get_logfont_from_fontface(fontface, logfont);
     logfont->lfCharSet = DEFAULT_CHARSET;
-    logfont->lfWeight = props.weight;
-    logfont->lfItalic = props.style == DWRITE_FONT_STYLE_ITALIC || (simulations & DWRITE_FONT_SIMULATIONS_OBLIQUE);
     logfont->lfOutPrecision = OUT_OUTLINE_PRECIS;
-    logfont->lfFaceName[0] = 0;
 
-    exists = FALSE;
-    hr = IDWriteLocalizedStrings_FindLocaleName(familynames, enusW, &index, &exists);
-    if (FAILED(hr) || !exists) {
-        /* fallback to 0 index */
-        if (IDWriteLocalizedStrings_GetCount(familynames) > 0)
-            index = 0;
-        else {
-            IDWriteLocalizedStrings_Release(familynames);
-            return E_FAIL;
-        }
-    }
-
-    hr = IDWriteLocalizedStrings_GetString(familynames, index, logfont->lfFaceName, sizeof(logfont->lfFaceName)/sizeof(WCHAR));
-    IDWriteLocalizedStrings_Release(familynames);
-
-    return hr;
+    return S_OK;
 }
 
 struct font_realization_info {

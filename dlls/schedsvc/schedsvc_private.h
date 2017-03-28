@@ -23,29 +23,24 @@
 
 void schedsvc_auto_start(void) DECLSPEC_HIDDEN;
 
-static void *heap_alloc_zero(SIZE_T size) __WINE_ALLOC_SIZE(1);
-static inline void *heap_alloc_zero(SIZE_T size)
+static inline void* __WINE_ALLOC_SIZE(1) heap_alloc(size_t size)
 {
-    void *ptr = MIDL_user_allocate(size);
-    if (ptr) memset(ptr, 0, size);
-    return ptr;
+    return HeapAlloc(GetProcessHeap(), 0, size);
 }
 
-static void *heap_alloc(SIZE_T size) __WINE_ALLOC_SIZE(1);
-static inline void *heap_alloc(SIZE_T size)
+static inline void* __WINE_ALLOC_SIZE(1) heap_alloc_zero(size_t size)
 {
-    return MIDL_user_allocate(size);
+    return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
 }
 
-static void *heap_realloc(void *ptr, SIZE_T size) __WINE_ALLOC_SIZE(2);
-static inline void *heap_realloc(void *ptr, SIZE_T size)
+static inline void* __WINE_ALLOC_SIZE(2) heap_realloc(void *mem, size_t size)
 {
-    return HeapReAlloc(GetProcessHeap(), 0, ptr, size);
+    return HeapReAlloc(GetProcessHeap(), 0, mem, size);
 }
 
-static inline void heap_free(void *ptr)
+static inline BOOL heap_free(void *mem)
 {
-    MIDL_user_free(ptr);
+    return HeapFree(GetProcessHeap(), 0, mem);
 }
 
 static inline WCHAR *heap_strdupW(const WCHAR *src)

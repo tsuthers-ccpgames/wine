@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: http://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2015-12-07 09:53-0700\n"
+"PO-Revision-Date: 2016-12-18 20:53-0700\n"
 "Last-Translator: Alex Henrie <alexhenrie24@gmail.com>\n"
 "Language-Team: Catalan\n"
 "Language: ca\n"
@@ -13,7 +13,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 1.8.6\n"
+"X-Generator: Poedit 1.8.11\n"
 
 #: appwiz.rc:58
 msgid "Install/Uninstall"
@@ -58,20 +58,21 @@ msgstr "&Elimina"
 msgid "Support Information"
 msgstr "Informació de suport"
 
-#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:55 comdlg32.rc:232 comdlg32.rc:262
-#: comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398 comdlg32.rc:452 credui.rc:52
-#: cryptui.rc:263 cryptui.rc:275 cryptui.rc:365 dinput.rc:46 ieframe.rc:96
-#: localui.rc:44 localui.rc:57 mpr.rc:49 msacm32.rc:53 mshtml.rc:47
-#: mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62 oledlg.rc:94 serialui.rc:41
-#: setupapi.rc:59 shell32.rc:276 shell32.rc:300 shell32.rc:322 shell32.rc:341
-#: shlwapi.rc:44 user32.rc:83 user32.rc:98 wininet.rc:51 wininet.rc:71
-#: winspool.rc:42 net.rc:47 notepad.rc:117 oleview.rc:162 oleview.rc:175
-#: progman.rc:106 progman.rc:124 progman.rc:142 progman.rc:158 progman.rc:180
-#: progman.rc:199 progman.rc:216 regedit.rc:247 regedit.rc:258 regedit.rc:271
-#: regedit.rc:287 regedit.rc:300 regedit.rc:313 taskmgr.rc:442 taskmgr.rc:517
-#: winecfg.rc:214 winecfg.rc:224 wineconsole.rc:135 winefile.rc:128
-#: winefile.rc:151 winefile.rc:181 winemine.rc:71 winemine.rc:81 winemine.rc:95
-#: wordpad.rc:215 wordpad.rc:226 wordpad.rc:244 wordpad.rc:257
+#: appwiz.rc:78 avifil32.rc:54 comctl32.rc:65 comctl32.rc:55 comdlg32.rc:232
+#: comdlg32.rc:262 comdlg32.rc:305 comdlg32.rc:359 comdlg32.rc:398
+#: comdlg32.rc:452 credui.rc:52 cryptui.rc:263 cryptui.rc:275 cryptui.rc:365
+#: dinput.rc:46 ieframe.rc:96 localui.rc:44 localui.rc:57 mpr.rc:49
+#: msacm32.rc:53 mshtml.rc:47 mshtml.rc:57 msvfw32.rc:36 oledlg.rc:62
+#: oledlg.rc:94 serialui.rc:41 setupapi.rc:59 shell32.rc:276 shell32.rc:300
+#: shell32.rc:322 shell32.rc:341 shlwapi.rc:44 user32.rc:83 user32.rc:98
+#: wininet.rc:51 wininet.rc:71 winspool.rc:42 net.rc:47 notepad.rc:117
+#: oleview.rc:161 oleview.rc:174 progman.rc:106 progman.rc:124 progman.rc:142
+#: progman.rc:158 progman.rc:180 progman.rc:199 progman.rc:216 regedit.rc:263
+#: regedit.rc:274 regedit.rc:287 regedit.rc:303 regedit.rc:316 regedit.rc:329
+#: taskmgr.rc:442 taskmgr.rc:517 winecfg.rc:214 winecfg.rc:224
+#: wineconsole.rc:135 winefile.rc:128 winefile.rc:151 winefile.rc:181
+#: winemine.rc:71 winemine.rc:81 winemine.rc:95 wordpad.rc:215 wordpad.rc:226
+#: wordpad.rc:244 wordpad.rc:257
 msgid "OK"
 msgstr "D'acord"
 
@@ -138,23 +139,23 @@ msgstr ""
 msgid "&Install"
 msgstr "&Instal·la"
 
-#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:56
-#: comctl32.rc:71 comdlg32.rc:171 comdlg32.rc:193 comdlg32.rc:211
-#: comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306 comdlg32.rc:328
-#: comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399 comdlg32.rc:453
-#: comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264 cryptui.rc:276
-#: cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81 localui.rc:45
-#: localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48 mshtml.rc:58
-#: msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42 setupapi.rc:42
-#: setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312 shell32.rc:342
-#: shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52 wininet.rc:72
-#: winspool.rc:43 notepad.rc:118 oleview.rc:163 oleview.rc:176 progman.rc:107
-#: progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181 progman.rc:200
-#: progman.rc:217 regedit.rc:248 regedit.rc:259 regedit.rc:272 regedit.rc:288
-#: regedit.rc:301 regedit.rc:314 taskmgr.rc:443 taskmgr.rc:518 wineboot.rc:34
-#: winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136 winefile.rc:129
-#: winefile.rc:152 winefile.rc:182 winemine.rc:96 wordpad.rc:216 wordpad.rc:227
-#: wordpad.rc:245 wordpad.rc:258
+#: appwiz.rc:110 appwiz.rc:125 avifil32.rc:55 browseui.rc:40 comctl32.rc:66
+#: comctl32.rc:81 comctl32.rc:56 comdlg32.rc:171 comdlg32.rc:193
+#: comdlg32.rc:211 comdlg32.rc:233 comdlg32.rc:263 comdlg32.rc:306
+#: comdlg32.rc:328 comdlg32.rc:348 comdlg32.rc:360 comdlg32.rc:399
+#: comdlg32.rc:453 comdlg32.rc:478 comdlg32.rc:501 credui.rc:53 cryptui.rc:264
+#: cryptui.rc:276 cryptui.rc:366 dinput.rc:47 ieframe.rc:97 inetcpl.rc:81
+#: localui.rc:45 localui.rc:58 mpr.rc:50 msacm32.rc:54 mshtml.rc:48
+#: mshtml.rc:58 msvfw32.rc:37 oledlg.rc:63 oledlg.rc:95 serialui.rc:42
+#: setupapi.rc:42 setupapi.rc:60 shell32.rc:277 shell32.rc:301 shell32.rc:312
+#: shell32.rc:342 shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52
+#: wininet.rc:72 winspool.rc:43 notepad.rc:118 oleview.rc:162 oleview.rc:175
+#: progman.rc:107 progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181
+#: progman.rc:200 progman.rc:217 regedit.rc:264 regedit.rc:275 regedit.rc:288
+#: regedit.rc:304 regedit.rc:317 regedit.rc:330 taskmgr.rc:443 taskmgr.rc:518
+#: wineboot.rc:34 winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136
+#: winefile.rc:129 winefile.rc:152 winefile.rc:182 winemine.rc:96
+#: wordpad.rc:216 wordpad.rc:227 wordpad.rc:245 wordpad.rc:258
 msgid "Cancel"
 msgstr "Cancel·la"
 
@@ -200,7 +201,7 @@ msgid ""
 "Unable to execute the uninstaller, '%s'. Do you want to remove the uninstall "
 "entry for this program from the registry?"
 msgstr ""
-"No es pot executar el desinstal·lador '%s'. Voleu eliminar l'entrada de "
+"No s'ha pogut executar el desinstal·lador '%s'. Voleu eliminar l'entrada de "
 "desinstal·lació d'aquest programa del registre?"
 
 #: appwiz.rc:36
@@ -228,7 +229,7 @@ msgid "Programs (*.exe)"
 msgstr "Programes (*.exe)"
 
 #: appwiz.rc:43 avifil32.rc:33 cryptui.rc:83 shell32.rc:199 notepad.rc:76
-#: oleview.rc:104 progman.rc:82 regedit.rc:198 winedbg.rc:42 winhlp32.rc:90
+#: oleview.rc:103 progman.rc:82 regedit.rc:200 winedbg.rc:42 winhlp32.rc:90
 msgid "All files (*.*)"
 msgstr "Tots els fitxers (*.*)"
 
@@ -308,48 +309,48 @@ msgstr "no comprimit"
 msgid "Canceling..."
 msgstr "S'està cancel·lant..."
 
-#: comctl32.rc:52 winefile.rc:157
+#: comctl32.rc:62 winefile.rc:157
 msgid "Properties for %s"
 msgstr "Propietats de %s"
 
-#: comctl32.rc:57 comdlg32.rc:264
+#: comctl32.rc:67 comdlg32.rc:264
 msgid "&Apply"
 msgstr "&Aplica"
 
-#: comctl32.rc:58 comctl32.rc:72 comdlg32.rc:307 user32.rc:88
+#: comctl32.rc:68 comctl32.rc:82 comdlg32.rc:307 user32.rc:88
 msgid "Help"
 msgstr "Ajuda"
 
-#: comctl32.rc:65
+#: comctl32.rc:75
 msgid "Wizard"
 msgstr "Assistent"
 
-#: comctl32.rc:68
+#: comctl32.rc:78
 msgid "< &Back"
 msgstr "< &Enrere"
 
-#: comctl32.rc:69
+#: comctl32.rc:79
 msgid "&Next >"
 msgstr "&Següent >"
 
-#: comctl32.rc:70
+#: comctl32.rc:80
 msgid "Finish"
 msgstr "Acaba"
 
-#: comctl32.rc:81
+#: comctl32.rc:91
 msgid "Customize Toolbar"
 msgstr "Personalitza la barra d'eines"
 
-#: comctl32.rc:84 cryptui.rc:351 ieframe.rc:43 oleview.rc:83 oleview.rc:188
-#: oleview.rc:201 oleview.rc:213 taskmgr.rc:139
+#: comctl32.rc:94 comctl32.rc:57 cryptui.rc:351 ieframe.rc:43 oleview.rc:83
+#: oleview.rc:187 oleview.rc:200 oleview.rc:212 taskmgr.rc:139
 msgid "&Close"
 msgstr "&Tanca"
 
-#: comctl32.rc:85
+#: comctl32.rc:95
 msgid "R&eset"
 msgstr "&Reinicia"
 
-#: comctl32.rc:86 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
+#: comctl32.rc:96 comdlg32.rc:172 comdlg32.rc:194 comdlg32.rc:265
 #: comdlg32.rc:329 comdlg32.rc:349 comdlg32.rc:361 comdlg32.rc:479
 #: comdlg32.rc:502 ieframe.rc:58 msacm32.rc:52 oledlg.rc:96 shell32.rc:128
 #: clock.rc:44 notepad.rc:60 notepad.rc:119 oleview.rc:72 progman.rc:55
@@ -359,27 +360,27 @@ msgstr "&Reinicia"
 msgid "&Help"
 msgstr "A&juda"
 
-#: comctl32.rc:87
+#: comctl32.rc:97
 msgid "Move &Up"
 msgstr "Mou a&munt"
 
-#: comctl32.rc:88
+#: comctl32.rc:98
 msgid "Move &Down"
 msgstr "Mou a&baix"
 
-#: comctl32.rc:89
+#: comctl32.rc:99
 msgid "A&vailable buttons:"
 msgstr "&Botons disponibles:"
 
-#: comctl32.rc:91
+#: comctl32.rc:101
 msgid "&Add ->"
 msgstr "&Afegeix ->"
 
-#: comctl32.rc:92
+#: comctl32.rc:102
 msgid "<- &Remove"
 msgstr "<- &Elimina"
 
-#: comctl32.rc:93
+#: comctl32.rc:103
 msgid "&Toolbar buttons:"
 msgstr "&Botons de la barra d'eines:"
 
@@ -392,7 +393,19 @@ msgctxt "hotkey"
 msgid "None"
 msgstr "Cap"
 
-#: comctl32.rc:31 cryptui.rc:230 regedit.rc:237 taskmgr.rc:434 winedbg.rc:60
+#: comctl32.rc:52 shell32.rc:309 shlwapi.rc:46 user32.rc:79
+msgid "&Yes"
+msgstr "&Sí"
+
+#: comctl32.rc:53 shell32.rc:311 shlwapi.rc:47 user32.rc:80
+msgid "&No"
+msgstr "&No"
+
+#: comctl32.rc:54 user32.rc:82
+msgid "&Retry"
+msgstr "&Reintenta"
+
+#: comctl32.rc:31 cryptui.rc:230 regedit.rc:253 taskmgr.rc:434 winedbg.rc:60
 #: winedbg.rc:75 wordpad.rc:180
 msgid "Close"
 msgstr "Tanca"
@@ -406,7 +419,7 @@ msgid "Go to today"
 msgstr "Anar a avui"
 
 #: comdlg32.rc:157 comdlg32.rc:170 comdlg32.rc:459 comdlg32.rc:485
-#: shell32.rc:167 oleview.rc:102
+#: shell32.rc:167 oleview.rc:101
 msgid "Open"
 msgstr "Obre"
 
@@ -436,7 +449,7 @@ msgstr "Anomena i desa..."
 
 #: comdlg32.rc:192 comdlg32.rc:145
 msgid "Save As"
-msgstr "Anomenar i desar"
+msgstr "Anomena i desa"
 
 #: comdlg32.rc:201 comdlg32.rc:210 comdlg32.rc:356 comdlg32.rc:54 hhctrl.rc:49
 #: wordpad.rc:173
@@ -451,7 +464,7 @@ msgstr "Impressora:"
 msgid "Print range"
 msgstr "Interval d'impressió"
 
-#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:219
+#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:235
 msgid "&All"
 msgstr "&Tot"
 
@@ -481,7 +494,7 @@ msgstr "&Qualitat d'impressió:"
 
 #: comdlg32.rc:217
 msgid "Print to Fi&le"
-msgstr "Impressió en un f&itxer"
+msgstr "Impressió en un &fitxer"
 
 #: comdlg32.rc:218
 msgid "Condensed"
@@ -621,7 +634,7 @@ msgstr "A&fegeix als colors personalitzats"
 msgid "&Define Custom Colors >>"
 msgstr "D&efinició de colors personalitzats >>"
 
-#: comdlg32.rc:316 regedit.rc:226 regedit.rc:236
+#: comdlg32.rc:316 regedit.rc:242 regedit.rc:252
 msgid "Find"
 msgstr "Cerca"
 
@@ -655,7 +668,7 @@ msgstr "Cerca el &següent"
 
 #: comdlg32.rc:335
 msgid "Replace"
-msgstr "Substitueix"
+msgstr "Substitució"
 
 #: comdlg32.rc:340
 msgid "Re&place With:"
@@ -671,7 +684,7 @@ msgstr "Substitueix-&ho tot"
 
 #: comdlg32.rc:364
 msgid "Print to fi&le"
-msgstr "Imprimeix a un &fitxer"
+msgstr "Impressió en un &fitxer"
 
 #: comdlg32.rc:365 comdlg32.rc:403 ieframe.rc:42 shdoclc.rc:61 shell32.rc:108
 #: clock.rc:31 wineconsole.rc:30
@@ -1045,7 +1058,7 @@ msgstr "Selecciona una carpeta"
 
 #: comdlg32.rc:148
 msgid "Font size has to be a number."
-msgstr ""
+msgstr "El cos de lletra ha de ser un nombre."
 
 #: comdlg32.rc:83 oleview.rc:98
 msgid "Ready"
@@ -3072,7 +3085,7 @@ msgstr "Símbol"
 msgid "OEM/DOS"
 msgstr "OEM/DOS"
 
-#: gdi32.rc:45 wldap32.rc:110
+#: gdi32.rc:45 wldap32.rc:112
 msgid "Other"
 msgstr "Altra"
 
@@ -3254,7 +3267,7 @@ msgstr "&Nou"
 
 #: ieframe.rc:32 winefile.rc:73
 msgid "&Window"
-msgstr "&Finestra"
+msgstr "F&inestra"
 
 #: ieframe.rc:34 view.rc:33 winhlp32.rc:32
 msgid "&Open..."
@@ -3703,6 +3716,14 @@ msgstr "La longitud del vector ha de ser un enter positiu finit"
 msgid "Array object expected"
 msgstr "S'esperava un objecte Array"
 
+#: ../../include/wine/wine_common_ver.rc:129
+msgid "Wine kernel DLL"
+msgstr ""
+
+#: ../../include/wine/wine_common_ver.rc:134 winemac.rc:32 wineboot.rc:42
+msgid "Wine"
+msgstr "Wine"
+
 #: winerror.mc:26
 msgid "Success.\n"
 msgstr "Èxit.\n"
@@ -3725,7 +3746,7 @@ msgstr "Hi ha massa fitxers oberts.\n"
 
 #: winerror.mc:51
 msgid "Access denied.\n"
-msgstr "Es denega l'accés.\n"
+msgstr "S'ha denegat l'accés.\n"
 
 #: winerror.mc:56
 msgid "Invalid handle.\n"
@@ -4745,11 +4766,11 @@ msgstr "El dispositiu no té partició.\n"
 
 #: winerror.mc:1336
 msgid "Unable to lock media.\n"
-msgstr "No es pot bloquejar el suport.\n"
+msgstr "No s'ha pogut bloquejar el suport.\n"
 
 #: winerror.mc:1341
 msgid "Unable to unload media.\n"
-msgstr "No es pot descarregar el suport.\n"
+msgstr "No s'ha pogut descarregar el suport.\n"
 
 #: winerror.mc:1346
 msgid "Media changed.\n"
@@ -4953,11 +4974,11 @@ msgstr "No hi ha tal ID de volum.\n"
 
 #: winerror.mc:1596
 msgid "Unable to remove the file to be replaced.\n"
-msgstr "No es pot eliminar el fitxer a substituir-se.\n"
+msgstr "No s'ha pogut eliminar el fitxer a substituir-se.\n"
 
 #: winerror.mc:1601
 msgid "Unable to move the replacement file into place.\n"
-msgstr "No es pot desplaçar el fitxer de substitució al lloc.\n"
+msgstr "No s'ha pogut desplaçar el fitxer de substitució al lloc.\n"
 
 #: winerror.mc:1606
 msgid "Moving the replacement file failed.\n"
@@ -7357,11 +7378,11 @@ msgctxt "object state"
 msgid "has popup"
 msgstr "té emergent"
 
-#: oleaut32.rc:30 oleview.rc:147
+#: oleaut32.rc:30 oleview.rc:146
 msgid "True"
 msgstr "Veritable"
 
-#: oleaut32.rc:31 oleview.rc:148
+#: oleaut32.rc:31 oleview.rc:147
 msgid "False"
 msgstr "Fals"
 
@@ -8019,7 +8040,7 @@ msgstr "&Quant al Tauler de Control"
 
 #: shell32.rc:273 shell32.rc:288
 msgid "Browse for Folder"
-msgstr "Navega per la carpeta"
+msgstr "Cerca de carpetes"
 
 #: shell32.rc:293
 msgid "Folder:"
@@ -8033,17 +8054,9 @@ msgstr "&Fes una carpeta nova"
 msgid "Message"
 msgstr "Missatge"
 
-#: shell32.rc:309 shlwapi.rc:46 user32.rc:79
-msgid "&Yes"
-msgstr "&Sí"
-
 #: shell32.rc:310
 msgid "Yes to &all"
 msgstr "Sí a &tots"
-
-#: shell32.rc:311 shlwapi.rc:47 user32.rc:80
-msgid "&No"
-msgstr "&No"
 
 #: shell32.rc:319
 msgid "About %s"
@@ -8062,10 +8075,8 @@ msgid "Wine was brought to you by:"
 msgstr "Teniu el Wine gràcies a:"
 
 #: shell32.rc:334
-#, fuzzy
-#| msgid "&Run..."
 msgid "Run"
-msgstr "&Executar..."
+msgstr "Executa"
 
 #: shell32.rc:338
 msgid ""
@@ -8129,7 +8140,7 @@ msgctxt "display name"
 msgid "Desktop"
 msgstr "Escriptori"
 
-#: shell32.rc:157 regedit.rc:203
+#: shell32.rc:157 regedit.rc:205
 msgid "My Computer"
 msgstr "El meu ordinador"
 
@@ -8309,7 +8320,7 @@ msgstr "Baixades"
 
 #: shell32.rc:169
 msgid "Unable to create new Folder: Permission denied."
-msgstr "No es pot crear la carpeta nova: S'ha denegat el permís."
+msgstr "No s'ha pogut crear la carpeta nova: S'ha denegat el permís."
 
 #: shell32.rc:170
 msgid "Error during creation of a new folder"
@@ -8391,13 +8402,14 @@ msgid "Wine Control Panel"
 msgstr "Tauler de Control del Wine"
 
 #: shell32.rc:195
-msgid "Unable to display Run File dialog box (internal error)"
-msgstr ""
-"No es pot mostrar el quadre de diàleg d'execució de fitxer (error intern)"
+#, fuzzy
+#| msgid "Unable to display Run File dialog box (internal error)"
+msgid "Unable to display Run dialog box (internal error)"
+msgstr "No s'ha pogut mostrar el quadre de diàleg Executar (error intern)"
 
 #: shell32.rc:196
 msgid "Unable to display Browse dialog box (internal error)"
-msgstr "No es pot mostrar el quadre de diàleg Navegar (error intern)"
+msgstr "No s'ha pogut mostrar el quadre de diàleg Navega (error intern)"
 
 #: shell32.rc:198
 msgid "Executable files (*.exe)"
@@ -8588,10 +8600,6 @@ msgstr "&Següent\tCtrl+F6"
 msgid "&Abort"
 msgstr "&Avorta"
 
-#: user32.rc:82
-msgid "&Retry"
-msgstr "&Reintenta"
-
 #: user32.rc:85
 msgid "&Ignore"
 msgstr "&Ignora"
@@ -8611,10 +8619,6 @@ msgstr "Selecciona finestra"
 #: user32.rc:72
 msgid "&More Windows..."
 msgstr "&Més finestres..."
-
-#: winemac.rc:32 wineboot.rc:42
-msgid "Wine"
-msgstr "Wine"
 
 #: winemac.rc:33
 msgid "Hide %@"
@@ -9044,7 +9048,7 @@ msgid ""
 "The specified value for the time format is invalid. Refer to the MCI "
 "documentation for valid formats."
 msgstr ""
-"El valor especificat per al format d'hora no és vàlid. Consulteu la "
+"El valor especificat per al format d'hora és invàlid. Consulteu la "
 "documentació MCI pels formats vàlids."
 
 #: winmm.rc:93
@@ -9346,7 +9350,7 @@ msgstr "Silencia"
 
 #: winspool.rc:37
 msgid "Print to File"
-msgstr "Imprimeix a un fitxer"
+msgstr "Impressió en un fitxer"
 
 #: winspool.rc:40
 msgid "&Output File Name:"
@@ -9359,241 +9363,247 @@ msgstr ""
 
 #: winspool.rc:32
 msgid "Unable to create the output file."
-msgstr "No es pot crear el fitxer destinatari."
+msgstr "No s'ha pogut crear el fitxer destinatari."
 
-#: wldap32.rc:30
+#: wldap32.rc:32
 msgid "Success"
 msgstr "Èxit"
 
-#: wldap32.rc:31
+#: wldap32.rc:33
 msgid "Operations Error"
 msgstr "Error d'operacions"
 
-#: wldap32.rc:32
+#: wldap32.rc:34
 msgid "Protocol Error"
 msgstr "Error de protocol"
 
-#: wldap32.rc:33
+#: wldap32.rc:35
 msgid "Time Limit Exceeded"
 msgstr "Límit de temps superat"
 
-#: wldap32.rc:34
+#: wldap32.rc:36
 msgid "Size Limit Exceeded"
 msgstr "Límit de mida superat"
 
-#: wldap32.rc:35
+#: wldap32.rc:37
 msgid "Compare False"
 msgstr "Comparació falsa"
 
-#: wldap32.rc:36
+#: wldap32.rc:38
 msgid "Compare True"
 msgstr "Comparació veritable"
 
-#: wldap32.rc:37
+#: wldap32.rc:39
 msgid "Authentication Method Not Supported"
 msgstr "Mètode d'autenticació no compatible"
 
-#: wldap32.rc:38
+#: wldap32.rc:40
 msgid "Strong Authentication Required"
 msgstr "Cal autenticació forta"
 
-#: wldap32.rc:39
+#: wldap32.rc:41
 msgid "Referral (v2)"
 msgstr "Referència (v2)"
 
-#: wldap32.rc:40
+#: wldap32.rc:42
 msgid "Referral"
 msgstr "Referència"
 
-#: wldap32.rc:41
+#: wldap32.rc:43
 msgid "Administration Limit Exceeded"
 msgstr "Límit d'administració superat"
 
-#: wldap32.rc:42
+#: wldap32.rc:44
 msgid "Unavailable Critical Extension"
 msgstr "Extensió crítica no disponible"
 
-#: wldap32.rc:43
+#: wldap32.rc:45
 msgid "Confidentiality Required"
 msgstr "Cal confidencialitat"
 
 #: wldap32.rc:46
+#, fuzzy
+#| msgid "Shutdown in progress.\n"
+msgid "SASL Bind in Progress"
+msgstr "L'aturada està en curs.\n"
+
+#: wldap32.rc:48
 msgid "No Such Attribute"
 msgstr "Cap atribut així"
 
-#: wldap32.rc:47
+#: wldap32.rc:49
 msgid "Undefined Type"
 msgstr "Tipus no definit"
 
-#: wldap32.rc:48
+#: wldap32.rc:50
 msgid "Inappropriate Matching"
 msgstr "Coincidència no apropiada"
 
-#: wldap32.rc:49
+#: wldap32.rc:51
 msgid "Constraint Violation"
 msgstr "Violació de restricció"
 
-#: wldap32.rc:50
+#: wldap32.rc:52
 msgid "Attribute Or Value Exists"
 msgstr "L'atribut o valor existeix"
 
-#: wldap32.rc:51
+#: wldap32.rc:53
 msgid "Invalid Syntax"
 msgstr "Sintaxi invàlida"
 
-#: wldap32.rc:62
+#: wldap32.rc:64
 msgid "No Such Object"
 msgstr "Cap objecte així"
 
-#: wldap32.rc:63
+#: wldap32.rc:65
 msgid "Alias Problem"
 msgstr "Problema d'àlies"
 
-#: wldap32.rc:64
+#: wldap32.rc:66
 msgid "Invalid DN Syntax"
 msgstr "Sintaxi DN invàlida"
 
-#: wldap32.rc:65
+#: wldap32.rc:67
 msgid "Is Leaf"
 msgstr "És full"
 
-#: wldap32.rc:66
+#: wldap32.rc:68
 msgid "Alias Dereference Problem"
 msgstr "Problema de desreferència d'àlies"
 
-#: wldap32.rc:78
+#: wldap32.rc:80
 msgid "Inappropriate Authentication"
 msgstr "Autenticació no apropiada"
 
-#: wldap32.rc:79
+#: wldap32.rc:81
 msgid "Invalid Credentials"
 msgstr "Credencials invàlides"
 
-#: wldap32.rc:80
+#: wldap32.rc:82
 msgid "Insufficient Rights"
 msgstr "Drets insuficients"
 
-#: wldap32.rc:81
+#: wldap32.rc:83
 msgid "Busy"
 msgstr "Ocupat"
 
-#: wldap32.rc:82
+#: wldap32.rc:84
 msgid "Unavailable"
 msgstr "No disponible"
 
-#: wldap32.rc:83
+#: wldap32.rc:85
 msgid "Unwilling To Perform"
 msgstr "No disposat a realitzar"
 
-#: wldap32.rc:84
+#: wldap32.rc:86
 msgid "Loop Detected"
 msgstr "Bucle detectat"
 
-#: wldap32.rc:90
+#: wldap32.rc:92
 msgid "Sort Control Missing"
 msgstr "Manca el control d'ordenació"
 
-#: wldap32.rc:91
+#: wldap32.rc:93
 msgid "Index range error"
 msgstr "Error d'interval d'índex"
 
-#: wldap32.rc:94
+#: wldap32.rc:96
 msgid "Naming Violation"
 msgstr "Violació de nom"
 
-#: wldap32.rc:95
+#: wldap32.rc:97
 msgid "Object Class Violation"
 msgstr "Violació de classe d'objecte"
 
-#: wldap32.rc:96
+#: wldap32.rc:98
 msgid "Not allowed on Non-leaf"
 msgstr "Només es permet en ells fulls"
 
-#: wldap32.rc:97
+#: wldap32.rc:99
 msgid "Not allowed on RDN"
 msgstr "No es permet en RDN"
 
-#: wldap32.rc:98
+#: wldap32.rc:100
 msgid "Already Exists"
 msgstr "Ja existeix"
 
-#: wldap32.rc:99
+#: wldap32.rc:101
 msgid "No Object Class Mods"
 msgstr "Cap modificador de classe d'objecte"
 
-#: wldap32.rc:100
+#: wldap32.rc:102
 msgid "Results Too Large"
 msgstr "Resultats massa grans"
 
-#: wldap32.rc:101
+#: wldap32.rc:103
 msgid "Affects Multiple DSAs"
 msgstr "Afecta múltiples DSA"
 
-#: wldap32.rc:111
+#: wldap32.rc:113
 msgid "Server Down"
 msgstr "Servidor fora de línia"
 
-#: wldap32.rc:112
+#: wldap32.rc:114
 msgid "Local Error"
 msgstr "Error local"
 
-#: wldap32.rc:113
+#: wldap32.rc:115
 msgid "Encoding Error"
 msgstr "Error en codificar"
 
-#: wldap32.rc:114
+#: wldap32.rc:116
 msgid "Decoding Error"
 msgstr "Error en descodificar"
 
-#: wldap32.rc:115
+#: wldap32.rc:117
 msgid "Timeout"
 msgstr "Temps d'espera superat"
 
-#: wldap32.rc:116
+#: wldap32.rc:118
 msgid "Auth Unknown"
 msgstr "Autenticació desconeguda"
 
-#: wldap32.rc:117
+#: wldap32.rc:119
 msgid "Filter Error"
 msgstr "Error de filtre"
 
-#: wldap32.rc:118
+#: wldap32.rc:120
 msgid "User Canceled"
 msgstr "Cancel·lat per usuari"
 
-#: wldap32.rc:119
+#: wldap32.rc:121
 msgid "Parameter Error"
 msgstr "Error de paràmetre"
 
-#: wldap32.rc:120
+#: wldap32.rc:122
 msgid "No Memory"
 msgstr "Cap memòria"
 
-#: wldap32.rc:121
+#: wldap32.rc:123
 msgid "Can't connect to the LDAP server"
 msgstr "No es pot connectar al servidor LDAP"
 
-#: wldap32.rc:122
+#: wldap32.rc:124
 msgid "Operation not supported by this version of the LDAP protocol"
 msgstr "Aquesta versió del protocol LDAP no admet l'operació"
 
-#: wldap32.rc:123
+#: wldap32.rc:125
 msgid "Specified control was not found in message"
 msgstr "No s'ha trobat el control especificat en el missatge"
 
-#: wldap32.rc:124
+#: wldap32.rc:126
 msgid "No result present in message"
 msgstr "Cap resultat present en el missatge"
 
-#: wldap32.rc:125
+#: wldap32.rc:127
 msgid "More results returned"
 msgstr "Més resultats retornats"
 
-#: wldap32.rc:126
+#: wldap32.rc:128
 msgid "Loop while handling referrals"
 msgstr "Bucle en processar referències"
 
-#: wldap32.rc:127
+#: wldap32.rc:129
 msgid "Referral hop limit exceeded"
 msgstr "Límit de salt de referències superat"
 
@@ -9644,7 +9654,7 @@ msgstr ""
 "  A   Atribut de fitxer arxiu.\n"
 "  S   Atribut de fitxer sistema.\n"
 "  H   Atribut de fitxer amagat.\n"
-"  [unitat:][ruta][nom de fitxer]\n"
+"  [unitat:][camí][nom de fitxer]\n"
 "      Especifica un fitxer o uns fitxers que ATTRIB processarà.\n"
 "  /S  Processa fitxers coincidents a la carpeta actual i totes les\n"
 "      subcarpetes.\n"
@@ -9884,7 +9894,7 @@ msgid ""
 "variable, for example:\n"
 "PATH %PATH%;c:\\temp\n"
 msgstr ""
-"PATH mostra o canvia la ruta de cerca del cmd.\n"
+"PATH mostra o canvia el camí de cerca del cmd.\n"
 "\n"
 "Introduir PATH mostrarà la configuració PATH actual (inicialment treta del\n"
 "registre). Per a canviar la configuració, feu l'ordre PATH amb el valor\n"
@@ -10293,7 +10303,7 @@ msgstr ""
 "MD (MKDIR)\tCrea un subdirectori\n"
 "MORE\t\tMostra la sortida en pàgines\n"
 "MOVE\t\tDesplaça un fitxer, conjunt de fitxers o arbre de directori\n"
-"PATH\t\tEstableix o mostra la ruta de cerca\n"
+"PATH\t\tEstableix o mostra el camí de cerca\n"
 "PAUSE\t\tSuspèn l'execució d'un fitxer batch\n"
 "POPD\t\tRestaura el directori a l'últim desat amb la PUSHD\n"
 "PROMPT\t\tCanvia l'indicador d'ordres\n"
@@ -10516,11 +10526,11 @@ msgstr "Explorador del Wine"
 
 #: explorer.rc:33
 msgid "Start"
-msgstr "Inicia"
+msgstr "Inici"
 
 #: explorer.rc:34 winefile.rc:36
 msgid "&Run..."
-msgstr "&Executar..."
+msgstr "&Executa..."
 
 #: hostname.rc:30
 msgid "Usage: hostname\n"
@@ -10528,7 +10538,7 @@ msgstr "Ús: hostname\n"
 
 #: hostname.rc:31
 msgid "Error: Invalid option '%c'.\n"
-msgstr "Error: Opció invàlida '%c'.\n"
+msgstr "Error: L'opció '%c' és invàlida.\n"
 
 #: hostname.rc:32
 msgid ""
@@ -10609,10 +10619,8 @@ msgid "IPv6 address"
 msgstr "Adreça IPv6"
 
 #: msinfo32.rc:28
-#, fuzzy
-#| msgid "System Configuration"
 msgid "System Information"
-msgstr "Configuració de sistema"
+msgstr "Informació de sistema"
 
 #: net.rc:30
 msgid ""
@@ -10976,7 +10984,7 @@ msgctxt "accelerator Copy"
 msgid "C"
 msgstr "C"
 
-#: notepad.rc:134 regedit.rc:323 wordpad.rc:287
+#: notepad.rc:134 regedit.rc:339 wordpad.rc:287
 msgctxt "accelerator Find"
 msgid "F"
 msgstr "F"
@@ -10996,7 +11004,7 @@ msgctxt "accelerator Open"
 msgid "O"
 msgstr "O"
 
-#: notepad.rc:138 regedit.rc:324 wordpad.rc:300
+#: notepad.rc:138 regedit.rc:340 wordpad.rc:300
 msgctxt "accelerator Print"
 msgid "P"
 msgstr "P"
@@ -11186,31 +11194,31 @@ msgstr "Anomena i &desa..."
 msgid "&Group by type kind"
 msgstr "A&grupa per categoria de tipus"
 
-#: oleview.rc:157
+#: oleview.rc:156
 msgid "Connect to another machine"
 msgstr "Connecta't a una altra màquina"
 
-#: oleview.rc:160
+#: oleview.rc:159
 msgid "&Machine name:"
 msgstr "Nom de &màquina:"
 
-#: oleview.rc:168
+#: oleview.rc:167
 msgid "System Configuration"
 msgstr "Configuració de sistema"
 
-#: oleview.rc:171
+#: oleview.rc:170
 msgid "System Settings"
 msgstr "Opcions de sistema"
 
-#: oleview.rc:172
+#: oleview.rc:171
 msgid "&Enable Distributed COM"
 msgstr "&Habilita el COM distribuït"
 
-#: oleview.rc:173
+#: oleview.rc:172
 msgid "Enable &Remote Connections (Win95 only)"
 msgstr "Habilita les connexions &remotes (només Win95)"
 
-#: oleview.rc:174
+#: oleview.rc:173
 msgid ""
 "These settings change only registry values.\n"
 "They have no effect on Wine performance."
@@ -11218,35 +11226,35 @@ msgstr ""
 "Aquestes opcions només canvien valors de registre.\n"
 "No tenen efecte en el rendiment del Wine."
 
-#: oleview.rc:181
+#: oleview.rc:180
 msgid "Default Interface Viewer"
 msgstr "Visualitzador d'interfície per defecte"
 
-#: oleview.rc:184
+#: oleview.rc:183
 msgid "Interface"
 msgstr "Interfície"
 
-#: oleview.rc:186
+#: oleview.rc:185
 msgid "IID:"
 msgstr "IID:"
 
-#: oleview.rc:189
+#: oleview.rc:188
 msgid "&View Type Info"
 msgstr "&Visualitza informació de tipus"
 
-#: oleview.rc:194
+#: oleview.rc:193
 msgid "IPersist Interface Viewer"
 msgstr "Visualitzador de la interfície IPersist"
 
-#: oleview.rc:197 oleview.rc:209
+#: oleview.rc:196 oleview.rc:208
 msgid "Class Name:"
 msgstr "Nom de classe:"
 
-#: oleview.rc:199 oleview.rc:211
+#: oleview.rc:198 oleview.rc:210
 msgid "CLSID:"
 msgstr "CLSID:"
 
-#: oleview.rc:206
+#: oleview.rc:205
 msgid "IPersistStream Interface Viewer"
 msgstr "Visualitzador de la interfície IPersistStream"
 
@@ -11254,7 +11262,7 @@ msgstr "Visualitzador de la interfície IPersistStream"
 msgid "OleView"
 msgstr "OleView"
 
-#: oleview.rc:101
+#: oleview.rc:100
 msgid "ITypeLib viewer"
 msgstr "Visualitzador d'ITypeLib"
 
@@ -11262,174 +11270,170 @@ msgstr "Visualitzador d'ITypeLib"
 msgid "OleView - OLE/COM Object Viewer"
 msgstr "OleView - Visualitzador d'Objectes OLE/COM"
 
-#: oleview.rc:100
-msgid "version 1.0"
-msgstr "versió 1.0"
-
-#: oleview.rc:103
+#: oleview.rc:102
 msgid "TypeLib files (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 msgstr "Fitxers TypeLib (*.tlb; *.olb; *.dll; *.ocx; *.exe)"
 
-#: oleview.rc:106
+#: oleview.rc:105
 msgid "Bind to file via a File Moniker"
 msgstr "Lliga a fitxer a través d'un File Moniker"
 
-#: oleview.rc:107
+#: oleview.rc:106
 msgid "Open a TypeLib file and view the contents"
 msgstr "Obre un fitxer TypeLib i visualitza els continguts"
 
-#: oleview.rc:108
+#: oleview.rc:107
 msgid "Change machine wide Distributed COM settings"
 msgstr "Canvia la configuració de Distributed COM de tota la màquina"
 
-#: oleview.rc:109
+#: oleview.rc:108
 msgid "Run the Wine registry editor"
-msgstr "Executar l'editor de registre del Wine"
+msgstr "Executa l'editor de registre del Wine"
 
-#: oleview.rc:110
+#: oleview.rc:109
 msgid "Quit the application. Prompts to save changes"
 msgstr "Tanca l'aplicació. Demana desar els canvis"
 
-#: oleview.rc:111
+#: oleview.rc:110
 msgid "Create an instance of the selected object"
 msgstr "Crea una instància de l'objecte seleccionat"
 
-#: oleview.rc:112
+#: oleview.rc:111
 msgid "Create an instance of the selected object on a specific machine"
 msgstr "Crea una instància de l'objecte seleccionat en una màquina específica"
 
-#: oleview.rc:113
+#: oleview.rc:112
 msgid "Release the currently selected object instance"
 msgstr "Lliura la instància d'objecte actualment seleccionada"
 
-#: oleview.rc:114
+#: oleview.rc:113
 msgid "Copy the GUID of the currently selected item to the clipboard"
 msgstr "Copia la GUID de l'element actualment seleccionat al porta-retalls"
 
-#: oleview.rc:115
+#: oleview.rc:114
 msgid "Display the viewer for the selected item"
 msgstr "Mostra el visualitzador de l'element seleccionat"
 
-#: oleview.rc:120
+#: oleview.rc:119
 msgid "Toggle between expert and novice display mode"
 msgstr "Canvia entre els modes de visualització expert i novell"
 
-#: oleview.rc:121
+#: oleview.rc:120
 msgid ""
 "Toggle the display of component categories that are not meant to be visible"
 msgstr ""
 "Alterna la visualització de les categories de component que no se suposen "
 "ser visibles"
 
-#: oleview.rc:122
+#: oleview.rc:121
 msgid "Show or hide the toolbar"
 msgstr "Mostra o amaga la barra d'eines"
 
-#: oleview.rc:123
+#: oleview.rc:122
 msgid "Show or hide the status bar"
 msgstr "Mostra o amaga la barra d'estat"
 
-#: oleview.rc:124
+#: oleview.rc:123
 msgid "Refresh all lists"
 msgstr "Actualitza totes les llistes"
 
-#: oleview.rc:125
+#: oleview.rc:124
 msgid "Display program information, version number and copyright"
 msgstr "Mostra informació de programa, nombre de versió i drets d'autor"
 
-#: oleview.rc:116
+#: oleview.rc:115
 msgid "Ask for an in-process server when calling CoGetClassObject"
 msgstr "Demana un servidor en procés en trucar a CoGetClassObject"
 
-#: oleview.rc:117
+#: oleview.rc:116
 msgid "Ask for an in-process handler when calling CoGetClassObject"
 msgstr "Demana un gestor en procés en trucar a CoGetClassObject"
 
-#: oleview.rc:118
+#: oleview.rc:117
 msgid "Ask for a local server when calling CoGetClassObject"
 msgstr "Demana un servidor local en trucar a CoGetClassObject"
 
-#: oleview.rc:119
+#: oleview.rc:118
 msgid "Ask for a remote server when calling CoGetClassObject"
 msgstr "Demana un servidor remot en trucar a CoGetClassObject"
 
-#: oleview.rc:131
+#: oleview.rc:130
 msgid "ObjectClasses"
 msgstr "ObjectClasses"
 
-#: oleview.rc:132
+#: oleview.rc:131
 msgid "Grouped by Component Category"
 msgstr "Agrupats per categoria de component"
 
-#: oleview.rc:133
+#: oleview.rc:132
 msgid "OLE 1.0 Objects"
 msgstr "Objectes OLE 1.0"
 
-#: oleview.rc:134
+#: oleview.rc:133
 msgid "COM Library Objects"
 msgstr "Objectes de biblioteca COM"
 
-#: oleview.rc:135
+#: oleview.rc:134
 msgid "All Objects"
 msgstr "Tots els objectes"
 
-#: oleview.rc:136
+#: oleview.rc:135
 msgid "Application IDs"
 msgstr "IDs d'aplicació"
 
-#: oleview.rc:137
+#: oleview.rc:136
 msgid "Type Libraries"
 msgstr "Biblioteques de tipus"
 
-#: oleview.rc:138
+#: oleview.rc:137
 msgid "ver."
 msgstr "ver."
 
-#: oleview.rc:139
+#: oleview.rc:138
 msgid "Interfaces"
 msgstr "Interfícies"
 
-#: oleview.rc:141
+#: oleview.rc:140
 msgid "Registry"
 msgstr "Registre"
 
-#: oleview.rc:142
+#: oleview.rc:141
 msgid "Implementation"
 msgstr "Implementació"
 
-#: oleview.rc:143
+#: oleview.rc:142
 msgid "Activation"
 msgstr "Activació"
 
-#: oleview.rc:145
+#: oleview.rc:144
 msgid "CoGetClassObject failed."
 msgstr "Ha fallat el CoGetClassObject."
 
-#: oleview.rc:146
+#: oleview.rc:145
 msgid "Unknown error"
 msgstr "Error desconegut"
 
-#: oleview.rc:149
+#: oleview.rc:148
 msgid "bytes"
 msgstr "bytes"
 
-#: oleview.rc:151
+#: oleview.rc:150
 msgid "LoadTypeLib( %1 ) failed ($%2!x!)"
 msgstr "LoadTypeLib( %1 ) ha fallat ($%2!x!)"
 
-#: oleview.rc:152
+#: oleview.rc:151
 msgid "Inherited Interfaces"
 msgstr "Interfícies heretades"
 
-#: oleview.rc:127
+#: oleview.rc:126
 msgid "Save as an .IDL or .H file"
 msgstr "Desa com a fitxer .IDL o .H"
 
-#: oleview.rc:128
+#: oleview.rc:127
 msgid "Close window"
 msgstr "Tanca la finestra"
 
-#: oleview.rc:129
+#: oleview.rc:128
 msgid "Group typeinfos by kind"
 msgstr "Agrupa informació de tipus per categoria"
 
@@ -11658,6 +11662,15 @@ msgid ""
 "  REG [operation] /?\n"
 "\n"
 msgstr ""
+"Ús:\n"
+"  REG [operació] [paràmetres]\n"
+"\n"
+"Operacions admeses:\n"
+"  ADD | DELETE | QUERY\n"
+"\n"
+"Per ajuda sobre una operació específica, teclegeu:\n"
+"  REG [operació] /?\n"
+"\n"
 
 #: reg.rc:36
 msgid ""
@@ -11680,139 +11693,105 @@ msgid "The operation completed successfully\n"
 msgstr "L'operació s'ha acabat amb èxit\n"
 
 #: reg.rc:40
-#, fuzzy
-#| msgid "Error: Invalid key name\n"
 msgid "reg: Invalid key name\n"
-msgstr "Error: Nom de clau invàlid\n"
+msgstr "reg: Nom de clau invàlid\n"
 
 #: reg.rc:41
-#, fuzzy
-#| msgid "Error: Invalid command line parameters\n"
 msgid "reg: Invalid command line parameters\n"
-msgstr "Error: Paràmetres de línia d'ordres invàlids\n"
+msgstr "reg: Paràmetres de línia d'ordres invàlids\n"
 
 #: reg.rc:42
-#, fuzzy
-#| msgid "Error: Unable to access remote machine\n"
 msgid "reg: Unable to access remote machine\n"
-msgstr "Error: No es pot accedir a la màquina remota\n"
+msgstr "reg: No s'ha pogut accedir a la màquina remota\n"
 
 #: reg.rc:43
-#, fuzzy
-#| msgid ""
-#| "Error: The system was unable to find the specified registry key or value\n"
 msgid ""
 "reg: The system was unable to find the specified registry key or value\n"
 msgstr ""
-"Error: El sistema no ha pogut trobar la clau especificada o el valor de "
-"registre especificat\n"
+"reg: El sistema no ha pogut trobar la clau de registre especificada o el "
+"valor de registre especificat\n"
 
 #: reg.rc:44
-#, fuzzy
-#| msgid "Error: Unsupported type\n"
 msgid "reg: Unsupported registry data type [%1]\n"
-msgstr "Error: Tipus incompatible\n"
+msgstr "reg: Tipus de dades de registre incompatible [%1]\n"
 
 #: reg.rc:45
-#, fuzzy
-#| msgid ""
-#| "uninstaller: The option '--remove' must be followed by an application "
-#| "GUID\n"
 msgid "reg: The option [/d] must be followed by a valid integer\n"
-msgstr ""
-"desinstal·lador: Una GUID d'aplicació ha de seguir l'opció '--remove'\n"
+msgstr "reg: Un nombre enter ha de seguir l'opció [/d]\n"
 
 #: reg.rc:46
-#, fuzzy
-#| msgid ""
-#| "uninstaller: The option '--remove' must be followed by an application "
-#| "GUID\n"
 msgid "reg: The option [/d] must be followed by a valid hexadecimal value\n"
-msgstr ""
-"desinstal·lador: Una GUID d'aplicació ha de seguir l'opció '--remove'\n"
+msgstr "reg: Un valor hexadecimal vàlid ha de seguir l'opció [/d]\n"
 
 #: reg.rc:47
 msgid "reg: Unhandled registry data type [/t 0x%1!x!, /d %2]\n"
-msgstr ""
+msgstr "reg: Tipus de dada de registre no gestionat [/t 0x%1!x!, /d %2]\n"
 
 #: reg.rc:48
-#, fuzzy
-#| msgid "The specified file already exists. Do you want to replace it?"
 msgid "The registry value '%1' already exists. Do you want to overwrite it?"
-msgstr "El fitxer especificat ja existeix. El voleu substituir?"
+msgstr "El valor de registre '%1' ja existeix. El voleu sobreescriure?"
 
 #: reg.rc:52
 msgid "The registry operation was cancelled\n"
-msgstr ""
+msgstr "S'ha cancel·lat l'operació de registre\n"
 
-#: reg.rc:53 regedit.rc:204
+#: reg.rc:53 regedit.rc:206
 msgid "(Default)"
 msgstr "(Per defecte)"
 
-#: reg.rc:54
-#, fuzzy
-#| msgid "Are you sure you want to delete these values?"
+#: reg.rc:54 regedit.rc:185
 msgid "Are you sure you want to delete the registry value '%1'?"
-msgstr "Esteu segur que voleu suprimir aquests valors?"
+msgstr "Esteu segur que voleu suprimir el valor de registre '%1'?"
 
 #: reg.rc:55
-#, fuzzy
-#| msgid "Are you sure you want to delete value '%s'?"
 msgid "Are you sure you want to delete all registry values in '%1'?"
-msgstr "Esteu segur que voleu suprimir el valor '%s'?"
+msgstr "Esteu segur que voleu suprimir tots els valors de registre en '%1'?"
 
 #: reg.rc:56
-#, fuzzy
-#| msgid "Are you sure you want to delete '%1'?"
 msgid "Are you sure you want to delete the registry key '%1'?"
-msgstr "Esteu segur que voleu suprimir '%1'?"
+msgstr "Esteu segur que voleu suprimir la clau de registre '%1'?"
 
 #: reg.rc:57
-#, fuzzy
-#| msgid ""
-#| "uninstaller: The option '--remove' must be followed by an application "
-#| "GUID\n"
 msgid "reg: The option [/d] must be followed by a valid string\n"
-msgstr ""
-"desinstal·lador: Una GUID d'aplicació ha de seguir l'opció '--remove'\n"
+msgstr "reg: Una cadena vàlida ha de seguir l'opció [/d]\n"
 
 #: reg.rc:58
 msgid ""
 "reg: Unable to delete all registry values in '%1'. An unexpected error "
 "occurred.\n"
 msgstr ""
+"reg: No s'ha pogut suprimir tots els valors de registre en '%1'. Un error "
+"inesperat ha ocorregut.\n"
 
 #: reg.rc:59
 msgid ""
 "reg: Unable to complete the specified operation. An unexpected error "
 "occurred.\n"
 msgstr ""
+"reg: No s'ha pogut completar l'operació especificada. Un error inesperat ha "
+"ocorregut.\n"
 
 #: reg.rc:60
 msgid "Search complete. Number of matches found: %1!d!\n"
-msgstr ""
+msgstr "S'ha completat la cerca. Nombre de coincidències trobades: %1!d!\n"
 
 #: reg.rc:61
-#, fuzzy
-#| msgid "Error: Invalid key name\n"
 msgid "reg: Invalid syntax. "
-msgstr "Error: Nom de clau invàlid\n"
+msgstr "reg: La sintaxi és invàlida. "
 
 #: reg.rc:62
-#, fuzzy
-#| msgid "uninstaller: Invalid option [%1]\n"
 msgid "reg: Invalid option [%1]. "
-msgstr "desinstal·lador: Opció invàlida [%1]\n"
+msgstr "reg: L'opció [%1] és invàlida. "
 
 #: reg.rc:63
 msgid "Type \"REG /?\" for help.\n"
-msgstr ""
+msgstr "Teclegeu \"REG /?\" per ajuda.\n"
 
 #: reg.rc:64
 msgid "Type \"REG %1 /?\" for help.\n"
-msgstr ""
+msgstr "Teclegeu \"REG %1 /?\" per ajuda.\n"
 
-#: reg.rc:65 regedit.rc:205
+#: reg.rc:65 regedit.rc:207
 msgid "(value not set)"
 msgstr "(valor no definit)"
 
@@ -11888,83 +11867,83 @@ msgstr "&Quant a l'Editor de Registre"
 msgid "Modify Binary Data..."
 msgstr "Modifica dades binàries..."
 
-#: regedit.rc:218
+#: regedit.rc:234
 msgid "Export registry"
 msgstr "Exporta registre"
 
-#: regedit.rc:220
+#: regedit.rc:236
 msgid "S&elected branch:"
 msgstr "&Branca seleccionada:"
 
-#: regedit.rc:229
+#: regedit.rc:245
 msgid "Find:"
 msgstr "Cerca:"
 
-#: regedit.rc:231
+#: regedit.rc:247
 msgid "Find in:"
 msgstr "Cerca en:"
 
-#: regedit.rc:232
+#: regedit.rc:248
 msgid "Keys"
 msgstr "Claus"
 
-#: regedit.rc:233
+#: regedit.rc:249
 msgid "Value names"
 msgstr "Noms dels valors"
 
-#: regedit.rc:234
+#: regedit.rc:250
 msgid "Value content"
 msgstr "Contingut del valor"
 
-#: regedit.rc:235
+#: regedit.rc:251
 msgid "Whole string only"
 msgstr "Només la cadena sencera"
 
-#: regedit.rc:242
+#: regedit.rc:258
 msgid "Add Favorite"
 msgstr "Afegeix un preferit"
 
-#: regedit.rc:245 regedit.rc:256
+#: regedit.rc:261 regedit.rc:272
 msgid "Name:"
 msgstr "Nom:"
 
-#: regedit.rc:253
+#: regedit.rc:269
 msgid "Remove Favorite"
 msgstr "&Elimina el preferit"
 
-#: regedit.rc:264
+#: regedit.rc:280
 msgid "Edit String"
 msgstr "Edita cadena"
 
-#: regedit.rc:267 regedit.rc:280 regedit.rc:296 regedit.rc:309
+#: regedit.rc:283 regedit.rc:296 regedit.rc:312 regedit.rc:325
 msgid "Value name:"
 msgstr "Nom del valor:"
 
-#: regedit.rc:269 regedit.rc:282 regedit.rc:298 regedit.rc:311
+#: regedit.rc:285 regedit.rc:298 regedit.rc:314 regedit.rc:327
 msgid "Value data:"
 msgstr "Dades del valor:"
 
-#: regedit.rc:277
+#: regedit.rc:293
 msgid "Edit DWORD"
 msgstr "Edita DWORD"
 
-#: regedit.rc:284
+#: regedit.rc:300
 msgid "Base"
 msgstr "Base"
 
-#: regedit.rc:285
+#: regedit.rc:301
 msgid "Hexadecimal"
 msgstr "Hexadecimal"
 
-#: regedit.rc:286
+#: regedit.rc:302
 msgid "Decimal"
 msgstr "Decimal"
 
-#: regedit.rc:293
+#: regedit.rc:309
 msgid "Edit Binary"
 msgstr "Edita binari"
 
-#: regedit.rc:306
+#: regedit.rc:322
 msgid "Edit Multi-String"
 msgstr "Edita cadena múltiple"
 
@@ -12002,31 +11981,94 @@ msgstr "Dades"
 msgid "Registry Editor"
 msgstr "Editor de Registre"
 
-#: regedit.rc:194
+#: regedit.rc:196
 msgid "Import Registry File"
 msgstr "Importació de fitxer de registre"
 
-#: regedit.rc:195
+#: regedit.rc:197
 msgid "Export Registry File"
 msgstr "Exportació de fitxer de registre"
 
-#: regedit.rc:196
+#: regedit.rc:198
 msgid "Registry files (*.reg)"
 msgstr "Fitxers de registre (*.reg)"
 
-#: regedit.rc:197
+#: regedit.rc:199
 msgid "Win9x/NT4 Registry files (REGEDIT4)"
 msgstr "Fitxers de registre Win9x/NT4 (REGEDIT4)"
 
-#: regedit.rc:206
+#: regedit.rc:208
 msgid "(cannot display value)"
 msgstr "(no es pot mostrar el valor)"
 
-#: regedit.rc:207
+#: regedit.rc:209
 msgid "(unknown %d)"
 msgstr "(desconegut %d)"
 
-#: regedit.rc:359
+#: regedit.rc:214
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to modify the selected registry value."
+msgstr "regedit: No s'ha pogut obrir la clau de registre '%1'.\n"
+
+#: regedit.rc:215
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to create a new registry key."
+msgstr "regedit: No s'ha pogut obrir la clau de registre '%1'.\n"
+
+#: regedit.rc:216
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to create a new registry value."
+msgstr "regedit: No s'ha pogut obrir la clau de registre '%1'.\n"
+
+#: regedit.rc:217
+msgid ""
+"Unable to rename the key '%1'.\n"
+"The specified key name already exists."
+msgstr ""
+
+#: regedit.rc:218
+msgid ""
+"Unable to rename the value '%1'.\n"
+"The specified value name already exists."
+msgstr ""
+
+#: regedit.rc:219
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to delete the selected registry key."
+msgstr "regedit: No s'ha pogut obrir la clau de registre '%1'.\n"
+
+#: regedit.rc:220
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to rename the selected registry key."
+msgstr "regedit: No s'ha pogut obrir la clau de registre '%1'.\n"
+
+#: regedit.rc:221
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to rename the selected registry value."
+msgstr "regedit: No s'ha pogut obrir la clau de registre '%1'.\n"
+
+#: regedit.rc:222
+msgid ""
+"The keys and values contained in %1 were successfully added to the registry."
+msgstr ""
+
+#: regedit.rc:223
+#, fuzzy
+#| msgid ""
+#| "regedit: Unable to export '%1'. The specified registry key was not "
+#| "found.\n"
+msgid "Unable to import %1. The specified file is not a valid registry file."
+msgstr ""
+"regedit: No s'ha pogut exportar '%1'. No s'ha trobat la clau de registre "
+"especificada.\n"
+
+#: regedit.rc:375
 msgid ""
 "Usage:\n"
 "  regedit [options] [filename] [reg_key]\n"
@@ -12056,134 +12098,127 @@ msgid ""
 "  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
 "  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
 msgstr ""
-
-#: regedit.rc:360
-#, fuzzy
-#| msgid ""
-#| "regsvr32: Invalid or unrecognized switch [%1]\n"
-#| "\n"
-msgid "regedit: Invalid or unrecognized switch [%1]\n"
-msgstr ""
-"regsvr32: Commutador invàlid o no reconegut [%1]\n"
+"Ús:\n"
+"  regedit [opcions] [nom_de_fitxer] [clau_de_registre]\n"
 "\n"
+"Opcions:\n"
+"  [cap opció]         Executa la versió gràfica d'aquest programa.\n"
+"  /L:system.dat       La ubicació del fitxer system.dat a modificar.\n"
+"                      Compatible amb qualsevol altre commutador. S'ignora.\n"
+"  /R:user.dat         La ubicació del fitxer user.dat a modificar.\n"
+"                      Compatible amb qualsevol altre commutador. S'ignora.\n"
+"  /C                  Importa els continguts d'un fitxer de registre.\n"
+"  /D                  Suprimeix una clau de registre especificada.\n"
+"  /E                  Exporta els continguts d'una clau de registre\n"
+"                      especificada a un fitxer. Si no s'especifica cap\n"
+"                      clau, s'exporta el registre enter.\n"
+"  /S                  Mode silenciós. No es mostrarà cap missatge.\n"
+"  /V                  Executa la GUI en mode avançat. S'ignora.\n"
+"  /?                  Mostra aquesta informació i surt.\n"
+"  [nom_de_fitxer]     La ubicació del fitxer que conté informació de\n"
+"                      registre a importar. Quan s'usa amb [/E], aquesta\n"
+"                      opció especifica la ubicació del fitxer a on\n"
+"                      s'exportarà la informació de registre.\n"
+"  [clau_de_registre]  La clau de registre a modificar.\n"
+"\n"
+"Exemples d'ús:\n"
+"  regedit \"import.reg\"\n"
+"  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
+"  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
 
-#: regedit.rc:361
+#: regedit.rc:376
+msgid "regedit: Invalid or unrecognized switch [%1]\n"
+msgstr "regedit: Commutador invàlid o no reconegut [%1]\n"
+
+#: regedit.rc:377
 msgid "Type \"regedit /?\" for help.\n"
-msgstr ""
+msgstr "Teclegeu \"regedit /?\" per ajuda.\n"
 
-#: regedit.rc:362
-#, fuzzy
-#| msgid "No command was specified."
+#: regedit.rc:378
 msgid "regedit: No filename was specified.\n"
-msgstr "No s'ha especificat cap ordre."
+msgstr "regedit: No s'ha especificat cap nom de fitxer.\n"
 
-#: regedit.rc:363
+#: regedit.rc:379
 msgid "regedit: No registry key was specified for removal.\n"
-msgstr ""
+msgstr "regedit: No s'ha especificat cap clau de registre a eliminar.\n"
 
-#: regedit.rc:364
-#, fuzzy
-#| msgid "uninstaller: The application with GUID '%1' was not found\n"
+#: regedit.rc:380
 msgid "regedit: The file '%1' was not found.\n"
-msgstr "desinstal·lador: No s'ha trobat l'aplicació amb la GUID '%1'\n"
+msgstr "regedit: No s'ha trobat el fitxer '%1'.\n"
 
-#: regedit.rc:365
-#, fuzzy
-#| msgid "Error: Unable to access remote machine\n"
+#: regedit.rc:381
 msgid "regedit: Unable to open the file '%1'.\n"
-msgstr "Error: No es pot accedir a la màquina remota\n"
+msgstr "regedit: No s'ha pogut obrir el fitxer '%1'.\n"
 
-#: regedit.rc:366
-#, fuzzy
-#| msgid "Invalid handle operation.\n"
+#: regedit.rc:382
 msgid "regedit: Unhandled action.\n"
-msgstr "L'operació d'identificador és invàlida.\n"
+msgstr "regedit: No s'ha gestionat l'acció.\n"
 
-#: regedit.rc:367
+#: regedit.rc:383
 msgid "regedit: Out of memory! (%1!S!, line %2!u!)\n"
-msgstr ""
+msgstr "regedit: No resta memòria! (%1!S!, línia %2!u!)\n"
 
-#: regedit.rc:368
-#, fuzzy
-#| msgid "Error: Invalid key name\n"
+#: regedit.rc:384
 msgid "regedit: Invalid hexadecimal value.\n"
-msgstr "Error: Nom de clau invàlid\n"
+msgstr "regedit: El valor hexadecimal és invàlid.\n"
 
-#: regedit.rc:369
+#: regedit.rc:385
 msgid ""
 "regedit: Unable to convert hexadecimal data. An invalid value was "
 "encountered at '%1'.\n"
 msgstr ""
+"regedit: No s'ha pogut convertir les dades hexadecimals. S'ha trobat un "
+"valor invàlid a '%1'.\n"
 
-#: regedit.rc:370
-#, fuzzy
-#| msgid ""
-#| "regsvr32: Invalid or unrecognized switch [%1]\n"
-#| "\n"
+#: regedit.rc:386
 msgid "regedit: Unrecognized escape sequence [\\%1!c!]\n"
-msgstr ""
-"regsvr32: Commutador invàlid o no reconegut [%1]\n"
-"\n"
+msgstr "regedit: Seqüència d'escapada no reconeguda [\\%1!c!]\n"
 
-#: regedit.rc:371
-#, fuzzy
-#| msgid "Error: Unsupported type\n"
+#: regedit.rc:387
 msgid "regedit: Unsupported registry data type [%1]\n"
-msgstr "Error: Tipus incompatible\n"
+msgstr "regedit: Tipus de dades de registre incompatible [%1]\n"
 
-#: regedit.rc:372
-#, fuzzy
-#| msgid "Error: Unable to access remote machine\n"
+#: regedit.rc:388
 msgid "regedit: Unexpected end of line in '%1'.\n"
-msgstr "Error: No es pot accedir a la màquina remota\n"
+msgstr "regedit: Hi havia una fi de línia no esperada en '%1'.\n"
 
-#: regedit.rc:373
-#, fuzzy
-#| msgid "uninstaller: The application with GUID '%1' was not found\n"
+#: regedit.rc:389
 msgid "regedit: The line '%1' was not recognized.\n"
-msgstr "desinstal·lador: No s'ha trobat l'aplicació amb la GUID '%1'\n"
+msgstr "regedit: No s'ha reconegut la línia '%1'.\n"
 
-#: regedit.rc:374
-#, fuzzy
-#| msgid "Error: Unable to access remote machine\n"
+#: regedit.rc:390
 msgid "regedit: Unable to add the registry value '%1' to '%2'.\n"
-msgstr "Error: No es pot accedir a la màquina remota\n"
+msgstr "regedit: No s'ha pogut afegir el valor de registre '%1' a '%2'.\n"
 
-#: regedit.rc:375
-#, fuzzy
-#| msgid "Error: Unable to access remote machine\n"
+#: regedit.rc:391
 msgid "regedit: Unable to open the registry key '%1'.\n"
-msgstr "Error: No es pot accedir a la màquina remota\n"
+msgstr "regedit: No s'ha pogut obrir la clau de registre '%1'.\n"
 
-#: regedit.rc:376
-#, fuzzy
-#| msgid "Error: Unsupported type\n"
+#: regedit.rc:392
 msgid "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
-msgstr "Error: Tipus incompatible\n"
-
-#: regedit.rc:377
-msgid "regedit: The registry value '%1' will be exported as binary data.\n"
 msgstr ""
+"regedit: S'ha trobat un tipus de dades de registre incompatible [%1] en "
+"'%2'.\n"
 
-#: regedit.rc:378
+#: regedit.rc:393
+msgid "regedit: The registry value '%1' will be exported as binary data.\n"
+msgstr "regedit: El valor de registre '%1' s'exportarà com a dades binàries.\n"
+
+#: regedit.rc:394
 msgid "regedit: Incorrect registry class specification in '%1'.\n"
 msgstr ""
+"regedit: L'especificació de classe de registre en '%1' no és correcta.\n"
 
-#: regedit.rc:379
-#, fuzzy
-#| msgid ""
-#| "Error: The system was unable to find the specified registry key or value\n"
+#: regedit.rc:395
 msgid ""
 "regedit: Unable to export '%1'. The specified registry key was not found.\n"
 msgstr ""
-"Error: El sistema no ha pogut trobar la clau especificada o el valor de "
-"registre especificat\n"
+"regedit: No s'ha pogut exportar '%1'. No s'ha trobat la clau de registre "
+"especificada.\n"
 
-#: regedit.rc:380
-#, fuzzy
-#| msgid "Error: Unable to access remote machine\n"
+#: regedit.rc:396
 msgid "regedit: Unable to delete the registry class '%1'.\n"
-msgstr "Error: No es pot accedir a la màquina remota\n"
+msgstr "regedit: No s'ha pogut suprimir la classe de registre '%1'.\n"
 
 #: regedit.rc:163
 msgid "Quits the registry editor"
@@ -12266,44 +12301,50 @@ msgid "Displays program information, version number and copyright"
 msgstr "Mostra informació de programa, nombre de versió i drets d'autor"
 
 #: regedit.rc:181
-msgid "Can't query value '%s'"
-msgstr "No es pot consultar el valor '%s'"
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to query the registry value '%1'."
+msgstr "regedit: No s'ha pogut obrir la clau de registre '%1'.\n"
 
 #: regedit.rc:182
-msgid "Can't edit keys of this type (%u)"
+#, fuzzy
+#| msgid "Can't edit keys of this type (%u)"
+msgid "Unable to edit registry keys of this type (%1!u!)."
 msgstr "No es pot editar les claus d'aquest tipus (%u)"
 
 #: regedit.rc:183
-msgid "Value is too big (%u)"
+#, fuzzy
+#| msgid "Value is too big (%u)"
+msgid "The value is too big (%1!u!)."
 msgstr "El valor és massa gran (%u)"
 
 #: regedit.rc:184
 msgid "Confirm Value Delete"
 msgstr "Confirmar eliminació de valor"
 
-#: regedit.rc:185
-msgid "Are you sure you want to delete value '%s'?"
-msgstr "Esteu segur que voleu suprimir el valor '%s'?"
-
-#: regedit.rc:189
-msgid "Search string '%s' not found"
+#: regedit.rc:191
+#, fuzzy
+#| msgid "Search string '%s' not found"
+msgid "Search complete. The string '%1' was not found."
 msgstr "Cadena de cerca '%s' no trobada"
 
 #: regedit.rc:186
 msgid "Are you sure you want to delete these values?"
 msgstr "Esteu segur que voleu suprimir aquests valors?"
 
-#: regedit.rc:187
+#: regedit.rc:189
 msgid "New Key #%d"
 msgstr "Clau nova #%d"
 
-#: regedit.rc:188
+#: regedit.rc:190
 msgid "New Value #%d"
 msgstr "Valor nou #%d"
 
 #: regedit.rc:180
-msgid "Can't query key '%s'"
-msgstr "No es pot consultar la clau '%s'"
+#, fuzzy
+#| msgid "regedit: Unable to open the registry key '%1'.\n"
+msgid "Unable to query the registry key '%1'."
+msgstr "regedit: No s'ha pogut obrir la clau de registre '%1'.\n"
 
 #: regedit.rc:152
 msgid "Adds a new multi-string value"
@@ -12312,6 +12353,19 @@ msgstr "Afegeix un valor de cadena múltiple nou"
 #: regedit.rc:174
 msgid "Exports selected branch of the registry to a text file"
 msgstr "Exporta la branca seleccionada del registre a un fitxer de text"
+
+#: regedit.rc:187
+#, fuzzy
+#| msgid "Confirm Value Delete"
+msgid "Confirm Key Delete"
+msgstr "Confirmar eliminació de valor"
+
+#: regedit.rc:188
+#, fuzzy
+#| msgid "Are you sure you want to delete the registry key '%1'?"
+msgid ""
+"Are you sure you want to delete the registry key '%1' and all of its subkeys?"
+msgstr "Esteu segur que voleu suprimir la clau de registre '%1'?"
 
 #: regsvr32.rc:32
 msgid ""
@@ -12467,11 +12521,11 @@ msgstr "Error: No s'ha pogut trobar el procés \"%1\".\n"
 
 #: taskkill.rc:41
 msgid "Error: Unable to enumerate the process list.\n"
-msgstr "Error: No es pot enumerar la llista de processos.\n"
+msgstr "Error: No s'ha pogut enumerar la llista de processos.\n"
 
 #: taskkill.rc:42
 msgid "Error: Unable to terminate process \"%1\".\n"
-msgstr "Error: No es pot terminar el procés \"%1\".\n"
+msgstr "Error: No s'ha pogut terminar el procés \"%1\".\n"
 
 #: taskkill.rc:43
 msgid "Error: Process self-termination is not permitted.\n"
@@ -13219,7 +13273,7 @@ msgstr ""
 
 #: taskmgr.rc:305
 msgid "Unable to Change Priority"
-msgstr "No es pot canviar la prioritat"
+msgstr "No s'ha pogut canviar la prioritat"
 
 #: taskmgr.rc:310
 msgid ""
@@ -13237,7 +13291,7 @@ msgstr ""
 
 #: taskmgr.rc:311
 msgid "Unable to Terminate Process"
-msgstr "No es pot terminar el procés"
+msgstr "No s'ha pogut terminar el procés"
 
 #: taskmgr.rc:313
 msgid ""
@@ -13250,7 +13304,7 @@ msgstr ""
 
 #: taskmgr.rc:314
 msgid "Unable to Debug Process"
-msgstr "No es pot depurar el procés"
+msgstr "No s'ha pogut depurar el procés"
 
 #: taskmgr.rc:315
 msgid "The process must have affinity with at least one processor"
@@ -13430,8 +13484,6 @@ msgstr ""
 "aquelles pestanyes també."
 
 #: winecfg.rc:159
-#, fuzzy
-#| msgid "&Add application..."
 msgid "Add appli&cation..."
 msgstr "A&fegeix aplicació..."
 
@@ -13495,7 +13547,7 @@ msgstr "Reemplaçament &nou per a la biblioteca:"
 
 #: winecfg.rc:196
 msgid "A&dd"
-msgstr ""
+msgstr "A&fegeix"
 
 #: winecfg.rc:197
 msgid "Existing &overrides:"
@@ -13522,8 +13574,6 @@ msgid "&Native (Windows)"
 msgstr "&Nativa (Windows)"
 
 #: winecfg.rc:211
-#, fuzzy
-#| msgid "Bui&ltin then Native"
 msgid "Buil&tin then Native"
 msgstr "In&terna, després Nativa"
 
@@ -13548,14 +13598,10 @@ msgstr ""
 "es pot editar."
 
 #: winecfg.rc:236
-#, fuzzy
-#| msgid "&Add..."
 msgid "A&dd..."
 msgstr "A&fegeix..."
 
 #: winecfg.rc:238
-#, fuzzy
-#| msgid "Autodetect"
 msgid "Aut&odetect"
 msgstr "Autodetecta"
 
@@ -13564,8 +13610,6 @@ msgid "&Path:"
 msgstr "&Camí:"
 
 #: winecfg.rc:248 winecfg.rc:38
-#, fuzzy
-#| msgid "Show &Advanced"
 msgid "Show Advan&ced"
 msgstr "&Vista avançada"
 
@@ -13586,8 +13630,6 @@ msgid "S&erial:"
 msgstr "&Serial:"
 
 #: winecfg.rc:258
-#, fuzzy
-#| msgid "Show &dot files"
 msgid "&Show dot files"
 msgstr "&Mostra els fitxers de punt"
 
@@ -13668,8 +13710,6 @@ msgid "Select the Unix target directory, please."
 msgstr "Seleccioneu el directori de destinació d'Unix, si us plau."
 
 #: winecfg.rc:37
-#, fuzzy
-#| msgid "Hide &Advanced"
 msgid "Hide Advan&ced"
 msgstr "&Vista bàsica"
 
@@ -14132,14 +14172,12 @@ msgid "Configuration error"
 msgstr "Error de configuració"
 
 #: wineconsole.rc:42
-#, fuzzy
-#| msgid "Screen buffer size must be greater or equal to the window's one"
 msgid ""
 "The size of the screen buffer must be greater than or equal to the size of "
 "the window."
 msgstr ""
 "La mida de la memòria intermèdia de pantalla ha de ser major o igual al de "
-"la finestra"
+"la finestra."
 
 #: wineconsole.rc:37
 msgid "Each character is %1!u! pixels wide and %2!u! pixels high"
@@ -14683,10 +14721,8 @@ msgid "Error: Invalid query\n"
 msgstr "Error: Cerca invàlida\n"
 
 #: wmic.rc:31
-#, fuzzy
-#| msgid "Error: Invalid key name\n"
 msgid "Error: Invalid syntax for PATH\n"
-msgstr "Error: Nom de clau invàlid\n"
+msgstr "Error: Sintaxi invàlida per a PATH\n"
 
 #: wordpad.rc:31
 msgid "&New...\tCtrl+N"
@@ -14761,36 +14797,32 @@ msgid "F&ormat"
 msgstr "&Format"
 
 #: wordpad.rc:85
-#, fuzzy
-#| msgid "&List"
 msgid "&Lists"
-msgstr "&Llista"
+msgstr "&Llistes"
 
 #: wordpad.rc:87 wordpad.rc:116
 msgid "&Bullet points"
 msgstr "&Pics"
 
 #: wordpad.rc:88
-#, fuzzy
-#| msgid "CRL Number"
 msgid "Numbers"
-msgstr "Número CRL"
+msgstr "Números"
 
 #: wordpad.rc:89
 msgid "Letters - lower case"
-msgstr ""
+msgstr "Lletres - minúscules"
 
 #: wordpad.rc:90
 msgid "Letters - upper case"
-msgstr ""
+msgstr "Lletres - majúscules"
 
 #: wordpad.rc:91
 msgid "Roman numerals - lower case"
-msgstr ""
+msgstr "Nombres romans - minúscules"
 
 #: wordpad.rc:92
 msgid "Roman numerals - upper case"
-msgstr ""
+msgstr "Nombres romans - majúscules"
 
 #: wordpad.rc:94 wordpad.rc:117
 msgid "&Paragraph..."
@@ -15201,8 +15233,8 @@ msgstr ""
 "[/H]  Inclou els fitxers amagats i els fitxers de sistema en la còpia.\n"
 "[/C]  Continuar inclús si es produeix un error durant la còpia.\n"
 "[/A]  Només copiar els fitxers amb l'atribut d'arxiu establert.\n"
-"[/M]  Només copiar els fitxers amb l'atribut d'arxiu establert, elimina el\n"
-"\tatribut d'arxiu.\n"
+"[/M]  Només copiar els fitxers amb l'atribut d'arxiu establert, elimina\n"
+"\tl'atribut d'arxiu.\n"
 "[/D | /D:m-d-y] Copiar els fitxers nous o els modificats després de la data\n"
 "\t\tproveïda.\n"
 "\t\tSi no es proveeix cap data, només es copia si la destinació és més\n"

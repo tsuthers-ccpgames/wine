@@ -129,10 +129,9 @@ static void sock_destroy_ifchange_q( struct sock *sock );
 static int sock_get_poll_events( struct fd *fd );
 static void sock_poll_event( struct fd *fd, int event );
 static enum server_fd_type sock_get_fd_type( struct fd *fd );
-static obj_handle_t sock_ioctl( struct fd *fd, ioctl_code_t code, const async_data_t *async, int blocking );
-static void sock_queue_async( struct fd *fd, const async_data_t *data, int type, int count );
+static obj_handle_t sock_ioctl( struct fd *fd, ioctl_code_t code, struct async *async, int blocking );
+static void sock_queue_async( struct fd *fd, struct async *async, int type, int count );
 static void sock_reselect_async( struct fd *fd, struct async_queue *queue );
-static int sock_cancel_async( struct fd *fd, struct process *process, struct thread *thread, client_ptr_t iosb );
 
 static int sock_get_ntstatus( int err );
 static int sock_get_error( int err );
@@ -170,8 +169,7 @@ static const struct fd_ops sock_fd_ops =
     no_fd_flush,                  /* flush */
     sock_ioctl,                   /* ioctl */
     sock_queue_async,             /* queue_async */
-    sock_reselect_async,          /* reselect_async */
-    sock_cancel_async             /* cancel_async */
+    sock_reselect_async           /* reselect_async */
 };
 
 
@@ -536,12 +534,11 @@ static enum server_fd_type sock_get_fd_type( struct fd *fd )
     return FD_TYPE_SOCKET;
 }
 
-obj_handle_t sock_ioctl( struct fd *fd, ioctl_code_t code, const async_data_t *async_data, int blocking )
+obj_handle_t sock_ioctl( struct fd *fd, ioctl_code_t code, struct async *async, int blocking )
 {
     struct sock *sock = get_fd_user( fd );
     obj_handle_t wait_handle = 0;
     struct async_queue *ifchange_q;
-    struct async *async;
 
     assert( sock->obj.ops == &sock_ops );
 
@@ -554,9 +551,8 @@ obj_handle_t sock_ioctl( struct fd *fd, ioctl_code_t code, const async_data_t *a
             return 0;
         }
         if (!(ifchange_q = sock_get_ifchange_q( sock ))) return 0;
-        if (!(async = create_async( current, ifchange_q, async_data ))) return 0;
+        queue_async( ifchange_q, async );
         if (blocking) wait_handle = alloc_handle( current->process, async, SYNCHRONIZE, 0 );
-        release_object( async );
         set_error( STATUS_PENDING );
         return wait_handle;
     default:
@@ -565,10 +561,9 @@ obj_handle_t sock_ioctl( struct fd *fd, ioctl_code_t code, const async_data_t *a
     }
 }
 
-static void sock_queue_async( struct fd *fd, const async_data_t *data, int type, int count )
+static void sock_queue_async( struct fd *fd, struct async *async, int type, int count )
 {
     struct sock *sock = get_fd_user( fd );
-    struct async *async;
     struct async_queue *queue;
 
     assert( sock->obj.ops == &sock_ops );
@@ -595,9 +590,7 @@ static void sock_queue_async( struct fd *fd, const async_data_t *data, int type,
         return;
     }
 
-    if (!(async = create_async( current, queue, data ))) return;
-    release_object( async );
-
+    queue_async( queue, async );
     sock_reselect( sock );
 
     set_error( STATUS_PENDING );
@@ -609,19 +602,6 @@ static void sock_reselect_async( struct fd *fd, struct async_queue *queue )
     /* ignore reselect on ifchange queue */
     if (sock->ifchange_q != queue)
         sock_reselect( sock );
-}
-
-static int sock_cancel_async( struct fd *fd, struct process *process, struct thread *thread, client_ptr_t iosb )
-{
-    struct sock *sock = get_fd_user( fd );
-    int n = 0;
-
-    assert( sock->obj.ops == &sock_ops );
-
-    n += async_wake_up_by( sock->read_q, process, thread, iosb, STATUS_CANCELLED );
-    n += async_wake_up_by( sock->write_q, process, thread, iosb, STATUS_CANCELLED );
-    n += async_wake_up_by( sock->ifchange_q, process, thread, iosb, STATUS_CANCELLED );
-    return n;
 }
 
 static struct fd *sock_get_fd( struct object *obj )
@@ -1016,8 +996,7 @@ static const struct fd_ops ifchange_fd_ops =
     no_fd_flush,              /* flush */
     no_fd_ioctl,              /* ioctl */
     NULL,                     /* queue_async */
-    NULL,                     /* reselect_async */
-    NULL                      /* cancel_async */
+    NULL                      /* reselect_async */
 };
 
 static void ifchange_dump( struct object *obj, int verbose )

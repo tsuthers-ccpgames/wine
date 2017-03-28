@@ -121,10 +121,10 @@
 #define IDS_BAD_VALUE			32837
 #define IDS_UNSUPPORTED_TYPE		32838
 #define IDS_TOO_BIG_VALUE		32839
-#define IDS_DELETE_BOX_TITLE		32840
-#define IDS_DELETE_BOX_TEXT		32841
+#define IDS_DELETE_VALUE_TITLE		32840
+#define IDS_DELETE_VALUE_TEXT		32841
 #define IDS_NOTFOUND    		32842
-#define IDS_DELETE_BOX_TEXT_MULTIPLE	32843
+#define IDS_DELETE_VALUE_TEXT_MULTIPLE	32843
 #define IDD_EDIT_DWORD			32850
 #define IDC_DWORD_BASE			32852
 #define IDC_DWORD_HEX			32853
@@ -139,6 +139,8 @@
 #define ID_EDIT_NEW_MULTI_STRINGVALUE   33100
 #define ID_EDIT_EXPORT                  33101
 #define ID_EDIT_NEW_EXPANDVALUE         33102
+#define IDS_DELETE_KEY_TITLE            33103
+#define IDS_DELETE_KEY_TEXT             33104
 
 #define IDD_EDIT_STRING			2000
 #define IDC_VALUE_NAME			2001
@@ -150,6 +152,17 @@
 #define IDC_FIND_CONTENT                2007
 #define IDC_FIND_WHOLE                  2008
 #define IDD_EDIT_MULTI_STRING           2009
+
+#define IDS_SET_VALUE_FAILED            2010
+#define IDS_CREATE_KEY_FAILED           2011
+#define IDS_CREATE_VALUE_FAILED         2012
+#define IDS_KEY_EXISTS                  2013
+#define IDS_VALUE_EXISTS                2014
+#define IDS_DELETE_KEY_FAILED           2015
+#define IDS_RENAME_KEY_FAILED           2016
+#define IDS_RENAME_VALUE_FAILED         2017
+#define IDS_IMPORT_SUCCESSFUL           2018
+#define IDS_IMPORT_FAILED               2019
 
 #define IDC_EXPORT_BASE                 100
 #define IDC_EXPORT_ALL                  101
