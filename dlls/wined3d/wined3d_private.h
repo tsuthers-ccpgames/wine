@@ -2207,7 +2207,6 @@ enum wined3d_pci_device
     CARD_INTEL_HD5000               = 0x0422,
     CARD_INTEL_IG5100               = 0x0a22,
     CARD_INTEL_IGP5200              = 0x0c22,
-    CARD_INTEL_HD5300               = 0x016e,
     CARD_INTEL_I5100_1              = 0x0a22,
     CARD_INTEL_I5100_2              = 0x0a2a,
     CARD_INTEL_I5100_3              = 0x0a2b,
