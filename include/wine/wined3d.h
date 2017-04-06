@@ -1309,17 +1309,15 @@ enum wined3d_shader_byte_code_format
 #define WINEDDBLTFX_ZBUFFERBASEDEST                             0x00000100
 
 #define WINED3D_BLT_ASYNC                                       0x00000200
-#define WINED3D_BLT_COLOR_FILL                                  0x00000400
 #define WINED3D_BLT_FX                                          0x00000800
 #define WINED3D_BLT_DST_CKEY                                    0x00002000
 #define WINED3D_BLT_DST_CKEY_OVERRIDE                           0x00004000
 #define WINED3D_BLT_SRC_CKEY                                    0x00008000
 #define WINED3D_BLT_SRC_CKEY_OVERRIDE                           0x00010000
 #define WINED3D_BLT_WAIT                                        0x01000000
-#define WINED3D_BLT_DEPTH_FILL                                  0x02000000
 #define WINED3D_BLT_DO_NOT_WAIT                                 0x08000000
 #define WINED3D_BLT_ALPHA_TEST                                  0x80000000
-#define WINED3D_BLT_MASK                                        0x8b01ee00
+#define WINED3D_BLT_MASK                                        0x0901ea00
 
 /* dwFlags for GetBltStatus */
 #define WINEDDGBS_CANBLT                                        0x00000001
@@ -1520,6 +1518,7 @@ enum wined3d_shader_byte_code_format
 
 #define WINED3D_MAX_STREAM_OUTPUT_BUFFERS                       4
 #define WINED3D_STREAM_OUTPUT_GAP                               0xffffffff
+#define WINED3D_NO_RASTERIZER_STREAM                            0xffffffff
 
 #define WINED3D_VIEW_BUFFER_RAW                                 0x00000001
 #define WINED3D_VIEW_BUFFER_APPEND                              0x00000002
@@ -1913,7 +1912,6 @@ struct wined3d_color_key
 struct wined3d_blt_fx
 {
     DWORD fx;
-    DWORD fill_color;
     struct wined3d_color_key dst_color_key;
     struct wined3d_color_key src_color_key;
 };

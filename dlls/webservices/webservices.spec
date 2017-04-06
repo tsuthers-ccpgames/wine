@@ -25,7 +25,7 @@
 @ stdcall WsCreateError(ptr long ptr)
 @ stub WsCreateFaultFromError
 @ stdcall WsCreateHeap(long long ptr long ptr ptr)
-@ stub WsCreateListener
+@ stdcall WsCreateListener(long long ptr long ptr ptr ptr)
 @ stdcall WsCreateMessage(long long ptr long ptr ptr)
 @ stdcall WsCreateMessageForChannel(ptr ptr long ptr ptr)
 @ stub WsCreateMetadata
@@ -51,7 +51,7 @@
 @ stdcall WsFreeChannel(ptr)
 @ stdcall WsFreeError(ptr)
 @ stdcall WsFreeHeap(ptr)
-@ stub WsFreeListener
+@ stdcall WsFreeListener(ptr)
 @ stdcall WsFreeMessage(ptr)
 @ stub WsFreeMetadata
 @ stdcall WsFreeReader(ptr)
@@ -69,7 +69,7 @@
 @ stub WsGetHeader
 @ stub WsGetHeaderAttributes
 @ stdcall WsGetHeapProperty(ptr long ptr long ptr)
-@ stub WsGetListenerProperty
+@ stdcall WsGetListenerProperty(ptr long ptr long ptr)
 @ stub WsGetMappedHeader
 @ stdcall WsGetMessageProperty(ptr long ptr long ptr)
 @ stub WsGetMetadataEndpoints
@@ -133,14 +133,14 @@
 @ stub WsRemoveNode
 @ stub WsRequestReply
 @ stub WsRequestSecurityToken
-@ stub WsResetChannel
+@ stdcall WsResetChannel(ptr ptr)
 @ stdcall WsResetError(ptr)
 @ stdcall WsResetHeap(ptr ptr)
 @ stub WsResetListener
-@ stub WsResetMessage
+@ stdcall WsResetMessage(ptr ptr)
 @ stub WsResetMetadata
 @ stub WsResetServiceHost
-@ stub WsResetServiceProxy
+@ stdcall WsResetServiceProxy(ptr ptr)
 @ stub WsRevokeSecurityContext
 @ stub WsSendFaultMessageForError
 @ stdcall WsSendMessage(ptr ptr ptr long ptr long ptr ptr)
@@ -152,7 +152,7 @@
 @ stdcall WsSetHeader(ptr long long long ptr long ptr)
 @ stdcall WsSetInput(ptr ptr ptr ptr long ptr)
 @ stdcall WsSetInputToBuffer(ptr ptr ptr long ptr)
-@ stub WsSetListenerProperty
+@ stdcall WsSetListenerProperty(ptr long ptr long ptr)
 @ stdcall WsSetMessageProperty(ptr long ptr long ptr)
 @ stdcall WsSetOutput(ptr ptr ptr ptr long ptr)
 @ stdcall WsSetOutputToBuffer(ptr ptr ptr long ptr)

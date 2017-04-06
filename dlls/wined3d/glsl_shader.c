@@ -727,6 +727,194 @@ static void shader_glsl_load_program_resources(const struct wined3d_context *con
     shader_glsl_load_samplers(context, priv, program_id, reg_maps);
 }
 
+static void append_transform_feedback_varying(const char **varyings, unsigned int *varying_count,
+        char **strings, unsigned int *strings_length, struct wined3d_string_buffer *buffer)
+{
+    if (varyings && *strings)
+    {
+        char *ptr = *strings;
+
+        varyings[*varying_count] = ptr;
+
+        memcpy(ptr, buffer->buffer, buffer->content_size + 1);
+        ptr += buffer->content_size + 1;
+
+        *strings = ptr;
+    }
+
+    *strings_length += buffer->content_size + 1;
+    ++(*varying_count);
+}
+
+static void append_transform_feedback_skip_components(const char **varyings,
+        unsigned int *varying_count, char **strings, unsigned int *strings_length,
+        struct wined3d_string_buffer *buffer, unsigned int component_count)
+{
+    unsigned int j;
+
+    for (j = 0; j < component_count / 4; ++j)
+    {
+        string_buffer_sprintf(buffer, "gl_SkipComponents4");
+        append_transform_feedback_varying(varyings, varying_count, strings, strings_length, buffer);
+    }
+    if (component_count % 4)
+    {
+        string_buffer_sprintf(buffer, "gl_SkipComponents%u", component_count % 4);
+        append_transform_feedback_varying(varyings, varying_count, strings, strings_length, buffer);
+    }
+}
+
+static void shader_glsl_generate_transform_feedback_varyings(const struct wined3d_stream_output_desc *so_desc,
+        struct wined3d_string_buffer *buffer, const char **varyings, unsigned int *varying_count,
+        char *strings, unsigned int *strings_length, GLenum buffer_mode)
+{
+    unsigned int i, buffer_idx, count, length, highest_output_slot, stride;
+
+    count = length = 0;
+    highest_output_slot = 0;
+    for (buffer_idx = 0; buffer_idx < WINED3D_MAX_STREAM_OUTPUT_BUFFERS; ++buffer_idx)
+    {
+        stride = 0;
+
+        for (i = 0; i < so_desc->element_count; ++i)
+        {
+            const struct wined3d_stream_output_element *e = &so_desc->elements[i];
+
+            highest_output_slot = max(highest_output_slot, e->output_slot);
+            if (e->output_slot != buffer_idx)
+                continue;
+
+            if (e->stream_idx)
+            {
+                FIXME("Unhandled stream %u.\n", e->stream_idx);
+                continue;
+            }
+
+            stride += e->component_count;
+
+            if (e->register_idx == WINED3D_STREAM_OUTPUT_GAP)
+            {
+                append_transform_feedback_skip_components(varyings, &count,
+                        &strings, &length, buffer, e->component_count);
+                continue;
+            }
+
+            if (e->component_idx || e->component_count != 4)
+            {
+                FIXME("Unsupported component range %u-%u.\n", e->component_idx, e->component_count);
+                continue;
+            }
+
+            string_buffer_sprintf(buffer, "ps_link[%u]", e->register_idx);
+            append_transform_feedback_varying(varyings, &count, &strings, &length, buffer);
+        }
+
+        if (buffer_idx < so_desc->buffer_stride_count
+                && stride < so_desc->buffer_strides[buffer_idx] / 4)
+        {
+            unsigned int component_count = so_desc->buffer_strides[buffer_idx] / 4 - stride;
+            append_transform_feedback_skip_components(varyings, &count,
+                    &strings, &length, buffer, component_count);
+        }
+
+        if (highest_output_slot <= buffer_idx)
+            break;
+
+        if (buffer_mode == GL_INTERLEAVED_ATTRIBS)
+        {
+            string_buffer_sprintf(buffer, "gl_NextBuffer");
+            append_transform_feedback_varying(varyings, &count, &strings, &length, buffer);
+        }
+    }
+
+    if (varying_count)
+        *varying_count = count;
+    if (strings_length)
+        *strings_length = length;
+}
+
+static void shader_glsl_init_transform_feedback(const struct wined3d_context *context,
+        struct shader_glsl_priv *priv, GLuint program_id, const struct wined3d_shader *shader)
+{
+    const struct wined3d_stream_output_desc *so_desc = &shader->u.gs.so_desc;
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+    struct wined3d_string_buffer *buffer;
+    unsigned int i, count, length;
+    const char **varyings;
+    char *strings;
+    GLenum mode;
+
+    if (!so_desc->element_count)
+        return;
+
+    if (gl_info->supported[ARB_TRANSFORM_FEEDBACK3])
+    {
+        mode = GL_INTERLEAVED_ATTRIBS;
+    }
+    else
+    {
+        unsigned int element_count[WINED3D_MAX_STREAM_OUTPUT_BUFFERS] = {0};
+
+        for (i = 0; i < so_desc->element_count; ++i)
+        {
+            if (so_desc->elements[i].register_idx == WINED3D_STREAM_OUTPUT_GAP)
+            {
+                FIXME("ARB_transform_feedback3 is needed for stream output gaps.\n");
+                return;
+            }
+            ++element_count[so_desc->elements[i].output_slot];
+        }
+
+        if (element_count[0] == so_desc->element_count)
+        {
+            mode = GL_INTERLEAVED_ATTRIBS;
+        }
+        else
+        {
+            mode = GL_SEPARATE_ATTRIBS;
+            for (i = 0; i < ARRAY_SIZE(element_count); ++i)
+            {
+                if (element_count[i] != 1)
+                    break;
+            }
+            for (; i < ARRAY_SIZE(element_count); ++i)
+            {
+                if (element_count[i])
+                {
+                    FIXME("Only single element per buffer is allowed in separate mode.\n");
+                    return;
+                }
+            }
+        }
+    }
+
+    buffer = string_buffer_get(&priv->string_buffers);
+
+    shader_glsl_generate_transform_feedback_varyings(so_desc, buffer, NULL, &count, NULL, &length, mode);
+
+    if (!(varyings = wined3d_calloc(count, sizeof(*varyings))))
+    {
+        ERR("Out of memory.\n");
+        string_buffer_release(&priv->string_buffers, buffer);
+        return;
+    }
+    if (!(strings = wined3d_calloc(length, sizeof(*strings))))
+    {
+        ERR("Out of memory.\n");
+        HeapFree(GetProcessHeap(), 0, varyings);
+        string_buffer_release(&priv->string_buffers, buffer);
+        return;
+    }
+
+    shader_glsl_generate_transform_feedback_varyings(so_desc, buffer, varyings, NULL, strings, NULL, mode);
+    GL_EXTCALL(glTransformFeedbackVaryings(program_id, count, varyings, mode));
+    checkGLcall("glTransformFeedbackVaryings");
+
+    HeapFree(GetProcessHeap(), 0, varyings);
+    HeapFree(GetProcessHeap(), 0, strings);
+    string_buffer_release(&priv->string_buffers, buffer);
+}
+
 /* Context activation is done by the caller. */
 static inline void walk_constant_heap(const struct wined3d_gl_info *gl_info, const struct wined3d_vec4 *constants,
         const GLint *constant_locations, const struct constant_heap *heap, unsigned char *stack, DWORD version)
@@ -3976,6 +4164,7 @@ static void shader_glsl_bitwise_op(const struct wined3d_shader_instruction *ins)
     switch (ins->handler_idx)
     {
         case WINED3DSIH_BFI:  instruction = "bitfieldInsert";  break;
+        case WINED3DSIH_IBFE: instruction = "bitfieldExtract"; break;
         case WINED3DSIH_UBFE: instruction = "bitfieldExtract"; break;
         default:
             ERR("Unhandled opcode %#x.\n", ins->handler_idx);
@@ -8994,6 +9183,8 @@ static void set_glsl_shader_program(const struct wined3d_context *context, const
             checkGLcall("glProgramParameteriARB");
         }
 
+        shader_glsl_init_transform_feedback(context, priv, program_id, gshader);
+
         list_add_head(&gshader->linked_programs, &entry->gs.shader_entry);
     }
 
@@ -9588,7 +9779,8 @@ static void shader_glsl_get_caps(const struct wined3d_gl_info *gl_info, struct s
             && gl_info->supported[ARB_SHADER_ATOMIC_COUNTERS]
             && gl_info->supported[ARB_SHADER_IMAGE_LOAD_STORE]
             && gl_info->supported[ARB_SHADER_IMAGE_SIZE]
-            && gl_info->supported[ARB_SHADING_LANGUAGE_PACKING])
+            && gl_info->supported[ARB_SHADING_LANGUAGE_PACKING]
+            && gl_info->supported[ARB_TRANSFORM_FEEDBACK3])
         shader_model = 5;
     else if (gl_info->glsl_version >= MAKEDWORD_VERSION(1, 50) && gl_info->supported[WINED3D_GL_VERSION_3_2]
             && gl_info->supported[ARB_SHADER_BIT_ENCODING] && gl_info->supported[ARB_SAMPLER_OBJECTS]
@@ -9772,6 +9964,7 @@ static const SHADER_HANDLER shader_glsl_instruction_handler_table[WINED3DSIH_TAB
     /* WINED3DSIH_HS_FORK_PHASE                    */ NULL,
     /* WINED3DSIH_HS_JOIN_PHASE                    */ NULL,
     /* WINED3DSIH_IADD                             */ shader_glsl_binop,
+    /* WINED3DSIH_IBFE                             */ shader_glsl_bitwise_op,
     /* WINED3DSIH_IEQ                              */ shader_glsl_relop,
     /* WINED3DSIH_IF                               */ shader_glsl_if,
     /* WINED3DSIH_IFC                              */ shader_glsl_ifc,

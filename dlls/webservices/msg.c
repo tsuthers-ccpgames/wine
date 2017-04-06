@@ -123,15 +123,44 @@ static void free_header( struct header *header )
     heap_free( header );
 }
 
-static void free_msg( struct msg *msg )
+static void reset_msg( struct msg *msg )
 {
     ULONG i;
 
+    msg->state         = WS_MESSAGE_STATE_EMPTY;
+    msg->init          = 0;
+    UuidCreate( &msg->id );
+    msg->is_addressed  = FALSE;
+    heap_free( msg->addr.chars );
+    msg->addr.chars    = NULL;
+    msg->addr.length   = 0;
+
+    heap_free( msg->action.chars );
+    msg->action.chars  = NULL;
+    msg->action.length = 0;
+
+    WsResetHeap( msg->heap, NULL );
+    msg->buf           = NULL; /* allocated on msg->heap */
+    msg->writer_body   = NULL; /* owned by caller */
+    msg->reader_body   = NULL; /* owned by caller */
+
+    for (i = 0; i < msg->header_count; i++)
+    {
+        free_header( msg->header[i] );
+        msg->header[i] = NULL;
+    }
+    msg->header_count  = 0;
+
+    memset( &msg->ctx_send, 0, sizeof(msg->ctx_send) );
+    memset( &msg->ctx_receive, 0, sizeof(msg->ctx_receive) );
+}
+
+static void free_msg( struct msg *msg )
+{
+    reset_msg( msg );
+
     WsFreeWriter( msg->writer );
     WsFreeHeap( msg->heap );
-    heap_free( msg->addr.chars );
-    heap_free( msg->action.chars );
-    for (i = 0; i < msg->header_count; i++) free_header( msg->header[i] );
     heap_free( msg->header );
 
     msg->cs.DebugInfo->Spare[0] = 0;
@@ -167,11 +196,6 @@ static HRESULT create_msg( WS_ENVELOPE_VERSION env_version, WS_ADDRESSING_VERSIO
     }
 
     if ((hr = WsCreateHeap( HEAP_MAX_SIZE, 0, NULL, 0, &msg->heap, NULL )) != S_OK)
-    {
-        free_msg( msg );
-        return hr;
-    }
-    if ((hr = WsCreateXmlBuffer( msg->heap, NULL, 0, &msg->buf, NULL )) != S_OK)
     {
         free_msg( msg );
         return hr;
@@ -248,6 +272,32 @@ void WINAPI WsFreeMessage( WS_MESSAGE *handle )
 
     LeaveCriticalSection( &msg->cs );
     free_msg( msg );
+}
+
+/**************************************************************************
+ *          WsResetMessage		[webservices.@]
+ */
+HRESULT WINAPI WsResetMessage( WS_MESSAGE *handle, WS_ERROR *error )
+{
+    struct msg *msg = (struct msg *)handle;
+
+    TRACE( "%p %p\n", handle, error );
+    if (error) FIXME( "ignoring error parameter\n" );
+
+    if (!msg) return E_INVALIDARG;
+
+    EnterCriticalSection( &msg->cs );
+
+    if (msg->magic != MSG_MAGIC)
+    {
+        LeaveCriticalSection( &msg->cs );
+        return E_INVALIDARG;
+    }
+
+    reset_msg( msg );
+
+    LeaveCriticalSection( &msg->cs );
+    return S_OK;
 }
 
 /**************************************************************************
@@ -457,24 +507,24 @@ static HRESULT get_addr_namespace( WS_ADDRESSING_VERSION ver, WS_XML_STRING *str
 
 static const WS_XML_STRING *get_header_name( WS_HEADER_TYPE type )
 {
-    static const WS_XML_STRING action = {6, (BYTE *)"Action"}, to = {2, (BYTE *)"To"};
-    static const WS_XML_STRING msgid = {9, (BYTE *)"MessageID"}, relto = {9, (BYTE *)"RelatesTo"};
-    static const WS_XML_STRING from = {4, (BYTE *)"From"}, replyto = {7, (BYTE *)"ReplyTo"};
-    static const WS_XML_STRING faultto = {7, (BYTE *)"FaultTo"};
-
-    switch (type)
+    static const WS_XML_STRING headers[] =
     {
-    case WS_ACTION_HEADER:      return &action;
-    case WS_TO_HEADER:          return &to;
-    case WS_MESSAGE_ID_HEADER:  return &msgid;
-    case WS_RELATES_TO_HEADER:  return &relto;
-    case WS_FROM_HEADER:        return &from;
-    case WS_REPLY_TO_HEADER:    return &replyto;
-    case WS_FAULT_TO_HEADER:    return &faultto;
-    default:
+        {6, (BYTE *)"Action"},
+        {2, (BYTE *)"To"},
+        {9, (BYTE *)"MessageID"},
+        {9, (BYTE *)"RelatesTo"},
+        {4, (BYTE *)"From"},
+        {7, (BYTE *)"ReplyTo"},
+        {7, (BYTE *)"FaultTo"},
+    };
+
+    if (type < WS_ACTION_HEADER || type > WS_FAULT_TO_HEADER)
+    {
         ERR( "unknown type %u\n", type );
         return NULL;
     }
+
+    return &headers[type - 1];
 }
 
 static HRESULT write_headers( struct msg *msg, const WS_XML_STRING *ns_env, const WS_XML_STRING *ns_addr,

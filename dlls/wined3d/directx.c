@@ -182,6 +182,8 @@ static const struct wined3d_extension_map gl_extension_map[] =
     {"GL_ARB_texture_swizzle",              ARB_TEXTURE_SWIZZLE           },
     {"GL_ARB_texture_view",                 ARB_TEXTURE_VIEW              },
     {"GL_ARB_timer_query",                  ARB_TIMER_QUERY               },
+    {"GL_ARB_transform_feedback2",          ARB_TRANSFORM_FEEDBACK2       },
+    {"GL_ARB_transform_feedback3",          ARB_TRANSFORM_FEEDBACK3       },
     {"GL_ARB_uniform_buffer_object",        ARB_UNIFORM_BUFFER_OBJECT     },
     {"GL_ARB_vertex_array_bgra",            ARB_VERTEX_ARRAY_BGRA         },
     {"GL_ARB_vertex_blend",                 ARB_VERTEX_BLEND              },
@@ -2626,16 +2628,6 @@ static const struct wined3d_shader_backend_ops *select_shader_backend(const stru
     return &none_shader_backend;
 }
 
-static const struct wined3d_blitter_ops *select_blit_implementation(const struct wined3d_gl_info *gl_info,
-        const struct wined3d_shader_backend_ops *shader_backend_ops)
-{
-    if ((shader_backend_ops == &glsl_shader_backend
-            || shader_backend_ops == &arb_program_shader_backend)
-            && gl_info->supported[ARB_FRAGMENT_PROGRAM])
-        return &arbfp_blit;
-    return &ffp_blit;
-}
-
 static void parse_extension_string(struct wined3d_gl_info *gl_info, const char *extensions,
         const struct wined3d_extension_map *map, UINT entry_count)
 {
@@ -2897,6 +2889,19 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
     /* GL_ARB_timer_query */
     USE_GL_FUNC(glQueryCounter)
     USE_GL_FUNC(glGetQueryObjectui64v)
+    /* GL_ARB_transform_feedback2 */
+    USE_GL_FUNC(glBindTransformFeedback);
+    USE_GL_FUNC(glDeleteTransformFeedbacks);
+    USE_GL_FUNC(glDrawTransformFeedback);
+    USE_GL_FUNC(glGenTransformFeedbacks);
+    USE_GL_FUNC(glIsTransformFeedback);
+    USE_GL_FUNC(glPauseTransformFeedback);
+    USE_GL_FUNC(glResumeTransformFeedback);
+    /* GL_ARB_transform_feedback3 */
+    USE_GL_FUNC(glBeginQueryIndexed);
+    USE_GL_FUNC(glDrawTransformFeedbackStream);
+    USE_GL_FUNC(glEndQueryIndexed);
+    USE_GL_FUNC(glGetQueryIndexediv);
     /* GL_ARB_uniform_buffer_object */
     USE_GL_FUNC(glBindBufferBase)
     USE_GL_FUNC(glBindBufferRange)
@@ -3716,6 +3721,11 @@ static void wined3d_adapter_init_limits(struct wined3d_gl_info *gl_info)
             gl_info->supported[ARB_SHADER_ATOMIC_COUNTERS] = FALSE;
         }
     }
+    if (gl_info->supported[ARB_TRANSFORM_FEEDBACK3])
+    {
+        gl_info->gl_ops.gl.p_glGetIntegerv(GL_MAX_VERTEX_STREAMS, &gl_max);
+        TRACE("Max vertex streams: %d.\n", gl_max);
+    }
 
     if (gl_info->supported[NV_LIGHT_MAX_EXPONENT])
         gl_info->gl_ops.gl.p_glGetFloatv(GL_MAX_SHININESS_NV, &gl_info->limits.shininess);
@@ -3843,6 +3853,8 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
 
         {ARB_GPU_SHADER5,                  MAKEDWORD_VERSION(4, 0)},
         {ARB_TEXTURE_CUBE_MAP_ARRAY,       MAKEDWORD_VERSION(4, 0)},
+        {ARB_TRANSFORM_FEEDBACK2,          MAKEDWORD_VERSION(4, 0)},
+        {ARB_TRANSFORM_FEEDBACK3,          MAKEDWORD_VERSION(4, 0)},
 
         {ARB_ES2_COMPATIBILITY,            MAKEDWORD_VERSION(4, 1)},
         {ARB_VIEWPORT_ARRAY,               MAKEDWORD_VERSION(4, 1)},
@@ -4176,7 +4188,6 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
     adapter->shader_backend = select_shader_backend(gl_info);
     adapter->vertex_pipe = select_vertex_implementation(gl_info, adapter->shader_backend);
     adapter->fragment_pipe = select_fragment_implementation(gl_info, adapter->shader_backend);
-    adapter->blitter = select_blit_implementation(gl_info, adapter->shader_backend);
 
     adapter->shader_backend->shader_get_caps(gl_info, &shader_caps);
     adapter->d3d_info.vs_clipping = shader_caps.wined3d_caps & WINED3D_SHADER_CAP_VS_CLIPPING;
@@ -5133,13 +5144,11 @@ static BOOL CheckRenderTargetCapability(const struct wined3d_adapter *adapter,
     return FALSE;
 }
 
-static BOOL CheckSurfaceCapability(const struct wined3d_adapter *adapter,
-        const struct wined3d_format *adapter_format,
-        const struct wined3d_format *check_format, BOOL no3d)
+static BOOL wined3d_check_surface_capability(const struct wined3d_format *format, BOOL no3d)
 {
     if (no3d)
     {
-        switch (check_format->id)
+        switch (format->id)
         {
             case WINED3DFMT_B8G8R8_UNORM:
                 TRACE("[FAILED] - Not enumerated on Windows.\n");
@@ -5169,21 +5178,7 @@ static BOOL CheckSurfaceCapability(const struct wined3d_adapter *adapter,
         }
     }
 
-    /* All formats that are supported for textures are supported for surfaces
-     * as well. */
-    if (check_format->flags[WINED3D_GL_RES_TYPE_TEX_2D] & WINED3DFMT_FLAG_TEXTURE)
-        return TRUE;
-    /* All depth stencil formats are supported on surfaces */
-    if (CheckDepthStencilCapability(adapter, adapter_format, check_format, WINED3D_GL_RES_TYPE_TEX_2D))
-        return TRUE;
-    if (CheckDepthStencilCapability(adapter, adapter_format, check_format, WINED3D_GL_RES_TYPE_RB))
-        return TRUE;
-
-    /* If opengl can't process the format natively, the blitter may be able to convert it */
-    if (adapter->blitter->blit_supported(&adapter->gl_info, &adapter->d3d_info,
-            WINED3D_BLIT_OP_COLOR_BLIT,
-            NULL, WINED3D_POOL_DEFAULT, 0, check_format,
-            NULL, WINED3D_POOL_DEFAULT, 0, adapter_format))
+    if (format->glInternal)
     {
         TRACE("[OK]\n");
         return TRUE;
@@ -5234,7 +5229,7 @@ HRESULT CDECL wined3d_check_device_format(const struct wined3d *wined3d, UINT ad
                 allowed_usage |= WINED3DUSAGE_QUERY_SRGBWRITE;
             if (!(usage & WINED3DUSAGE_TEXTURE))
             {
-                if (!CheckSurfaceCapability(adapter, adapter_format, format, wined3d->flags & WINED3D_NO3D))
+                if (!wined3d_check_surface_capability(format, wined3d->flags & WINED3D_NO3D))
                 {
                     TRACE("[FAILED] - Not supported for plain surfaces.\n");
                     return WINED3DERR_NOTAVAILABLE;
@@ -6590,7 +6585,6 @@ static BOOL wined3d_adapter_init_nogl(struct wined3d_adapter *adapter, UINT ordi
     adapter->vertex_pipe = &none_vertex_pipe;
     adapter->fragment_pipe = &none_fragment_pipe;
     adapter->shader_backend = &none_shader_backend;
-    adapter->blitter = &cpu_blit;
 
     display_device.cb = sizeof(display_device);
     EnumDisplayDevicesW(NULL, ordinal, &display_device, 0);

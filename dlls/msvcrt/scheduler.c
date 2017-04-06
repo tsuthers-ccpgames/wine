@@ -34,6 +34,7 @@
 WINE_DEFAULT_DEBUG_CHANNEL(msvcrt);
 
 static int context_id = -1;
+static int scheduler_id = -1;
 
 #ifdef __i386__
 
@@ -48,9 +49,38 @@ static int context_id = -1;
 DEFINE_VTBL_WRAPPER(0);
 DEFINE_VTBL_WRAPPER(4);
 DEFINE_VTBL_WRAPPER(8);
+DEFINE_VTBL_WRAPPER(12);
+DEFINE_VTBL_WRAPPER(16);
 DEFINE_VTBL_WRAPPER(20);
+DEFINE_VTBL_WRAPPER(24);
+DEFINE_VTBL_WRAPPER(28);
+DEFINE_VTBL_WRAPPER(32);
+DEFINE_VTBL_WRAPPER(36);
+DEFINE_VTBL_WRAPPER(40);
+DEFINE_VTBL_WRAPPER(44);
+DEFINE_VTBL_WRAPPER(48);
 
 #endif
+
+typedef enum {
+    SchedulerKind,
+    MaxConcurrency,
+    MinConcurrency,
+    TargetOversubscriptionFactor,
+    LocalContextCacheSize,
+    ContextStackSize,
+    ContextPriority,
+    SchedulingProtocol,
+    DynamicProgressFeedback,
+    WinRTInitialization,
+    last_policy_id
+} PolicyElementKey;
+
+typedef struct {
+    struct _policy_container {
+        unsigned int policies[last_policy_id];
+    } *policy_container;
+} SchedulerPolicy;
 
 typedef struct {
     const vtable_ptr *vtable;
@@ -75,15 +105,82 @@ union allocator_cache_entry {
     } alloc;
 };
 
+struct scheduler_list {
+    struct Scheduler *scheduler;
+    struct scheduler_list *next;
+};
+
 typedef struct {
     Context context;
+    struct scheduler_list scheduler;
     unsigned int id;
     union allocator_cache_entry *allocator_cache[8];
 } ExternalContextBase;
 extern const vtable_ptr MSVCRT_ExternalContextBase_vtable;
 static void ExternalContextBase_ctor(ExternalContextBase*);
 
+typedef struct Scheduler {
+    const vtable_ptr *vtable;
+} Scheduler;
+#define call_Scheduler_Id(this) CALL_VTBL_FUNC(this, 4, unsigned int, (const Scheduler*), (this))
+#define call_Scheduler_GetNumberOfVirtualProcessors(this) CALL_VTBL_FUNC(this, 8, unsigned int, (const Scheduler*), (this))
+#define call_Scheduler_GetPolicy(this,policy) CALL_VTBL_FUNC(this, 12, \
+        SchedulerPolicy*, (Scheduler*,SchedulerPolicy*), (this,policy))
+#define call_Scheduler_Reference(this) CALL_VTBL_FUNC(this, 16, unsigned int, (Scheduler*), (this))
+#define call_Scheduler_Release(this) CALL_VTBL_FUNC(this, 20, unsigned int, (Scheduler*), (this))
+#define call_Scheduler_RegisterShutdownEvent(this,event) CALL_VTBL_FUNC(this, 24, void, (Scheduler*,HANDLE), (this,event))
+#define call_Scheduler_Attach(this) CALL_VTBL_FUNC(this, 28, void, (Scheduler*), (this))
+#if _MSVCR_VER > 100
+#define call_Scheduler_CreateScheduleGroup_loc(this,placement) CALL_VTBL_FUNC(this, 32, \
+        /*ScheduleGroup*/void*, (Scheduler*,/*location*/void*), (this,placement))
+#define call_Scheduler_CreateScheduleGroup(this) CALL_VTBL_FUNC(this, 36, /*ScheduleGroup*/void*, (Scheduler*), (this))
+#define call_Scheduler_ScheduleTask_loc(this,proc,data,placement) CALL_VTBL_FUNC(this, 40, \
+        void, (Scheduler*,void (__cdecl*)(void*),void*,/*location*/void*), (this,proc,data,placement))
+#define call_Scheduler_ScheduleTask(this,proc,data) CALL_VTBL_FUNC(this, 44, \
+        void, (Scheduler*,void (__cdecl*)(void*),void*), (this,proc,data))
+#define call_Scheduler_IsAvailableLocation(this,placement) CALL_VTBL_FUNC(this, 48, \
+        MSVCRT_bool, (Scheduler*,const /*location*/void*), (this,placement))
+#else
+#define call_Scheduler_CreateScheduleGroup(this) CALL_VTBL_FUNC(this, 32, /*ScheduleGroup*/void*, (Scheduler*), (this))
+#define call_Scheduler_ScheduleTask(this,proc,data) CALL_VTBL_FUNC(this, 36, \
+        void, (Scheduler*,void (__cdecl*)(void*),void*), (this,proc,data))
+#endif
+
+typedef struct {
+    Scheduler scheduler;
+    LONG ref;
+    unsigned int id;
+    unsigned int virt_proc_no;
+    SchedulerPolicy policy;
+    int shutdown_count;
+    int shutdown_size;
+    HANDLE *shutdown_events;
+    CRITICAL_SECTION cs;
+} ThreadScheduler;
+extern const vtable_ptr MSVCRT_ThreadScheduler_vtable;
+
+typedef struct {
+    Scheduler *scheduler;
+} _Scheduler;
+
+typedef struct {
+    char empty;
+} _CurrentScheduler;
+
 static int context_tls_index = TLS_OUT_OF_INDEXES;
+
+static CRITICAL_SECTION default_scheduler_cs;
+static CRITICAL_SECTION_DEBUG default_scheduler_cs_debug =
+{
+    0, 0, &default_scheduler_cs,
+    { &default_scheduler_cs_debug.ProcessLocksList, &default_scheduler_cs_debug.ProcessLocksList },
+      0, 0, { (DWORD_PTR)(__FILE__ ": default_scheduler_cs") }
+};
+static CRITICAL_SECTION default_scheduler_cs = { &default_scheduler_cs_debug, -1, 0, 0, 0, 0 };
+static SchedulerPolicy default_scheduler_policy;
+static ThreadScheduler *default_scheduler;
+
+static void create_default_scheduler(void);
 
 static Context* try_get_current_context(void)
 {
@@ -116,6 +213,31 @@ static Context* get_current_context(void)
         ret = &context->context;
     }
     return ret;
+}
+
+static Scheduler* try_get_current_scheduler(void)
+{
+    ExternalContextBase *context = (ExternalContextBase*)try_get_current_context();
+
+    if (!context)
+        return NULL;
+
+    if (context->context.vtable != &MSVCRT_ExternalContextBase_vtable) {
+        ERR("unknown context set\n");
+        return NULL;
+    }
+    return context->scheduler.scheduler;
+}
+
+static Scheduler* get_current_scheduler(void)
+{
+    ExternalContextBase *context = (ExternalContextBase*)get_current_context();
+
+    if (context->context.vtable != &MSVCRT_ExternalContextBase_vtable) {
+        ERR("unknown context set\n");
+        return NULL;
+    }
+    return context->scheduler.scheduler;
 }
 
 /* ?CurrentContext@Context@Concurrency@@SAPAV12@XZ */
@@ -177,7 +299,7 @@ unsigned int __cdecl Context_ScheduleGroupId(void)
 unsigned int __cdecl Context_VirtualProcessorId(void)
 {
     Context *ctx = try_get_current_context();
-    FIXME("()\n");
+    TRACE("()\n");
     return ctx ? call_Context_GetVirtualProcessorId(ctx) : -1;
 }
 
@@ -217,6 +339,7 @@ MSVCRT_bool __thiscall ExternalContextBase_IsSynchronouslyBlocked(const External
 
 static void ExternalContextBase_dtor(ExternalContextBase *this)
 {
+    struct scheduler_list *scheduler_cur, *scheduler_next;
     union allocator_cache_entry *next, *cur;
     int i;
 
@@ -225,6 +348,16 @@ static void ExternalContextBase_dtor(ExternalContextBase *this)
         for(cur = this->allocator_cache[i]; cur; cur=next) {
             next = cur->free.next;
             MSVCRT_operator_delete(cur);
+        }
+    }
+
+    if (this->scheduler.scheduler) {
+        call_Scheduler_Release(this->scheduler.scheduler);
+
+        for(scheduler_cur=this->scheduler.next; scheduler_cur; scheduler_cur=scheduler_next) {
+            scheduler_next = scheduler_cur->next;
+            call_Scheduler_Release(scheduler_cur->scheduler);
+            MSVCRT_operator_delete(scheduler_cur);
         }
     }
 }
@@ -253,9 +386,13 @@ static void ExternalContextBase_ctor(ExternalContextBase *this)
 {
     TRACE("(%p)->()\n", this);
 
+    memset(this, 0, sizeof(*this));
     this->context.vtable = &MSVCRT_ExternalContextBase_vtable;
     this->id = InterlockedIncrement(&context_id);
-    memset(this->allocator_cache, 0, sizeof(this->allocator_cache));
+
+    create_default_scheduler();
+    this->scheduler.scheduler = &default_scheduler->scheduler;
+    call_Scheduler_Reference(&default_scheduler->scheduler);
 }
 
 /* ?Alloc@Concurrency@@YAPAXI@Z */
@@ -320,26 +457,6 @@ void CDECL Concurrency_Free(void* mem)
     }
 }
 
-typedef enum {
-    SchedulerKind,
-    MaxConcurrency,
-    MinConcurrency,
-    TargetOversubscriptionFactor,
-    LocalContextCacheSize,
-    ContextStackSize,
-    ContextPriority,
-    SchedulingProtocol,
-    DynamicProgressFeedback,
-    WinRTInitialization,
-    last_policy_id
-} PolicyElementKey;
-
-typedef struct {
-    struct _policy_container {
-        unsigned int policies[last_policy_id];
-    } *policy_container;
-} SchedulerPolicy;
-
 /* ?SetPolicyValue@SchedulerPolicy@Concurrency@@QAEIW4PolicyElementKey@2@I@Z */
 /* ?SetPolicyValue@SchedulerPolicy@Concurrency@@QEAAIW4PolicyElementKey@2@I@Z */
 DEFINE_THISCALL_WRAPPER(SchedulerPolicy_SetPolicyValue, 12)
@@ -354,7 +471,7 @@ unsigned int __thiscall SchedulerPolicy_SetPolicyValue(SchedulerPolicy *this,
         throw_exception(EXCEPTION_INVALID_SCHEDULER_POLICY_KEY, 0, "MinConcurrency");
     if (policy == MaxConcurrency)
         throw_exception(EXCEPTION_INVALID_SCHEDULER_POLICY_KEY, 0, "MaxConcurrency");
-    if (policy < SchedulerKind || policy >= last_policy_id)
+    if (policy >= last_policy_id)
         throw_exception(EXCEPTION_INVALID_SCHEDULER_POLICY_KEY, 0, "Invalid policy");
 
     switch(policy) {
@@ -414,7 +531,7 @@ unsigned int __thiscall SchedulerPolicy_GetPolicyValue(
 {
     TRACE("(%p %d)\n", this, policy);
 
-    if (policy < SchedulerKind || policy >= last_policy_id)
+    if (policy >= last_policy_id)
         throw_exception(EXCEPTION_INVALID_SCHEDULER_POLICY_KEY, 0, "Invalid policy");
     return this->policy_container->policies[policy];
 }
@@ -506,11 +623,473 @@ void __thiscall SchedulerPolicy_dtor(SchedulerPolicy *this)
     MSVCRT_operator_delete(this->policy_container);
 }
 
+static void ThreadScheduler_dtor(ThreadScheduler *this)
+{
+    int i;
+
+    if(this->ref != 0) WARN("ref = %d\n", this->ref);
+    SchedulerPolicy_dtor(&this->policy);
+
+    for(i=0; i<this->shutdown_count; i++)
+        SetEvent(this->shutdown_events[i]);
+    MSVCRT_operator_delete(this->shutdown_events);
+
+    this->cs.DebugInfo->Spare[0] = 0;
+    DeleteCriticalSection(&this->cs);
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_Id, 4)
+unsigned int __thiscall ThreadScheduler_Id(const ThreadScheduler *this)
+{
+    TRACE("(%p)\n", this);
+    return this->id;
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_GetNumberOfVirtualProcessors, 4)
+unsigned int __thiscall ThreadScheduler_GetNumberOfVirtualProcessors(const ThreadScheduler *this)
+{
+    TRACE("(%p)\n", this);
+    return this->virt_proc_no;
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_GetPolicy, 8)
+SchedulerPolicy* __thiscall ThreadScheduler_GetPolicy(
+        const ThreadScheduler *this, SchedulerPolicy *ret)
+{
+    TRACE("(%p %p)\n", this, ret);
+    return SchedulerPolicy_copy_ctor(ret, &this->policy);
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_Reference, 4)
+unsigned int __thiscall ThreadScheduler_Reference(ThreadScheduler *this)
+{
+    TRACE("(%p)\n", this);
+    return InterlockedIncrement(&this->ref);
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_Release, 4)
+unsigned int __thiscall ThreadScheduler_Release(ThreadScheduler *this)
+{
+    unsigned int ret = InterlockedDecrement(&this->ref);
+
+    TRACE("(%p)\n", this);
+
+    if(!ret) {
+        ThreadScheduler_dtor(this);
+        MSVCRT_operator_delete(this);
+    }
+    return ret;
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_RegisterShutdownEvent, 8)
+void __thiscall ThreadScheduler_RegisterShutdownEvent(ThreadScheduler *this, HANDLE event)
+{
+    HANDLE *shutdown_events;
+    int size;
+
+    TRACE("(%p %p)\n", this, event);
+
+    EnterCriticalSection(&this->cs);
+
+    size = this->shutdown_size ? this->shutdown_size * 2 : 1;
+    shutdown_events = MSVCRT_operator_new(size * sizeof(*shutdown_events));
+    memcpy(shutdown_events, this->shutdown_events,
+            this->shutdown_count * sizeof(*shutdown_events));
+    MSVCRT_operator_delete(this->shutdown_events);
+    this->shutdown_size = size;
+    this->shutdown_events = shutdown_events;
+    this->shutdown_events[this->shutdown_count++] = event;
+
+    LeaveCriticalSection(&this->cs);
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_Attach, 4)
+void __thiscall ThreadScheduler_Attach(ThreadScheduler *this)
+{
+    ExternalContextBase *context = (ExternalContextBase*)get_current_context();
+
+    TRACE("(%p)\n", this);
+
+    if(context->context.vtable != &MSVCRT_ExternalContextBase_vtable) {
+        ERR("unknown context set\n");
+        return;
+    }
+
+    if(context->scheduler.scheduler == &this->scheduler)
+        throw_exception(EXCEPTION_IMPROPER_SCHEDULER_ATTACH, 0, NULL);
+
+    if(context->scheduler.scheduler) {
+        struct scheduler_list *l = MSVCRT_operator_new(sizeof(*l));
+        *l = context->scheduler;
+        context->scheduler.next = l;
+    }
+    context->scheduler.scheduler = &this->scheduler;
+    ThreadScheduler_Reference(this);
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_CreateScheduleGroup_loc, 8)
+/*ScheduleGroup*/void* __thiscall ThreadScheduler_CreateScheduleGroup_loc(
+        ThreadScheduler *this, /*location*/void *placement)
+{
+    FIXME("(%p %p) stub\n", this, placement);
+    return NULL;
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_CreateScheduleGroup, 4)
+/*ScheduleGroup*/void* __thiscall ThreadScheduler_CreateScheduleGroup(ThreadScheduler *this)
+{
+    FIXME("(%p) stub\n", this);
+    return NULL;
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_ScheduleTask_loc, 16)
+void __thiscall ThreadScheduler_ScheduleTask_loc(ThreadScheduler *this,
+        void (__cdecl *proc)(void*), void* data, /*location*/void *placement)
+{
+    FIXME("(%p %p %p %p) stub\n", this, proc, data, placement);
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_ScheduleTask, 12)
+void __thiscall ThreadScheduler_ScheduleTask(ThreadScheduler *this,
+        void (__cdecl *proc)(void*), void* data)
+{
+    FIXME("(%p %p %p) stub\n", this, proc, data);
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_IsAvailableLocation, 8)
+MSVCRT_bool __thiscall ThreadScheduler_IsAvailableLocation(
+        const ThreadScheduler *this, const /*location*/void *placement)
+{
+    FIXME("(%p %p) stub\n", this, placement);
+    return FALSE;
+}
+
+DEFINE_THISCALL_WRAPPER(ThreadScheduler_vector_dtor, 8)
+Scheduler* __thiscall ThreadScheduler_vector_dtor(ThreadScheduler *this, unsigned int flags)
+{
+    TRACE("(%p %x)\n", this, flags);
+    if(flags & 2) {
+        /* we have an array, with the number of elements stored before the first object */
+        INT_PTR i, *ptr = (INT_PTR *)this-1;
+
+        for(i=*ptr-1; i>=0; i--)
+            ThreadScheduler_dtor(this+i);
+        MSVCRT_operator_delete(ptr);
+    } else {
+        ThreadScheduler_dtor(this);
+        if(flags & 1)
+            MSVCRT_operator_delete(this);
+    }
+
+    return &this->scheduler;
+}
+
+static ThreadScheduler* ThreadScheduler_ctor(ThreadScheduler *this,
+        const SchedulerPolicy *policy)
+{
+    SYSTEM_INFO si;
+
+    TRACE("(%p)->()\n", this);
+
+    this->scheduler.vtable = &MSVCRT_ThreadScheduler_vtable;
+    this->ref = 1;
+    this->id = InterlockedIncrement(&scheduler_id);
+    SchedulerPolicy_copy_ctor(&this->policy, policy);
+
+    GetSystemInfo(&si);
+    this->virt_proc_no = SchedulerPolicy_GetPolicyValue(&this->policy, MaxConcurrency);
+    if(this->virt_proc_no > si.dwNumberOfProcessors)
+        this->virt_proc_no = si.dwNumberOfProcessors;
+
+    this->shutdown_count = this->shutdown_size = 0;
+    this->shutdown_events = NULL;
+
+    InitializeCriticalSection(&this->cs);
+    this->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": ThreadScheduler");
+    return this;
+}
+
+/* ?Create@Scheduler@Concurrency@@SAPAV12@ABVSchedulerPolicy@2@@Z */
+/* ?Create@Scheduler@Concurrency@@SAPEAV12@AEBVSchedulerPolicy@2@@Z */
+Scheduler* __cdecl Scheduler_Create(const SchedulerPolicy *policy)
+{
+    ThreadScheduler *ret;
+
+    TRACE("(%p)\n", policy);
+
+    ret = MSVCRT_operator_new(sizeof(*ret));
+    return &ThreadScheduler_ctor(ret, policy)->scheduler;
+}
+
+/* ?ResetDefaultSchedulerPolicy@Scheduler@Concurrency@@SAXXZ */
+void __cdecl Scheduler_ResetDefaultSchedulerPolicy(void)
+{
+    TRACE("()\n");
+
+    EnterCriticalSection(&default_scheduler_cs);
+    if(default_scheduler_policy.policy_container)
+        SchedulerPolicy_dtor(&default_scheduler_policy);
+    SchedulerPolicy_ctor(&default_scheduler_policy);
+    LeaveCriticalSection(&default_scheduler_cs);
+}
+
+/* ?SetDefaultSchedulerPolicy@Scheduler@Concurrency@@SAXABVSchedulerPolicy@2@@Z */
+/* ?SetDefaultSchedulerPolicy@Scheduler@Concurrency@@SAXAEBVSchedulerPolicy@2@@Z */
+void __cdecl Scheduler_SetDefaultSchedulerPolicy(const SchedulerPolicy *policy)
+{
+    TRACE("(%p)\n", policy);
+
+    EnterCriticalSection(&default_scheduler_cs);
+    if(!default_scheduler_policy.policy_container)
+        SchedulerPolicy_copy_ctor(&default_scheduler_policy, policy);
+    else
+        SchedulerPolicy_op_assign(&default_scheduler_policy, policy);
+    LeaveCriticalSection(&default_scheduler_cs);
+}
+
+/* ?Create@CurrentScheduler@Concurrency@@SAXABVSchedulerPolicy@2@@Z */
+/* ?Create@CurrentScheduler@Concurrency@@SAXAEBVSchedulerPolicy@2@@Z */
+void __cdecl CurrentScheduler_Create(const SchedulerPolicy *policy)
+{
+    Scheduler *scheduler;
+
+    TRACE("(%p)\n", policy);
+
+    scheduler = Scheduler_Create(policy);
+    call_Scheduler_Attach(scheduler);
+}
+
+/* ?Detach@CurrentScheduler@Concurrency@@SAXXZ */
+void __cdecl CurrentScheduler_Detach(void)
+{
+    ExternalContextBase *context = (ExternalContextBase*)try_get_current_context();
+
+    TRACE("()\n");
+
+    if(!context)
+        throw_exception(EXCEPTION_IMPROPER_SCHEDULER_DETACH, 0, NULL);
+
+    if(context->context.vtable != &MSVCRT_ExternalContextBase_vtable) {
+        ERR("unknown context set\n");
+        return;
+    }
+
+    if(!context->scheduler.next)
+        throw_exception(EXCEPTION_IMPROPER_SCHEDULER_DETACH, 0, NULL);
+
+    call_Scheduler_Release(context->scheduler.scheduler);
+    if(!context->scheduler.next) {
+        context->scheduler.scheduler = NULL;
+    }else {
+        struct scheduler_list *entry = context->scheduler.next;
+        context->scheduler.scheduler = entry->scheduler;
+        context->scheduler.next = entry->next;
+        MSVCRT_operator_delete(entry);
+    }
+}
+
+static void create_default_scheduler(void)
+{
+    if(default_scheduler)
+        return;
+
+    EnterCriticalSection(&default_scheduler_cs);
+    if(!default_scheduler) {
+        ThreadScheduler *scheduler;
+
+        if(!default_scheduler_policy.policy_container)
+            SchedulerPolicy_ctor(&default_scheduler_policy);
+
+        scheduler = MSVCRT_operator_new(sizeof(*scheduler));
+        ThreadScheduler_ctor(scheduler, &default_scheduler_policy);
+        default_scheduler = scheduler;
+    }
+    LeaveCriticalSection(&default_scheduler_cs);
+}
+
+/* ?Get@CurrentScheduler@Concurrency@@SAPAVScheduler@2@XZ */
+/* ?Get@CurrentScheduler@Concurrency@@SAPEAVScheduler@2@XZ */
+Scheduler* __cdecl CurrentScheduler_Get(void)
+{
+    TRACE("()\n");
+    return get_current_scheduler();
+}
+
+#if _MSVCR_VER > 100
+/* ?CreateScheduleGroup@CurrentScheduler@Concurrency@@SAPAVScheduleGroup@2@AAVlocation@2@@Z */
+/* ?CreateScheduleGroup@CurrentScheduler@Concurrency@@SAPEAVScheduleGroup@2@AEAVlocation@2@@Z */
+/*ScheduleGroup*/void* __cdecl CurrentScheduler_CreateScheduleGroup_loc(/*location*/void *placement)
+{
+    TRACE("(%p)\n", placement);
+    return call_Scheduler_CreateScheduleGroup_loc(get_current_scheduler(), placement);
+}
+#endif
+
+/* ?CreateScheduleGroup@CurrentScheduler@Concurrency@@SAPAVScheduleGroup@2@XZ */
+/* ?CreateScheduleGroup@CurrentScheduler@Concurrency@@SAPEAVScheduleGroup@2@XZ */
+/*ScheduleGroup*/void* __cdecl CurrentScheduler_CreateScheduleGroup(void)
+{
+    TRACE("()\n");
+    return call_Scheduler_CreateScheduleGroup(get_current_scheduler());
+}
+
+/* ?GetNumberOfVirtualProcessors@CurrentScheduler@Concurrency@@SAIXZ */
+unsigned int __cdecl CurrentScheduler_GetNumberOfVirtualProcessors(void)
+{
+    Scheduler *scheduler = try_get_current_scheduler();
+
+    TRACE("()\n");
+
+    if(!scheduler)
+        return -1;
+    return call_Scheduler_GetNumberOfVirtualProcessors(scheduler);
+}
+
+/* ?GetPolicy@CurrentScheduler@Concurrency@@SA?AVSchedulerPolicy@2@XZ */
+SchedulerPolicy* __cdecl CurrentScheduler_GetPolicy(SchedulerPolicy *policy)
+{
+    TRACE("(%p)\n", policy);
+    return call_Scheduler_GetPolicy(get_current_scheduler(), policy);
+}
+
+/* ?Id@CurrentScheduler@Concurrency@@SAIXZ */
+unsigned int __cdecl CurrentScheduler_Id(void)
+{
+    Scheduler *scheduler = try_get_current_scheduler();
+
+    TRACE("()\n");
+
+    if(!scheduler)
+        return -1;
+    return call_Scheduler_Id(scheduler);
+}
+
+#if _MSVCR_VER > 100
+/* ?IsAvailableLocation@CurrentScheduler@Concurrency@@SA_NABVlocation@2@@Z */
+/* ?IsAvailableLocation@CurrentScheduler@Concurrency@@SA_NAEBVlocation@2@@Z */
+MSVCRT_bool __cdecl CurrentScheduler_IsAvailableLocation(const /*location*/void *placement)
+{
+    Scheduler *scheduler = try_get_current_scheduler();
+
+    TRACE("(%p)\n", placement);
+
+    if(!scheduler)
+        return FALSE;
+    return call_Scheduler_IsAvailableLocation(scheduler, placement);
+}
+#endif
+
+/* ?RegisterShutdownEvent@CurrentScheduler@Concurrency@@SAXPAX@Z */
+/* ?RegisterShutdownEvent@CurrentScheduler@Concurrency@@SAXPEAX@Z */
+void __cdecl CurrentScheduler_RegisterShutdownEvent(HANDLE event)
+{
+    TRACE("(%p)\n", event);
+    call_Scheduler_RegisterShutdownEvent(get_current_scheduler(), event);
+}
+
+#if _MSVCR_VER > 100
+/* ?ScheduleTask@CurrentScheduler@Concurrency@@SAXP6AXPAX@Z0AAVlocation@2@@Z */
+/* ?ScheduleTask@CurrentScheduler@Concurrency@@SAXP6AXPEAX@Z0AEAVlocation@2@@Z */
+void __cdecl CurrentScheduler_ScheduleTask_loc(void (__cdecl *proc)(void*),
+        void *data, /*location*/void *placement)
+{
+    TRACE("(%p %p %p)\n", proc, data, placement);
+    call_Scheduler_ScheduleTask_loc(get_current_scheduler(), proc, data, placement);
+}
+#endif
+
+/* ?ScheduleTask@CurrentScheduler@Concurrency@@SAXP6AXPAX@Z0@Z */
+/* ?ScheduleTask@CurrentScheduler@Concurrency@@SAXP6AXPEAX@Z0@Z */
+void __cdecl CurrentScheduler_ScheduleTask(void (__cdecl *proc)(void*), void *data)
+{
+    TRACE("(%p %p)\n", proc, data);
+    call_Scheduler_ScheduleTask(get_current_scheduler(), proc, data);
+}
+
+/* ??0_Scheduler@details@Concurrency@@QAE@PAVScheduler@2@@Z */
+/* ??0_Scheduler@details@Concurrency@@QEAA@PEAVScheduler@2@@Z */
+DEFINE_THISCALL_WRAPPER(_Scheduler_ctor_sched, 8)
+_Scheduler* __thiscall _Scheduler_ctor_sched(_Scheduler *this, Scheduler *scheduler)
+{
+    TRACE("(%p %p)\n", this, scheduler);
+
+    this->scheduler = scheduler;
+    return this;
+}
+
+/* ??_F_Scheduler@details@Concurrency@@QAEXXZ */
+/* ??_F_Scheduler@details@Concurrency@@QEAAXXZ */
+DEFINE_THISCALL_WRAPPER(_Scheduler_ctor, 4)
+_Scheduler* __thiscall _Scheduler_ctor(_Scheduler *this)
+{
+    return _Scheduler_ctor_sched(this, NULL);
+}
+
+/* ?_GetScheduler@_Scheduler@details@Concurrency@@QAEPAVScheduler@3@XZ */
+/* ?_GetScheduler@_Scheduler@details@Concurrency@@QEAAPEAVScheduler@3@XZ */
+DEFINE_THISCALL_WRAPPER(_Scheduler__GetScheduler, 4)
+Scheduler* __thiscall _Scheduler__GetScheduler(_Scheduler *this)
+{
+    TRACE("(%p)\n", this);
+    return this->scheduler;
+}
+
+/* ?_Reference@_Scheduler@details@Concurrency@@QAEIXZ */
+/* ?_Reference@_Scheduler@details@Concurrency@@QEAAIXZ */
+DEFINE_THISCALL_WRAPPER(_Scheduler__Reference, 4)
+unsigned int __thiscall _Scheduler__Reference(_Scheduler *this)
+{
+    TRACE("(%p)\n", this);
+    return call_Scheduler_Reference(this->scheduler);
+}
+
+/* ?_Release@_Scheduler@details@Concurrency@@QAEIXZ */
+/* ?_Release@_Scheduler@details@Concurrency@@QEAAIXZ */
+DEFINE_THISCALL_WRAPPER(_Scheduler__Release, 4)
+unsigned int __thiscall _Scheduler__Release(_Scheduler *this)
+{
+    TRACE("(%p)\n", this);
+    return call_Scheduler_Release(this->scheduler);
+}
+
+/* ?_Get@_CurrentScheduler@details@Concurrency@@SA?AV_Scheduler@23@XZ */
+_Scheduler* __cdecl _CurrentScheduler__Get(_Scheduler *ret)
+{
+    TRACE("()\n");
+    return _Scheduler_ctor_sched(ret, get_current_scheduler());
+}
+
+/* ?_GetNumberOfVirtualProcessors@_CurrentScheduler@details@Concurrency@@SAIXZ */
+unsigned int __cdecl _CurrentScheduler__GetNumberOfVirtualProcessors(void)
+{
+    TRACE("()\n");
+    return CurrentScheduler_GetNumberOfVirtualProcessors();
+}
+
+/* ?_Id@_CurrentScheduler@details@Concurrency@@SAIXZ */
+unsigned int __cdecl _CurrentScheduler__Id(void)
+{
+    TRACE("()\n");
+    return CurrentScheduler_Id();
+}
+
+/* ?_ScheduleTask@_CurrentScheduler@details@Concurrency@@SAXP6AXPAX@Z0@Z */
+/* ?_ScheduleTask@_CurrentScheduler@details@Concurrency@@SAXP6AXPEAX@Z0@Z */
+void __cdecl _CurrentScheduler__ScheduleTask(void (__cdecl *proc)(void*), void *data)
+{
+    TRACE("(%p %p)\n", proc, data);
+    CurrentScheduler_ScheduleTask(proc, data);
+}
+
 extern const vtable_ptr MSVCRT_type_info_vtable;
 DEFINE_RTTI_DATA0(Context, 0, ".?AVContext@Concurrency@@")
 DEFINE_RTTI_DATA1(ContextBase, 0, &Context_rtti_base_descriptor, ".?AVContextBase@details@Concurrency@@")
 DEFINE_RTTI_DATA2(ExternalContextBase, 0, &ContextBase_rtti_base_descriptor,
         &Context_rtti_base_descriptor, ".?AVExternalContextBase@details@Concurrency@@")
+DEFINE_RTTI_DATA0(Scheduler, 0, ".?AVScheduler@Concurrency@@")
+DEFINE_RTTI_DATA1(SchedulerBase, 0, &Scheduler_rtti_base_descriptor, ".?AVSchedulerBase@details@Concurrency@@")
+DEFINE_RTTI_DATA2(ThreadScheduler, 0, &SchedulerBase_rtti_base_descriptor,
+        &Scheduler_rtti_base_descriptor, ".?AVThreadScheduler@details@Concurrency@@")
 
 #ifndef __GNUC__
 void __asm_dummy_vtables(void) {
@@ -522,6 +1101,27 @@ void __asm_dummy_vtables(void) {
             VTABLE_ADD_FUNC(ExternalContextBase_Unblock)
             VTABLE_ADD_FUNC(ExternalContextBase_IsSynchronouslyBlocked)
             VTABLE_ADD_FUNC(ExternalContextBase_vector_dtor));
+    __ASM_VTABLE(ThreadScheduler,
+            VTABLE_ADD_FUNC(ThreadScheduler_vector_dtor)
+            VTABLE_ADD_FUNC(ThreadScheduler_Id)
+            VTABLE_ADD_FUNC(ThreadScheduler_GetNumberOfVirtualProcessors)
+            VTABLE_ADD_FUNC(ThreadScheduler_GetPolicy)
+            VTABLE_ADD_FUNC(ThreadScheduler_Reference)
+            VTABLE_ADD_FUNC(ThreadScheduler_Release)
+            VTABLE_ADD_FUNC(ThreadScheduler_RegisterShutdownEvent)
+            VTABLE_ADD_FUNC(ThreadScheduler_Attach)
+#if _MSVCR_VER > 100
+            VTABLE_ADD_FUNC(ThreadScheduler_CreateScheduleGroup_loc)
+#endif
+            VTABLE_ADD_FUNC(ThreadScheduler_CreateScheduleGroup)
+#if _MSVCR_VER > 100
+            VTABLE_ADD_FUNC(ThreadScheduler_ScheduleTask_loc)
+#endif
+            VTABLE_ADD_FUNC(ThreadScheduler_ScheduleTask)
+#if _MSVCR_VER > 100
+            VTABLE_ADD_FUNC(ThreadScheduler_IsAvailableLocation)
+#endif
+            );
 #ifndef __GNUC__
 }
 #endif
@@ -532,6 +1132,9 @@ void msvcrt_init_scheduler(void *base)
     init_Context_rtti(base);
     init_ContextBase_rtti(base);
     init_ExternalContextBase_rtti(base);
+    init_Scheduler_rtti(base);
+    init_SchedulerBase_rtti(base);
+    init_ThreadScheduler_rtti(base);
 #endif
 }
 
@@ -539,6 +1142,12 @@ void msvcrt_free_scheduler(void)
 {
     if (context_tls_index != TLS_OUT_OF_INDEXES)
         TlsFree(context_tls_index);
+    if(default_scheduler_policy.policy_container)
+        SchedulerPolicy_dtor(&default_scheduler_policy);
+    if(default_scheduler) {
+        ThreadScheduler_dtor(default_scheduler);
+        MSVCRT_operator_delete(default_scheduler);
+    }
 }
 
 void msvcrt_free_scheduler_thread(void)

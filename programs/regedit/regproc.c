@@ -52,7 +52,6 @@ static HKEY reg_class_keys[] = {
 
 /* return values */
 #define NOT_ENOUGH_MEMORY     1
-#define IO_ERROR              2
 
 /* processing macros */
 
@@ -193,6 +192,8 @@ static BYTE* convertHexCSVToHex(WCHAR *str, DWORD *size)
     return data;
 }
 
+#define REG_UNKNOWN_TYPE 99
+
 /******************************************************************************
  * This function returns the HKEY associated with the data type encoded in the
  * value.  It modifies the input parameter (key value) in order to skip this
@@ -205,21 +206,18 @@ static DWORD getDataType(LPWSTR *lpValue, DWORD* parse_type)
     struct data_type { const WCHAR *tag; int len; int type; int parse_type; };
 
     static const WCHAR quote[] = {'"'};
-    static const WCHAR str[] = {'s','t','r',':','"'};
-    static const WCHAR str2[] = {'s','t','r','(','2',')',':','"'};
     static const WCHAR hex[] = {'h','e','x',':'};
     static const WCHAR dword[] = {'d','w','o','r','d',':'};
     static const WCHAR hexp[] = {'h','e','x','('};
 
-    static const struct data_type data_types[] = {                   /* actual type */  /* type to assume for parsing */
-                { quote,       1,   REG_SZ,              REG_SZ },
-                { str,         5,   REG_SZ,              REG_SZ },
-                { str2,        8,   REG_EXPAND_SZ,       REG_SZ },
-                { hex,         4,   REG_BINARY,          REG_BINARY },
-                { dword,       6,   REG_DWORD,           REG_DWORD },
-                { hexp,        4,   -1,                  REG_BINARY },
-                { NULL,        0,    0,                  0 }
-            };
+    static const struct data_type data_types[] = {
+    /*    tag    len  type         parse type    */
+        { quote,  1,  REG_SZ,      REG_SZ },
+        { hex,    4,  REG_BINARY,  REG_BINARY },
+        { dword,  6,  REG_DWORD,   REG_DWORD },
+        { hexp,   4,  -1,          REG_BINARY }, /* REG_NONE, REG_EXPAND_SZ, REG_MULTI_SZ */
+        { NULL,   0,  0,           0 }
+    };
 
     const struct data_type *ptr;
     int type;
@@ -245,8 +243,8 @@ static DWORD getDataType(LPWSTR *lpValue, DWORD* parse_type)
         }
         return type;
     }
-    *parse_type=REG_NONE;
-    return REG_NONE;
+    *parse_type = REG_UNKNOWN_TYPE;
+    return REG_UNKNOWN_TYPE;
 }
 
 /******************************************************************************
@@ -436,7 +434,15 @@ static LONG setValue(WCHAR* val_name, WCHAR* val_data, BOOL is_unicode)
     }
     else                                /* unknown format */
     {
-        output_message(STRING_UNKNOWN_DATA_FORMAT, reg_type_to_wchar(dwDataType));
+        if (dwDataType == REG_UNKNOWN_TYPE)
+        {
+            WCHAR buf[32];
+            LoadStringW(GetModuleHandleW(NULL), STRING_UNKNOWN_TYPE, buf, ARRAY_SIZE(buf));
+            output_message(STRING_UNKNOWN_DATA_FORMAT, buf);
+        }
+        else
+            output_message(STRING_UNKNOWN_DATA_FORMAT, reg_type_to_wchar(dwDataType));
+
         return ERROR_INVALID_DATA;
     }
 
@@ -742,6 +748,7 @@ static char *get_lineA(FILE *fp)
             next = line;
             continue;
         }
+        while (*line == ' ' || *line == '\t') line++;
         if (*line == ';' || *line == '#')
         {
             line = next;
@@ -853,6 +860,7 @@ static WCHAR *get_lineW(FILE *fp)
             next = line;
             continue;
         }
+        while (*line == ' ' || *line == '\t') line++;
         if (*line == ';' || *line == '#')
         {
             line = next;

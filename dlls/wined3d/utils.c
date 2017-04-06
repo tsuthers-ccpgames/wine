@@ -4462,6 +4462,8 @@ const char *debug_d3dstate(DWORD state)
         return "STATE_POINT_ENABLE";
     if (STATE_IS_COLOR_KEY(state))
         return "STATE_COLOR_KEY";
+    if (STATE_IS_STREAM_OUTPUT(state))
+        return "STATE_STREAM_OUTPUT";
 
     return wine_dbg_sprintf("UNKNOWN_STATE(%#x)", state);
 }
@@ -5038,65 +5040,6 @@ static float color_to_float(DWORD color, DWORD size, DWORD offset)
     color &= mask;
 
     return (float)color / (float)mask;
-}
-
-BOOL wined3d_format_convert_color_to_float(const struct wined3d_format *format,
-        const struct wined3d_palette *palette, DWORD color, struct wined3d_color *float_color)
-{
-    switch (format->id)
-    {
-        case WINED3DFMT_B8G8R8_UNORM:
-        case WINED3DFMT_B8G8R8A8_UNORM:
-        case WINED3DFMT_B8G8R8X8_UNORM:
-        case WINED3DFMT_B5G6R5_UNORM:
-        case WINED3DFMT_B5G5R5X1_UNORM:
-        case WINED3DFMT_B5G5R5A1_UNORM:
-        case WINED3DFMT_B4G4R4A4_UNORM:
-        case WINED3DFMT_B2G3R3_UNORM:
-        case WINED3DFMT_R8_UNORM:
-        case WINED3DFMT_A8_UNORM:
-        case WINED3DFMT_B2G3R3A8_UNORM:
-        case WINED3DFMT_B4G4R4X4_UNORM:
-        case WINED3DFMT_R10G10B10A2_UNORM:
-        case WINED3DFMT_R10G10B10A2_SNORM:
-        case WINED3DFMT_R8G8B8A8_UNORM:
-        case WINED3DFMT_R8G8B8X8_UNORM:
-        case WINED3DFMT_R16G16_UNORM:
-        case WINED3DFMT_B10G10R10A2_UNORM:
-            float_color->r = color_to_float(color, format->red_size, format->red_offset);
-            float_color->g = color_to_float(color, format->green_size, format->green_offset);
-            float_color->b = color_to_float(color, format->blue_size, format->blue_offset);
-            float_color->a = color_to_float(color, format->alpha_size, format->alpha_offset);
-            return TRUE;
-
-        case WINED3DFMT_P8_UINT:
-            if (palette)
-            {
-                float_color->r = palette->colors[color].rgbRed / 255.0f;
-                float_color->g = palette->colors[color].rgbGreen / 255.0f;
-                float_color->b = palette->colors[color].rgbBlue / 255.0f;
-            }
-            else
-            {
-                float_color->r = 0.0f;
-                float_color->g = 0.0f;
-                float_color->b = 0.0f;
-            }
-            float_color->a = color / 255.0f;
-            return TRUE;
-
-        case WINED3DFMT_S1_UINT_D15_UNORM:
-        case WINED3DFMT_D16_UNORM:
-        case WINED3DFMT_D24_UNORM_S8_UINT:
-        case WINED3DFMT_X8D24_UNORM:
-        case WINED3DFMT_D32_UNORM:
-            float_color->r = color_to_float(color, format->depth_size, 0);
-            return TRUE;
-
-        default:
-            ERR("Unhandled conversion from %s to floating point.\n", debug_d3dformat(format->id));
-            return FALSE;
-    }
 }
 
 void wined3d_format_get_float_color_key(const struct wined3d_format *format,
@@ -5849,36 +5792,6 @@ int wined3d_ffp_vertex_program_key_compare(const void *key, const struct wine_rb
             const struct wined3d_ffp_vs_desc, entry)->settings;
 
     return memcmp(ka, kb, sizeof(*ka));
-}
-
-const struct wined3d_blitter_ops *wined3d_select_blitter(const struct wined3d_gl_info *gl_info,
-        const struct wined3d_d3d_info *d3d_info, enum wined3d_blit_op blit_op,
-        const RECT *src_rect, DWORD src_usage, enum wined3d_pool src_pool, const struct wined3d_format *src_format,
-        const RECT *dst_rect, DWORD dst_usage, enum wined3d_pool dst_pool, const struct wined3d_format *dst_format)
-{
-    static const struct wined3d_blitter_ops * const blitters[] =
-    {
-        &arbfp_blit,
-        &ffp_blit,
-        &cpu_blit,
-    };
-    unsigned int i;
-
-    TRACE("gl_info %p, d3d_info %p, blit_op %#x, src_rect %s, src_usage %s, src_pool %s, src_format %s, "
-            "dst_rect %s, dst_usage %s, dst_pool %s, dst_format %s.\n", gl_info, d3d_info, blit_op,
-            wine_dbgstr_rect(src_rect), debug_d3dusage(src_usage), debug_d3dpool(src_pool),
-            src_format ? debug_d3dformat(src_format->id) : "(null)", wine_dbgstr_rect(dst_rect),
-            debug_d3dusage(dst_usage), debug_d3dpool(dst_pool), debug_d3dformat(dst_format->id));
-
-    for (i = 0; i < sizeof(blitters) / sizeof(*blitters); ++i)
-    {
-        if (blitters[i]->blit_supported(gl_info, d3d_info, blit_op,
-                src_rect, src_usage, src_pool, src_format,
-                dst_rect, dst_usage, dst_pool, dst_format))
-            return blitters[i];
-    }
-
-    return NULL;
 }
 
 void wined3d_get_draw_rect(const struct wined3d_state *state, RECT *rect)

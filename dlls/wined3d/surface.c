@@ -497,9 +497,9 @@ static void surface_blt_fbo(const struct wined3d_device *device,
         context_restore(context, restore_rt);
 }
 
-static BOOL fbo_blit_supported(const struct wined3d_gl_info *gl_info, enum wined3d_blit_op blit_op,
-        const RECT *src_rect, DWORD src_usage, enum wined3d_pool src_pool, const struct wined3d_format *src_format,
-        const RECT *dst_rect, DWORD dst_usage, enum wined3d_pool dst_pool, const struct wined3d_format *dst_format)
+static BOOL fbo_blitter_supported(const struct wined3d_gl_info *gl_info, enum wined3d_blit_op blit_op,
+        DWORD src_usage, enum wined3d_pool src_pool, const struct wined3d_format *src_format,
+        DWORD dst_usage, enum wined3d_pool dst_pool, const struct wined3d_format *dst_format)
 {
     if ((wined3d_settings.offscreen_rendering_mode != ORM_FBO) || !gl_info->fbo_ops.glBlitFramebuffer)
         return FALSE;
@@ -541,63 +541,6 @@ static BOOL fbo_blit_supported(const struct wined3d_gl_info *gl_info, enum wined
     }
 
     return TRUE;
-}
-
-static HRESULT wined3d_surface_depth_fill(struct wined3d_surface *surface, const RECT *rect, float depth)
-{
-    struct wined3d_resource *resource = &surface->container->resource;
-    struct wined3d_device *device = resource->device;
-    const struct wined3d_blitter_ops *blitter;
-    struct wined3d_rendertarget_view *view;
-    struct wined3d_view_desc view_desc;
-    HRESULT hr;
-
-    if (!(blitter = wined3d_select_blitter(&device->adapter->gl_info, &device->adapter->d3d_info,
-            WINED3D_BLIT_OP_DEPTH_FILL, NULL, 0, 0, NULL, rect, resource->usage, resource->pool, resource->format)))
-    {
-        FIXME("No blitter is capable of performing the requested depth fill operation.\n");
-        return WINED3DERR_INVALIDCALL;
-    }
-
-    view_desc.format_id = resource->format->id;
-    view_desc.flags = 0;
-    view_desc.u.texture.level_idx = surface->texture_level;
-    view_desc.u.texture.level_count = 1;
-    view_desc.u.texture.layer_idx = surface->texture_layer;
-    view_desc.u.texture.layer_count = 1;
-    if (FAILED(hr = wined3d_rendertarget_view_create(&view_desc,
-            resource, NULL, &wined3d_null_parent_ops, &view)))
-    {
-        ERR("Failed to create rendertarget view, hr %#x.\n", hr);
-        return hr;
-    }
-
-    hr = blitter->depth_fill(device, view, rect, WINED3DCLEAR_ZBUFFER, depth, 0);
-    wined3d_rendertarget_view_decref(view);
-
-    return hr;
-}
-
-static HRESULT wined3d_surface_depth_blt(struct wined3d_surface *src_surface, DWORD src_location, const RECT *src_rect,
-        struct wined3d_surface *dst_surface, DWORD dst_location, const RECT *dst_rect)
-{
-    struct wined3d_texture *src_texture = src_surface->container;
-    struct wined3d_texture *dst_texture = dst_surface->container;
-    struct wined3d_device *device = src_texture->resource.device;
-    unsigned int dst_sub_resource_idx;
-
-    if (!fbo_blit_supported(&device->adapter->gl_info, WINED3D_BLIT_OP_DEPTH_BLIT,
-            src_rect, src_texture->resource.usage, src_texture->resource.pool, src_texture->resource.format,
-            dst_rect, dst_texture->resource.usage, dst_texture->resource.pool, dst_texture->resource.format))
-        return WINED3DERR_INVALIDCALL;
-
-    surface_depth_blt_fbo(device, src_surface, src_location, src_rect, dst_surface, dst_location, dst_rect);
-
-    dst_sub_resource_idx = surface_get_sub_resource_idx(dst_surface);
-    wined3d_texture_validate_location(dst_texture, dst_sub_resource_idx, dst_location);
-    wined3d_texture_invalidate_location(dst_texture, dst_sub_resource_idx, ~dst_location);
-
-    return WINED3D_OK;
 }
 
 /* This call just downloads data, the caller is responsible for binding the
@@ -1454,64 +1397,6 @@ static struct wined3d_texture *surface_convert_format(struct wined3d_texture *sr
     return dst_texture;
 }
 
-static HRESULT _Blt_ColorFill(BYTE *buf, unsigned int width, unsigned int height,
-        unsigned int bpp, UINT pitch, DWORD color)
-{
-    BYTE *first;
-    unsigned int x, y;
-
-    /* Do first row */
-
-#define COLORFILL_ROW(type) \
-do { \
-    type *d = (type *)buf; \
-    for (x = 0; x < width; ++x) \
-        d[x] = (type)color; \
-} while(0)
-
-    switch (bpp)
-    {
-        case 1:
-            COLORFILL_ROW(BYTE);
-            break;
-
-        case 2:
-            COLORFILL_ROW(WORD);
-            break;
-
-        case 3:
-        {
-            BYTE *d = buf;
-            for (x = 0; x < width; ++x, d += 3)
-            {
-                d[0] = (color      ) & 0xff;
-                d[1] = (color >>  8) & 0xff;
-                d[2] = (color >> 16) & 0xff;
-            }
-            break;
-        }
-        case 4:
-            COLORFILL_ROW(DWORD);
-            break;
-
-        default:
-            FIXME("Color fill not implemented for bpp %u!\n", bpp * 8);
-            return WINED3DERR_NOTAVAILABLE;
-    }
-
-#undef COLORFILL_ROW
-
-    /* Now copy first row. */
-    first = buf;
-    for (y = 1; y < height; ++y)
-    {
-        buf += pitch;
-        memcpy(buf, first, width * bpp);
-    }
-
-    return WINED3D_OK;
-}
-
 static void read_from_framebuffer(struct wined3d_surface *surface,
         struct wined3d_context *old_ctx, DWORD dst_location)
 {
@@ -2101,41 +1986,6 @@ void surface_translate_drawable_coords(const struct wined3d_surface *surface, HW
     rect->bottom = drawable_height - rect->bottom;
 }
 
-HRESULT surface_color_fill(struct wined3d_surface *s, const RECT *rect, const struct wined3d_color *color)
-{
-    struct wined3d_resource *resource = &s->container->resource;
-    struct wined3d_device *device = resource->device;
-    const struct wined3d_blitter_ops *blitter;
-    struct wined3d_rendertarget_view *view;
-    struct wined3d_view_desc view_desc;
-    HRESULT hr;
-
-    if (!(blitter = wined3d_select_blitter(&device->adapter->gl_info, &device->adapter->d3d_info,
-            WINED3D_BLIT_OP_COLOR_FILL, NULL, 0, 0, NULL, rect, resource->usage, resource->pool, resource->format)))
-    {
-        FIXME("No blitter is capable of performing the requested color fill operation.\n");
-        return WINED3DERR_INVALIDCALL;
-    }
-
-    view_desc.format_id = resource->format->id;
-    view_desc.flags = 0;
-    view_desc.u.texture.level_idx = s->texture_level;
-    view_desc.u.texture.level_count = 1;
-    view_desc.u.texture.layer_idx = s->texture_layer;
-    view_desc.u.texture.layer_count = 1;
-    if (FAILED(hr = wined3d_rendertarget_view_create(&view_desc,
-            resource, NULL, &wined3d_null_parent_ops, &view)))
-    {
-        ERR("Failed to create rendertarget view, hr %#x.\n", hr);
-        return hr;
-    }
-
-    hr = blitter->color_fill(device, view, rect, color);
-    wined3d_rendertarget_view_decref(view);
-
-    return hr;
-}
-
 static HRESULT surface_blt_special(struct wined3d_surface *dst_surface, const RECT *dst_rect,
         struct wined3d_surface *src_surface, const RECT *src_rect, DWORD flags,
         const struct wined3d_blt_fx *fx, enum wined3d_texture_filter_type filter)
@@ -2345,8 +2195,10 @@ static BOOL surface_load_drawable(struct wined3d_surface *surface,
 
     surface_get_rect(surface, NULL, &r);
     wined3d_texture_load_location(texture, sub_resource_idx, context, WINED3D_LOCATION_TEXTURE_RGB);
-    device->blitter->blit_surface(device, WINED3D_BLIT_OP_COLOR_BLIT, context, surface, &r,
-            surface, WINED3D_LOCATION_DRAWABLE, &r, NULL, WINED3D_TEXF_POINT);
+    device->blitter->ops->blitter_blit(device->blitter, WINED3D_BLIT_OP_COLOR_BLIT, context,
+            surface, WINED3D_LOCATION_TEXTURE_RGB, &r,
+            surface, WINED3D_LOCATION_DRAWABLE, &r,
+            NULL, WINED3D_TEXF_POINT);
 
     if (restore_rt)
         context_restore(context, restore_rt);
@@ -2389,9 +2241,9 @@ static BOOL surface_load_texture(struct wined3d_surface *surface,
 
     if (!depth && sub_resource->locations & (WINED3D_LOCATION_TEXTURE_SRGB | WINED3D_LOCATION_TEXTURE_RGB)
             && (texture->resource.format_flags & WINED3DFMT_FLAG_FBO_ATTACHABLE_SRGB)
-            && fbo_blit_supported(gl_info, WINED3D_BLIT_OP_COLOR_BLIT,
-                NULL, texture->resource.usage, texture->resource.pool, texture->resource.format,
-                NULL, texture->resource.usage, texture->resource.pool, texture->resource.format))
+            && fbo_blitter_supported(gl_info, WINED3D_BLIT_OP_COLOR_BLIT,
+                    texture->resource.usage, texture->resource.pool, texture->resource.format,
+                    texture->resource.usage, texture->resource.pool, texture->resource.format))
     {
         if (srgb)
             surface_blt_fbo(device, context, WINED3D_TEXF_POINT, surface, WINED3D_LOCATION_TEXTURE_RGB,
@@ -2405,9 +2257,9 @@ static BOOL surface_load_texture(struct wined3d_surface *surface,
 
     if (!depth && sub_resource->locations & (WINED3D_LOCATION_RB_MULTISAMPLE | WINED3D_LOCATION_RB_RESOLVED)
             && (!srgb || (texture->resource.format_flags & WINED3DFMT_FLAG_FBO_ATTACHABLE_SRGB))
-            && fbo_blit_supported(gl_info, WINED3D_BLIT_OP_COLOR_BLIT,
-                NULL, texture->resource.usage, texture->resource.pool, texture->resource.format,
-                NULL, texture->resource.usage, texture->resource.pool, texture->resource.format))
+            && fbo_blitter_supported(gl_info, WINED3D_BLIT_OP_COLOR_BLIT,
+                    texture->resource.usage, texture->resource.pool, texture->resource.format,
+                    texture->resource.usage, texture->resource.pool, texture->resource.format))
     {
         DWORD src_location = sub_resource->locations & WINED3D_LOCATION_RB_RESOLVED ?
                 WINED3D_LOCATION_RB_RESOLVED : WINED3D_LOCATION_RB_MULTISAMPLE;
@@ -2587,14 +2439,101 @@ BOOL surface_load_location(struct wined3d_surface *surface, struct wined3d_conte
     }
 }
 
-static HRESULT ffp_blit_alloc(struct wined3d_device *device) { return WINED3D_OK; }
 /* Context activation is done by the caller. */
-static void ffp_blit_free(struct wined3d_device *device) { }
+static void fbo_blitter_destroy(struct wined3d_blitter *blitter, struct wined3d_context *context)
+{
+    struct wined3d_blitter *next;
+
+    if ((next = blitter->next))
+        next->ops->blitter_destroy(next, context);
+}
+
+static void fbo_blitter_clear(struct wined3d_blitter *blitter, struct wined3d_device *device,
+        unsigned int rt_count, const struct wined3d_fb_state *fb, unsigned int rect_count, const RECT *clear_rects,
+        const RECT *draw_rect, DWORD flags, const struct wined3d_color *colour, float depth, DWORD stencil)
+{
+    struct wined3d_blitter *next;
+
+    if ((next = blitter->next))
+        next->ops->blitter_clear(next, device, rt_count, fb, rect_count,
+                clear_rects, draw_rect, flags, colour, depth, stencil);
+}
+
+static void fbo_blitter_blit(struct wined3d_blitter *blitter, enum wined3d_blit_op op,
+        struct wined3d_context *context, struct wined3d_surface *src_surface, DWORD src_location,
+        const RECT *src_rect, struct wined3d_surface *dst_surface, DWORD dst_location, const RECT *dst_rect,
+        const struct wined3d_color_key *colour_key, enum wined3d_texture_filter_type filter)
+{
+    struct wined3d_resource *src_resource = &src_surface->container->resource;
+    struct wined3d_resource *dst_resource = &dst_surface->container->resource;
+    struct wined3d_device *device = dst_resource->device;
+    struct wined3d_blitter *next;
+
+    if (!fbo_blitter_supported(&device->adapter->gl_info, op,
+            src_resource->usage, src_resource->pool, src_resource->format,
+            src_resource->usage, dst_resource->pool, dst_resource->format))
+    {
+        if ((next = blitter->next))
+            next->ops->blitter_blit(next, op, context, src_surface, src_location,
+                    src_rect, dst_surface, dst_location, dst_rect, colour_key, filter);
+        return;
+    }
+
+    if (op == WINED3D_BLIT_OP_COLOR_BLIT)
+    {
+        TRACE("Colour blit.\n");
+        surface_blt_fbo(device, context, filter, src_surface, src_location,
+                src_rect, dst_surface, dst_location, dst_rect);
+        return;
+    }
+
+    if (op == WINED3D_BLIT_OP_DEPTH_BLIT)
+    {
+        TRACE("Depth/stencil blit.\n");
+        surface_depth_blt_fbo(device, src_surface, src_location, src_rect, dst_surface, dst_location, dst_rect);
+        return;
+    }
+
+    ERR("This blitter does not implement blit op %#x.\n", op);
+}
+
+static const struct wined3d_blitter_ops fbo_blitter_ops =
+{
+    fbo_blitter_destroy,
+    fbo_blitter_clear,
+    fbo_blitter_blit,
+};
+
+void wined3d_fbo_blitter_create(struct wined3d_blitter **next, const struct wined3d_gl_info *gl_info)
+{
+    struct wined3d_blitter *blitter;
+
+    if ((wined3d_settings.offscreen_rendering_mode != ORM_FBO) || !gl_info->fbo_ops.glBlitFramebuffer)
+        return;
+
+    if (!(blitter = HeapAlloc(GetProcessHeap(), 0, sizeof(*blitter))))
+        return;
+
+    TRACE("Created blitter %p.\n", blitter);
+
+    blitter->ops = &fbo_blitter_ops;
+    blitter->next = *next;
+    *next = blitter;
+}
+
+/* Context activation is done by the caller. */
+static void ffp_blitter_destroy(struct wined3d_blitter *blitter, struct wined3d_context *context)
+{
+    struct wined3d_blitter *next;
+
+    if ((next = blitter->next))
+        next->ops->blitter_destroy(next, context);
+}
 
 static BOOL ffp_blit_supported(const struct wined3d_gl_info *gl_info,
         const struct wined3d_d3d_info *d3d_info, enum wined3d_blit_op blit_op,
-        const RECT *src_rect, DWORD src_usage, enum wined3d_pool src_pool, const struct wined3d_format *src_format,
-        const RECT *dst_rect, DWORD dst_usage, enum wined3d_pool dst_pool, const struct wined3d_format *dst_format)
+        DWORD src_usage, enum wined3d_pool src_pool, const struct wined3d_format *src_format,
+        DWORD dst_usage, enum wined3d_pool dst_pool, const struct wined3d_format *dst_format)
 {
     BOOL decompress;
 
@@ -2616,6 +2555,9 @@ static BOOL ffp_blit_supported(const struct wined3d_gl_info *gl_info,
             }
         case WINED3D_BLIT_OP_COLOR_BLIT:
         case WINED3D_BLIT_OP_COLOR_BLIT_ALPHATEST:
+            if (!gl_info->supported[WINED3D_GL_LEGACY_CONTEXT])
+                return FALSE;
+
             if (TRACE_ON(d3d))
             {
                 TRACE("Checking support for fixup:\n");
@@ -2637,67 +2579,92 @@ static BOOL ffp_blit_supported(const struct wined3d_gl_info *gl_info,
             }
             return TRUE;
 
-        case WINED3D_BLIT_OP_COLOR_FILL:
-            if (wined3d_settings.offscreen_rendering_mode == ORM_FBO)
-            {
-                if (!((dst_format->flags[WINED3D_GL_RES_TYPE_TEX_2D] & WINED3DFMT_FLAG_FBO_ATTACHABLE)
-                        || (dst_usage & WINED3DUSAGE_RENDERTARGET)))
-                    return FALSE;
-            }
-            else if (!(dst_usage & WINED3DUSAGE_RENDERTARGET))
-            {
-                TRACE("Color fill not supported\n");
-                return FALSE;
-            }
-
-            /* FIXME: We should reject color fills on formats with fixups,
-             * but this would break P8 color fills for example. */
-
-            return TRUE;
-
-        case WINED3D_BLIT_OP_DEPTH_FILL:
-            return TRUE;
-
         default:
             TRACE("Unsupported blit_op=%d\n", blit_op);
             return FALSE;
     }
 }
 
-static HRESULT ffp_blit_color_fill(struct wined3d_device *device, struct wined3d_rendertarget_view *view,
-        const RECT *rect, const struct wined3d_color *color)
+static void ffp_blitter_clear(struct wined3d_blitter *blitter, struct wined3d_device *device,
+        unsigned int rt_count, const struct wined3d_fb_state *fb, unsigned int rect_count, const RECT *clear_rects,
+        const RECT *draw_rect, DWORD flags, const struct wined3d_color *colour, float depth, DWORD stencil)
 {
-    const RECT draw_rect = {0, 0, view->width, view->height};
-    struct wined3d_fb_state fb = {&view, NULL};
+    struct wined3d_rendertarget_view *view;
+    struct wined3d_resource *resource;
+    struct wined3d_blitter *next;
+    unsigned int i;
 
-    device_clear_render_targets(device, 1, &fb, 1, rect, &draw_rect, WINED3DCLEAR_TARGET, color, 0.0f, 0);
+    if (flags & WINED3DCLEAR_TARGET)
+    {
+        for (i = 0; i < rt_count; ++i)
+        {
+            if (!(view = fb->render_targets[i]))
+                continue;
 
-    return WINED3D_OK;
+            resource = view->resource;
+            if (resource->pool == WINED3D_POOL_SYSTEM_MEM)
+                goto next;
+
+            if (wined3d_settings.offscreen_rendering_mode == ORM_FBO)
+            {
+                if (!((view->format_flags & WINED3DFMT_FLAG_FBO_ATTACHABLE)
+                        || (resource->usage & WINED3DUSAGE_RENDERTARGET)))
+                    goto next;
+            }
+            else if (!(resource->usage & WINED3DUSAGE_RENDERTARGET))
+            {
+                goto next;
+            }
+
+            /* FIXME: We should reject colour fills on formats with fixups,
+             * but this would break P8 colour fills for example. */
+        }
+    }
+
+    if (flags & (WINED3DCLEAR_ZBUFFER | WINED3DCLEAR_STENCIL))
+    {
+        if (fb->depth_stencil && fb->depth_stencil->resource->pool == WINED3D_POOL_SYSTEM_MEM)
+            goto next;
+    }
+
+    device_clear_render_targets(device, rt_count, fb, rect_count,
+            clear_rects, draw_rect, flags, colour, depth, stencil);
+    return;
+
+next:
+    if ((next = blitter->next))
+        next->ops->blitter_clear(next, device, rt_count, fb, rect_count,
+                clear_rects, draw_rect, flags, colour, depth, stencil);
 }
 
-static HRESULT ffp_blit_depth_fill(struct wined3d_device *device,
-        struct wined3d_rendertarget_view *view, const RECT *rect, DWORD clear_flags,
-        float depth, DWORD stencil)
-{
-    const RECT draw_rect = {0, 0, view->width, view->height};
-    struct wined3d_fb_state fb = {NULL, view};
-
-    device_clear_render_targets(device, 0, &fb, 1, rect, &draw_rect, clear_flags, NULL, depth, stencil);
-
-    return WINED3D_OK;
-}
-
-static void ffp_blit_blit_surface(struct wined3d_device *device, enum wined3d_blit_op op,
-        struct wined3d_context *context, struct wined3d_surface *src_surface, const RECT *src_rect,
-        struct wined3d_surface *dst_surface, DWORD dst_location, const RECT *dst_rect,
+static void ffp_blitter_blit(struct wined3d_blitter *blitter, enum wined3d_blit_op op,
+        struct wined3d_context *context, struct wined3d_surface *src_surface, DWORD src_location,
+        const RECT *src_rect, struct wined3d_surface *dst_surface, DWORD dst_location, const RECT *dst_rect,
         const struct wined3d_color_key *color_key, enum wined3d_texture_filter_type filter)
 {
     struct wined3d_texture *src_texture = src_surface->container;
     struct wined3d_texture *dst_texture = dst_surface->container;
     const struct wined3d_gl_info *gl_info = context->gl_info;
+    struct wined3d_resource *src_resource, *dst_resource;
     struct wined3d_color_key old_blt_key;
+    struct wined3d_device *device;
+    struct wined3d_blitter *next;
     DWORD old_color_key_flags;
     RECT r;
+
+    src_resource = &src_texture->resource;
+    dst_resource = &dst_texture->resource;
+    device = dst_resource->device;
+
+    if (!ffp_blit_supported(&device->adapter->gl_info, &device->adapter->d3d_info, op,
+            src_resource->usage, src_resource->pool, src_resource->format,
+            dst_resource->usage, dst_resource->pool, dst_resource->format))
+    {
+        if ((next = blitter->next))
+            next->ops->blitter_blit(next, op, context, src_surface, src_location,
+                    src_rect, dst_surface, dst_location, dst_rect, color_key, filter);
+        return;
+    }
 
     TRACE("Blt from surface %p to rendertarget %p\n", src_surface, dst_surface);
 
@@ -2793,35 +2760,34 @@ static void ffp_blit_blit_surface(struct wined3d_device *device, enum wined3d_bl
             (old_color_key_flags & WINED3D_CKEY_SRC_BLT) ? &old_blt_key : NULL);
 }
 
-const struct wined3d_blitter_ops ffp_blit =
+static const struct wined3d_blitter_ops ffp_blitter_ops =
 {
-    ffp_blit_alloc,
-    ffp_blit_free,
-    ffp_blit_supported,
-    ffp_blit_color_fill,
-    ffp_blit_depth_fill,
-    ffp_blit_blit_surface,
+    ffp_blitter_destroy,
+    ffp_blitter_clear,
+    ffp_blitter_blit,
 };
 
-static HRESULT cpu_blit_alloc(struct wined3d_device *device)
+void wined3d_ffp_blitter_create(struct wined3d_blitter **next, const struct wined3d_gl_info *gl_info)
 {
-    return WINED3D_OK;
+    struct wined3d_blitter *blitter;
+
+    if (!(blitter = HeapAlloc(GetProcessHeap(), 0, sizeof(*blitter))))
+        return;
+
+    TRACE("Created blitter %p.\n", blitter);
+
+    blitter->ops = &ffp_blitter_ops;
+    blitter->next = *next;
+    *next = blitter;
 }
 
 /* Context activation is done by the caller. */
-static void cpu_blit_free(struct wined3d_device *device)
+static void cpu_blitter_destroy(struct wined3d_blitter *blitter, struct wined3d_context *context)
 {
-}
+    struct wined3d_blitter *next;
 
-static BOOL cpu_blit_supported(const struct wined3d_gl_info *gl_info,
-        const struct wined3d_d3d_info *d3d_info, enum wined3d_blit_op blit_op,
-        const RECT *src_rect, DWORD src_usage, enum wined3d_pool src_pool, const struct wined3d_format *src_format,
-        const RECT *dst_rect, DWORD dst_usage, enum wined3d_pool dst_pool, const struct wined3d_format *dst_format)
-{
-    if (blit_op == WINED3D_BLIT_OP_COLOR_FILL || blit_op == WINED3D_BLIT_OP_DEPTH_FILL)
-        return TRUE;
-
-    return FALSE;
+    if ((next = blitter->next))
+        next->ops->blitter_destroy(next, context);
 }
 
 static HRESULT surface_cpu_blt_compressed(const BYTE *src_data, BYTE *dst_data,
@@ -3030,13 +2996,6 @@ static HRESULT surface_cpu_blt(struct wined3d_texture *dst_texture, unsigned int
                 src_map.row_pitch, dst_map.row_pitch, dst_width, dst_height,
                 src_format, flags, fx);
         goto release;
-    }
-
-    /* First, all the 'source-less' blits */
-    if (flags & (WINED3D_BLT_COLOR_FILL | WINED3D_BLT_DEPTH_FILL))
-    {
-        hr = _Blt_ColorFill(dbuf, dst_width, dst_height, bpp, dst_map.row_pitch, fx->fill_color);
-        flags &= ~(WINED3D_BLT_COLOR_FILL | WINED3D_BLT_DEPTH_FILL);
     }
 
     /* Now the 'with source' blits. */
@@ -3393,56 +3352,181 @@ release:
     return hr;
 }
 
-static HRESULT cpu_blit_color_fill(struct wined3d_device *device, struct wined3d_rendertarget_view *view,
-        const RECT *rect, const struct wined3d_color *color)
+static void surface_cpu_blt_colour_fill(struct wined3d_rendertarget_view *view,
+        const struct wined3d_box *box, const struct wined3d_color *colour)
 {
-    const struct wined3d_box box = {rect->left, rect->top, rect->right, rect->bottom, 0, 1};
-    static const struct wined3d_box src_box;
-    struct wined3d_blt_fx fx;
+    unsigned int x, y, w, h, bpp;
+    struct wined3d_map_desc map;
+    BYTE *row;
+    DWORD c;
 
-    fx.fill_color = wined3d_format_convert_from_float(view->format, color);
-    return surface_cpu_blt(texture_from_resource(view->resource), view->sub_resource_idx,
-            &box, NULL, 0, &src_box, WINED3D_BLT_COLOR_FILL, &fx, WINED3D_TEXF_POINT);
-}
+    TRACE("view %p, box %s, colour %s.\n", view, debug_box(box), debug_color(colour));
 
-static HRESULT cpu_blit_depth_fill(struct wined3d_device *device,
-        struct wined3d_rendertarget_view *view,  const RECT *rect, DWORD clear_flags,
-        float depth, DWORD stencil)
-{
-    const struct wined3d_box box = {rect->left, rect->top, rect->right, rect->bottom, 0, 1};
-    struct wined3d_color color = {depth, 0.0f, 0.0f, 0.0f};
-    static const struct wined3d_box src_box;
-    struct wined3d_blt_fx fx;
-
-    if (clear_flags != WINED3DCLEAR_ZBUFFER)
+    if (view->format_flags & WINED3DFMT_FLAG_BLOCKS)
     {
-        FIXME("clear_flags %#x not implemented.\n", clear_flags);
-        return WINED3DERR_INVALIDCALL;
+        FIXME("Not implemented for format %s.\n", debug_d3dformat(view->format->id));
+        return;
     }
 
-    fx.fill_color = wined3d_format_convert_from_float(view->format, &color);
-    return surface_cpu_blt(texture_from_resource(view->resource), view->sub_resource_idx,
-            &box, NULL, 0, &src_box, WINED3D_BLT_DEPTH_FILL, &fx, WINED3D_TEXF_POINT);
+    c = wined3d_format_convert_from_float(view->format, colour);
+    bpp = view->format->byte_count;
+    w = box->right - box->left;
+    h = box->bottom - box->top;
+
+    wined3d_resource_map(view->resource, view->sub_resource_idx, &map, box, 0);
+
+    switch (bpp)
+    {
+        case 1:
+            for (x = 0; x < w; ++x)
+            {
+                ((BYTE *)map.data)[x] = c;
+            }
+            break;
+
+        case 2:
+            for (x = 0; x < w; ++x)
+            {
+                ((WORD *)map.data)[x] = c;
+            }
+            break;
+
+        case 3:
+        {
+            row = map.data;
+            for (x = 0; x < w; ++x, row += 3)
+            {
+                row[0] = (c      ) & 0xff;
+                row[1] = (c >>  8) & 0xff;
+                row[2] = (c >> 16) & 0xff;
+            }
+            break;
+        }
+        case 4:
+            for (x = 0; x < w; ++x)
+            {
+                ((DWORD *)map.data)[x] = c;
+            }
+            break;
+
+        default:
+            FIXME("Not implemented for bpp %u.\n", bpp);
+            wined3d_resource_unmap(view->resource, view->sub_resource_idx);
+            return;
+    }
+
+    row = map.data;
+    for (y = 1; y < h; ++y)
+    {
+        row += map.row_pitch;
+        memcpy(row, map.data, w * bpp);
+    }
+    wined3d_resource_unmap(view->resource, view->sub_resource_idx);
 }
 
-static void cpu_blit_blit_surface(struct wined3d_device *device, enum wined3d_blit_op op,
-        struct wined3d_context *context, struct wined3d_surface *src_surface, const RECT *src_rect,
-        struct wined3d_surface *dst_surface, DWORD dst_location, const RECT *dst_rect,
+static void cpu_blitter_clear(struct wined3d_blitter *blitter, struct wined3d_device *device,
+        unsigned int rt_count, const struct wined3d_fb_state *fb, unsigned int rect_count, const RECT *clear_rects,
+        const RECT *draw_rect, DWORD flags, const struct wined3d_color *colour, float depth, DWORD stencil)
+{
+    struct wined3d_color c = {depth, 0.0f, 0.0f, 0.0f};
+    struct wined3d_rendertarget_view *view;
+    struct wined3d_box box;
+    unsigned int i, j;
+
+    if (!rect_count)
+    {
+        rect_count = 1;
+        clear_rects = draw_rect;
+    }
+
+    for (i = 0; i < rect_count; ++i)
+    {
+        box.left = max(clear_rects[i].left, draw_rect->left);
+        box.top = max(clear_rects[i].top, draw_rect->top);
+        box.right = min(clear_rects[i].right, draw_rect->right);
+        box.bottom = min(clear_rects[i].bottom, draw_rect->bottom);
+        box.front = 0;
+        box.back = 1;
+
+        if (box.left >= box.right || box.top >= box.bottom)
+            continue;
+
+        if (flags & WINED3DCLEAR_TARGET)
+        {
+            for (j = 0; j < rt_count; ++j)
+            {
+                if ((view = fb->render_targets[j]))
+                    surface_cpu_blt_colour_fill(view, &box, colour);
+            }
+        }
+
+        if ((flags & WINED3DCLEAR_ZBUFFER) && (view = fb->depth_stencil))
+            surface_cpu_blt_colour_fill(view, &box, &c);
+    }
+
+    if (flags & ~(WINED3DCLEAR_TARGET | WINED3DCLEAR_ZBUFFER))
+        FIXME("flags %#x not implemented.\n", flags);
+}
+
+static void cpu_blitter_blit(struct wined3d_blitter *blitter, enum wined3d_blit_op op,
+        struct wined3d_context *context, struct wined3d_surface *src_surface, DWORD src_location,
+        const RECT *src_rect, struct wined3d_surface *dst_surface, DWORD dst_location, const RECT *dst_rect,
         const struct wined3d_color_key *color_key, enum wined3d_texture_filter_type filter)
 {
-    /* FIXME: Remove error returns from surface_blt_cpu. */
-    ERR("Blit method not implemented by cpu_blit.\n");
+    struct wined3d_box dst_box = {dst_rect->left, dst_rect->top, dst_rect->right, dst_rect->bottom, 0, 1};
+    struct wined3d_box src_box = {src_rect->left, src_rect->top, src_rect->right, src_rect->bottom, 0, 1};
+    unsigned int dst_sub_resource_idx = surface_get_sub_resource_idx(dst_surface);
+    unsigned int src_sub_resource_idx = surface_get_sub_resource_idx(src_surface);
+    struct wined3d_texture *dst_texture = dst_surface->container;
+    struct wined3d_texture *src_texture = src_surface->container;
+    struct wined3d_blt_fx fx;
+    DWORD flags = 0;
+
+    memset(&fx, 0, sizeof(fx));
+    switch (op)
+    {
+        case WINED3D_BLIT_OP_COLOR_BLIT:
+        case WINED3D_BLIT_OP_DEPTH_BLIT:
+            break;
+        case WINED3D_BLIT_OP_COLOR_BLIT_ALPHATEST:
+            flags |= WINED3D_BLT_ALPHA_TEST;
+            break;
+        case WINED3D_BLIT_OP_COLOR_BLIT_CKEY:
+            flags |= WINED3D_BLT_SRC_CKEY_OVERRIDE | WINED3D_BLT_FX;
+            fx.src_color_key = *color_key;
+            break;
+        default:
+            FIXME("Unhandled op %#x.\n", op);
+            break;
+    }
+
+    if (FAILED(surface_cpu_blt(dst_texture, dst_sub_resource_idx, &dst_box,
+            src_texture, src_sub_resource_idx, &src_box, flags, &fx, filter)))
+        ERR("Failed to blit.\n");
+    wined3d_texture_load_location(dst_texture, dst_sub_resource_idx, context, dst_location);
 }
 
-const struct wined3d_blitter_ops cpu_blit =
+static const struct wined3d_blitter_ops cpu_blitter_ops =
 {
-    cpu_blit_alloc,
-    cpu_blit_free,
-    cpu_blit_supported,
-    cpu_blit_color_fill,
-    cpu_blit_depth_fill,
-    cpu_blit_blit_surface,
+    cpu_blitter_destroy,
+    cpu_blitter_clear,
+    cpu_blitter_blit,
 };
+
+struct wined3d_blitter *wined3d_cpu_blitter_create(void)
+{
+    struct wined3d_blitter *blitter;
+
+    if (!(blitter = HeapAlloc(GetProcessHeap(), 0, sizeof(*blitter))))
+        return NULL;
+
+    TRACE("Created blitter %p.\n", blitter);
+
+    blitter->ops = &cpu_blitter_ops;
+    blitter->next = NULL;
+
+    return blitter;
+}
 
 HRESULT wined3d_surface_blt(struct wined3d_surface *dst_surface, const RECT *dst_rect,
         struct wined3d_surface *src_surface, const RECT *src_rect, DWORD flags,
@@ -3451,20 +3535,23 @@ HRESULT wined3d_surface_blt(struct wined3d_surface *dst_surface, const RECT *dst
     struct wined3d_box dst_box = {dst_rect->left, dst_rect->top, dst_rect->right, dst_rect->bottom, 0, 1};
     struct wined3d_box src_box = {src_rect->left, src_rect->top, src_rect->right, src_rect->bottom, 0, 1};
     unsigned int dst_sub_resource_idx = surface_get_sub_resource_idx(dst_surface);
+    unsigned int src_sub_resource_idx = surface_get_sub_resource_idx(src_surface);
+    struct wined3d_texture_sub_resource *src_sub_resource, *dst_sub_resource;
     struct wined3d_texture *dst_texture = dst_surface->container;
+    struct wined3d_texture *src_texture = src_surface->container;
     struct wined3d_device *device = dst_texture->resource.device;
     struct wined3d_swapchain *src_swapchain, *dst_swapchain;
-    struct wined3d_texture *src_texture = NULL;
-    unsigned int src_sub_resource_idx = 0;
+    const struct wined3d_color_key *colour_key = NULL;
     DWORD src_ds_flags, dst_ds_flags;
+    struct wined3d_context *context;
+    enum wined3d_blit_op blit_op;
     BOOL scale, convert;
+    DWORD dst_location;
 
     static const DWORD simple_blit = WINED3D_BLT_ASYNC
-            | WINED3D_BLT_COLOR_FILL
             | WINED3D_BLT_SRC_CKEY
             | WINED3D_BLT_SRC_CKEY_OVERRIDE
             | WINED3D_BLT_WAIT
-            | WINED3D_BLT_DEPTH_FILL
             | WINED3D_BLT_DO_NOT_WAIT
             | WINED3D_BLT_ALPHA_TEST;
 
@@ -3476,19 +3563,12 @@ HRESULT wined3d_surface_blt(struct wined3d_surface *dst_surface, const RECT *dst
     if (fx)
     {
         TRACE("fx %#x.\n", fx->fx);
-        TRACE("fill_color 0x%08x.\n", fx->fill_color);
         TRACE("dst_color_key {0x%08x, 0x%08x}.\n",
                 fx->dst_color_key.color_space_low_value,
                 fx->dst_color_key.color_space_high_value);
         TRACE("src_color_key {0x%08x, 0x%08x}.\n",
                 fx->src_color_key.color_space_low_value,
                 fx->src_color_key.color_space_high_value);
-    }
-
-    if (src_surface)
-    {
-        src_texture = src_surface->container;
-        src_sub_resource_idx = surface_get_sub_resource_idx(src_surface);
     }
 
     if (!fx || !(fx->fx))
@@ -3538,11 +3618,7 @@ HRESULT wined3d_surface_blt(struct wined3d_surface *dst_surface, const RECT *dst
         goto fallback;
     }
 
-    if (src_texture)
-        src_swapchain = src_texture->swapchain;
-    else
-        src_swapchain = NULL;
-
+    src_swapchain = src_texture->swapchain;
     dst_swapchain = dst_texture->swapchain;
 
     /* This isn't strictly needed. FBO blits for example could deal with
@@ -3556,185 +3632,132 @@ HRESULT wined3d_surface_blt(struct wined3d_surface *dst_surface, const RECT *dst
         goto fallback;
     }
 
-    scale = src_texture
-            && (src_rect->right - src_rect->left != dst_rect->right - dst_rect->left
-            || src_rect->bottom - src_rect->top != dst_rect->bottom - dst_rect->top);
-    convert = src_texture && src_texture->resource.format->id != dst_texture->resource.format->id;
+    scale = src_rect->right - src_rect->left != dst_rect->right - dst_rect->left
+            || src_rect->bottom - src_rect->top != dst_rect->bottom - dst_rect->top;
+    convert = src_texture->resource.format->id != dst_texture->resource.format->id;
 
     dst_ds_flags = dst_texture->resource.format_flags
             & (WINED3DFMT_FLAG_DEPTH | WINED3DFMT_FLAG_STENCIL);
-    if (src_texture)
-        src_ds_flags = src_texture->resource.format_flags
-                & (WINED3DFMT_FLAG_DEPTH | WINED3DFMT_FLAG_STENCIL);
-    else
-        src_ds_flags = 0;
+    src_ds_flags = src_texture->resource.format_flags
+            & (WINED3DFMT_FLAG_DEPTH | WINED3DFMT_FLAG_STENCIL);
 
     if (src_ds_flags || dst_ds_flags)
     {
-        if (flags & WINED3D_BLT_DEPTH_FILL)
-        {
-            struct wined3d_color color;
+        TRACE("Depth/stencil blit.\n");
 
-            TRACE("Depth fill.\n");
+        if (dst_texture->resource.pool == WINED3D_POOL_SYSTEM_MEM)
+            dst_location = dst_texture->resource.map_binding;
+        else
+            dst_location = dst_texture->resource.draw_binding;
 
-            if (!wined3d_format_convert_color_to_float(dst_texture->resource.format, NULL, fx->fill_color, &color))
-                return WINED3DERR_INVALIDCALL;
+        context = context_acquire(device, dst_texture, dst_sub_resource_idx);
+        device->blitter->ops->blitter_blit(device->blitter, WINED3D_BLIT_OP_DEPTH_BLIT, context,
+                src_surface, src_texture->resource.draw_binding, src_rect,
+                dst_surface, dst_location, dst_rect, NULL, filter);
+        context_release(context);
 
-            if (SUCCEEDED(wined3d_surface_depth_fill(dst_surface, dst_rect, color.r)))
-                return WINED3D_OK;
-        }
-        else if (SUCCEEDED(wined3d_surface_depth_blt(src_surface, src_texture->resource.draw_binding,
-                src_rect, dst_surface, dst_texture->resource.draw_binding, dst_rect)))
-        {
-            return WINED3D_OK;
-        }
+        wined3d_texture_validate_location(dst_texture, dst_sub_resource_idx, dst_location);
+        wined3d_texture_invalidate_location(dst_texture, dst_sub_resource_idx, ~dst_location);
+
+        return WINED3D_OK;
     }
-    else
+
+    TRACE("Colour blit.\n");
+
+    dst_sub_resource = &dst_texture->sub_resources[dst_sub_resource_idx];
+    src_sub_resource = &src_texture->sub_resources[src_sub_resource_idx];
+
+    /* In principle this would apply to depth blits as well, but we don't
+     * implement those in the CPU blitter at the moment. */
+    if ((dst_sub_resource->locations & dst_texture->resource.map_binding)
+            && (src_sub_resource->locations & src_texture->resource.map_binding))
     {
-        struct wined3d_texture_sub_resource *src_sub_resource, *dst_sub_resource;
-        const struct wined3d_blitter_ops *blitter;
+        if (scale)
+            TRACE("Not doing sysmem blit because of scaling.\n");
+        else if (convert)
+            TRACE("Not doing sysmem blit because of format conversion.\n");
+        else
+            goto cpu;
+    }
 
-        dst_sub_resource = surface_get_sub_resource(dst_surface);
-        src_sub_resource = src_texture ? &src_texture->sub_resources[src_sub_resource_idx] : NULL;
-
-        /* In principle this would apply to depth blits as well, but we don't
-         * implement those in the CPU blitter at the moment. */
-        if ((dst_sub_resource->locations & dst_texture->resource.map_binding)
-                && (!src_texture || (src_sub_resource->locations & src_texture->resource.map_binding)))
-        {
-            if (scale)
-                TRACE("Not doing sysmem blit because of scaling.\n");
-            else if (convert)
-                TRACE("Not doing sysmem blit because of format conversion.\n");
-            else
-                goto cpu;
-        }
-
-        if (flags & WINED3D_BLT_COLOR_FILL)
-        {
-            struct wined3d_color color;
-            const struct wined3d_palette *palette = dst_swapchain ? dst_swapchain->palette : NULL;
-
-            TRACE("Color fill.\n");
-
-            if (!wined3d_format_convert_color_to_float(dst_texture->resource.format,
-                    palette, fx->fill_color, &color))
-                goto fallback;
-
-            if (SUCCEEDED(surface_color_fill(dst_surface, dst_rect, &color)))
-                return WINED3D_OK;
-        }
+    blit_op = WINED3D_BLIT_OP_COLOR_BLIT;
+    if (flags & WINED3D_BLT_SRC_CKEY_OVERRIDE)
+    {
+        colour_key = &fx->src_color_key;
+        blit_op = WINED3D_BLIT_OP_COLOR_BLIT_CKEY;
+    }
+    else if (flags & WINED3D_BLT_SRC_CKEY)
+    {
+        colour_key = &src_texture->async.src_blt_color_key;
+        blit_op = WINED3D_BLIT_OP_COLOR_BLIT_CKEY;
+    }
+    else if (flags & WINED3D_BLT_ALPHA_TEST)
+    {
+        blit_op = WINED3D_BLIT_OP_COLOR_BLIT_ALPHATEST;
+    }
+    else if ((src_sub_resource->locations & WINED3D_LOCATION_SYSMEM)
+            && !(dst_sub_resource->locations & WINED3D_LOCATION_SYSMEM))
+    {
+        /* Upload */
+        if (scale)
+            TRACE("Not doing upload because of scaling.\n");
+        else if (convert)
+            TRACE("Not doing upload because of format conversion.\n");
         else
         {
-            enum wined3d_blit_op blit_op = WINED3D_BLIT_OP_COLOR_BLIT;
-            const struct wined3d_color_key *color_key = NULL;
+            POINT dst_point = {dst_rect->left, dst_rect->top};
 
-            TRACE("Color blit.\n");
-            if (flags & WINED3D_BLT_SRC_CKEY_OVERRIDE)
+            if (SUCCEEDED(surface_upload_from_surface(dst_surface, &dst_point, src_surface, src_rect)))
             {
-                color_key = &fx->src_color_key;
-                blit_op = WINED3D_BLIT_OP_COLOR_BLIT_CKEY;
-            }
-            else if (flags & WINED3D_BLT_SRC_CKEY)
-            {
-                color_key = &src_texture->async.src_blt_color_key;
-                blit_op = WINED3D_BLIT_OP_COLOR_BLIT_CKEY;
-            }
-            else if (flags & WINED3D_BLT_ALPHA_TEST)
-            {
-                blit_op = WINED3D_BLIT_OP_COLOR_BLIT_ALPHATEST;
-            }
-            else if ((src_sub_resource->locations & WINED3D_LOCATION_SYSMEM)
-                    && !(dst_sub_resource->locations & WINED3D_LOCATION_SYSMEM))
-            {
-                /* Upload */
-                if (scale)
-                    TRACE("Not doing upload because of scaling.\n");
-                else if (convert)
-                    TRACE("Not doing upload because of format conversion.\n");
-                else
+                if (!wined3d_resource_is_offscreen(&dst_texture->resource))
                 {
-                    POINT dst_point = {dst_rect->left, dst_rect->top};
-
-                    if (SUCCEEDED(surface_upload_from_surface(dst_surface, &dst_point, src_surface, src_rect)))
-                    {
-                        if (!wined3d_resource_is_offscreen(&dst_texture->resource))
-                        {
-                            struct wined3d_context *context = context_acquire(device,
-                                    dst_texture, dst_sub_resource_idx);
-                            wined3d_texture_load_location(dst_texture, dst_sub_resource_idx,
-                                    context, dst_texture->resource.draw_binding);
-                            context_release(context);
-                        }
-                        return WINED3D_OK;
-                    }
+                    context = context_acquire(device, dst_texture, dst_sub_resource_idx);
+                    wined3d_texture_load_location(dst_texture, dst_sub_resource_idx,
+                            context, dst_texture->resource.draw_binding);
+                    context_release(context);
                 }
-            }
-            else if (dst_swapchain && dst_swapchain->back_buffers
-                    && dst_texture == dst_swapchain->front_buffer
-                    && src_texture == dst_swapchain->back_buffers[0])
-            {
-                /* Use present for back -> front blits. The idea behind this is
-                 * that present is potentially faster than a blit, in particular
-                 * when FBO blits aren't available. Some ddraw applications like
-                 * Half-Life and Prince of Persia 3D use Blt() from the backbuffer
-                 * to the frontbuffer instead of doing a Flip(). D3D8 and D3D9
-                 * applications can't blit directly to the frontbuffer. */
-                enum wined3d_swap_effect swap_effect = dst_swapchain->desc.swap_effect;
-
-                TRACE("Using present for backbuffer -> frontbuffer blit.\n");
-
-                /* Set the swap effect to COPY, we don't want the backbuffer
-                 * to become undefined. */
-                dst_swapchain->desc.swap_effect = WINED3D_SWAP_EFFECT_COPY;
-                wined3d_swapchain_present(dst_swapchain, NULL, NULL, dst_swapchain->win_handle, 0);
-                dst_swapchain->desc.swap_effect = swap_effect;
-
-                return WINED3D_OK;
-            }
-
-            if (fbo_blit_supported(&device->adapter->gl_info, blit_op,
-                    src_rect, src_texture->resource.usage, src_texture->resource.pool, src_texture->resource.format,
-                    dst_rect, dst_texture->resource.usage, dst_texture->resource.pool, dst_texture->resource.format))
-            {
-                struct wined3d_context *context;
-                TRACE("Using FBO blit.\n");
-
-                context = context_acquire(device, NULL, 0);
-                surface_blt_fbo(device, context, filter,
-                        src_surface, src_texture->resource.draw_binding, src_rect,
-                        dst_surface, dst_texture->resource.draw_binding, dst_rect);
-                context_release(context);
-
-                wined3d_texture_validate_location(dst_texture, dst_sub_resource_idx,
-                        dst_texture->resource.draw_binding);
-                wined3d_texture_invalidate_location(dst_texture, dst_sub_resource_idx,
-                        ~dst_texture->resource.draw_binding);
-
-                return WINED3D_OK;
-            }
-
-            blitter = wined3d_select_blitter(&device->adapter->gl_info, &device->adapter->d3d_info, blit_op,
-                    src_rect, src_texture->resource.usage, src_texture->resource.pool, src_texture->resource.format,
-                    dst_rect, dst_texture->resource.usage, dst_texture->resource.pool, dst_texture->resource.format);
-            if (blitter)
-            {
-                struct wined3d_context *context;
-
-                context = context_acquire(device, dst_texture, dst_sub_resource_idx);
-                blitter->blit_surface(device, blit_op, context, src_surface, src_rect, dst_surface,
-                        dst_texture->resource.draw_binding, dst_rect, color_key, filter);
-                context_release(context);
-
-                wined3d_texture_validate_location(dst_texture, dst_sub_resource_idx,
-                        dst_texture->resource.draw_binding);
-                wined3d_texture_invalidate_location(dst_texture, dst_sub_resource_idx,
-                        ~dst_texture->resource.draw_binding);
-
                 return WINED3D_OK;
             }
         }
     }
+    else if (dst_swapchain && dst_swapchain->back_buffers
+            && dst_texture == dst_swapchain->front_buffer
+            && src_texture == dst_swapchain->back_buffers[0])
+    {
+        /* Use present for back -> front blits. The idea behind this is that
+         * present is potentially faster than a blit, in particular when FBO
+         * blits aren't available. Some ddraw applications like Half-Life and
+         * Prince of Persia 3D use Blt() from the backbuffer to the
+         * frontbuffer instead of doing a Flip(). D3d8 and d3d9 applications
+         * can't blit directly to the frontbuffer. */
+        enum wined3d_swap_effect swap_effect = dst_swapchain->desc.swap_effect;
+
+        TRACE("Using present for backbuffer -> frontbuffer blit.\n");
+
+        /* Set the swap effect to COPY, we don't want the backbuffer to become
+         * undefined. */
+        dst_swapchain->desc.swap_effect = WINED3D_SWAP_EFFECT_COPY;
+        wined3d_swapchain_present(dst_swapchain, NULL, NULL, dst_swapchain->win_handle, 0);
+        dst_swapchain->desc.swap_effect = swap_effect;
+
+        return WINED3D_OK;
+    }
+
+    if (dst_texture->resource.pool == WINED3D_POOL_SYSTEM_MEM)
+        dst_location = dst_texture->resource.map_binding;
+    else
+        dst_location = dst_texture->resource.draw_binding;
+
+    context = context_acquire(device, dst_texture, dst_sub_resource_idx);
+    device->blitter->ops->blitter_blit(device->blitter, blit_op, context,
+            src_surface, src_texture->resource.draw_binding, src_rect,
+            dst_surface, dst_location, dst_rect, colour_key, filter);
+    context_release(context);
+
+    wined3d_texture_validate_location(dst_texture, dst_sub_resource_idx, dst_location);
+    wined3d_texture_invalidate_location(dst_texture, dst_sub_resource_idx, ~dst_location);
+
+    return WINED3D_OK;
 
 fallback:
     /* Special cases for render targets. */

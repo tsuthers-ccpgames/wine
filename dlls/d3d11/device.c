@@ -2498,7 +2498,10 @@ static HRESULT STDMETHODCALLTYPE d3d11_device_CreateGeometryShaderWithStreamOutp
 
     if (FAILED(hr = d3d_geometry_shader_create(device, byte_code, byte_code_length,
             so_entries, entry_count, buffer_strides, strides_count, rasterizer_stream, &object)))
+    {
+        *shader = NULL;
         return hr;
+    }
 
     *shader = &object->ID3D11GeometryShader_iface;
 
@@ -3735,7 +3738,7 @@ static void STDMETHODCALLTYPE d3d10_device_SOSetTargets(ID3D10Device1 *iface,
                 buffer ? buffer->wined3d_buffer : NULL, offsets[i]);
     }
 
-    for (i = count; i < 4; ++i)
+    for (i = count; i < D3D10_SO_BUFFER_SLOT_COUNT; ++i)
     {
         wined3d_device_set_stream_output(device->wined3d_device, i, NULL, 0);
     }
@@ -4924,12 +4927,66 @@ static HRESULT STDMETHODCALLTYPE d3d10_device_CreateGeometryShaderWithStreamOutp
         const void *byte_code, SIZE_T byte_code_length, const D3D10_SO_DECLARATION_ENTRY *output_stream_decls,
         UINT output_stream_decl_count, UINT output_stream_stride, ID3D10GeometryShader **shader)
 {
-    FIXME("iface %p, byte_code %p, byte_code_length %lu, output_stream_decls %p, "
-            "output_stream_decl_count %u, output_stream_stride %u, shader %p stub!\n",
+    struct d3d_device *device = impl_from_ID3D10Device(iface);
+    D3D11_SO_DECLARATION_ENTRY *so_entries = NULL;
+    struct d3d_geometry_shader *object;
+    unsigned int i, stride_count = 1;
+    HRESULT hr;
+
+    TRACE("iface %p, byte_code %p, byte_code_length %lu, output_stream_decls %p, "
+            "output_stream_decl_count %u, output_stream_stride %u, shader %p.\n",
             iface, byte_code, byte_code_length, output_stream_decls,
             output_stream_decl_count, output_stream_stride, shader);
 
-    return E_NOTIMPL;
+    if (!output_stream_decl_count && output_stream_stride)
+    {
+        WARN("Stride must be 0 when declaration entry count is 0.\n");
+        *shader = NULL;
+        return E_INVALIDARG;
+    }
+
+    if (output_stream_decl_count
+            && !(so_entries = d3d11_calloc(output_stream_decl_count, sizeof(*so_entries))))
+    {
+        ERR("Failed to allocate D3D11 SO declaration array memory.\n");
+        *shader = NULL;
+        return E_OUTOFMEMORY;
+    }
+
+    for (i = 0; i < output_stream_decl_count; ++i)
+    {
+        so_entries[i].Stream = 0;
+        so_entries[i].SemanticName = output_stream_decls[i].SemanticName;
+        so_entries[i].SemanticIndex = output_stream_decls[i].SemanticIndex;
+        so_entries[i].StartComponent = output_stream_decls[i].StartComponent;
+        so_entries[i].ComponentCount = output_stream_decls[i].ComponentCount;
+        so_entries[i].OutputSlot = output_stream_decls[i].OutputSlot;
+
+        if (output_stream_decls[i].OutputSlot)
+        {
+            stride_count = 0;
+            if (output_stream_stride)
+            {
+                WARN("Stride must be 0 when multiple output slots are used.\n");
+                HeapFree(GetProcessHeap(), 0, so_entries);
+                *shader = NULL;
+                return E_INVALIDARG;
+            }
+        }
+    }
+
+    hr = d3d_geometry_shader_create(device, byte_code, byte_code_length,
+            so_entries, output_stream_decl_count, &output_stream_stride, stride_count, 0, &object);
+    HeapFree(GetProcessHeap(), 0, so_entries);
+    if (FAILED(hr))
+    {
+        *shader = NULL;
+        return hr;
+    }
+
+    *shader = &object->ID3D10GeometryShader_iface;
+
+    return hr;
 }
 
 static HRESULT STDMETHODCALLTYPE d3d10_device_CreatePixelShader(ID3D10Device1 *iface,

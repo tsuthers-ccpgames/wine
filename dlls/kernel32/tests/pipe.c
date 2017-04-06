@@ -125,6 +125,20 @@ static void _test_signaled(unsigned line, HANDLE handle)
     ok_(__FILE__,line)(res == WAIT_OBJECT_0, "WaitForSingleObject returned %u\n", res);
 }
 
+#define test_pipe_info(a,b,c,d,e) _test_pipe_info(__LINE__,a,b,c,d,e)
+static void _test_pipe_info(unsigned line, HANDLE pipe, DWORD ex_flags, DWORD ex_out_buf_size, DWORD ex_in_buf_size, DWORD ex_max_instances)
+{
+    DWORD flags = 0xdeadbeef, out_buf_size = 0xdeadbeef, in_buf_size = 0xdeadbeef, max_instances = 0xdeadbeef;
+    BOOL res;
+
+    res = GetNamedPipeInfo(pipe, &flags, &out_buf_size, &in_buf_size, &max_instances);
+    ok_(__FILE__,line)(res, "GetNamedPipeInfo failed: %x\n", res);
+    ok_(__FILE__,line)(flags == ex_flags, "flags = %x, expected %x\n", flags, ex_flags);
+    ok_(__FILE__,line)(out_buf_size == ex_out_buf_size, "out_buf_size = %x, expected %u\n", out_buf_size, ex_out_buf_size);
+    ok_(__FILE__,line)(in_buf_size == ex_in_buf_size, "in_buf_size = %x, expected %u\n", in_buf_size, ex_in_buf_size);
+    ok_(__FILE__,line)(max_instances == ex_max_instances, "max_instances = %x, expected %u\n", max_instances, ex_max_instances);
+}
+
 static void test_CreateNamedPipe(int pipemode)
 {
     HANDLE hnp;
@@ -1319,6 +1333,9 @@ static void test_CreatePipe(void)
     pipe_attr.bInheritHandle = TRUE; 
     pipe_attr.lpSecurityDescriptor = NULL;
     ok(CreatePipe(&piperead, &pipewrite, &pipe_attr, 0) != 0, "CreatePipe failed\n");
+    test_pipe_info(piperead, FILE_PIPE_SERVER_END, 4096, 4096, 1);
+    test_pipe_info(pipewrite, 0, 4096, 4096, 1);
+
     ok(WriteFile(pipewrite,PIPENAME,sizeof(PIPENAME), &written, NULL), "Write to anonymous pipe failed\n");
     ok(written == sizeof(PIPENAME), "Write to anonymous pipe wrote %d bytes\n", written);
     ok(ReadFile(piperead,readbuf,sizeof(readbuf),&read, NULL), "Read from non empty pipe failed\n");
@@ -1358,6 +1375,12 @@ static void test_CreatePipe(void)
 
     ok(user_apc_ran == FALSE, "user apc ran, pipe using alertable io mode\n");
     SleepEx(0, TRUE); /* get rid of apc */
+
+    ok(CreatePipe(&piperead, &pipewrite, &pipe_attr, 1) != 0, "CreatePipe failed\n");
+    test_pipe_info(piperead, FILE_PIPE_SERVER_END, 1, 1, 1);
+    test_pipe_info(pipewrite, 0, 1, 1, 1);
+    ok(CloseHandle(pipewrite), "CloseHandle for the Write Pipe failed\n");
+    ok(CloseHandle(piperead), "CloseHandle for the read pipe failed\n");
 }
 
 static void test_CloseHandle(void)
@@ -2250,20 +2273,6 @@ static void test_NamedPipeHandleState(void)
     CloseHandle(server);
 }
 
-#define test_pipe_info(a,b,c,d,e) _test_pipe_info(__LINE__,a,b,c,d,e)
-static void _test_pipe_info(unsigned line, HANDLE pipe, DWORD ex_flags, DWORD ex_out_buf_size, DWORD ex_in_buf_size, DWORD ex_max_instances)
-{
-    DWORD flags = 0xdeadbeef, out_buf_size = 0xdeadbeef, in_buf_size = 0xdeadbeef, max_instances = 0xdeadbeef;
-    BOOL res;
-
-    res = GetNamedPipeInfo(pipe, &flags, &out_buf_size, &in_buf_size, &max_instances);
-    ok_(__FILE__,line)(res, "GetNamedPipeInfo failed: %x\n", res);
-    ok_(__FILE__,line)(flags == ex_flags, "flags = %x, expected %x\n", flags, ex_flags);
-    ok_(__FILE__,line)(out_buf_size == ex_out_buf_size, "out_buf_size = %x, expected %u\n", out_buf_size, ex_out_buf_size);
-    ok_(__FILE__,line)(in_buf_size == ex_in_buf_size, "in_buf_size = %x, expected %u\n", in_buf_size, ex_in_buf_size);
-    ok_(__FILE__,line)(max_instances == ex_max_instances, "max_instances = %x, expected %u\n", max_instances, ex_max_instances);
-}
-
 static void test_GetNamedPipeInfo(void)
 {
     HANDLE server;
@@ -2807,6 +2816,34 @@ static void test_blocking_rw(HANDLE writer, HANDLE reader, DWORD buf_size, BOOL 
     test_flush_done(flush_thread);
 }
 
+static void child_process_write_pipe(HANDLE pipe)
+{
+    OVERLAPPED overlapped;
+    char buf[10000];
+
+    memset(buf, 'x', sizeof(buf));
+    overlapped_write_async(pipe, buf, sizeof(buf), &overlapped);
+
+    /* sleep until parent process terminates this process */
+    Sleep(INFINITE);
+}
+
+static HANDLE create_writepipe_process(HANDLE pipe)
+{
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION info;
+    char **argv, buf[MAX_PATH];
+    BOOL res;
+
+    winetest_get_mainargs(&argv);
+    sprintf(buf, "\"%s\" pipe writepipe %lx", argv[0], (UINT_PTR)pipe);
+    res = CreateProcessA(NULL, buf, NULL, NULL, TRUE, 0L, NULL, NULL, &si, &info);
+    ok(res, "CreateProcess failed: %u\n", GetLastError());
+    CloseHandle(info.hThread);
+
+    return info.hProcess;
+}
+
 static void create_overlapped_pipe(DWORD mode, HANDLE *client, HANDLE *server)
 {
     SECURITY_ATTRIBUTES sec_attr = { sizeof(sec_attr), NULL, TRUE };
@@ -2826,7 +2863,7 @@ static void create_overlapped_pipe(DWORD mode, HANDLE *client, HANDLE *server)
     test_not_signaled(*server);
     test_not_signaled(overlapped.hEvent);
 
-    *client = CreateFileA(PIPENAME, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+    *client = CreateFileA(PIPENAME, GENERIC_READ | GENERIC_WRITE, 0, &sec_attr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
     ok(*server != INVALID_HANDLE_VALUE, "CreateFile failed: %u\n", GetLastError());
 
     res = SetNamedPipeHandleState(*client, &read_mode, NULL, NULL);
@@ -2841,6 +2878,8 @@ static void test_overlapped_transport(BOOL msg_mode, BOOL msg_read_mode)
 {
     OVERLAPPED overlapped, overlapped2;
     HANDLE server, client, flush;
+    DWORD read_bytes;
+    HANDLE process;
     char buf[60000];
     BOOL res;
 
@@ -2890,10 +2929,32 @@ static void test_overlapped_transport(BOOL msg_mode, BOOL msg_read_mode)
     test_flush_done(flush);
     CloseHandle(server);
     CloseHandle(client);
+
+    /* terminate process with pending write */
+    create_overlapped_pipe(create_flags, &client, &server);
+    process = create_writepipe_process(client);
+    /* successfully read part of write that is pending in child process */
+    res = ReadFile(server, buf, 10, &read_bytes, NULL);
+    if(!msg_read_mode)
+        ok(res, "ReadFile failed: %u\n", GetLastError());
+    else
+        ok(!res && GetLastError() == ERROR_MORE_DATA, "ReadFile returned: %x %u\n", res, GetLastError());
+    ok(read_bytes == 10, "read_bytes = %u\n", read_bytes);
+    TerminateProcess(process, 0);
+    winetest_wait_child_process(process);
+    /* after terminating process, there is no pending write and pipe buffer is empty */
+    overlapped_read_async(server, buf, 10, &overlapped);
+    overlapped_write_sync(client, buf, 1);
+    test_overlapped_result(server, &overlapped, 1, FALSE);
+    CloseHandle(process);
+    CloseHandle(server);
+    CloseHandle(client);
 }
 
 START_TEST(pipe)
 {
+    char **argv;
+    int argc;
     HMODULE hmod;
 
     hmod = GetModuleHandleA("advapi32.dll");
@@ -2901,6 +2962,16 @@ START_TEST(pipe)
     hmod = GetModuleHandleA("kernel32.dll");
     pQueueUserAPC = (void *) GetProcAddress(hmod, "QueueUserAPC");
     pCancelIoEx = (void *) GetProcAddress(hmod, "CancelIoEx");
+
+    argc = winetest_get_mainargs(&argv);
+
+    if (argc > 3 && !strcmp(argv[2], "writepipe"))
+    {
+        UINT_PTR handle;
+        sscanf(argv[3], "%lx", &handle);
+        child_process_write_pipe((HANDLE)handle);
+        return;
+    }
 
     if (test_DisconnectNamedPipe())
         return;

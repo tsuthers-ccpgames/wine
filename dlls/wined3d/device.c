@@ -35,6 +35,7 @@
 #include "wined3d_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
+WINE_DECLARE_DEBUG_CHANNEL(winediag);
 
 /* Define the default light parameters as specified by MSDN. */
 const struct wined3d_light WINED3D_default_light =
@@ -56,7 +57,7 @@ const struct wined3d_light WINED3D_default_light =
  * actually have the same values in GL and D3D. */
 GLenum gl_primitive_type_from_d3d(enum wined3d_primitive_type primitive_type)
 {
-    switch(primitive_type)
+    switch (primitive_type)
     {
         case WINED3D_PT_POINTLIST:
             return GL_POINTS;
@@ -89,7 +90,7 @@ GLenum gl_primitive_type_from_d3d(enum wined3d_primitive_type primitive_type)
             return GL_TRIANGLE_STRIP_ADJACENCY_ARB;
 
         default:
-            FIXME("Unhandled primitive type %s\n", debug_d3dprimitivetype(primitive_type));
+            FIXME("Unhandled primitive type %s.\n", debug_d3dprimitivetype(primitive_type));
         case WINED3D_PT_UNDEFINED:
             return ~0u;
     }
@@ -97,7 +98,7 @@ GLenum gl_primitive_type_from_d3d(enum wined3d_primitive_type primitive_type)
 
 static enum wined3d_primitive_type d3d_primitive_type_from_gl(GLenum primitive_type)
 {
-    switch(primitive_type)
+    switch (primitive_type)
     {
         case GL_POINTS:
             return WINED3D_PT_POINTLIST;
@@ -130,7 +131,7 @@ static enum wined3d_primitive_type d3d_primitive_type_from_gl(GLenum primitive_t
             return WINED3D_PT_TRIANGLESTRIP_ADJ;
 
         default:
-            FIXME("Unhandled primitive type %s\n", debug_d3dprimitivetype(primitive_type));
+            FIXME("Unhandled primitive type %s.\n", debug_d3dprimitivetype(primitive_type));
         case ~0u:
             return WINED3D_PT_UNDEFINED;
     }
@@ -547,23 +548,16 @@ static void device_load_logo(struct wined3d_device *device, const char *filename
     HRESULT hr;
     HDC dcb = NULL, dcs = NULL;
 
-    hbm = LoadImageA(NULL, filename, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
-    if(hbm)
+    if (!(hbm = LoadImageA(NULL, filename, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE | LR_CREATEDIBSECTION)))
     {
-        GetObjectA(hbm, sizeof(BITMAP), &bm);
-        dcb = CreateCompatibleDC(NULL);
-        if(!dcb) goto out;
-        SelectObject(dcb, hbm);
+        ERR_(winediag)("Failed to load logo %s.\n", wine_dbgstr_a(filename));
+        return;
     }
-    else
-    {
-        /* Create a 32x32 white surface to indicate that wined3d is used, but the specified image
-         * couldn't be loaded
-         */
-        memset(&bm, 0, sizeof(bm));
-        bm.bmWidth = 32;
-        bm.bmHeight = 32;
-    }
+    GetObjectA(hbm, sizeof(BITMAP), &bm);
+
+    if (!(dcb = CreateCompatibleDC(NULL)))
+        goto out;
+    SelectObject(dcb, hbm);
 
     desc.resource_type = WINED3D_RTYPE_TEXTURE_2D;
     desc.format = WINED3DFMT_B5G6R5_UNORM;
@@ -575,34 +569,26 @@ static void device_load_logo(struct wined3d_device *device, const char *filename
     desc.height = bm.bmHeight;
     desc.depth = 1;
     desc.size = 0;
-    if (FAILED(hr = wined3d_texture_create(device, &desc, 1, 1, WINED3D_TEXTURE_CREATE_MAPPABLE,
+    if (FAILED(hr = wined3d_texture_create(device, &desc, 1, 1,
+            WINED3D_TEXTURE_CREATE_MAPPABLE | WINED3D_TEXTURE_CREATE_GET_DC,
             NULL, NULL, &wined3d_null_parent_ops, &device->logo_texture)))
     {
         ERR("Wine logo requested, but failed to create texture, hr %#x.\n", hr);
         goto out;
     }
 
-    if (dcb)
+    if (FAILED(hr = wined3d_texture_get_dc(device->logo_texture, 0, &dcs)))
     {
-        if (FAILED(hr = wined3d_texture_get_dc(device->logo_texture, 0, &dcs)))
-            goto out;
-        BitBlt(dcs, 0, 0, bm.bmWidth, bm.bmHeight, dcb, 0, 0, SRCCOPY);
-        wined3d_texture_release_dc(device->logo_texture, 0, dcs);
-
-        color_key.color_space_low_value = 0;
-        color_key.color_space_high_value = 0;
-        wined3d_texture_set_color_key(device->logo_texture, WINED3D_CKEY_SRC_BLT, &color_key);
+        wined3d_texture_decref(device->logo_texture);
+        device->logo_texture = NULL;
+        goto out;
     }
-    else
-    {
-        const struct wined3d_color c = {1.0f, 1.0f, 1.0f, 1.0f};
-        const RECT rect = {0, 0, desc.width, desc.height};
-        struct wined3d_surface *surface;
+    BitBlt(dcs, 0, 0, bm.bmWidth, bm.bmHeight, dcb, 0, 0, SRCCOPY);
+    wined3d_texture_release_dc(device->logo_texture, 0, dcs);
 
-        /* Fill the surface with a white color to show that wined3d is there */
-        surface = device->logo_texture->sub_resources[0].u.surface;
-        surface_color_fill(surface, &rect, &c);
-    }
+    color_key.color_space_low_value = 0;
+    color_key.color_space_high_value = 0;
+    wined3d_texture_set_color_key(device->logo_texture, WINED3D_CKEY_SRC_BLT, &color_key);
 
 out:
     if (dcb) DeleteDC(dcb);
@@ -993,7 +979,7 @@ static void wined3d_device_delete_opengl_contexts_cs(void *object)
     }
 
     context = context_acquire(device, NULL, 0);
-    device->blitter->free_private(device);
+    device->blitter->ops->blitter_destroy(device->blitter, context);
     device->shader_backend->shader_free_private(device);
     destroy_dummy_textures(device, context);
     destroy_default_samplers(device, context);
@@ -1028,12 +1014,15 @@ static void wined3d_device_create_primary_opengl_context_cs(void *object)
         return;
     }
 
-    if (FAILED(hr = device->blitter->alloc_private(device)))
+    if (!(device->blitter = wined3d_cpu_blitter_create()))
     {
-        ERR("Failed to allocate blitter private data, hr %#x.\n", hr);
+        ERR("Failed to create CPU blitter.\n");
         device->shader_backend->shader_free_private(device);
         return;
     }
+    wined3d_ffp_blitter_create(&device->blitter, &device->adapter->gl_info);
+    wined3d_arbfp_blitter_create(&device->blitter, device);
+    wined3d_fbo_blitter_create(&device->blitter, &device->adapter->gl_info);
 
     swapchain = device->swapchains[0];
     target = swapchain->back_buffers ? swapchain->back_buffers[0] : swapchain->front_buffer;
@@ -4158,9 +4147,7 @@ HRESULT CDECL wined3d_device_clear_rendertarget_view(struct wined3d_device *devi
         struct wined3d_rendertarget_view *view, const RECT *rect, DWORD flags,
         const struct wined3d_color *color, float depth, DWORD stencil)
 {
-    const struct wined3d_blitter_ops *blitter;
     struct wined3d_resource *resource;
-    enum wined3d_blit_op blit_op;
     RECT r;
 
     TRACE("device %p, view %p, rect %s, flags %#x, color %s, depth %.8e, stencil %u.\n",
@@ -4187,23 +4174,20 @@ HRESULT CDECL wined3d_device_clear_rendertarget_view(struct wined3d_device *devi
         SetRect(&r, 0, 0, view->width, view->height);
         rect = &r;
     }
-
-    if (flags & WINED3DCLEAR_TARGET)
-        blit_op = WINED3D_BLIT_OP_COLOR_FILL;
     else
-        blit_op = WINED3D_BLIT_OP_DEPTH_FILL;
-
-    if (!(blitter = wined3d_select_blitter(&device->adapter->gl_info, &device->adapter->d3d_info,
-            blit_op, NULL, 0, 0, NULL, rect, resource->usage, resource->pool, resource->format)))
     {
-        FIXME("No blitter is capable of performing the requested fill operation.\n");
-        return WINED3DERR_INVALIDCALL;
+        struct wined3d_box b = {rect->left, rect->top, rect->right, rect->bottom, 0, 1};
+        struct wined3d_texture *texture = texture_from_resource(view->resource);
+        HRESULT hr;
+
+        if (FAILED(hr = wined3d_texture_check_box_dimensions(texture,
+                view->sub_resource_idx % texture->level_count, &b)))
+            return hr;
     }
 
-    if (blit_op == WINED3D_BLIT_OP_COLOR_FILL)
-        return blitter->color_fill(device, view, rect, color);
-    else
-        return blitter->depth_fill(device, view, rect, flags, depth, stencil);
+    wined3d_cs_emit_clear_rendertarget_view(device->cs, view, rect, flags, color, depth, stencil);
+
+    return WINED3D_OK;
 }
 
 struct wined3d_rendertarget_view * CDECL wined3d_device_get_rendertarget_view(const struct wined3d_device *device,
@@ -4750,6 +4734,8 @@ HRESULT CDECL wined3d_device_reset(struct wined3d_device *device,
         device->update_state = &device->state;
 
         device_init_swapchain_state(device, swapchain);
+        if (wined3d_settings.logo)
+            device_load_logo(device, wined3d_settings.logo);
     }
     else if (device->back_buffer_view)
     {
@@ -4983,8 +4969,6 @@ HRESULT device_init(struct wined3d_device *device, struct wined3d *wined3d,
         wined3d_decref(device->wined3d);
         return hr;
     }
-
-    device->blitter = adapter->blitter;
 
     state_init(&device->state, &device->fb, &adapter->gl_info,
             &adapter->d3d_info, WINED3D_STATE_INIT_DEFAULT);

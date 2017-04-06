@@ -144,17 +144,13 @@ static void buffer_bind(struct wined3d_buffer *buffer, struct wined3d_context *c
 }
 
 /* Context activation is done by the caller. */
-static void buffer_destroy_buffer_object(struct wined3d_buffer *buffer, const struct wined3d_context *context)
+static void buffer_destroy_buffer_object(struct wined3d_buffer *buffer, struct wined3d_context *context)
 {
     const struct wined3d_gl_info *gl_info = context->gl_info;
     struct wined3d_resource *resource = &buffer->resource;
 
     if (!buffer->buffer_object)
         return;
-
-    GL_EXTCALL(glDeleteBuffers(1, &buffer->buffer_object));
-    checkGLcall("glDeleteBuffers");
-    buffer->buffer_object = 0;
 
     /* The stream source state handler might have read the memory of the
      * vertex buffer already and got the memory in the vbo which is not
@@ -176,7 +172,23 @@ static void buffer_destroy_buffer_object(struct wined3d_buffer *buffer, const st
             device_invalidate_state(resource->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL));
             device_invalidate_state(resource->device, STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_COMPUTE));
         }
+        if (buffer->bind_flags & WINED3D_BIND_STREAM_OUTPUT)
+        {
+            device_invalidate_state(resource->device, STATE_STREAM_OUTPUT);
+            if (context->transform_feedback_active)
+            {
+                /* We have to make sure that transform feedback is not active
+                 * when deleting a potentially bound transform feedback buffer.
+                 * This may happen when the device is being destroyed. */
+                WARN("Deleting buffer object for buffer %p, disabling transform feedback.\n", buffer);
+                context_end_transform_feedback(context);
+            }
+        }
     }
+
+    GL_EXTCALL(glDeleteBuffers(1, &buffer->buffer_object));
+    checkGLcall("glDeleteBuffers");
+    buffer->buffer_object = 0;
 
     if (buffer->query)
     {
@@ -1002,14 +1014,6 @@ static HRESULT wined3d_buffer_map(struct wined3d_buffer *buffer, UINT offset, UI
 
     TRACE("buffer %p, offset %u, size %u, data %p, flags %#x.\n", buffer, offset, size, data, flags);
 
-    /* Filter redundant WINED3D_MAP_DISCARD maps. The 3DMark2001 multitexture
-     * fill rate test seems to depend on this. When we map a buffer with
-     * GL_MAP_INVALIDATE_BUFFER_BIT, the driver is free to discard the
-     * previous contents of the buffer. The r600g driver only does this when
-     * the buffer is currently in use, while the proprietary NVIDIA driver
-     * appears to do this unconditionally. */
-    if (buffer->flags & WINED3D_BUFFER_DISCARD)
-        flags &= ~WINED3D_MAP_DISCARD;
     count = ++buffer->resource.map_count;
 
     if (buffer->buffer_object)
@@ -1061,6 +1065,16 @@ static HRESULT wined3d_buffer_map(struct wined3d_buffer *buffer, UINT offset, UI
             if (count == 1)
             {
                 buffer_bind(buffer, context);
+
+                /* Filter redundant WINED3D_MAP_DISCARD maps. The 3DMark2001
+                 * multitexture fill rate test seems to depend on this. When
+                 * we map a buffer with GL_MAP_INVALIDATE_BUFFER_BIT, the
+                 * driver is free to discard the previous contents of the
+                 * buffer. The r600g driver only does this when the buffer is
+                 * currently in use, while the proprietary NVIDIA driver
+                 * appears to do this unconditionally. */
+                if (buffer->flags & WINED3D_BUFFER_DISCARD)
+                    flags &= ~WINED3D_MAP_DISCARD;
 
                 if (gl_info->supported[ARB_MAP_BUFFER_RANGE])
                 {

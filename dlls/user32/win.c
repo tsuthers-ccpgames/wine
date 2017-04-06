@@ -2165,29 +2165,23 @@ BOOL WINAPI EnableWindow( HWND hwnd, BOOL enable )
 
     TRACE("( %p, %d )\n", hwnd, enable);
 
-    retvalue = !IsWindowEnabled( hwnd );
-
-    if (enable && retvalue)
+    if (enable)
     {
-        WIN_SetStyle( hwnd, 0, WS_DISABLED );
-        SendMessageW( hwnd, WM_ENABLE, TRUE, 0 );
+        retvalue = (WIN_SetStyle( hwnd, 0, WS_DISABLED ) & WS_DISABLED) != 0;
+        if (retvalue) SendMessageW( hwnd, WM_ENABLE, TRUE, 0 );
     }
-    else if (!enable && !retvalue)
+    else
     {
-        HWND capture_wnd;
+        SendMessageW( hwnd, WM_CANCELMODE, 0, 0 );
 
-        SendMessageW( hwnd, WM_CANCELMODE, 0, 0);
+        retvalue = (WIN_SetStyle( hwnd, WS_DISABLED, 0 ) & WS_DISABLED) != 0;
+        if (!retvalue)
+        {
+            if (hwnd == GetFocus())
+                SetFocus( 0 ); /* A disabled window can't have the focus */
 
-        WIN_SetStyle( hwnd, WS_DISABLED, 0 );
-
-        if (hwnd == GetFocus())
-            SetFocus( 0 );  /* A disabled window can't have the focus */
-
-        capture_wnd = GetCapture();
-        if (capture_wnd && (hwnd == capture_wnd || IsChild(hwnd, capture_wnd)))
-            ReleaseCapture();  /* A disabled window can't capture the mouse */
-
-        SendMessageW( hwnd, WM_ENABLE, FALSE, 0 );
+            SendMessageW( hwnd, WM_ENABLE, FALSE, 0 );
+        }
     }
     return retvalue;
 }

@@ -3518,6 +3518,22 @@ static void context_bind_unordered_access_views(struct wined3d_context *context,
     checkGLcall("Bind unordered access views");
 }
 
+static void context_load_stream_output_buffers(struct wined3d_context *context,
+        const struct wined3d_state *state)
+{
+    unsigned int i;
+
+    for (i = 0; i < ARRAY_SIZE(state->stream_output); ++i)
+    {
+        struct wined3d_buffer *buffer;
+        if (!(buffer = state->stream_output[i].buffer))
+            continue;
+
+        wined3d_buffer_load(buffer, context, state);
+        wined3d_buffer_invalidate_location(buffer, ~WINED3D_LOCATION_BUFFER);
+    }
+}
+
 /* Context activation is done by the caller. */
 BOOL context_apply_draw_state(struct wined3d_context *context,
         const struct wined3d_device *device, const struct wined3d_state *state)
@@ -3544,6 +3560,7 @@ BOOL context_apply_draw_state(struct wined3d_context *context,
     context_load_shader_resources(context, state, ~(1u << WINED3D_SHADER_TYPE_COMPUTE));
     context_load_unordered_access_resources(context, state->shader[WINED3D_SHADER_TYPE_PIXEL],
             state->unordered_access_view[WINED3D_PIPELINE_GRAPHICS]);
+    context_load_stream_output_buffers(context, state);
     /* TODO: Right now the dependency on the vertex shader is necessary
      * since wined3d_stream_info_from_declaration() depends on the reg_maps of
      * the current VS but maybe it's possible to relax the coupling in some
@@ -3668,6 +3685,18 @@ void context_apply_compute_state(struct wined3d_context *context,
     }
 
     context->last_was_blit = FALSE;
+}
+
+void context_end_transform_feedback(struct wined3d_context *context)
+{
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+    if (context->transform_feedback_active)
+    {
+        GL_EXTCALL(glEndTransformFeedback());
+        checkGLcall("glEndTransformFeedback");
+        context->transform_feedback_active = 0;
+        context->transform_feedback_paused = 0;
+    }
 }
 
 static void context_setup_target(struct wined3d_context *context,
@@ -3802,4 +3831,19 @@ struct wined3d_context *context_acquire(const struct wined3d_device *device,
     }
 
     return context;
+}
+
+struct wined3d_context *context_reacquire(const struct wined3d_device *device,
+        struct wined3d_context *context)
+{
+    struct wined3d_context *current_context;
+
+    if (context->tid != GetCurrentThreadId())
+        return NULL;
+
+    current_context = context_acquire(device, context->current_rt.texture,
+            context->current_rt.sub_resource_idx);
+    if (current_context != context)
+        ERR("Acquired context %p instead of %p.\n", current_context, context);
+    return current_context;
 }

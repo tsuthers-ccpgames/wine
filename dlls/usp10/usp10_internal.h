@@ -164,8 +164,9 @@ typedef struct {
     const void *gpos_table;
     LoadedLanguage default_language;
     BOOL languages_initialized;
-    INT language_count;
     LoadedLanguage *languages;
+    SIZE_T languages_size;
+    SIZE_T language_count;
 } LoadedScript;
 
 typedef struct {
@@ -186,8 +187,9 @@ typedef struct {
     void *CMAP_format12_Table;
     void *GPOS_Table;
     BOOL scripts_initialized;
-    INT script_count;
     LoadedScript *scripts;
+    SIZE_T scripts_size;
+    SIZE_T script_count;
 
     OPENTYPE_TAG userScript;
     OPENTYPE_TAG userLang;
@@ -245,6 +247,7 @@ typedef void (*reorder_function)(WCHAR *chars, IndicSyllable *syllable, lexical_
 #define BIDI_WEAK    2
 #define BIDI_NEUTRAL 0
 
+BOOL usp10_array_reserve(void **elements, SIZE_T *capacity, SIZE_T count, SIZE_T size) DECLSPEC_HIDDEN;
 int USP10_FindGlyphInLogClust(const WORD* pwLogClust, int cChars, WORD target) DECLSPEC_HIDDEN;
 
 BOOL BIDI_DetermineLevels(const WCHAR *string, unsigned int count, const SCRIPT_STATE *s,

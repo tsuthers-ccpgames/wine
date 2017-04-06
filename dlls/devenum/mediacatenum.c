@@ -528,9 +528,36 @@ static HRESULT WINAPI DEVENUM_IMediaCatMoniker_Enum(IMoniker *iface, BOOL fForwa
 
 static HRESULT WINAPI DEVENUM_IMediaCatMoniker_IsEqual(IMoniker *iface, IMoniker *pmkOtherMoniker)
 {
-    FIXME("(%p)->(%p): stub\n", iface, pmkOtherMoniker);
+    CLSID clsid;
+    LPOLESTR this_name, other_name;
+    IBindCtx *bind;
+    HRESULT res;
 
-    return E_NOTIMPL;
+    TRACE("(%p)->(%p)\n", iface, pmkOtherMoniker);
+
+    if (!pmkOtherMoniker)
+        return E_INVALIDARG;
+
+    IMoniker_GetClassID(pmkOtherMoniker, &clsid);
+    if (!IsEqualCLSID(&clsid, &CLSID_CDeviceMoniker))
+        return S_FALSE;
+
+    res = CreateBindCtx(0, &bind);
+    if (FAILED(res))
+       return res;
+
+    res = S_FALSE;
+    if (SUCCEEDED(IMoniker_GetDisplayName(iface, bind, NULL, &this_name)) &&
+        SUCCEEDED(IMoniker_GetDisplayName(pmkOtherMoniker, bind, NULL, &other_name)))
+    {
+        int result = lstrcmpiW(this_name, other_name);
+        CoTaskMemFree(this_name);
+        CoTaskMemFree(other_name);
+        if (!result)
+            res = S_OK;
+    }
+    IBindCtx_Release(bind);
+    return res;
 }
 
 static HRESULT WINAPI DEVENUM_IMediaCatMoniker_Hash(IMoniker *iface, DWORD *pdwHash)
@@ -596,14 +623,14 @@ static HRESULT WINAPI DEVENUM_IMediaCatMoniker_GetDisplayName(IMoniker *iface, I
     MediaCatMoniker *This = impl_from_IMoniker(iface);
     WCHAR wszBuffer[MAX_PATH];
     static const WCHAR wszFriendlyName[] = {'F','r','i','e','n','d','l','y','N','a','m','e',0};
-    LONG received = sizeof(wszFriendlyName);
+    DWORD received = sizeof(wszBuffer);
 
     TRACE("(%p)->(%p, %p, %p)\n", iface, pbc, pmkToLeft, ppszDisplayName);
 
     *ppszDisplayName = NULL;
 
     /* FIXME: should this be the weird stuff we have to parse in IParseDisplayName? */
-    if (RegQueryValueW(This->hkey, wszFriendlyName, wszBuffer, &received) == ERROR_SUCCESS)
+    if (RegQueryValueExW(This->hkey, wszFriendlyName, NULL, NULL, (LPBYTE)wszBuffer, &received) == ERROR_SUCCESS)
     {
         *ppszDisplayName = CoTaskMemAlloc(received);
         strcpyW(*ppszDisplayName, wszBuffer);

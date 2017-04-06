@@ -1,7 +1,5 @@
 /*
- * Web Services
- *
- * Copyright 2013 Alistair Leslie-Hughes
+ * Copyright 2017 Andrey Gusev
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,27 +16,15 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include <stdarg.h>
-
-#include "windef.h"
-#include "winbase.h"
-#include "webservices.h"
 #include "wine/debug.h"
 
-WINE_DEFAULT_DEBUG_CHANNEL(webservices);
+WINE_DEFAULT_DEBUG_CHANNEL(kernelbase);
 
-BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
+/***********************************************************************
+ *          QuirkIsEnabled3 (KERNELBASE.@)
+ */
+BOOL WINAPI QuirkIsEnabled3(void *unk1, void *unk2)
 {
-    TRACE("(%p, %u, %p)\n", instance, reason, reserved);
-
-    switch (reason)
-    {
-        case DLL_WINE_PREATTACH:
-            return FALSE;    /* prefer native version */
-        case DLL_PROCESS_ATTACH:
-            DisableThreadLibraryCalls(instance);
-            break;
-    }
-
-    return TRUE;
+    FIXME("(%p, %p) stub!\n", unk1, unk2);
+    return FALSE;
 }

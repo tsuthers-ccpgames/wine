@@ -2206,91 +2206,102 @@ static unsigned int GPOS_apply_ChainContextPos(const ScriptCache *script_cache, 
     for (j = 0; j < GET_BE_WORD(look->SubTableCount); j++)
     {
         int offset;
-        const GPOS_ChainContextPosFormat3_1 *ccpf3 = (GPOS_ChainContextPosFormat3_1 *)GPOS_get_subtable(look, j);
+        const GPOS_ChainContextPosFormat3_1 *backtrack = (GPOS_ChainContextPosFormat3_1 *)GPOS_get_subtable(look, j);
         int dirLookahead = write_dir;
         int dirBacktrack = -1 * write_dir;
 
-        if (GET_BE_WORD(ccpf3->PosFormat) == 1)
+        if (GET_BE_WORD(backtrack->PosFormat) == 1)
         {
             static int once;
             if (!once++)
                 FIXME("  TODO: subtype 1 (Simple Chaining Context Glyph Positioning)\n");
             continue;
         }
-        else if (GET_BE_WORD(ccpf3->PosFormat) == 2)
+        else if (GET_BE_WORD(backtrack->PosFormat) == 2)
         {
             static int once;
             if (!once++)
                 FIXME("  TODO: subtype 2 (Class-based Chaining Context Glyph Positioning)\n");
             continue;
         }
-        else if (GET_BE_WORD(ccpf3->PosFormat) == 3)
+        else if (GET_BE_WORD(backtrack->PosFormat) == 3)
         {
+            WORD backtrack_count, input_count, lookahead_count, positioning_count;
             int k;
-            int indexGlyphs;
-            const GPOS_ChainContextPosFormat3_2 *ccpf3_2;
-            const GPOS_ChainContextPosFormat3_3 *ccpf3_3;
-            const GPOS_ChainContextPosFormat3_4 *ccpf3_4;
+            const GPOS_ChainContextPosFormat3_2 *input;
+            const GPOS_ChainContextPosFormat3_3 *lookahead;
+            const GPOS_ChainContextPosFormat3_4 *positioning;
 
             TRACE("  subtype 3 (Coverage-based Chaining Context Glyph Positioning)\n");
 
-            for (k = 0; k < GET_BE_WORD(ccpf3->BacktrackGlyphCount); k++)
+            backtrack_count = GET_BE_WORD(backtrack->BacktrackGlyphCount);
+            k = glyph_index + dirBacktrack * backtrack_count;
+            if (k < 0 || k >= glyph_count)
+                continue;
+
+            input = (const GPOS_ChainContextPosFormat3_2 *)&backtrack->Coverage[backtrack_count];
+            input_count = GET_BE_WORD(input->InputGlyphCount);
+            k = glyph_index + write_dir * (input_count - 1);
+            if (k < 0 || k >= glyph_count)
+                continue;
+
+            lookahead = (const GPOS_ChainContextPosFormat3_3 *)&input->Coverage[input_count];
+            lookahead_count = GET_BE_WORD(lookahead->LookaheadGlyphCount);
+            k = glyph_index + dirLookahead * (input_count + lookahead_count - 1);
+            if (k < 0 || k >= glyph_count)
+                continue;
+
+            positioning = (const GPOS_ChainContextPosFormat3_4 *)&lookahead->Coverage[lookahead_count];
+
+            for (k = 0; k < backtrack_count; ++k)
             {
-                offset = GET_BE_WORD(ccpf3->Coverage[k]);
-                if (GSUB_is_glyph_covered((const BYTE*)ccpf3+offset, glyphs[glyph_index + (dirBacktrack * (k+1))]) == -1)
+                offset = GET_BE_WORD(backtrack->Coverage[k]);
+                if (GSUB_is_glyph_covered((const BYTE *)backtrack + offset,
+                        glyphs[glyph_index + (dirBacktrack * (k + 1))]) == -1)
                     break;
             }
-            if (k != GET_BE_WORD(ccpf3->BacktrackGlyphCount))
+            if (k != backtrack_count)
                 continue;
             TRACE("Matched Backtrack\n");
 
-            ccpf3_2 = (const GPOS_ChainContextPosFormat3_2*)((BYTE *)ccpf3 +
-                    FIELD_OFFSET(GPOS_ChainContextPosFormat3_1, Coverage[GET_BE_WORD(ccpf3->BacktrackGlyphCount)]));
-
-            indexGlyphs = GET_BE_WORD(ccpf3_2->InputGlyphCount);
-            for (k = 0; k < indexGlyphs; k++)
+            for (k = 0; k < input_count; ++k)
             {
-                offset = GET_BE_WORD(ccpf3_2->Coverage[k]);
-                if (GSUB_is_glyph_covered((const BYTE*)ccpf3+offset, glyphs[glyph_index + (write_dir * k)]) == -1)
+                offset = GET_BE_WORD(input->Coverage[k]);
+                if (GSUB_is_glyph_covered((const BYTE *)backtrack + offset,
+                        glyphs[glyph_index + (write_dir * k)]) == -1)
                     break;
             }
-            if (k != indexGlyphs)
+            if (k != input_count)
                 continue;
             TRACE("Matched IndexGlyphs\n");
 
-            ccpf3_3 = (const GPOS_ChainContextPosFormat3_3*)((BYTE *)ccpf3_2 +
-                    FIELD_OFFSET(GPOS_ChainContextPosFormat3_2, Coverage[GET_BE_WORD(ccpf3_2->InputGlyphCount)]));
-
-            for (k = 0; k < GET_BE_WORD(ccpf3_3->LookaheadGlyphCount); k++)
+            for (k = 0; k < lookahead_count; ++k)
             {
-                offset = GET_BE_WORD(ccpf3_3->Coverage[k]);
-                if (GSUB_is_glyph_covered((const BYTE*)ccpf3+offset, glyphs[glyph_index + (dirLookahead * (indexGlyphs + k))]) == -1)
+                offset = GET_BE_WORD(lookahead->Coverage[k]);
+                if (GSUB_is_glyph_covered((const BYTE *)backtrack + offset,
+                        glyphs[glyph_index + (dirLookahead * (input_count + k))]) == -1)
                     break;
             }
-            if (k != GET_BE_WORD(ccpf3_3->LookaheadGlyphCount))
+            if (k != lookahead_count)
                 continue;
             TRACE("Matched LookAhead\n");
 
-            ccpf3_4 = (const GPOS_ChainContextPosFormat3_4*)((BYTE *)ccpf3_3 +
-                    FIELD_OFFSET(GPOS_ChainContextPosFormat3_3, Coverage[GET_BE_WORD(ccpf3_3->LookaheadGlyphCount)]));
+            if (!(positioning_count = GET_BE_WORD(positioning->PosCount)))
+                return 1;
 
-            if (GET_BE_WORD(ccpf3_4->PosCount))
+            for (k = 0; k < positioning_count; ++k)
             {
-                for (k = 0; k < GET_BE_WORD(ccpf3_4->PosCount); k++)
-                {
-                    int lookupIndex = GET_BE_WORD(ccpf3_4->PosLookupRecord[k].LookupListIndex);
-                    int SequenceIndex = GET_BE_WORD(ccpf3_4->PosLookupRecord[k].SequenceIndex) * write_dir;
+                WORD lookup_index = GET_BE_WORD(positioning->PosLookupRecord[k].LookupListIndex);
+                WORD sequence_index = GET_BE_WORD(positioning->PosLookupRecord[k].SequenceIndex) * write_dir;
 
-                    TRACE("Position: %i -> %i %i\n",k, SequenceIndex, lookupIndex);
-                    GPOS_apply_lookup(script_cache, otm, logfont, analysis, advance, lookup, lookupIndex,
-                            glyphs, glyph_index + SequenceIndex, glyph_count, goffset);
-                }
-                return indexGlyphs + GET_BE_WORD(ccpf3_3->LookaheadGlyphCount);
+                TRACE("Position: %u -> %u %u.\n", k, sequence_index, lookup_index);
+                GPOS_apply_lookup(script_cache, otm, logfont, analysis, advance, lookup, lookup_index,
+                        glyphs, glyph_index + sequence_index, glyph_count, goffset);
             }
-            else return 1;
+            return input_count + lookahead_count;
         }
         else
-            FIXME("Unhandled Chaining Contextual Positioning Format %i\n",GET_BE_WORD(ccpf3->PosFormat));
+            FIXME("Unhandled Chaining Contextual Positioning Format %#x.\n", GET_BE_WORD(backtrack->PosFormat));
     }
     return 1;
 }
@@ -2504,7 +2515,7 @@ static void GSUB_initialize_script_cache(ScriptCache *psc)
         const GSUB_Header* header = (const GSUB_Header*)psc->GSUB_Table;
         script = (const OT_ScriptList*)((const BYTE*)header + GET_BE_WORD(header->ScriptList));
         psc->script_count = GET_BE_WORD(script->ScriptCount);
-        TRACE("initializing %i scripts in this font\n",psc->script_count);
+        TRACE("initializing %li scripts in this font\n",psc->script_count);
         if (psc->script_count)
         {
             psc->scripts = heap_alloc_zero(psc->script_count * sizeof(*psc->scripts));
@@ -2537,7 +2548,7 @@ static void GPOS_expand_script_cache(ScriptCache *psc)
     if (!psc->script_count)
     {
         psc->script_count = count;
-        TRACE("initializing %i scripts in this font\n",psc->script_count);
+        TRACE("initializing %li scripts in this font\n",psc->script_count);
         if (psc->script_count)
         {
             psc->scripts = heap_alloc_zero(psc->script_count * sizeof(*psc->scripts));
@@ -2558,10 +2569,15 @@ static void GPOS_expand_script_cache(ScriptCache *psc)
 
             if (!(loaded_script = usp10_script_cache_get_script(psc, tag)))
             {
-                psc->script_count++;
-                psc->scripts = HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
-                        psc->scripts, psc->script_count * sizeof(*psc->scripts));
-                loaded_script = &psc->scripts[psc->script_count - 1];
+                if (!usp10_array_reserve((void **)&psc->scripts, &psc->scripts_size,
+                        psc->script_count + 1, sizeof(*psc->scripts)))
+                {
+                    ERR("Failed grow scripts array.\n");
+                    return;
+                }
+
+                loaded_script = &psc->scripts[psc->script_count];
+                ++psc->script_count;
                 loaded_script->tag = tag;
             }
             loaded_script->gpos_table = (const BYTE *)script + offset;
@@ -2610,6 +2626,19 @@ HRESULT OpenType_GetFontScriptTags(ScriptCache *psc, OPENTYPE_TAG searchingFor, 
     return rc;
 }
 
+static LoadedLanguage *usp10_script_get_language(LoadedScript *script, OPENTYPE_TAG tag)
+{
+    size_t i;
+
+    for (i = 0; i < script->language_count; ++i)
+    {
+        if (script->languages[i].tag == tag)
+            return &script->languages[i];
+    }
+
+    return NULL;
+}
+
 static void GSUB_initialize_language_cache(LoadedScript *script)
 {
     int i;
@@ -2628,7 +2657,7 @@ static void GSUB_initialize_language_cache(LoadedScript *script)
 
         if (script->language_count)
         {
-            TRACE("Deflang %p, LangCount %i\n",script->default_language.gsub_table, script->language_count);
+            TRACE("Deflang %p, LangCount %li\n",script->default_language.gsub_table, script->language_count);
 
             script->languages = heap_alloc_zero(script->language_count * sizeof(*script->languages));
 
@@ -2646,6 +2675,7 @@ static void GPOS_expand_language_cache(LoadedScript *script)
 {
     int count;
     const OT_Script* table = script->gpos_table;
+    LoadedLanguage *language;
     DWORD offset;
 
     if (!table)
@@ -2678,27 +2708,26 @@ static void GPOS_expand_language_cache(LoadedScript *script)
     }
     else if (count)
     {
-        int i,j;
+        int i;
         for (i = 0; i < count; i++)
         {
             int offset = GET_BE_WORD(table->LangSysRecord[i].LangSys);
             OPENTYPE_TAG tag = MS_MAKE_TAG(table->LangSysRecord[i].LangSysTag[0], table->LangSysRecord[i].LangSysTag[1], table->LangSysRecord[i].LangSysTag[2], table->LangSysRecord[i].LangSysTag[3]);
 
-            for (j = 0; j < script->language_count; j++)
+            if (!(language = usp10_script_get_language(script, tag)))
             {
-                if (script->languages[j].tag == tag)
+                if (!usp10_array_reserve((void **)&script->languages, &script->languages_size,
+                        script->language_count + 1, sizeof(*script->languages)))
                 {
-                    script->languages[j].gpos_table = ((const BYTE*)table + offset);
-                    break;
+                    ERR("Failed grow languages array.\n");
+                    return;
                 }
+
+                language = &script->languages[script->language_count];
+                ++script->language_count;
+                language->tag = tag;
             }
-            if (j == script->language_count)
-            {
-                script->language_count++;
-                script->languages = HeapReAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,script->languages, sizeof(LoadedLanguage) * script->language_count);
-                script->languages[j].tag = tag;
-                script->languages[j].gpos_table = ((const BYTE*)table + offset);
-            }
+            language->gpos_table = (const BYTE *)table + offset;
         }
     }
 }
@@ -2765,136 +2794,68 @@ HRESULT OpenType_GetFontLanguageTags(ScriptCache *psc, OPENTYPE_TAG script_tag, 
     return rc;
 }
 
-
-static void GSUB_initialize_feature_cache(const void *table, LoadedLanguage *language)
+static void usp10_language_add_feature_list(LoadedLanguage *language, char table_type,
+        const OT_LangSys *lang, const OT_FeatureList *feature_list)
 {
-    int i;
+    unsigned int count = GET_BE_WORD(lang->FeatureCount);
+    unsigned int i, j;
 
-    if (language->gsub_table)
-    {
-        const OT_LangSys *lang = language->gsub_table;
-        const GSUB_Header *header = (const GSUB_Header *)table;
-        const OT_FeatureList *feature_list;
-
-        language->feature_count = GET_BE_WORD(lang->FeatureCount);
-        TRACE("%i features\n",language->feature_count);
-
-        if (language->feature_count)
-        {
-            language->features = heap_alloc(language->feature_count * sizeof(*language->features));
-
-            feature_list = (const OT_FeatureList*)((const BYTE*)header + GET_BE_WORD(header->FeatureList));
-
-            for (i = 0; i < language->feature_count; i++)
-            {
-                LoadedFeature *loaded_feature = &language->features[i];
-                const OT_Feature *feature;
-                int j;
-                int index = GET_BE_WORD(lang->FeatureIndex[i]);
-
-                loaded_feature->tag = MS_MAKE_TAG(feature_list->FeatureRecord[index].FeatureTag[0],
-                        feature_list->FeatureRecord[index].FeatureTag[1],
-                        feature_list->FeatureRecord[index].FeatureTag[2],
-                        feature_list->FeatureRecord[index].FeatureTag[3]);
-                loaded_feature->feature = ((const BYTE *)feature_list
-                        + GET_BE_WORD(feature_list->FeatureRecord[index].Feature));
-                feature = loaded_feature->feature;
-                loaded_feature->lookup_count = GET_BE_WORD(feature->LookupCount);
-                loaded_feature->lookups = heap_alloc(loaded_feature->lookup_count * sizeof(*loaded_feature->lookups));
-                for (j = 0; j < loaded_feature->lookup_count; ++j)
-                    loaded_feature->lookups[j] = GET_BE_WORD(feature->LookupListIndex[j]);
-                loaded_feature->tableType = FEATURE_GSUB_TABLE;
-            }
-        }
-    }
-}
-
-static void GPOS_expand_feature_cache(const void *table, LoadedLanguage *language)
-{
-    int i, count;
-    const OT_LangSys *lang = language->gpos_table;
-    const GPOS_Header *header = (const GPOS_Header *)table;
-    const OT_FeatureList *feature_list;
-
-    if (!lang)
-        return;
-
-    count = GET_BE_WORD(lang->FeatureCount);
-    feature_list = (const OT_FeatureList*)((const BYTE*)header + GET_BE_WORD(header->FeatureList));
-
-    TRACE("%i features\n",count);
+    TRACE("table_type %#x, %u features.\n", table_type, count);
 
     if (!count)
         return;
 
     if (!language->feature_count)
-    {
-        language->feature_count = count;
-
-        if (language->feature_count)
-        {
-            language->features = heap_alloc(language->feature_count * sizeof(*language->features));
-
-            for (i = 0; i < language->feature_count; i++)
-            {
-                LoadedFeature *loaded_feature = &language->features[i];
-                const OT_Feature *feature;
-                int j;
-                int index = GET_BE_WORD(lang->FeatureIndex[i]);
-
-                loaded_feature->tag = MS_MAKE_TAG(feature_list->FeatureRecord[index].FeatureTag[0],
-                        feature_list->FeatureRecord[index].FeatureTag[1],
-                        feature_list->FeatureRecord[index].FeatureTag[2],
-                        feature_list->FeatureRecord[index].FeatureTag[3]);
-                loaded_feature->feature = ((const BYTE *)feature_list
-                        + GET_BE_WORD(feature_list->FeatureRecord[index].Feature));
-                feature = loaded_feature->feature;
-                loaded_feature->lookup_count = GET_BE_WORD(feature->LookupCount);
-                loaded_feature->lookups = heap_alloc(loaded_feature->lookup_count * sizeof(*loaded_feature->lookups));
-                for (j = 0; j < loaded_feature->lookup_count; ++j)
-                    loaded_feature->lookups[j] = GET_BE_WORD(feature->LookupListIndex[j]);
-                loaded_feature->tableType = FEATURE_GPOS_TABLE;
-            }
-        }
-    }
+        language->features = heap_alloc(count * sizeof(*language->features));
     else
+        language->features = HeapReAlloc(GetProcessHeap(), 0, language->features,
+                (language->feature_count + count) * sizeof(*language->features));
+
+    for (i = 0; i < count; ++i)
     {
-        language->features = HeapReAlloc(GetProcessHeap(),0,language->features, sizeof(LoadedFeature)*(language->feature_count + count));
+        const OT_FeatureRecord *record;
+        LoadedFeature *loaded_feature;
+        const OT_Feature *feature;
 
-        for (i = 0; i < count; i++)
-        {
-            LoadedFeature *loaded_feature;
-            const OT_Feature *feature;
-            int j;
-            int index = GET_BE_WORD(lang->FeatureIndex[i]);
-            int idx = language->feature_count + i;
+        record = &feature_list->FeatureRecord[GET_BE_WORD(lang->FeatureIndex[i])];
+        feature = (const OT_Feature *)((const BYTE *)feature_list + GET_BE_WORD(record->Feature));
 
-            loaded_feature = &language->features[idx];
-            loaded_feature->tag = MS_MAKE_TAG(feature_list->FeatureRecord[index].FeatureTag[0],
-                    feature_list->FeatureRecord[index].FeatureTag[1],
-                    feature_list->FeatureRecord[index].FeatureTag[2],
-                    feature_list->FeatureRecord[index].FeatureTag[3]);
-            loaded_feature->feature = ((const BYTE *)feature_list
-                    + GET_BE_WORD(feature_list->FeatureRecord[index].Feature));
-            feature = loaded_feature->feature;
-            loaded_feature->lookup_count = GET_BE_WORD(feature->LookupCount);
-            loaded_feature->lookups = heap_alloc(loaded_feature->lookup_count * sizeof(*loaded_feature->lookups));
-            for (j = 0; j < loaded_feature->lookup_count; ++j)
-                loaded_feature->lookups[j] = GET_BE_WORD(feature->LookupListIndex[j]);
-            loaded_feature->tableType = FEATURE_GPOS_TABLE;
-        }
-        language->feature_count += count;
+        loaded_feature = &language->features[language->feature_count + i];
+        loaded_feature->tag = MS_MAKE_TAG(record->FeatureTag[0], record->FeatureTag[1],
+                record->FeatureTag[2], record->FeatureTag[3]);
+        loaded_feature->tableType = table_type;
+        loaded_feature->feature = feature;
+        loaded_feature->lookup_count = GET_BE_WORD(feature->LookupCount);
+        loaded_feature->lookups = heap_alloc(loaded_feature->lookup_count * sizeof(*loaded_feature->lookups));
+        for (j = 0; j < loaded_feature->lookup_count; ++j)
+            loaded_feature->lookups[j] = GET_BE_WORD(feature->LookupListIndex[j]);
     }
+    language->feature_count += count;
 }
 
 static void _initialize_feature_cache(ScriptCache *psc, LoadedLanguage *language)
 {
-    if (!language->features_initialized)
+    const GSUB_Header *gsub_header = psc->GSUB_Table;
+    const GPOS_Header *gpos_header = psc->GPOS_Table;
+    const OT_FeatureList *feature_list;
+    const OT_LangSys *lang;
+
+    if (language->features_initialized)
+        return;
+
+    if ((lang = language->gsub_table))
     {
-        GSUB_initialize_feature_cache(psc->GSUB_Table, language);
-        GPOS_expand_feature_cache(psc->GPOS_Table, language);
-        language->features_initialized = TRUE;
+        feature_list = (const OT_FeatureList *)((const BYTE *)gsub_header + GET_BE_WORD(gsub_header->FeatureList));
+        usp10_language_add_feature_list(language, FEATURE_GSUB_TABLE, lang, feature_list);
     }
+
+    if ((lang = language->gpos_table))
+    {
+        feature_list = (const OT_FeatureList *)((const BYTE *)gpos_header + GET_BE_WORD(gpos_header->FeatureList));
+        usp10_language_add_feature_list(language, FEATURE_GPOS_TABLE, lang, feature_list);
+    }
+
+    language->features_initialized = TRUE;
 }
 
 HRESULT OpenType_GetFontFeatureTags(ScriptCache *psc, OPENTYPE_TAG script_tag, OPENTYPE_TAG language_tag, BOOL filtered, OPENTYPE_TAG searchingFor, char tableType, int cMaxTags, OPENTYPE_TAG *pFeatureTags, int *pcTags, LoadedFeature** feature)
@@ -2919,16 +2880,7 @@ HRESULT OpenType_GetFontFeatureTags(ScriptCache *psc, OPENTYPE_TAG script_tag, O
     if ((script->default_language.gsub_table || script->default_language.gpos_table) && script->default_language.tag == language_tag)
         language = &script->default_language;
     else
-    {
-        for (i = 0; i < script->language_count; i++)
-        {
-            if (script->languages[i].tag == language_tag)
-            {
-                language = &script->languages[i];
-                break;
-            }
-        }
-    }
+        language = usp10_script_get_language(script, language_tag);
 
     if (!language)
     {
