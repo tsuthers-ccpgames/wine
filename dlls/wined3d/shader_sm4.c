@@ -174,6 +174,7 @@ enum wined3d_sm4_opcode
     WINED3D_SM4_OP_OR                               = 0x3c,
     WINED3D_SM4_OP_RESINFO                          = 0x3d,
     WINED3D_SM4_OP_RET                              = 0x3e,
+    WINED3D_SM4_OP_RETC                             = 0x3f,
     WINED3D_SM4_OP_ROUND_NE                         = 0x40,
     WINED3D_SM4_OP_ROUND_NI                         = 0x41,
     WINED3D_SM4_OP_ROUND_PI                         = 0x42,
@@ -232,6 +233,7 @@ enum wined3d_sm4_opcode
     WINED3D_SM5_OP_DERIV_RTY_COARSE                 = 0x7c,
     WINED3D_SM5_OP_DERIV_RTY_FINE                   = 0x7d,
     WINED3D_SM5_OP_GATHER4_C                        = 0x7e,
+    WINED3D_SM5_OP_GATHER4_PO                       = 0x7f,
     WINED3D_SM5_OP_RCP                              = 0x81,
     WINED3D_SM5_OP_F32TOF16                         = 0x82,
     WINED3D_SM5_OP_F16TOF32                         = 0x83,
@@ -292,6 +294,7 @@ enum wined3d_sm4_opcode
     WINED3D_SM5_OP_IMM_ATOMIC_UMAX                  = 0xbc,
     WINED3D_SM5_OP_IMM_ATOMIC_UMIN                  = 0xbd,
     WINED3D_SM5_OP_SYNC                             = 0xbe,
+    WINED3D_SM5_OP_DCL_GS_INSTANCES                 = 0xce,
 };
 
 enum wined3d_sm4_register_type
@@ -326,6 +329,7 @@ enum wined3d_sm4_register_type
     WINED3D_SM5_RT_LOCAL_THREAD_ID         = 0x22,
     WINED3D_SM5_RT_COVERAGE                = 0x23,
     WINED3D_SM5_RT_LOCAL_THREAD_INDEX      = 0x24,
+    WINED3D_SM5_RT_GS_INSTANCE_ID          = 0x25,
 };
 
 enum wined3d_sm4_output_primitive_type
@@ -890,6 +894,8 @@ static const struct wined3d_sm4_opcode_info opcode_table[] =
     {WINED3D_SM4_OP_OR,                               WINED3DSIH_OR,                               "u",    "uu"},
     {WINED3D_SM4_OP_RESINFO,                          WINED3DSIH_RESINFO,                          "f",    "iR"},
     {WINED3D_SM4_OP_RET,                              WINED3DSIH_RET,                              "",     ""},
+    {WINED3D_SM4_OP_RETC,                             WINED3DSIH_RETP,                             "",     "u",
+            shader_sm4_read_conditional_op},
     {WINED3D_SM4_OP_ROUND_NE,                         WINED3DSIH_ROUND_NE,                         "f",    "f"},
     {WINED3D_SM4_OP_ROUND_NI,                         WINED3DSIH_ROUND_NI,                         "f",    "f"},
     {WINED3D_SM4_OP_ROUND_PI,                         WINED3DSIH_ROUND_PI,                         "f",    "f"},
@@ -967,6 +973,7 @@ static const struct wined3d_sm4_opcode_info opcode_table[] =
     {WINED3D_SM5_OP_DERIV_RTY_COARSE,                 WINED3DSIH_DSY_COARSE,                       "f",    "f"},
     {WINED3D_SM5_OP_DERIV_RTY_FINE,                   WINED3DSIH_DSY_FINE,                         "f",    "f"},
     {WINED3D_SM5_OP_GATHER4_C,                        WINED3DSIH_GATHER4_C,                        "f",    "fRSf"},
+    {WINED3D_SM5_OP_GATHER4_PO,                       WINED3DSIH_GATHER4_PO,                       "f",    "fiRS"},
     {WINED3D_SM5_OP_RCP,                              WINED3DSIH_RCP,                              "f",    "f"},
     {WINED3D_SM5_OP_F32TOF16,                         WINED3DSIH_F32TOF16,                         "u",    "f"},
     {WINED3D_SM5_OP_F16TOF32,                         WINED3DSIH_F16TOF32,                         "f",    "u"},
@@ -1047,6 +1054,8 @@ static const struct wined3d_sm4_opcode_info opcode_table[] =
     {WINED3D_SM5_OP_IMM_ATOMIC_UMIN,                  WINED3DSIH_IMM_ATOMIC_UMIN,                  "uU",   "iu"},
     {WINED3D_SM5_OP_SYNC,                             WINED3DSIH_SYNC,                             "",     "",
             shader_sm5_read_sync},
+    {WINED3D_SM5_OP_DCL_GS_INSTANCES,                 WINED3DSIH_DCL_GS_INSTANCES,                 "",     "",
+            shader_sm4_read_declaration_count},
 };
 
 static const enum wined3d_shader_register_type register_type_table[] =
@@ -1088,6 +1097,7 @@ static const enum wined3d_shader_register_type register_type_table[] =
     /* WINED3D_SM5_RT_LOCAL_THREAD_ID */         WINED3DSPR_LOCALTHREADID,
     /* WINED3D_SM5_RT_COVERAGE */                WINED3DSPR_COVERAGE,
     /* WINED3D_SM5_RT_LOCAL_THREAD_INDEX */      WINED3DSPR_LOCALTHREADINDEX,
+    /* WINED3D_SM5_RT_GS_INSTANCE_ID */          WINED3DSPR_GSINSTID,
 };
 
 static const struct wined3d_sm4_opcode_info *get_opcode_info(enum wined3d_sm4_opcode opcode)

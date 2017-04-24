@@ -27,7 +27,7 @@
 #define INT_FLOAT_MULTI 255.0f
 #define INT_FLOAT_MULTI_INVERSE (1/INT_FLOAT_MULTI)
 
-#define INITIAL_PARAM_TABLE_SIZE 16
+static const char parameter_magic_string[4] = {'@', '!', '#', '\xFF'};
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3dx);
 
@@ -137,12 +137,6 @@ struct d3dx_technique
     struct IDirect3DStateBlock9 *saved_state;
 };
 
-struct param_table
-{
-    struct d3dx_parameter **table;
-    unsigned int count, size;
-};
-
 struct d3dx9_base_effect
 {
     struct ID3DXEffectImpl *effect;
@@ -154,8 +148,6 @@ struct d3dx9_base_effect
     struct d3dx_parameter *parameters;
     struct d3dx_technique *techniques;
     struct d3dx_object *objects;
-
-    struct param_table param_table;
 };
 
 struct ID3DXEffectImpl
@@ -174,7 +166,9 @@ struct ID3DXEffectImpl
     DWORD flags;
 
     D3DLIGHT9 current_light[8];
+    BOOL light_updated[8];
     D3DMATERIAL9 current_material;
+    BOOL material_updated;
 };
 
 struct ID3DXEffectCompilerImpl
@@ -417,17 +411,17 @@ static void skip_dword_unknown(const char **ptr, unsigned int count)
 
 static inline D3DXHANDLE get_parameter_handle(struct d3dx_parameter *parameter)
 {
-    return parameter ? parameter->handle : NULL;
+    return (D3DXHANDLE)parameter;
 }
 
 static inline D3DXHANDLE get_technique_handle(struct d3dx_technique *technique)
 {
-    return (D3DXHANDLE) technique;
+    return (D3DXHANDLE)technique;
 }
 
 static inline D3DXHANDLE get_pass_handle(struct d3dx_pass *pass)
 {
-    return (D3DXHANDLE) pass;
+    return (D3DXHANDLE)pass;
 }
 
 static struct d3dx_technique *get_technique_by_name(struct d3dx9_base_effect *base, const char *name)
@@ -478,10 +472,11 @@ static struct d3dx_pass *get_valid_pass(struct d3dx9_base_effect *base, D3DXHAND
 
 static struct d3dx_parameter *get_valid_parameter(struct d3dx9_base_effect *base, D3DXHANDLE parameter)
 {
-    struct d3dx_parameter **handle_param = (struct d3dx_parameter **)parameter;
+    struct d3dx_parameter *handle_param = (struct d3dx_parameter *)parameter;
 
-    if (handle_param >= base->param_table.table && handle_param < base->param_table.table + base->param_table.count)
-        return *handle_param;
+    if (handle_param && !strncmp(handle_param->magic_string, parameter_magic_string,
+            sizeof(parameter_magic_string)))
+        return handle_param;
 
     return get_parameter_by_name(base, NULL, parameter);
 }
@@ -652,8 +647,6 @@ static void d3dx9_base_effect_cleanup(struct d3dx9_base_effect *base)
     unsigned int i;
 
     TRACE("base %p.\n", base);
-
-    HeapFree(GetProcessHeap(), 0, base->param_table.table);
 
     if (base->parameters)
     {
@@ -2571,7 +2564,7 @@ static HRESULT d3dx9_get_param_value_ptr(struct ID3DXEffectImpl *effect, struct 
         {
             unsigned int array_idx;
             static const struct d3dx_parameter array_idx_param =
-                {NULL, NULL, NULL, D3DXPC_SCALAR, D3DXPT_INT, 1, 1, 0, 0, 0, 0, sizeof(array_idx)};
+                {"", NULL, NULL, NULL, D3DXPC_SCALAR, D3DXPT_INT, 1, 1, 0, 0, 0, 0, sizeof(array_idx)};
             HRESULT hr;
             struct d3dx_parameter *ref_param, *selected_param;
 
@@ -2740,7 +2733,7 @@ static void d3dx9_set_material_parameter(enum MATERIAL_TYPE op, D3DMATERIAL9 *ma
     }
 }
 
-static HRESULT d3dx_set_shader_const_state(IDirect3DDevice9 *device, enum SHADER_CONSTANT_TYPE op, UINT index,
+static HRESULT d3dx_set_shader_const_state(struct ID3DXEffectImpl *effect, enum SHADER_CONSTANT_TYPE op, UINT index,
         struct d3dx_parameter *param, void *value_ptr)
 {
     static const struct
@@ -2781,17 +2774,17 @@ static HRESULT d3dx_set_shader_const_state(IDirect3DDevice9 *device, enum SHADER
     switch (op)
     {
         case SCT_VSFLOAT:
-            return IDirect3DDevice9_SetVertexShaderConstantF(device, index, (const float *)value_ptr, element_count);
+            return SET_D3D_STATE(effect, SetVertexShaderConstantF, index, (const float *)value_ptr, element_count);
         case SCT_VSBOOL:
-            return IDirect3DDevice9_SetVertexShaderConstantB(device, index, (const BOOL *)value_ptr, element_count);
+            return SET_D3D_STATE(effect, SetVertexShaderConstantB, index, (const BOOL *)value_ptr, element_count);
         case SCT_VSINT:
-            return IDirect3DDevice9_SetVertexShaderConstantI(device, index, (const int *)value_ptr, element_count);
+            return SET_D3D_STATE(effect, SetVertexShaderConstantI, index, (const int *)value_ptr, element_count);
         case SCT_PSFLOAT:
-            return IDirect3DDevice9_SetPixelShaderConstantF(device, index, (const float *)value_ptr, element_count);
+            return SET_D3D_STATE(effect, SetPixelShaderConstantF, index, (const float *)value_ptr, element_count);
         case SCT_PSBOOL:
-            return IDirect3DDevice9_SetPixelShaderConstantB(device, index, (const BOOL *)value_ptr, element_count);
+            return SET_D3D_STATE(effect, SetPixelShaderConstantB, index, (const BOOL *)value_ptr, element_count);
         case SCT_PSINT:
-            return IDirect3DDevice9_SetPixelShaderConstantI(device, index, (const int *)value_ptr, element_count);
+            return SET_D3D_STATE(effect, SetPixelShaderConstantI, index, (const int *)value_ptr, element_count);
     }
     return D3D_OK;
 }
@@ -2802,7 +2795,6 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
 static HRESULT d3dx_set_shader_constants(struct ID3DXEffectImpl *effect, struct d3dx_pass *pass,
         struct d3dx_parameter *param, BOOL vs, BOOL update_all)
 {
-    IDirect3DDevice9 *device = effect->device;
     HRESULT hr, ret;
     struct d3dx_parameter **params;
     D3DXCONSTANT_DESC *cdesc;
@@ -2814,7 +2806,8 @@ static HRESULT d3dx_set_shader_constants(struct ID3DXEffectImpl *effect, struct 
         FIXME("param_eval structure is null.\n");
         return D3DERR_INVALIDCALL;
     }
-    if (FAILED(hr = d3dx_param_eval_set_shader_constants(device, param->param_eval, update_all)))
+    if (FAILED(hr = d3dx_param_eval_set_shader_constants(effect->manager, effect->device,
+            param->param_eval, update_all)))
         return hr;
     params = param->param_eval->shader_inputs.inputs_param;
     cdesc = param->param_eval->shader_inputs.inputs;
@@ -2843,7 +2836,6 @@ static HRESULT d3dx_set_shader_constants(struct ID3DXEffectImpl *effect, struct 
 static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pass *pass,
         struct d3dx_state *state, unsigned int parent_index, BOOL update_all)
 {
-    IDirect3DDevice9 *device = effect->device;
     struct d3dx_parameter *param;
     void *param_value;
     BOOL param_dirty;
@@ -2878,10 +2870,10 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
         case SC_RENDERSTATE:
             TRACE("%s, operation %u, value %u.\n", state_table[state->operation].name,
                     state_table[state->operation].op, *(DWORD *)param_value);
-            return IDirect3DDevice9_SetRenderState(device, state_table[state->operation].op, *(DWORD *)param_value);
+            return SET_D3D_STATE(effect, SetRenderState, state_table[state->operation].op, *(DWORD *)param_value);
         case SC_FVF:
             TRACE("%s, value %#x.\n", state_table[state->operation].name, *(DWORD *)param_value);
-            return IDirect3DDevice9_SetFVF(device, *(DWORD *)param_value);
+            return SET_D3D_STATE(effect, SetFVF, *(DWORD *)param_value);
         case SC_TEXTURE:
         {
             UINT unit;
@@ -2889,12 +2881,12 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
             unit = parent_index == ~0u ? state->index : parent_index;
             TRACE("%s, unit %u, value %p.\n", state_table[state->operation].name, unit,
                     *(IDirect3DBaseTexture9 **)param_value);
-            return IDirect3DDevice9_SetTexture(device, unit, *(IDirect3DBaseTexture9 **)param_value);
+            return SET_D3D_STATE(effect, SetTexture, unit, *(IDirect3DBaseTexture9 **)param_value);
         }
         case SC_TEXTURESTAGE:
             TRACE("%s, stage %u, value %u.\n", state_table[state->operation].name, state->index, *(DWORD *)param_value);
-            return IDirect3DDevice9_SetTextureStageState(device, state->index,
-                    state_table[state->operation].op, *(DWORD *)param_value);
+            return SET_D3D_STATE(effect, SetTextureStageState, state->index,
+                        state_table[state->operation].op, *(DWORD *)param_value);
         case SC_SETSAMPLER:
         {
             struct d3dx_sampler *sampler;
@@ -2918,13 +2910,13 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
 
             sampler = parent_index == ~0u ? state->index : parent_index;
             TRACE("%s, sampler %u, value %u.\n", state_table[state->operation].name, sampler, *(DWORD *)param_value);
-            return IDirect3DDevice9_SetSamplerState(device, sampler, state_table[state->operation].op,
+            return SET_D3D_STATE(effect, SetSamplerState, sampler, state_table[state->operation].op,
                     *(DWORD *)param_value);
         }
         case SC_VERTEXSHADER:
             TRACE("%s, shader %p.\n", state_table[state->operation].name, *(IDirect3DVertexShader9 **)param_value);
             if ((update_all || param_dirty)
-                    && FAILED(hr = IDirect3DDevice9_SetVertexShader(device,
+                    && FAILED(hr = SET_D3D_STATE(effect, SetVertexShader,
                     *(IDirect3DVertexShader9 **)param_value)))
                 ERR("Could not set vertex shader, hr %#x.\n", hr);
             else if (*(IDirect3DVertexShader9 **)param_value)
@@ -2933,7 +2925,7 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
         case SC_PIXELSHADER:
             TRACE("%s, shader %p.\n", state_table[state->operation].name, *(IDirect3DPixelShader9 **)param_value);
             if ((update_all || param_dirty)
-                    && FAILED(hr = IDirect3DDevice9_SetPixelShader(device,
+                    && FAILED(hr = SET_D3D_STATE(effect, SetPixelShader,
                     *(IDirect3DPixelShader9 **)param_value)))
                 ERR("Could not set pixel shader, hr %#x.\n", hr);
             else if (*(IDirect3DPixelShader9 **)param_value)
@@ -2941,18 +2933,19 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
             return hr;
         case SC_TRANSFORM:
             TRACE("%s, state %u.\n", state_table[state->operation].name, state->index);
-            return IDirect3DDevice9_SetTransform(device, state_table[state->operation].op + state->index,
+            return SET_D3D_STATE(effect, SetTransform, state_table[state->operation].op + state->index,
                     (D3DMATRIX *)param_value);
         case SC_LIGHTENABLE:
             TRACE("%s, index %u, value %u.\n", state_table[state->operation].name, state->index, *(BOOL *)param_value);
-            return IDirect3DDevice9_LightEnable(device, state->index, *(BOOL *)param_value);
+            return SET_D3D_STATE(effect, LightEnable, state->index, *(BOOL *)param_value);
         case SC_LIGHT:
         {
             TRACE("%s, index %u, op %u.\n", state_table[state->operation].name, state->index,
                     state_table[state->operation].op);
             d3dx9_set_light_parameter(state_table[state->operation].op,
                     &effect->current_light[state->index], param_value);
-            return IDirect3DDevice9_SetLight(device, state->index, &effect->current_light[state->index]);
+            effect->light_updated[state->index] = TRUE;
+            return D3D_OK;
         }
         case SC_MATERIAL:
         {
@@ -2960,15 +2953,16 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
                     state_table[state->operation].op);
             d3dx9_set_material_parameter(state_table[state->operation].op,
                     &effect->current_material, param_value);
-            return IDirect3DDevice9_SetMaterial(device, &effect->current_material);
+            effect->material_updated = TRUE;
+            return D3D_OK;
         }
         case SC_NPATCHMODE:
             TRACE("%s, nsegments %f.\n", state_table[state->operation].name, *(float *)param_value);
-            return IDirect3DDevice9_SetNPatchMode(device, *(float *)param_value);
+            return SET_D3D_STATE(effect, SetNPatchMode, *(float *)param_value);
         case SC_SHADERCONST:
             TRACE("%s, index %u, op %u.\n", state_table[state->operation].name, state->index,
                 state_table[state->operation].op);
-            return d3dx_set_shader_const_state(device, state_table[state->operation].op, state->index,
+            return d3dx_set_shader_const_state(effect, state_table[state->operation].op, state->index,
                 param, param_value);
         default:
             FIXME("%s not handled.\n", state_table[state->operation].name);
@@ -2981,22 +2975,64 @@ static HRESULT d3dx9_apply_pass_states(struct ID3DXEffectImpl *effect, struct d3
 {
     unsigned int i;
     HRESULT ret;
+    HRESULT hr;
 
     TRACE("effect %p, pass %p, state_count %u.\n", effect, pass, pass->state_count);
 
     ret = D3D_OK;
-    for (i = 0; i < pass->state_count; i++)
+    for (i = 0; i < pass->state_count; ++i)
     {
-        HRESULT hr;
-
         if (FAILED(hr = d3dx9_apply_state(effect, pass, &pass->states[i], ~0u, update_all)))
         {
             WARN("Error applying state, hr %#x.\n", hr);
             ret = hr;
         }
     }
+    for (i = 0; i < ARRAY_SIZE(effect->current_light); ++i)
+    {
+        if (effect->light_updated[i]
+                && FAILED(hr = SET_D3D_STATE(effect, SetLight, i, &effect->current_light[i])))
+        {
+            WARN("Error setting light, hr %#x.\n", hr);
+            ret = hr;
+        }
+        effect->light_updated[i] = FALSE;
+    }
+
+    if (effect->material_updated
+            && FAILED(hr = SET_D3D_STATE(effect, SetMaterial, &effect->current_material)))
+    {
+        WARN("Error setting material, hr %#x.\n", hr);
+        ret = hr;
+    }
+    effect->material_updated = FALSE;
+
     clear_dirty_params(&effect->base_effect);
     return ret;
+}
+
+static BOOL is_same_parameter(void *param1_, struct d3dx_parameter *param2)
+{
+    struct d3dx_parameter *param1 = (struct d3dx_parameter *)param1_;
+    BOOL matches;
+    unsigned int i, member_count;
+
+    matches = !strcmp(param1->name, param2->name) && param1->class == param2->class
+            && param1->type == param2->type && param1->rows == param2->rows
+            && param1->columns == param2->columns && param1->element_count == param2->element_count
+            && param1->member_count == param2->member_count;
+
+    member_count = param1->element_count ? param1->element_count : param1->member_count;
+
+    if (!matches || !member_count)
+        return matches;
+
+    for (i = 0; i < member_count; ++i)
+    {
+        if (!is_same_parameter(&param1->members[i], &param2->members[i]))
+            return FALSE;
+    }
+    return TRUE;
 }
 
 static inline struct ID3DXEffectImpl *impl_from_ID3DXEffect(ID3DXEffect *iface)
@@ -3721,11 +3757,6 @@ static BOOL walk_parameter_dep(struct d3dx_parameter *param, walk_parameter_dep_
     return FALSE;
 }
 
-static BOOL compare_param_ptr(void *param_comp, struct d3dx_parameter *param)
-{
-    return param_comp == param;
-}
-
 static BOOL WINAPI ID3DXEffectImpl_IsParameterUsed(ID3DXEffect* iface, D3DXHANDLE parameter, D3DXHANDLE technique)
 {
     struct ID3DXEffectImpl *effect = impl_from_ID3DXEffect(iface);
@@ -3744,7 +3775,7 @@ static BOOL WINAPI ID3DXEffectImpl_IsParameterUsed(ID3DXEffect* iface, D3DXHANDL
         pass = &tech->passes[i];
         for (j = 0; j < pass->state_count; ++j)
         {
-            if (walk_state_dep(&pass->states[j], compare_param_ptr, param))
+            if (walk_state_dep(&pass->states[j], is_same_parameter, param))
             {
                 TRACE("Returning TRUE.\n");
                 return TRUE;
@@ -3767,7 +3798,7 @@ static HRESULT WINAPI ID3DXEffectImpl_Begin(ID3DXEffect *iface, UINT *passes, DW
         if (flags & ~(D3DXFX_DONOTSAVESTATE | D3DXFX_DONOTSAVESAMPLERSTATE | D3DXFX_DONOTSAVESHADERSTATE))
             WARN("Invalid flags (%#x) specified.\n", flags);
 
-        if (effect->manager || flags & D3DXFX_DONOTSAVESTATE)
+        if (flags & D3DXFX_DONOTSAVESTATE)
         {
             TRACE("State capturing disabled.\n");
         }
@@ -3778,12 +3809,17 @@ static HRESULT WINAPI ID3DXEffectImpl_Begin(ID3DXEffect *iface, UINT *passes, DW
 
             if (!technique->saved_state)
             {
+                ID3DXEffectStateManager *manager;
+
+                manager = effect->manager;
+                effect->manager = NULL;
                 if (FAILED(hr = IDirect3DDevice9_BeginStateBlock(effect->device)))
                     ERR("BeginStateBlock failed, hr %#x.\n", hr);
                 for (i = 0; i < technique->pass_count; i++)
                     d3dx9_apply_pass_states(effect, &technique->passes[i], TRUE);
                 if (FAILED(hr = IDirect3DDevice9_EndStateBlock(effect->device, &technique->saved_state)))
                     ERR("EndStateBlock failed, hr %#x.\n", hr);
+                effect->manager = manager;
             }
             if (FAILED(hr = IDirect3DStateBlock9_Capture(technique->saved_state)))
                 ERR("StateBlock Capture failed, hr %#x.\n", hr);
@@ -3862,7 +3898,7 @@ static HRESULT WINAPI ID3DXEffectImpl_End(ID3DXEffect *iface)
     if (!effect->started)
         return D3D_OK;
 
-    if (effect->manager || effect->flags & D3DXFX_DONOTSAVESTATE)
+    if (effect->flags & D3DXFX_DONOTSAVESTATE)
     {
         TRACE("State restoring disabled.\n");
     }
@@ -5042,59 +5078,9 @@ static HRESULT d3dx9_copy_data(struct d3dx9_base_effect *base, unsigned int obje
     return D3D_OK;
 }
 
-static void add_param_to_table(struct d3dx9_base_effect *base, struct d3dx_parameter *param)
+static void param_set_magic_number(struct d3dx_parameter *param)
 {
-    struct param_table *table = &base->param_table;
-
-    if (table->count >= table->size)
-    {
-        unsigned int new_size;
-        struct d3dx_parameter **new_alloc;
-
-        if (!table->size)
-        {
-            new_size = INITIAL_PARAM_TABLE_SIZE;
-            new_alloc = HeapAlloc(GetProcessHeap(), 0, sizeof(*table->table) * new_size);
-            if (!new_alloc)
-            {
-                ERR("Out of memory.\n");
-                return;
-            }
-        }
-        else
-        {
-            new_size = table->size * 2;
-            new_alloc = HeapReAlloc(GetProcessHeap(), 0, table->table, sizeof(*table->table) * new_size);
-            if (!new_alloc)
-            {
-                ERR("Out of memory.\n");
-                return;
-            }
-        }
-        table->table = new_alloc;
-        table->size = new_size;
-    }
-
-    table->table[table->count++] = param;
-}
-
-static void sync_param_handles(struct d3dx9_base_effect *base)
-{
-    struct param_table *table = &base->param_table;
-    struct d3dx_parameter **new_alloc;
-    unsigned int i;
-
-    if (table->count)
-    {
-        new_alloc = HeapReAlloc(GetProcessHeap(), 0, table->table, sizeof(*table->table) * table->count);
-        if (new_alloc)
-            table->table = new_alloc;
-        else
-            ERR("Out of memory.\n");
-    }
-
-    for (i = 0; i < table->count; ++i)
-        table->table[i]->handle = (D3DXHANDLE)&table->table[i];
+    memcpy(param->magic_string, parameter_magic_string, sizeof(parameter_magic_string));
 }
 
 static HRESULT d3dx9_parse_effect_typedef(struct d3dx9_base_effect *base, struct d3dx_parameter *param,
@@ -5231,7 +5217,7 @@ static HRESULT d3dx9_parse_effect_typedef(struct d3dx9_base_effect *base, struct
         {
             *ptr = save_ptr;
 
-            add_param_to_table(base, &param->members[i]);
+            param_set_magic_number(&param->members[i]);
             hr = d3dx9_parse_effect_typedef(base, &param->members[i], data, ptr, param, flags);
             if (hr != D3D_OK)
             {
@@ -5256,7 +5242,7 @@ static HRESULT d3dx9_parse_effect_typedef(struct d3dx9_base_effect *base, struct
 
         for (i = 0; i < param->member_count; ++i)
         {
-            add_param_to_table(base, &param->members[i]);
+            param_set_magic_number(&param->members[i]);
             hr = d3dx9_parse_effect_typedef(base, &param->members[i], data, ptr, NULL, flags);
             if (hr != D3D_OK)
             {
@@ -5414,7 +5400,7 @@ static HRESULT d3dx9_parse_effect_parameter(struct d3dx9_base_effect *base, stru
 
         for (i = 0; i < param->annotation_count; ++i)
         {
-            add_param_to_table(base, &param->annotations[i]);
+            param_set_magic_number(&param->annotations[i]);
             hr = d3dx9_parse_effect_annotation(base, &param->annotations[i], data, ptr, objects);
             if (hr != D3D_OK)
             {
@@ -5476,7 +5462,7 @@ static HRESULT d3dx9_parse_effect_pass(struct d3dx9_base_effect *base, struct d3
 
         for (i = 0; i < pass->annotation_count; ++i)
         {
-            add_param_to_table(base, &pass->annotations[i]);
+            param_set_magic_number(&pass->annotations[i]);
             hr = d3dx9_parse_effect_annotation(base, &pass->annotations[i], data, ptr, objects);
             if (hr != D3D_OK)
             {
@@ -5572,7 +5558,7 @@ static HRESULT d3dx9_parse_effect_technique(struct d3dx9_base_effect *base, stru
 
         for (i = 0; i < technique->annotation_count; ++i)
         {
-            add_param_to_table(base, &technique->annotations[i]);
+            param_set_magic_number(&technique->annotations[i]);
             hr = d3dx9_parse_effect_annotation(base, &technique->annotations[i], data, ptr, objects);
             if (hr != D3D_OK)
             {
@@ -5937,7 +5923,7 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
 
         for (i = 0; i < base->parameter_count; ++i)
         {
-            add_param_to_table(base, &base->parameters[i]);
+            param_set_magic_number(&base->parameters[i]);
             hr = d3dx9_parse_effect_parameter(base, &base->parameters[i], data, &ptr, base->objects);
             if (hr != D3D_OK)
             {
@@ -5969,8 +5955,6 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
             }
         }
     }
-
-    sync_param_handles(base);
 
     read_dword(&ptr, &stringcount);
     TRACE("String count: %u\n", stringcount);

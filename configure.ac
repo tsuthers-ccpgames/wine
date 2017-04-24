@@ -1142,8 +1142,8 @@ This probably prevents linking to OpenGL. Try deleting the file and restarting c
 		     $X_LIBS -lm $X_EXTRA_LIBS)
         if test "x$with_glu" != "xno"
         then
-            AC_CHECK_LIB(GLU,gluLookAt,[:],,[$OPENGL_LIBS $X_LIBS -lm $X_EXTRA_LIBS])
-            WINE_NOTICE_WITH(glu,[test "x$ac_cv_lib_GLU_gluLookAt" != xyes],
+            WINE_CHECK_SONAME(GLU,gluLookAt,,,[$OPENGL_LIBS $X_LIBS -lm $X_EXTRA_LIBS])
+            WINE_NOTICE_WITH(glu,[test "x$ac_cv_lib_soname_GLU" = "x"],
                              [libGLU ${notice_platform}development files not found, GLU won't be supported.])
         fi
 
@@ -1166,8 +1166,6 @@ WINE_ERROR_WITH(x,[test "x$X_LIBS" = "x"],[X ${notice_platform}development files
 without X support, which probably isn't what you want. You will need
 to install ${notice_platform}development packages of Xlib/Xfree86 at the very least.],
 [enable_winex11_drv])
-
-test "x$ac_cv_lib_GLU_gluLookAt" != xyes && enable_glu32=${enable_glu32:-no}
 
 dnl **** Check for OpenCL ****
 if test "$ac_cv_header_CL_cl_h" = "yes"
@@ -3249,6 +3247,7 @@ WINE_CONFIG_DLL(msxml3,,[clean])
 WINE_CONFIG_TEST(dlls/msxml3/tests,[clean])
 WINE_CONFIG_DLL(msxml4,,[clean])
 WINE_CONFIG_DLL(msxml6,,[clean])
+WINE_CONFIG_DLL(mtxdm)
 WINE_CONFIG_DLL(ncrypt)
 WINE_CONFIG_DLL(nddeapi,,[implib])
 WINE_CONFIG_DLL(ndis.sys)
@@ -3519,7 +3518,8 @@ WINE_CONFIG_DLL(wmiutils,,[clean])
 WINE_CONFIG_TEST(dlls/wmiutils/tests)
 WINE_CONFIG_DLL(wmp,,[clean])
 WINE_CONFIG_TEST(dlls/wmp/tests)
-WINE_CONFIG_DLL(wmvcore)
+WINE_CONFIG_DLL(wmvcore,,[implib])
+WINE_CONFIG_TEST(dlls/wmvcore/tests)
 WINE_CONFIG_DLL(wnaspi32,,[implib])
 WINE_CONFIG_DLL(wow32,enable_win16,[implib])
 WINE_CONFIG_DLL(wpc,,[clean])
@@ -3528,6 +3528,7 @@ WINE_CONFIG_DLL(wpcap)
 WINE_CONFIG_DLL(ws2_32,,[implib])
 WINE_CONFIG_TEST(dlls/ws2_32/tests)
 WINE_CONFIG_DLL(wsdapi,,[implib])
+WINE_CONFIG_TEST(dlls/wsdapi/tests)
 WINE_CONFIG_DLL(wshom.ocx,,[clean])
 WINE_CONFIG_TEST(dlls/wshom.ocx/tests,[clean])
 WINE_CONFIG_DLL(wsnmp32,,[implib])

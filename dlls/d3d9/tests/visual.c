@@ -7185,7 +7185,8 @@ static void pretransformed_varying_test(void)
         const DWORD *shader_code;
         DWORD color;
         BOOL todo;
-        BOOL broken_warp;
+        BOOL broken;
+        DWORD broken_color;
     }
     tests[] =
     {
@@ -7200,7 +7201,8 @@ static void pretransformed_varying_test(void)
         {"depth",           depth_code,           0x00cccccc, TRUE },
         {"specular",        specular_code,        0x004488ff, FALSE},
         {"texcoord1",       texcoord1_code,       0x00000000, FALSE},
-        {"texcoord1 alpha", texcoord1_alpha_code, 0x00000000, FALSE, TRUE},
+        /* texcoord .w is 1.0 on r500 and WARP. See also test_uninitialized_varyings(). */
+        {"texcoord1 alpha", texcoord1_alpha_code, 0x00000000, FALSE, TRUE, 0x00ffffff},
     };
     /* Declare a monster vertex type :-) */
     static const D3DVERTEXELEMENT9 decl_elements[] = {
@@ -7287,7 +7289,6 @@ static void pretransformed_varying_test(void)
            0x224488ff, /* Nothing special */
         },
     };
-    D3DADAPTER_IDENTIFIER9 identifier;
     IDirect3DVertexDeclaration9 *decl;
     IDirect3DDevice9 *device;
     IDirect3D9 *d3d;
@@ -7297,7 +7298,6 @@ static void pretransformed_varying_test(void)
     DWORD color;
     HWND window;
     HRESULT hr;
-    BOOL warp;
 
     window = create_window();
     d3d = Direct3DCreate9(D3D_SDK_VERSION);
@@ -7316,10 +7316,6 @@ static void pretransformed_varying_test(void)
         IDirect3DDevice9_Release(device);
         goto done;
     }
-
-    hr = IDirect3D9_GetAdapterIdentifier(d3d, D3DADAPTER_DEFAULT, 0, &identifier);
-    ok(SUCCEEDED(hr), "Failed to get adapter identifier, hr %#x.\n", hr);
-    warp = adapter_is_warp(&identifier);
 
     hr = IDirect3DDevice9_CreateVertexDeclaration(device, decl_elements, &decl);
     ok(hr == D3D_OK, "IDirect3DDevice9_CreateVertexDeclaration returned %08x\n", hr);
@@ -7356,7 +7352,8 @@ static void pretransformed_varying_test(void)
                     "Test %s returned color 0x%08x, expected 0x%08x (todo).\n",
                     tests[i].name, color, tests[i].color);
         else
-            ok(color_match(color, tests[i].color, 1) || broken(warp && tests[i].broken_warp),
+            ok(color_match(color, tests[i].color, 1)
+                    || broken(color_match(color, tests[i].broken_color, 1) && tests[i].broken),
                     "Test %s returned color 0x%08x, expected 0x%08x.\n",
                     tests[i].name, color, tests[i].color);
 
@@ -8090,8 +8087,14 @@ static void test_vshader_input(void)
         hr = IDirect3DDevice9_EndScene(device);
         ok(SUCCEEDED(hr), "Failed to end scene, hr %#x.\n", hr);
 
+        /* WARP and r500 return a color from a previous draw. In case of WARP it is the last draw, which happens to
+         * be the one with quad4_color above. AMD's r500 uses the last D3DCOLOR attribute, which is the one from
+         * quad3_color.
+         *
+         * Newer AMD cards and Nvidia return zero. */
         color = getPixelColor(device, 160, 360);
-        ok(color_match(color, 0x00000000, 1) || broken(warp),
+        ok(color_match(color, 0x00000000, 1) || broken(color_match(color, 0x00ff8040, 1))
+                || broken(color_match(color, 0x00ffff00, 1) && warp),
                 "Got unexpected color 0x%08x for no color attribute test.\n", color);
 
         IDirect3DDevice9_SetVertexShader(device, NULL);
@@ -11560,6 +11563,7 @@ static void stream_test(void)
         WORD strVertex; /* specify which stream to use 0-2*/
         WORD strColor;
         WORD strInstance;
+        DWORD explicit_zero_freq;
     }
     testcases[]=
     {
@@ -11574,17 +11578,23 @@ static void stream_test(void)
         {3, 3, 1, 0x00ff0000, 0x00ff0000, 0x00ff0000, 0x00ffffff, 0, 1, 2}, /*  8 */
         {4, 4, 1, 0x00ff0000, 0x00ff0000, 0x00ff0000, 0x00ff0000, 1, 0, 2}, /*  9 */
         {4, 4, 1, 0x00ff0000, 0x00ff0000, 0x00ff0000, 0x00ff0000, 0, 2, 1}, /* 10 */
-        {4, 4, 1, 0x00ff0000, 0x00ffffff, 0x00ffffff, 0x00ffffff, 2, 3, 1}, /* 11 */
-        {4, 4, 1, 0x00ff0000, 0x00ff0000, 0x00ff0000, 0x00ff0000, 2, 0, 1}, /* 12 */
-        {4, 4, 1, 0x00ff0000, 0x00ff0000, 0x00ff0000, 0x00ff0000, 1, 2, 3}, /* 13 */
-#if 0
-        /* This draws one instance on some machines, no instance on others. */
-        {0, 4, 1, 0x00ff0000, 0x00ffffff, 0x00ffffff, 0x00ffffff, 0, 1, 2}, /* 14 */
-        /* This case is handled in a stand alone test,
-         * SetStreamSourceFreq(0, (D3DSTREAMSOURCE_INSTANCEDATA | 1)) has to
-         * return D3DERR_INVALIDCALL. */
-        {4, 4, 1, 0x00ffffff, 0x00ffffff, 0x00ffffff, 0x00ffffff, 2, 1, 0}, /* 15 */
-#endif
+        {4, 4, 1, 0x00ff0000, 0x00ff0000, 0x00ff0000, 0x00ff0000, 2, 0, 1}, /* 11 */
+
+        /* The number of instances is read from stream zero, even if stream zero is not
+         * in use. Exact behavior of this corner case depends on the presence or absence
+         * of D3DSTREAMSOURCE_INDEXEDDATA. r500 GPUs need D3DSTREAMSOURCE_INDEXEDDATA
+         * to be present, otherwise they disable instancing and behave like in a non-
+         * instanced draw. Nvidia drivers do not show different behavior with or without
+         * D3DSTREAMSOURCE_INDEXEDDATA. Note however that setting the value to 0 is not
+         * allowed by the d3d runtime.
+         *
+         * The meaning of (D3DSTREAMSOURCE_INDEXEDDATA | 0) is driver dependent. r500
+         * will fall back to non-instanced drawing. Geforce 7 will draw 1 instance.
+         * Geforce 8+ will draw nothing. */
+        {3, 4, 1, 0x00ff0000, 0x00ffffff, 0x00ffffff, 0x00ffffff, 2, 3, 1, 1}, /* 12 */
+        {4, 3, 1, 0x00ff0000, 0x00ff0000, 0x00ffffff, 0x00ffffff, 2, 3, 1, 2}, /* 13 */
+        {1, 3, 1, 0x00ff0000, 0x00ff0000, 0x00ff0000, 0x00ffffff, 2, 3, 1, 3}, /* 14 */
+        {0, 0, 1, 0x00ff0000, 0x00ff0000, 0x00ff0000, 0x00ff0000, 2, 3, 1, 4}, /* 15 */
     };
     static const DWORD shader_code[] =
     {
@@ -11597,6 +11607,9 @@ static void stream_test(void)
         0x00000001, 0xd00f0000, 0x90e40001,             /* mov oD0, v1 */
         0x0000ffff
     };
+    /* Note that this set of coordinates and instancepos[] have an implicit
+     * w = 1.0, which is added to w = 2.0, so the perspective divide divides
+     * x, y and z by 2. */
     static const float quad[][3] =
     {
         {-0.5f, -0.5f,  1.1f}, /*0 */
@@ -11764,6 +11777,15 @@ static void stream_test(void)
 
         hr = IDirect3DDevice9_SetVertexDeclaration(device, pDecl);
         ok(SUCCEEDED(hr), "Failed to set vertex declaration, hr %#x.\n", hr);
+
+        /* If stream 0 is unused, set the stream frequency regardless to show
+         * that the number if instances is read from it. */
+        if (act.strVertex && act.strColor && act.strInstance)
+        {
+            hr = IDirect3DDevice9_SetStreamSourceFreq(device, 0,
+                    D3DSTREAMSOURCE_INDEXEDDATA | act.explicit_zero_freq);
+            ok(SUCCEEDED(hr), "Failed to set stream source frequency, hr %#x.\n", hr);
+        }
 
         hr = IDirect3DDevice9_SetStreamSourceFreq(device, act.strVertex,
                 (D3DSTREAMSOURCE_INDEXEDDATA | act.idxVertex));
@@ -17319,7 +17341,7 @@ static void add_dirty_rect_test(void)
     IDirect3DTexture9 *tex_dst1, *tex_dst2, *tex_src_red, *tex_src_green,
         *tex_managed, *tex_dynamic;
     IDirect3DSurface9 *surface_dst2, *surface_src_green, *surface_src_red,
-        *surface_managed, *surface_dynamic;
+        *surface_managed0, *surface_managed1, *surface_dynamic;
     IDirect3DDevice9 *device;
     IDirect3D9 *d3d;
     unsigned int i;
@@ -17353,7 +17375,7 @@ static void add_dirty_rect_test(void)
     hr = IDirect3DDevice9_CreateTexture(device, 256, 256, 1, 0, D3DFMT_X8R8G8B8,
             D3DPOOL_SYSTEMMEM, &tex_src_green, NULL);
     ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
-    hr = IDirect3DDevice9_CreateTexture(device, 256, 256, 1, 0, D3DFMT_X8R8G8B8,
+    hr = IDirect3DDevice9_CreateTexture(device, 256, 256, 2, 0, D3DFMT_X8R8G8B8,
             D3DPOOL_MANAGED, &tex_managed, NULL);
     ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
     hr = IDirect3DDevice9_CreateTexture(device, 256, 256, 1, D3DUSAGE_DYNAMIC,
@@ -17366,7 +17388,9 @@ static void add_dirty_rect_test(void)
     ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
     hr = IDirect3DTexture9_GetSurfaceLevel(tex_src_red, 0, &surface_src_red);
     ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
-    hr = IDirect3DTexture9_GetSurfaceLevel(tex_managed, 0, &surface_managed);
+    hr = IDirect3DTexture9_GetSurfaceLevel(tex_managed, 0, &surface_managed0);
+    ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
+    hr = IDirect3DTexture9_GetSurfaceLevel(tex_managed, 1, &surface_managed1);
     ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
     hr = IDirect3DTexture9_GetSurfaceLevel(tex_dynamic, 0, &surface_dynamic);
     ok(SUCCEEDED(hr), "Failed to get surface level, hr %#x.\n", hr);
@@ -17380,6 +17404,8 @@ static void add_dirty_rect_test(void)
     ok(SUCCEEDED(hr), "Failed to set color op, hr %#x.\n", hr);
     hr = IDirect3DDevice9_SetTextureStageState(device, 0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
     ok(SUCCEEDED(hr), "Failed to set color arg, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetSamplerState(device, 0, D3DSAMP_MIPFILTER, D3DTEXF_POINT);
+    ok(SUCCEEDED(hr), "Failed to set sampler state, hr %#x.\n", hr);
 
     hr = IDirect3DDevice9_UpdateTexture(device, (IDirect3DBaseTexture9 *)tex_src_green,
             (IDirect3DBaseTexture9 *)tex_dst1);
@@ -17563,7 +17589,8 @@ static void add_dirty_rect_test(void)
     ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
 
     /* Tests with managed textures. */
-    fill_surface(surface_managed, 0x00ff0000, 0);
+    fill_surface(surface_managed0, 0x00ff0000, 0);
+    fill_surface(surface_managed1, 0x00ff0000, 0);
     hr = IDirect3DDevice9_SetTexture(device, 0, (IDirect3DBaseTexture9 *)tex_managed);
     ok(SUCCEEDED(hr), "Failed to set texture, hr %#x.\n", hr);
     add_dirty_rect_test_draw(device);
@@ -17572,13 +17599,28 @@ static void add_dirty_rect_test(void)
             "Expected color 0x00ff0000, got 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetSamplerState(device, 0, D3DSAMP_MAXMIPLEVEL, 1);
+    ok(SUCCEEDED(hr), "Failed to set sampler state, hr %#x.\n", hr);
+    add_dirty_rect_test_draw(device);
+    color = getPixelColor(device, 320, 240);
+    ok(color_match(color, 0x00ff0000, 1), "Got unexpected color 0x%08x.\n", color);
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
 
     /* Managed textures also honor D3DLOCK_NO_DIRTY_UPDATE. */
-    fill_surface(surface_managed, 0x0000ff00, D3DLOCK_NO_DIRTY_UPDATE);
+    fill_surface(surface_managed0, 0x0000ff00, D3DLOCK_NO_DIRTY_UPDATE);
+    fill_surface(surface_managed1, 0x000000ff, D3DLOCK_NO_DIRTY_UPDATE);
     add_dirty_rect_test_draw(device);
     color = getPixelColor(device, 320, 240);
     ok(color_match(color, 0x00ff0000, 1),
             "Expected color 0x00ff0000, got 0x%08x.\n", color);
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetSamplerState(device, 0, D3DSAMP_MAXMIPLEVEL, 0);
+    ok(SUCCEEDED(hr), "Failed to set sampler state, hr %#x.\n", hr);
+    add_dirty_rect_test_draw(device);
+    color = getPixelColor(device, 320, 240);
+    ok(color_match(color, 0x00ff0000, 1), "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
 
@@ -17594,15 +17636,29 @@ static void add_dirty_rect_test(void)
             "Expected color 0x0000ff00, got 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetSamplerState(device, 0, D3DSAMP_MAXMIPLEVEL, 1);
+    ok(SUCCEEDED(hr), "Failed to set sampler state, hr %#x.\n", hr);
+    add_dirty_rect_test_draw(device);
+    color = getPixelColor(device, 320, 240);
+    ok(color_match(color, 0x000000ff, 1), "Got unexpected color 0x%08x.\n", color);
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
 
     /* So does EvictManagedResources. */
-    fill_surface(surface_managed, 0x000000ff, D3DLOCK_NO_DIRTY_UPDATE);
+    fill_surface(surface_managed0, 0x00ffff00, D3DLOCK_NO_DIRTY_UPDATE);
+    fill_surface(surface_managed1, 0x00ff00ff, D3DLOCK_NO_DIRTY_UPDATE);
     hr = IDirect3DDevice9_EvictManagedResources(device);
     ok(SUCCEEDED(hr), "Failed to evict managed resources, hr %#x.\n", hr);
     add_dirty_rect_test_draw(device);
     color = getPixelColor(device, 320, 240);
-    ok(color_match(color, 0x000000ff, 1),
-            "Expected color 0x000000ff, got 0x%08x.\n", color);
+    ok(color_match(color, 0x00ff00ff, 1), "Got unexpected color 0x%08x.\n", color);
+    hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
+    ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
+    hr = IDirect3DDevice9_SetSamplerState(device, 0, D3DSAMP_MAXMIPLEVEL, 0);
+    ok(SUCCEEDED(hr), "Failed to set sampler state, hr %#x.\n", hr);
+    add_dirty_rect_test_draw(device);
+    color = getPixelColor(device, 320, 240);
+    ok(color_match(color, 0x00ffff00, 1), "Got unexpected color 0x%08x.\n", color);
     hr = IDirect3DDevice9_Present(device, NULL, NULL, NULL, NULL);
     ok(SUCCEEDED(hr), "Failed to present, hr %#x.\n", hr);
 
@@ -17645,7 +17701,8 @@ static void add_dirty_rect_test(void)
     hr = IDirect3DDevice9_SetTexture(device, 0, NULL);
     ok(SUCCEEDED(hr), "Failed to set texture, hr %#x.\n", hr);
     IDirect3DSurface9_Release(surface_dst2);
-    IDirect3DSurface9_Release(surface_managed);
+    IDirect3DSurface9_Release(surface_managed1);
+    IDirect3DSurface9_Release(surface_managed0);
     IDirect3DSurface9_Release(surface_src_red);
     IDirect3DSurface9_Release(surface_src_green);
     IDirect3DSurface9_Release(surface_dynamic);
@@ -20407,6 +20464,8 @@ static void test_uninitialized_varyings(void)
         0x02000001, 0x800f0800, 0xb0e40000,                                     /* mov oC0, t0                    */
         0x0000ffff
     };
+#if 0
+    /* This has been left here for documentation purposes. It is referenced in disabled tests in the table below. */
     static const DWORD ps3_diffuse_code[] =
     {
         0xffff0300,                                                             /* ps_3_0                         */
@@ -20414,6 +20473,7 @@ static void test_uninitialized_varyings(void)
         0x02000001, 0x800f0800, 0x90e40000,                                     /* mov oC0, v0                    */
         0x0000ffff
     };
+#endif
     static const DWORD ps3_specular_code[] =
     {
         0xffff0300,                                                             /* ps_3_0                         */
@@ -20436,11 +20496,16 @@ static void test_uninitialized_varyings(void)
         const DWORD *ps;
         D3DCOLOR expected;
         BOOL allow_zero_alpha;
-        BOOL allow_zero;
+        BOOL partial;
         BOOL broken_warp;
     }
     /* On AMD specular color is generally initialized to 0x00000000 and texcoords to 0xff000000
-     * while on Nvidia it's the opposite. Just allow both. */
+     * while on Nvidia it's the opposite. Just allow both.
+     *
+     * Partially initialized varyings reliably handle the component that has been initialized.
+     * The uninitialized components generally follow the rule above, with some exceptions on
+     * radeon cards. r500 and r600 GPUs have been found to set uninitialized components to 0.0,
+     * 0.5 and 1.0 without a sensible pattern. */
     tests[] =
     {
         {D3DVS_VERSION(1, 1),         vs1_code,                   0,              NULL, 0xffffffff},
@@ -20452,21 +20517,26 @@ static void test_uninitialized_varyings(void)
         {D3DVS_VERSION(2, 0),         vs2_code, D3DPS_VERSION(2, 0),  ps2_diffuse_code, 0xffffffff},
         {D3DVS_VERSION(2, 0),         vs2_code, D3DPS_VERSION(2, 0), ps2_specular_code, 0xff000000, TRUE,  FALSE, TRUE},
         {D3DVS_VERSION(2, 0),         vs2_code, D3DPS_VERSION(2, 0), ps2_texcoord_code, 0xff000000, TRUE},
-        {D3DVS_VERSION(3, 0),         vs3_code, D3DPS_VERSION(3, 0),  ps3_diffuse_code, 0xffffffff, FALSE, TRUE},
-        {D3DVS_VERSION(3, 0),         vs3_code, D3DPS_VERSION(3, 0), ps3_specular_code, 0x00000000, FALSE, FALSE, TRUE},
-        {D3DVS_VERSION(3, 0),         vs3_code, D3DPS_VERSION(3, 0), ps3_texcoord_code, 0x00000000, FALSE, FALSE, TRUE},
-        {D3DVS_VERSION(1, 1), vs1_partial_code,                   0,              NULL, 0xff7fffff, FALSE, FALSE, TRUE},
-        {D3DVS_VERSION(1, 1), vs1_partial_code, D3DPS_VERSION(1, 1),  ps1_diffuse_code, 0xff7fffff, FALSE, FALSE, TRUE},
-        {D3DVS_VERSION(1, 1), vs1_partial_code, D3DPS_VERSION(1, 1), ps1_specular_code, 0xff7f0000, TRUE},
-        {D3DVS_VERSION(1, 1), vs1_partial_code, D3DPS_VERSION(1, 1), ps1_texcoord_code, 0xff7f0000, TRUE},
-        {D3DVS_VERSION(2, 0), vs2_partial_code, D3DPS_VERSION(2, 0),  ps2_diffuse_code, 0xff7fffff, FALSE, FALSE, TRUE},
-        {D3DVS_VERSION(2, 0), vs2_partial_code, D3DPS_VERSION(2, 0), ps2_specular_code, 0xff7f0000, TRUE},
-        {D3DVS_VERSION(2, 0), vs2_partial_code, D3DPS_VERSION(2, 0), ps2_texcoord_code, 0xff7f0000, TRUE},
-        /* Fails on Radeon HD 2600 with 0x008000ff aka nonsensical color. */
-        /* {D3DVS_VERSION(3, 0), vs3_partial_code, D3DPS_VERSION(3, 0), ps3_diffuse_code, 0xff7fffff, TRUE}, */
-        /* Randomly fails on Radeon HD 2600. */
-        /* {D3DVS_VERSION(3, 0), vs3_partial_code, D3DPS_VERSION(3, 0), ps3_specular_code, 0x007f0000}, */
-        {D3DVS_VERSION(3, 0), vs3_partial_code, D3DPS_VERSION(3, 0), ps3_texcoord_code, 0xff7f0000, TRUE},
+        /* This test shows a lot of combinations of alpha and color that involve 1.0 and 0.0. Disable it.
+         *
+         * AMD r500 sets alpha = 1.0, color = 0.0. Nvidia sets alpha = 1.0, color = 1.0. r600 Sets Alpha = 0.0,
+         * color = 0.0. So far no combination with Alpha = 0.0, color = 1.0 has been found though.
+         * {D3DVS_VERSION(3, 0),         vs3_code, D3DPS_VERSION(3, 0),  ps3_diffuse_code, 0xffffffff, FALSE, FALSE},
+         *
+         * The same issues apply to the partially initialized COLOR0 varying, in addition to unreliable results
+         * with partially initialized varyings in general.
+         * {D3DVS_VERSION(3, 0), vs3_partial_code, D3DPS_VERSION(3, 0),  ps3_diffuse_code, 0xff7fffff, TRUE,  TRUE}, */
+        {D3DVS_VERSION(3, 0),         vs3_code, D3DPS_VERSION(3, 0), ps3_specular_code, 0xff000000, TRUE,  FALSE, TRUE},
+        {D3DVS_VERSION(3, 0),         vs3_code, D3DPS_VERSION(3, 0), ps3_texcoord_code, 0xff000000, TRUE,  FALSE, TRUE},
+        {D3DVS_VERSION(1, 1), vs1_partial_code,                   0,              NULL, 0xff7fffff, FALSE, TRUE},
+        {D3DVS_VERSION(1, 1), vs1_partial_code, D3DPS_VERSION(1, 1),  ps1_diffuse_code, 0xff7fffff, FALSE, TRUE},
+        {D3DVS_VERSION(1, 1), vs1_partial_code, D3DPS_VERSION(1, 1), ps1_specular_code, 0xff7f0000, TRUE,  TRUE},
+        {D3DVS_VERSION(1, 1), vs1_partial_code, D3DPS_VERSION(1, 1), ps1_texcoord_code, 0xff7f0000, TRUE,  TRUE},
+        {D3DVS_VERSION(2, 0), vs2_partial_code, D3DPS_VERSION(2, 0),  ps2_diffuse_code, 0xff7fffff, FALSE, TRUE},
+        {D3DVS_VERSION(2, 0), vs2_partial_code, D3DPS_VERSION(2, 0), ps2_specular_code, 0xff7f0000, TRUE,  TRUE},
+        {D3DVS_VERSION(2, 0), vs2_partial_code, D3DPS_VERSION(2, 0), ps2_texcoord_code, 0xff7f0000, TRUE,  TRUE},
+        {D3DVS_VERSION(3, 0), vs3_partial_code, D3DPS_VERSION(3, 0), ps3_specular_code, 0x007f0000, FALSE, TRUE},
+        {D3DVS_VERSION(3, 0), vs3_partial_code, D3DPS_VERSION(3, 0), ps3_texcoord_code, 0xff7f0000, TRUE,  TRUE},
     };
     IDirect3DDevice9 *device;
     IDirect3D9 *d3d;
@@ -20572,7 +20642,8 @@ static void test_uninitialized_varyings(void)
         color = get_readback_color(&rb, 320, 240);
         ok(color_match(color, tests[i].expected, 1)
                 || (tests[i].allow_zero_alpha && color_match(color, tests[i].expected & 0x00ffffff, 1))
-                || (tests[i].allow_zero && !color) || (broken(warp && tests[i].broken_warp)),
+                || (broken(warp && tests[i].broken_warp))
+                || broken(tests[i].partial && color_match(color & 0x00ff0000, tests[i].expected & 0x00ff0000, 1)),
                 "Got unexpected color 0x%08x, case %u.\n", color, i);
         release_surface_readback(&rb);
 

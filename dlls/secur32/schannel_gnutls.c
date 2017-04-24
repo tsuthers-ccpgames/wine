@@ -300,8 +300,8 @@ static ALG_ID schannel_get_cipher_algid(int cipher)
     case GNUTLS_CIPHER_NULL: return 0;
     case GNUTLS_CIPHER_ARCFOUR_40:
     case GNUTLS_CIPHER_ARCFOUR_128: return CALG_RC4;
-    case GNUTLS_CIPHER_DES_CBC:
-    case GNUTLS_CIPHER_3DES_CBC: return CALG_DES;
+    case GNUTLS_CIPHER_DES_CBC: return CALG_DES;
+    case GNUTLS_CIPHER_3DES_CBC: return CALG_3DES;
     case GNUTLS_CIPHER_AES_128_CBC:
     case GNUTLS_CIPHER_AES_128_GCM: return CALG_AES_128;
     case GNUTLS_CIPHER_AES_192_CBC: return CALG_AES_192;
@@ -343,10 +343,9 @@ static ALG_ID schannel_get_kx_algid(int kx)
     case GNUTLS_KX_DHE_DSS:
     case GNUTLS_KX_DHE_RSA: return CALG_DH_EPHEM;
     case GNUTLS_KX_ANON_ECDH: return CALG_ECDH;
-    /* MSDN mentions CALG_ECDH_EPHEM, but doesn't appear in the Windows SDK. */
     case GNUTLS_KX_ECDHE_RSA:
-    case GNUTLS_KX_ECDHE_PSK: return CALG_ECDH;
-    case GNUTLS_KX_ECDHE_ECDSA: return CALG_ECDSA;
+    case GNUTLS_KX_ECDHE_PSK:
+    case GNUTLS_KX_ECDHE_ECDSA: return CALG_ECDH_EPHEM;
     default:
         FIXME("unknown algorithm %d\n", kx);
         return 0;

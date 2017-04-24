@@ -4,7 +4,7 @@
 @ stub WsAbortListener
 @ stub WsAbortServiceHost
 @ stdcall WsAbortServiceProxy(ptr ptr)
-@ stub WsAcceptChannel
+@ stdcall WsAcceptChannel(ptr ptr ptr ptr)
 @ stdcall WsAddCustomHeader(ptr ptr long ptr long long ptr)
 @ stub WsAddErrorString
 @ stdcall WsAddMappedHeader(ptr ptr long long ptr long ptr)
@@ -14,14 +14,14 @@
 @ stdcall WsCall(ptr ptr ptr ptr ptr long ptr ptr)
 @ stub WsCheckMustUnderstandHeaders
 @ stdcall WsCloseChannel(ptr ptr ptr)
-@ stub WsCloseListener
+@ stdcall WsCloseListener(ptr ptr ptr)
 @ stub WsCloseServiceHost
 @ stdcall WsCloseServiceProxy(ptr ptr ptr)
 @ stub WsCombineUrl
 @ stub WsCopyError
 @ stdcall WsCopyNode(ptr ptr ptr)
 @ stdcall WsCreateChannel(long long ptr long ptr ptr ptr)
-@ stub WsCreateChannelForListener
+@ stdcall WsCreateChannelForListener(ptr ptr long ptr ptr)
 @ stdcall WsCreateError(ptr long ptr)
 @ stub WsCreateFaultFromError
 @ stdcall WsCreateHeap(long long ptr long ptr ptr)
@@ -96,7 +96,7 @@
 @ stdcall WsMoveReader(ptr long ptr ptr)
 @ stdcall WsMoveWriter(ptr long ptr ptr)
 @ stdcall WsOpenChannel(ptr ptr ptr ptr)
-@ stub WsOpenListener
+@ stdcall WsOpenListener(ptr ptr ptr ptr)
 @ stub WsOpenServiceHost
 @ stdcall WsOpenServiceProxy(ptr ptr ptr ptr)
 @ stub WsPullBytes
@@ -136,7 +136,7 @@
 @ stdcall WsResetChannel(ptr ptr)
 @ stdcall WsResetError(ptr)
 @ stdcall WsResetHeap(ptr ptr)
-@ stub WsResetListener
+@ stdcall WsResetListener(ptr ptr)
 @ stdcall WsResetMessage(ptr ptr)
 @ stub WsResetMetadata
 @ stub WsResetServiceHost

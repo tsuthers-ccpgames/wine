@@ -5054,6 +5054,7 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_DCL_FUNCTION_BODY                */ NULL,
     /* WINED3DSIH_DCL_FUNCTION_TABLE               */ NULL,
     /* WINED3DSIH_DCL_GLOBAL_FLAGS                 */ NULL,
+    /* WINED3DSIH_DCL_GS_INSTANCES                 */ NULL,
     /* WINED3DSIH_DCL_HS_FORK_PHASE_INSTANCE_COUNT */ NULL,
     /* WINED3DSIH_DCL_HS_JOIN_PHASE_INSTANCE_COUNT */ NULL,
     /* WINED3DSIH_DCL_HS_MAX_TESSFACTOR            */ NULL,
@@ -5125,6 +5126,7 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_FTOU                             */ NULL,
     /* WINED3DSIH_GATHER4                          */ NULL,
     /* WINED3DSIH_GATHER4_C                        */ NULL,
+    /* WINED3DSIH_GATHER4_PO                       */ NULL,
     /* WINED3DSIH_GE                               */ NULL,
     /* WINED3DSIH_HS_CONTROL_POINT_PHASE           */ NULL,
     /* WINED3DSIH_HS_DECLS                         */ NULL,
@@ -5194,6 +5196,7 @@ static const SHADER_HANDLER shader_arb_instruction_handler_table[WINED3DSIH_TABL
     /* WINED3DSIH_REP                              */ shader_hw_rep,
     /* WINED3DSIH_RESINFO                          */ NULL,
     /* WINED3DSIH_RET                              */ shader_hw_ret,
+    /* WINED3DSIH_RETP                             */ NULL,
     /* WINED3DSIH_ROUND_NE                         */ NULL,
     /* WINED3DSIH_ROUND_NI                         */ NULL,
     /* WINED3DSIH_ROUND_PI                         */ NULL,
@@ -5667,9 +5670,12 @@ static BOOL shader_arb_has_ffp_proj_control(void *shader_priv)
     return priv->ffp_proj_control;
 }
 
+static void shader_arb_precompile(void *shader_priv, struct wined3d_shader *shader) {}
+
 const struct wined3d_shader_backend_ops arb_program_shader_backend =
 {
     shader_arb_handle_instruction,
+    shader_arb_precompile,
     shader_arb_select,
     shader_arb_select_compute,
     shader_arb_disable,
@@ -7705,8 +7711,8 @@ static void arbfp_blit_unset(const struct wined3d_gl_info *gl_info)
 
 static BOOL arbfp_blit_supported(const struct wined3d_gl_info *gl_info,
         const struct wined3d_d3d_info *d3d_info, enum wined3d_blit_op blit_op,
-        enum wined3d_pool src_pool, const struct wined3d_format *src_format,
-        enum wined3d_pool dst_pool, const struct wined3d_format *dst_format)
+        enum wined3d_pool src_pool, const struct wined3d_format *src_format, DWORD src_location,
+        enum wined3d_pool dst_pool, const struct wined3d_format *dst_format, DWORD dst_location)
 {
     enum complex_fixup src_fixup;
     BOOL decompress;
@@ -7744,7 +7750,8 @@ static BOOL arbfp_blit_supported(const struct wined3d_gl_info *gl_info,
         dump_color_fixup_desc(src_format->color_fixup);
     }
 
-    if (!is_identity_fixup(dst_format->color_fixup))
+    if (!is_identity_fixup(dst_format->color_fixup)
+            && (dst_format->id != src_format->id || dst_location != WINED3D_LOCATION_DRAWABLE))
     {
         TRACE("Destination fixups are not supported\n");
         return FALSE;
@@ -7794,8 +7801,8 @@ static void arbfp_blitter_blit(struct wined3d_blitter *blitter, enum wined3d_bli
     RECT s, d;
 
     if (!arbfp_blit_supported(&device->adapter->gl_info, &device->adapter->d3d_info, op,
-            src_texture->resource.pool, src_texture->resource.format,
-            dst_texture->resource.pool, dst_texture->resource.format))
+            src_texture->resource.pool, src_texture->resource.format, src_location,
+            dst_texture->resource.pool, dst_texture->resource.format, dst_location))
     {
         if ((next = blitter->next))
             next->ops->blitter_blit(next, op, context, src_surface, src_location,
