@@ -155,7 +155,7 @@ static const struct
 }
 table_info[] =
 {
-    {sizeof(double), 1, PRES_VT_DOUBLE}, /* PRES_REGTAB_IMMED */
+    {sizeof(double), 4, PRES_VT_DOUBLE}, /* PRES_REGTAB_IMMED */
     {sizeof(float),  4, PRES_VT_FLOAT }, /* PRES_REGTAB_CONST */
     {sizeof(float),  4, PRES_VT_FLOAT }, /* PRES_REGTAB_OCONST */
     {sizeof(BOOL),   1, PRES_VT_BOOL  }, /* PRES_REGTAB_OBCONST */
@@ -653,7 +653,7 @@ static void dump_ins(struct d3dx_regstore *rs, const struct d3dx_pres_ins *ins)
 
 static void dump_preshader(struct d3dx_preshader *pres)
 {
-    unsigned int i, immediate_count = pres->regs.table_sizes[PRES_REGTAB_IMMED];
+    unsigned int i, immediate_count = pres->regs.table_sizes[PRES_REGTAB_IMMED] * 4;
     const double *immediates = pres->regs.tables[PRES_REGTAB_IMMED];
 
     if (immediate_count)
@@ -747,8 +747,16 @@ static HRESULT parse_preshader(struct d3dx_preshader *pres, unsigned int *ptr, u
     if (FAILED(hr))
         return hr;
 
-    pres->regs.table_sizes[PRES_REGTAB_IMMED] = const_count;
+    if (const_count % table_info[PRES_REGTAB_IMMED].reg_component_count)
+    {
+        FIXME("const_count %u is not a multiple of %u.\n", const_count,
+                table_info[PRES_REGTAB_IMMED].reg_component_count);
+        return D3DXERR_INVALIDDATA;
+    }
+    pres->regs.table_sizes[PRES_REGTAB_IMMED] = const_count
+            / table_info[PRES_REGTAB_IMMED].reg_component_count;
 
+    update_table_sizes_consts(pres->regs.table_sizes, &pres->inputs);
     for (i = 0; i < pres->ins_count; ++i)
     {
         for (j = 0; j < pres_op_info[pres->ins[i].op].input_count; ++j)
@@ -758,22 +766,29 @@ static HRESULT parse_preshader(struct d3dx_preshader *pres, unsigned int *ptr, u
 
             if (pres->ins[i].inputs[j].index_reg.table == PRES_REGTAB_COUNT)
             {
+                unsigned int last_component_index = pres->ins[i].scalar_op && !j ? 0
+                        : pres->ins[i].component_count - 1;
+
                 table = pres->ins[i].inputs[j].reg.table;
                 reg_idx = get_reg_offset(table, pres->ins[i].inputs[j].reg.offset
-                        + pres->ins[i].component_count - 1);
+                        + last_component_index);
             }
             else
             {
                 table = pres->ins[i].inputs[j].index_reg.table;
                 reg_idx = get_reg_offset(table, pres->ins[i].inputs[j].index_reg.offset);
             }
-            update_table_size(pres->regs.table_sizes, table, reg_idx);
+            if (reg_idx >= pres->regs.table_sizes[table])
+            {
+                FIXME("Out of bounds register index, i %u, j %u, table %u, reg_idx %u.",
+                        i, j, table, reg_idx);
+                return D3DXERR_INVALIDDATA;
+            }
         }
         update_table_size(pres->regs.table_sizes, pres->ins[i].output.reg.table,
                 get_reg_offset(pres->ins[i].output.reg.table,
                 pres->ins[i].output.reg.offset + pres->ins[i].component_count - 1));
     }
-    update_table_sizes_consts(pres->regs.table_sizes, &pres->inputs);
     if (FAILED(regstore_alloc_table(&pres->regs, PRES_REGTAB_IMMED)))
         return E_OUTOFMEMORY;
     regstore_set_values(&pres->regs, PRES_REGTAB_IMMED, dconst, 0, const_count);
@@ -1175,9 +1190,7 @@ static double exec_get_arg(struct d3dx_regstore *rs, const struct d3dx_pres_oper
     else
         base_index = lrint(exec_get_reg_value(rs, opr->index_reg.table, opr->index_reg.offset));
 
-    /* '4' is used instead of reg_component_count, as immediate constants (which have
-     *  reg_component_count of 1) are still indexed as 4 values according to the tests. */
-    offset = base_index * 4 + opr->reg.offset + comp;
+    offset = base_index * table_info[table].reg_component_count + opr->reg.offset + comp;
     reg_index = offset / table_info[table].reg_component_count;
 
     if (reg_index >= rs->table_sizes[table])

@@ -54,8 +54,6 @@
 
 struct d3d_device;
 
-extern const struct wined3d_parent_ops d3d_null_wined3d_parent_ops DECLSPEC_HIDDEN;
-
 /* TRACE helper functions */
 const char *debug_d3d10_primitive_topology(D3D10_PRIMITIVE_TOPOLOGY topology) DECLSPEC_HIDDEN;
 const char *debug_dxgi_format(DXGI_FORMAT format) DECLSPEC_HIDDEN;
@@ -254,6 +252,7 @@ struct d3d_input_layout
 
     struct wined3d_private_store private_store;
     struct wined3d_vertex_declaration *wined3d_decl;
+    ID3D11Device *device;
 };
 
 HRESULT d3d_input_layout_create(struct d3d_device *device,
@@ -520,7 +519,6 @@ struct d3d_device
     float blend_factor[4];
     struct d3d_depthstencil_state *depth_stencil_state;
     UINT stencil_ref;
-    struct d3d_rasterizer_state *rasterizer_state;
 };
 
 static inline struct d3d_device *impl_from_ID3D11Device(ID3D11Device *iface)

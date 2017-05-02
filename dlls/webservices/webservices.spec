@@ -113,11 +113,11 @@
 @ stub WsReadEndpointAddressExtension
 @ stdcall WsReadEnvelopeEnd(ptr ptr)
 @ stdcall WsReadEnvelopeStart(ptr ptr ptr ptr ptr)
-@ stub WsReadMessageEnd
-@ stub WsReadMessageStart
+@ stdcall WsReadMessageEnd(ptr ptr ptr ptr)
+@ stdcall WsReadMessageStart(ptr ptr ptr ptr)
 @ stub WsReadMetadata
 @ stdcall WsReadNode(ptr ptr)
-@ stub WsReadQualifiedName
+@ stdcall WsReadQualifiedName(ptr ptr ptr ptr ptr ptr)
 @ stdcall WsReadStartAttribute(ptr long ptr)
 @ stdcall WsReadStartElement(ptr ptr)
 @ stdcall WsReadToStartElement(ptr ptr ptr ptr ptr)
@@ -167,9 +167,9 @@
 @ stdcall WsWriteArray(ptr ptr ptr long ptr long long long ptr)
 @ stdcall WsWriteAttribute(ptr ptr long ptr long ptr)
 @ stdcall WsWriteBody(ptr ptr long ptr long ptr)
-@ stub WsWriteBytes
-@ stub WsWriteChars
-@ stub WsWriteCharsUtf8
+@ stdcall WsWriteBytes(ptr ptr long ptr)
+@ stdcall WsWriteChars(ptr ptr long ptr)
+@ stdcall WsWriteCharsUtf8(ptr ptr long ptr)
 @ stdcall WsWriteElement(ptr ptr long ptr long ptr)
 @ stdcall WsWriteEndAttribute(ptr ptr)
 @ stdcall WsWriteEndCData(ptr ptr)
@@ -177,10 +177,10 @@
 @ stdcall WsWriteEndStartElement(ptr ptr)
 @ stdcall WsWriteEnvelopeEnd(ptr ptr)
 @ stdcall WsWriteEnvelopeStart(ptr ptr ptr ptr ptr)
-@ stub WsWriteMessageEnd
-@ stub WsWriteMessageStart
+@ stdcall WsWriteMessageEnd(ptr ptr ptr ptr)
+@ stdcall WsWriteMessageStart(ptr ptr ptr ptr)
 @ stdcall WsWriteNode(ptr ptr ptr)
-@ stub WsWriteQualifiedName
+@ stdcall WsWriteQualifiedName(ptr ptr ptr ptr ptr)
 @ stdcall WsWriteStartAttribute(ptr ptr ptr ptr long ptr)
 @ stdcall WsWriteStartCData(ptr ptr)
 @ stdcall WsWriteStartElement(ptr ptr ptr ptr ptr)

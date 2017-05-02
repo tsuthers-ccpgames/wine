@@ -1408,6 +1408,7 @@ static HRESULT ddraw_surface_blt(struct ddraw_surface *dst_surface, const RECT *
 {
     struct wined3d_device *wined3d_device = dst_surface->ddraw->wined3d_device;
     struct wined3d_color colour;
+    DWORD wined3d_flags;
 
     if (flags & DDBLT_COLORFILL)
     {
@@ -1431,14 +1432,18 @@ static HRESULT ddraw_surface_blt(struct ddraw_surface *dst_surface, const RECT *
                 dst_rect, WINED3DCLEAR_ZBUFFER, NULL, colour.r, 0);
     }
 
-    if (flags & ~WINED3D_BLT_MASK)
+    wined3d_flags = flags & ~DDBLT_ASYNC;
+    if (wined3d_flags & ~WINED3D_BLT_MASK)
     {
         FIXME("Unhandled flags %#x.\n", flags);
         return E_NOTIMPL;
     }
 
+    if (!(flags & DDBLT_ASYNC))
+        wined3d_flags |= WINED3D_BLT_SYNCHRONOUS;
+
     return wined3d_texture_blt(dst_surface->wined3d_texture, dst_surface->sub_resource_idx, dst_rect,
-            src_surface->wined3d_texture, src_surface->sub_resource_idx, src_rect, flags, fx, filter);
+            src_surface->wined3d_texture, src_surface->sub_resource_idx, src_rect, wined3d_flags, fx, filter);
 }
 
 static HRESULT ddraw_surface_blt_clipped(struct ddraw_surface *dst_surface, const RECT *dst_rect_in,
@@ -1570,6 +1575,7 @@ static HRESULT WINAPI DECLSPEC_HOTPATCH ddraw_surface7_Blt(IDirectDrawSurface7 *
     struct ddraw_surface *dst_impl = impl_from_IDirectDrawSurface7(iface);
     struct ddraw_surface *src_impl = unsafe_impl_from_IDirectDrawSurface7(src_surface);
     struct wined3d_blt_fx wined3d_fx;
+    DWORD unsupported_flags;
     DWORD fill_colour = 0;
     HRESULT hr = DD_OK;
     DDBLTFX rop_fx;
@@ -1577,9 +1583,26 @@ static HRESULT WINAPI DECLSPEC_HOTPATCH ddraw_surface7_Blt(IDirectDrawSurface7 *
     TRACE("iface %p, dst_rect %s, src_surface %p, src_rect %s, flags %#x, fx %p.\n",
             iface, wine_dbgstr_rect(dst_rect), src_surface, wine_dbgstr_rect(src_rect), flags, fx);
 
-    /* Check for validity of the flags here. WineD3D Has the software-opengl selection path and would have
-     * to check at 2 places, and sometimes do double checks. This also saves the call to wined3d :-)
-     */
+    unsupported_flags = DDBLT_ALPHADEST
+            | DDBLT_ALPHADESTCONSTOVERRIDE
+            | DDBLT_ALPHADESTNEG
+            | DDBLT_ALPHADESTSURFACEOVERRIDE
+            | DDBLT_ALPHAEDGEBLEND
+            | DDBLT_ALPHASRC
+            | DDBLT_ALPHASRCCONSTOVERRIDE
+            | DDBLT_ALPHASRCNEG
+            | DDBLT_ALPHASRCSURFACEOVERRIDE
+            | DDBLT_ZBUFFER
+            | DDBLT_ZBUFFERDESTCONSTOVERRIDE
+            | DDBLT_ZBUFFERDESTOVERRIDE
+            | DDBLT_ZBUFFERSRCCONSTOVERRIDE
+            | DDBLT_ZBUFFERSRCOVERRIDE;
+    if (flags & unsupported_flags)
+    {
+        WARN("Ignoring unsupported flags %#x.\n", flags & unsupported_flags);
+        flags &= ~unsupported_flags;
+    }
+
     if ((flags & DDBLT_KEYSRCOVERRIDE) && (!fx || flags & DDBLT_KEYSRC))
     {
         WARN("Invalid source color key parameters, returning DDERR_INVALIDPARAMS\n");
@@ -4213,10 +4236,10 @@ static HRESULT WINAPI DECLSPEC_HOTPATCH ddraw_surface7_BltFast(IDirectDrawSurfac
 {
     struct ddraw_surface *dst_impl = impl_from_IDirectDrawSurface7(iface);
     struct ddraw_surface *src_impl = unsafe_impl_from_IDirectDrawSurface7(src_surface);
+    DWORD flags = WINED3D_BLT_SYNCHRONOUS;
     DWORD src_w, src_h, dst_w, dst_h;
     HRESULT hr = DD_OK;
     RECT dst_rect, s;
-    DWORD flags = 0;
 
     TRACE("iface %p, dst_x %u, dst_y %u, src_surface %p, src_rect %s, flags %#x.\n",
             iface, dst_x, dst_y, src_surface, wine_dbgstr_rect(src_rect), trans);

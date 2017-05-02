@@ -1309,7 +1309,6 @@ enum wined3d_shader_byte_code_format
 /* add dwZBufferBaseDest to every source z value before compare */
 #define WINEDDBLTFX_ZBUFFERBASEDEST                             0x00000100
 
-#define WINED3D_BLT_ASYNC                                       0x00000200
 #define WINED3D_BLT_FX                                          0x00000800
 #define WINED3D_BLT_DST_CKEY                                    0x00002000
 #define WINED3D_BLT_DST_CKEY_OVERRIDE                           0x00004000
@@ -1317,8 +1316,9 @@ enum wined3d_shader_byte_code_format
 #define WINED3D_BLT_SRC_CKEY_OVERRIDE                           0x00010000
 #define WINED3D_BLT_WAIT                                        0x01000000
 #define WINED3D_BLT_DO_NOT_WAIT                                 0x08000000
+#define WINED3D_BLT_SYNCHRONOUS                                 0x40000000
 #define WINED3D_BLT_ALPHA_TEST                                  0x80000000
-#define WINED3D_BLT_MASK                                        0x0901ea00
+#define WINED3D_BLT_MASK                                        0x0901e800
 
 /* dwFlags for GetBltStatus */
 #define WINEDDGBS_CANBLT                                        0x00000001
@@ -1559,12 +1559,28 @@ struct wined3d_vec4
     float w;
 };
 
+struct wined3d_dvec4
+{
+    double x;
+    double y;
+    double z;
+    double w;
+};
+
 struct wined3d_ivec4
 {
     int x;
     int y;
     int z;
     int w;
+};
+
+struct wined3d_uvec4
+{
+    unsigned int x;
+    unsigned int y;
+    unsigned int z;
+    unsigned int w;
 };
 
 struct wined3d_matrix
@@ -2192,11 +2208,14 @@ struct wined3d_buffer * __cdecl wined3d_device_get_cs_cb(const struct wined3d_de
 struct wined3d_shader_resource_view * __cdecl wined3d_device_get_cs_resource_view(const struct wined3d_device *device,
         unsigned int idx);
 struct wined3d_sampler * __cdecl wined3d_device_get_cs_sampler(const struct wined3d_device *device, unsigned int idx);
+struct wined3d_unordered_access_view * __cdecl wined3d_device_get_cs_uav(const struct wined3d_device *device,
+        unsigned int idx);
 struct wined3d_rendertarget_view * __cdecl wined3d_device_get_depth_stencil_view(const struct wined3d_device *device);
 HRESULT __cdecl wined3d_device_get_device_caps(const struct wined3d_device *device, WINED3DCAPS *caps);
 HRESULT __cdecl wined3d_device_get_display_mode(const struct wined3d_device *device, UINT swapchain_idx,
         struct wined3d_display_mode *mode, enum wined3d_display_rotation *rotation);
 struct wined3d_shader * __cdecl wined3d_device_get_domain_shader(const struct wined3d_device *device);
+struct wined3d_buffer * __cdecl wined3d_device_get_ds_cb(const struct wined3d_device *device, unsigned int idx);
 void __cdecl wined3d_device_get_gamma_ramp(const struct wined3d_device *device,
         UINT swapchain_idx, struct wined3d_gamma_ramp *ramp);
 struct wined3d_shader * __cdecl wined3d_device_get_geometry_shader(const struct wined3d_device *device);
@@ -2204,6 +2223,7 @@ struct wined3d_buffer * __cdecl wined3d_device_get_gs_cb(const struct wined3d_de
 struct wined3d_shader_resource_view * __cdecl wined3d_device_get_gs_resource_view(const struct wined3d_device *device,
         UINT idx);
 struct wined3d_sampler * __cdecl wined3d_device_get_gs_sampler(const struct wined3d_device *device, UINT idx);
+struct wined3d_buffer * __cdecl wined3d_device_get_hs_cb(const struct wined3d_device *device, unsigned int idx);
 struct wined3d_shader * __cdecl wined3d_device_get_hull_shader(const struct wined3d_device *device);
 struct wined3d_buffer * __cdecl wined3d_device_get_index_buffer(const struct wined3d_device *device,
         enum wined3d_format_id *format, unsigned int *offset);
@@ -2250,6 +2270,8 @@ DWORD __cdecl wined3d_device_get_texture_stage_state(const struct wined3d_device
         UINT stage, enum wined3d_texture_stage_state state);
 void __cdecl wined3d_device_get_transform(const struct wined3d_device *device,
         enum wined3d_transform_state state, struct wined3d_matrix *matrix);
+struct wined3d_unordered_access_view * __cdecl wined3d_device_get_unordered_access_view(
+        const struct wined3d_device *device, unsigned int idx);
 struct wined3d_vertex_declaration * __cdecl wined3d_device_get_vertex_declaration(const struct wined3d_device *device);
 struct wined3d_shader * __cdecl wined3d_device_get_vertex_shader(const struct wined3d_device *device);
 void __cdecl wined3d_device_get_viewport(const struct wined3d_device *device, struct wined3d_viewport *viewport);
@@ -2299,6 +2321,11 @@ void __cdecl wined3d_device_set_depth_stencil_view(struct wined3d_device *device
         struct wined3d_rendertarget_view *view);
 HRESULT __cdecl wined3d_device_set_dialog_box_mode(struct wined3d_device *device, BOOL enable_dialogs);
 void __cdecl wined3d_device_set_domain_shader(struct wined3d_device *device, struct wined3d_shader *shader);
+void __cdecl wined3d_device_set_ds_cb(struct wined3d_device *device, unsigned int idx, struct wined3d_buffer *buffer);
+void __cdecl wined3d_device_set_ds_resource_view(struct wined3d_device *device,
+        unsigned int idx, struct wined3d_shader_resource_view *view);
+void __cdecl wined3d_device_set_ds_sampler(struct wined3d_device *device,
+        unsigned int idx, struct wined3d_sampler *sampler);
 void __cdecl wined3d_device_set_gamma_ramp(const struct wined3d_device *device,
         UINT swapchain_idx, DWORD flags, const struct wined3d_gamma_ramp *ramp);
 void __cdecl wined3d_device_set_geometry_shader(struct wined3d_device *device, struct wined3d_shader *shader);
@@ -2306,6 +2333,11 @@ void __cdecl wined3d_device_set_gs_cb(struct wined3d_device *device, UINT idx, s
 void __cdecl wined3d_device_set_gs_resource_view(struct wined3d_device *device,
         UINT idx, struct wined3d_shader_resource_view *view);
 void __cdecl wined3d_device_set_gs_sampler(struct wined3d_device *device, UINT idx, struct wined3d_sampler *sampler);
+void __cdecl wined3d_device_set_hs_cb(struct wined3d_device *device, unsigned int idx, struct wined3d_buffer *buffer);
+void __cdecl wined3d_device_set_hs_resource_view(struct wined3d_device *device,
+        unsigned int idx, struct wined3d_shader_resource_view *view);
+void __cdecl wined3d_device_set_hs_sampler(struct wined3d_device *device,
+        unsigned int idx, struct wined3d_sampler *sampler);
 void __cdecl wined3d_device_set_hull_shader(struct wined3d_device *device, struct wined3d_shader *shader);
 void __cdecl wined3d_device_set_index_buffer(struct wined3d_device *device,
         struct wined3d_buffer *index_buffer, enum wined3d_format_id format_id, unsigned int offset);
@@ -2472,8 +2504,10 @@ static inline HRESULT wined3d_private_store_set_private_data(struct wined3d_priv
 }
 
 HRESULT __cdecl wined3d_rasterizer_state_create(struct wined3d_device *device,
-        const struct wined3d_rasterizer_state_desc *desc, struct wined3d_rasterizer_state **state);
+        const struct wined3d_rasterizer_state_desc *desc, void *parent,
+        const struct wined3d_parent_ops *parent_ops, struct wined3d_rasterizer_state **state);
 ULONG __cdecl wined3d_rasterizer_state_decref(struct wined3d_rasterizer_state *state);
+void * __cdecl wined3d_rasterizer_state_get_parent(const struct wined3d_rasterizer_state *state);
 ULONG __cdecl wined3d_rasterizer_state_incref(struct wined3d_rasterizer_state *state);
 
 void __cdecl wined3d_resource_get_desc(const struct wined3d_resource *resource,
@@ -2501,7 +2535,7 @@ ULONG __cdecl wined3d_rendertarget_view_incref(struct wined3d_rendertarget_view 
 void __cdecl wined3d_rendertarget_view_set_parent(struct wined3d_rendertarget_view *view, void *parent);
 
 HRESULT __cdecl wined3d_sampler_create(struct wined3d_device *device, const struct wined3d_sampler_desc *desc,
-        void *parent, struct wined3d_sampler **sampler);
+        void *parent, const struct wined3d_parent_ops *parent_ops, struct wined3d_sampler **sampler);
 ULONG __cdecl wined3d_sampler_decref(struct wined3d_sampler *sampler);
 void * __cdecl wined3d_sampler_get_parent(const struct wined3d_sampler *sampler);
 ULONG __cdecl wined3d_sampler_incref(struct wined3d_sampler *sampler);

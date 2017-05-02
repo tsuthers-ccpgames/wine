@@ -18,10 +18,11 @@
  */
 
 #include <assert.h>
+#include <float.h>
 #include <stdlib.h>
 #define COBJMACROS
 #include "initguid.h"
-#include "d3d11.h"
+#include "d3d11_1.h"
 #include "wine/test.h"
 #include <limits.h>
 
@@ -105,10 +106,36 @@ static void set_box(D3D11_BOX *box, UINT left, UINT top, UINT front, UINT right,
     box->back = back;
 }
 
-static ULONG get_refcount(IUnknown *iface)
+static ULONG get_refcount(void *iface)
 {
-    IUnknown_AddRef(iface);
-    return IUnknown_Release(iface);
+    IUnknown *unknown = iface;
+    IUnknown_AddRef(unknown);
+    return IUnknown_Release(unknown);
+}
+
+#define check_interface(a, b, c, d) check_interface_(__LINE__, a, b, c, d)
+static HRESULT check_interface_(unsigned int line, void *iface, REFIID riid, BOOL supported, BOOL is_broken)
+{
+    HRESULT hr, expected_hr, broken_hr;
+    IUnknown *unknown = iface, *out;
+
+    if (supported)
+    {
+        expected_hr = S_OK;
+        broken_hr = E_NOINTERFACE;
+    }
+    else
+    {
+        expected_hr = E_NOINTERFACE;
+        broken_hr = S_OK;
+    }
+
+    hr = IUnknown_QueryInterface(unknown, riid, (void **)&out);
+    ok_(__FILE__, line)(hr == expected_hr || broken(is_broken && hr == broken_hr),
+            "Got hr %#x, expected %#x.\n", hr, expected_hr);
+    if (SUCCEEDED(hr))
+        IUnknown_Release(out);
+    return hr;
 }
 
 static BOOL compare_float(float f, float g, unsigned int ulps)
@@ -1369,7 +1396,7 @@ static void test_create_device(void)
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
 
     ok(!!immediate_context, "Expected immediate device context pointer, got NULL.\n");
-    refcount = get_refcount((IUnknown *)immediate_context);
+    refcount = get_refcount(immediate_context);
     ok(refcount == 1, "Got refcount %u, expected 1.\n", refcount);
 
     ID3D11DeviceContext_GetDevice(immediate_context, &device);
@@ -1553,13 +1580,14 @@ static void test_device_interfaces(const D3D_FEATURE_LEVEL feature_level)
         return;
     }
 
-    hr = ID3D11Device_QueryInterface(device, &IID_IUnknown, (void **)&iface);
-    ok(SUCCEEDED(hr), "Device should implement IUnknown interface, hr %#x.\n", hr);
-    IUnknown_Release(iface);
-
-    hr = ID3D11Device_QueryInterface(device, &IID_IDXGIObject, (void **)&iface);
-    ok(SUCCEEDED(hr), "Device should implement IDXGIObject interface, hr %#x.\n", hr);
-    IUnknown_Release(iface);
+    check_interface(device, &IID_IUnknown, TRUE, FALSE);
+    check_interface(device, &IID_IDXGIObject, TRUE, FALSE);
+    check_interface(device, &IID_IDXGIDevice, TRUE, FALSE);
+    check_interface(device, &IID_IDXGIDevice1, TRUE, FALSE);
+    check_interface(device, &IID_ID3D10Multithread, TRUE, TRUE); /* Not available on all Windows versions. */
+    todo_wine check_interface(device, &IID_ID3D10Device, FALSE, FALSE);
+    todo_wine check_interface(device, &IID_ID3D10Device1, FALSE, FALSE);
+    check_interface(device, &IID_ID3D11InfoQueue, FALSE, FALSE); /* Non-debug mode. */
 
     hr = ID3D11Device_QueryInterface(device, &IID_IDXGIDevice, (void **)&dxgi_device);
     ok(SUCCEEDED(hr), "Device should implement IDXGIDevice.\n");
@@ -1577,26 +1605,6 @@ static void test_device_interfaces(const D3D_FEATURE_LEVEL feature_level)
     IDXGIAdapter_Release(dxgi_adapter);
     IDXGIDevice_Release(dxgi_device);
 
-    hr = ID3D11Device_QueryInterface(device, &IID_IDXGIDevice1, (void **)&iface);
-    ok(SUCCEEDED(hr), "Device should implement IDXGIDevice1.\n");
-    IUnknown_Release(iface);
-
-    hr = ID3D11Device_QueryInterface(device, &IID_ID3D10Multithread, (void **)&iface);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Device should implement ID3D10Multithread interface, hr %#x.\n", hr);
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
-
-    hr = ID3D11Device_QueryInterface(device, &IID_ID3D10Device, (void **)&iface);
-    todo_wine ok(hr == E_NOINTERFACE, "Device should not implement ID3D10Device interface, hr %#x.\n", hr);
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
-
-    hr = ID3D11Device_QueryInterface(device, &IID_ID3D11InfoQueue, (void **)&iface);
-    ok(hr == E_NOINTERFACE, "Found ID3D11InfoQueue interface in non-debug mode, hr %#x.\n", hr);
-
-    hr = ID3D11Device_QueryInterface(device, &IID_ID3D10Device1, (void **)&iface);
-    todo_wine ok(hr == E_NOINTERFACE, "Device should not implement ID3D10Device1 interface, hr %#x.\n", hr);
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
-
     refcount = ID3D11Device_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
 
@@ -1608,9 +1616,7 @@ static void test_device_interfaces(const D3D_FEATURE_LEVEL feature_level)
         return;
     }
 
-    hr = ID3D11Device_QueryInterface(device, &IID_ID3D11InfoQueue, (void **)&iface);
-    todo_wine ok(hr == S_OK, "Device should implement ID3D11InfoQueue interface, hr %#x.\n", hr);
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
+    todo_wine check_interface(device, &IID_ID3D11InfoQueue, TRUE, FALSE);
 
     refcount = ID3D11Device_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
@@ -1628,15 +1634,15 @@ static void test_get_immediate_context(void)
         return;
     }
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     ID3D11Device_GetImmediateContext(device, &immediate_context);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u.\n", refcount);
     previous_immediate_context = immediate_context;
 
     ID3D11Device_GetImmediateContext(device, &immediate_context);
     ok(immediate_context == previous_immediate_context, "Got different immediate device context objects.\n");
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u.\n", refcount);
 
     refcount = ID3D11DeviceContext_Release(previous_immediate_context);
@@ -1662,7 +1668,6 @@ static void test_create_texture2d(void)
     D3D11_TEXTURE2D_DESC desc;
     ID3D11Texture2D *texture;
     UINT quality_level_count;
-    IDXGISurface *surface;
     unsigned int i;
     HRESULT hr;
 
@@ -1784,35 +1789,33 @@ static void test_create_texture2d(void)
     hr = ID3D11Device_CreateTexture2D(device, &desc, &data, &texture);
     ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateTexture2D(device, &desc, NULL, &texture);
     ok(SUCCEEDED(hr), "Failed to create a 2d texture, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11Texture2D_GetDevice(texture, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
-    hr = ID3D11Texture2D_QueryInterface(texture, &IID_IDXGISurface, (void **)&surface);
-    ok(SUCCEEDED(hr), "Texture should implement IDXGISurface.\n");
-    IDXGISurface_Release(surface);
+    check_interface(texture, &IID_IDXGISurface, TRUE, FALSE);
     ID3D11Texture2D_Release(texture);
 
     desc.MipLevels = 0;
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateTexture2D(device, &desc, NULL, &texture);
     ok(SUCCEEDED(hr), "Failed to create a 2d texture, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11Texture2D_GetDevice(texture, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
@@ -1829,8 +1832,7 @@ static void test_create_texture2d(void)
     ok(desc.CPUAccessFlags == 0, "Got unexpected CPUAccessFlags %#x.\n", desc.CPUAccessFlags);
     ok(desc.MiscFlags == 0, "Got unexpected MiscFlags %#x.\n", desc.MiscFlags);
 
-    hr = ID3D11Texture2D_QueryInterface(texture, &IID_IDXGISurface, (void **)&surface);
-    ok(FAILED(hr), "Texture should not implement IDXGISurface.\n");
+    check_interface(texture, &IID_IDXGISurface, FALSE, FALSE);
     ID3D11Texture2D_Release(texture);
 
     desc.MipLevels = 1;
@@ -1838,8 +1840,7 @@ static void test_create_texture2d(void)
     hr = ID3D11Device_CreateTexture2D(device, &desc, NULL, &texture);
     ok(SUCCEEDED(hr), "Failed to create a 2d texture, hr %#x.\n", hr);
 
-    hr = ID3D11Texture2D_QueryInterface(texture, &IID_IDXGISurface, (void **)&surface);
-    ok(FAILED(hr), "Texture should not implement IDXGISurface.\n");
+    check_interface(texture, &IID_IDXGISurface, FALSE, FALSE);
     ID3D11Texture2D_Release(texture);
 
     ID3D11Device_CheckMultisampleQualityLevels(device, DXGI_FORMAT_R8G8B8A8_UNORM, 2, &quality_level_count);
@@ -1898,7 +1899,6 @@ static void test_texture2d_interfaces(void)
     ID3D10Texture2D *d3d10_texture;
     D3D11_TEXTURE2D_DESC desc;
     ID3D11Texture2D *texture;
-    IDXGISurface *surface;
     ID3D11Device *device;
     unsigned int i;
     ULONG refcount;
@@ -1961,16 +1961,9 @@ static void test_texture2d_interfaces(void)
 
     hr = ID3D11Device_CreateTexture2D(device, &desc, NULL, &texture);
     ok(SUCCEEDED(hr), "Failed to create a 2d texture, hr %#x.\n", hr);
-
-    hr = ID3D11Texture2D_QueryInterface(texture, &IID_IDXGISurface, (void **)&surface);
-    ok(hr == E_NOINTERFACE, "Texture should not implement IDXGISurface.\n");
-
-    hr = ID3D11Texture2D_QueryInterface(texture, &IID_ID3D10Texture2D, (void **)&d3d10_texture);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Texture should implement ID3D10Texture2D.\n");
-    if (SUCCEEDED(hr)) ID3D10Texture2D_Release(d3d10_texture);
+    check_interface(texture, &IID_IDXGISurface, FALSE, FALSE);
+    hr = check_interface(texture, &IID_ID3D10Texture2D, TRUE, TRUE); /* Not available on all Windows versions. */
     ID3D11Texture2D_Release(texture);
-
     if (FAILED(hr))
     {
         win_skip("2D textures do not implement ID3D10Texture2D, skipping tests.\n");
@@ -2006,9 +1999,7 @@ static void test_texture2d_interfaces(void)
             continue;
         }
 
-        hr = ID3D11Texture2D_QueryInterface(texture, &IID_IDXGISurface, (void **)&surface);
-        ok(SUCCEEDED(hr), "Test %u: Texture should implement IDXGISurface.\n", i);
-        IDXGISurface_Release(surface);
+        check_interface(texture, &IID_IDXGISurface, TRUE, FALSE);
 
         hr = ID3D11Texture2D_QueryInterface(texture, &IID_ID3D10Texture2D, (void **)&d3d10_texture);
         ID3D11Texture2D_Release(texture);
@@ -2068,7 +2059,6 @@ static void test_create_texture3d(void)
     ID3D11Device *device, *tmp;
     D3D11_TEXTURE3D_DESC desc;
     ID3D11Texture3D *texture;
-    IDXGISurface *surface;
     unsigned int i;
     HRESULT hr;
 
@@ -2111,34 +2101,33 @@ static void test_create_texture3d(void)
     hr = ID3D11Device_CreateTexture3D(device, &desc, &data, &texture);
     ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateTexture3D(device, &desc, NULL, &texture);
     ok(SUCCEEDED(hr), "Failed to create a 3d texture, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11Texture3D_GetDevice(texture, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
-    hr = ID3D11Texture3D_QueryInterface(texture, &IID_IDXGISurface, (void **)&surface);
-    ok(FAILED(hr), "Texture should not implement IDXGISurface.\n");
+    check_interface(texture, &IID_IDXGISurface, FALSE, FALSE);
     ID3D11Texture3D_Release(texture);
 
     desc.MipLevels = 0;
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateTexture3D(device, &desc, NULL, &texture);
     ok(SUCCEEDED(hr), "Failed to create a 3d texture, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11Texture3D_GetDevice(texture, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
@@ -2153,8 +2142,7 @@ static void test_create_texture3d(void)
     ok(desc.CPUAccessFlags == 0, "Got unexpected CPUAccessFlags %u.\n", desc.CPUAccessFlags);
     ok(desc.MiscFlags == 0, "Got unexpected MiscFlags %u.\n", desc.MiscFlags);
 
-    hr = ID3D11Texture3D_QueryInterface(texture, &IID_IDXGISurface, (void **)&surface);
-    ok(FAILED(hr), "Texture should not implement IDXGISurface.\n");
+    check_interface(texture, &IID_IDXGISurface, FALSE, FALSE);
     ID3D11Texture3D_Release(texture);
 
     desc.MipLevels = 1;
@@ -2180,7 +2168,6 @@ static void test_texture3d_interfaces(void)
     ID3D10Texture3D *d3d10_texture;
     D3D11_TEXTURE3D_DESC desc;
     ID3D11Texture3D *texture;
-    IDXGISurface *surface;
     ID3D11Device *device;
     unsigned int i;
     ULONG refcount;
@@ -2236,16 +2223,9 @@ static void test_texture3d_interfaces(void)
 
     hr = ID3D11Device_CreateTexture3D(device, &desc, NULL, &texture);
     ok(SUCCEEDED(hr), "Failed to create a 3d texture, hr %#x.\n", hr);
-
-    hr = ID3D11Texture3D_QueryInterface(texture, &IID_IDXGISurface, (void **)&surface);
-    ok(hr == E_NOINTERFACE, "Texture should not implement IDXGISurface.\n");
-
-    hr = ID3D11Texture3D_QueryInterface(texture, &IID_ID3D10Texture3D, (void **)&d3d10_texture);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Texture should implement ID3D10Texture3D.\n");
-    if (SUCCEEDED(hr)) ID3D10Texture3D_Release(d3d10_texture);
+    check_interface(texture, &IID_IDXGISurface, FALSE, FALSE);
+    hr = check_interface(texture, &IID_ID3D10Texture3D, TRUE, TRUE); /* Not available on all Windows versions. */
     ID3D11Texture3D_Release(texture);
-
     if (FAILED(hr))
     {
         win_skip("3D textures do not implement ID3D10Texture3D.\n");
@@ -2279,8 +2259,7 @@ static void test_texture3d_interfaces(void)
             continue;
         }
 
-        hr = ID3D11Texture3D_QueryInterface(texture, &IID_IDXGISurface, (void **)&surface);
-        ok(hr == E_NOINTERFACE, "Texture should not implement IDXGISurface.\n");
+        check_interface(texture, &IID_IDXGISurface, FALSE, FALSE);
 
         hr = ID3D11Texture3D_QueryInterface(texture, &IID_ID3D10Texture3D, (void **)&d3d10_texture);
         ID3D11Texture3D_Release(texture);
@@ -2526,10 +2505,7 @@ static void test_create_buffer(void)
     }
 
     buffer = create_buffer(device, D3D11_BIND_VERTEX_BUFFER, 1024, NULL);
-    hr = ID3D11Buffer_QueryInterface(buffer, &IID_ID3D10Buffer, (void **)&d3d10_buffer);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Buffer should implement ID3D10Buffer.\n");
-    if (SUCCEEDED(hr)) ID3D10Buffer_Release(d3d10_buffer);
+    hr = check_interface(buffer, &IID_ID3D10Buffer, TRUE, TRUE); /* Not available on all Windows versions. */
     ID3D11Buffer_Release(buffer);
 
     if (FAILED(hr))
@@ -2631,7 +2607,6 @@ static void test_create_depthstencil_view(void)
     ID3D11DepthStencilView *dsview;
     ID3D11Device *device, *tmp;
     ID3D11Texture2D *texture;
-    IUnknown *iface;
     unsigned int i;
     HRESULT hr;
 
@@ -2744,16 +2719,16 @@ static void test_create_depthstencil_view(void)
     hr = ID3D11Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
     ok(SUCCEEDED(hr), "Failed to create a 2d texture, hr %#x.\n", hr);
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateDepthStencilView(device, (ID3D11Resource *)texture, NULL, &dsview);
     ok(SUCCEEDED(hr), "Failed to create a depthstencil view, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11DepthStencilView_GetDevice(dsview, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
@@ -2789,16 +2764,14 @@ static void test_create_depthstencil_view(void)
             get_dsv_desc(current_desc, &tests[i].dsv_desc);
         }
 
-        expected_refcount = get_refcount((IUnknown *)texture);
+        expected_refcount = get_refcount(texture);
         hr = ID3D11Device_CreateDepthStencilView(device, (ID3D11Resource *)texture, current_desc, &dsview);
         ok(SUCCEEDED(hr), "Test %u: Failed to create depth stencil view, hr %#x.\n", i, hr);
-        refcount = get_refcount((IUnknown *)texture);
+        refcount = get_refcount(texture);
         ok(refcount == expected_refcount, "Got refcount %u, expected %u.\n", refcount, expected_refcount);
 
-        hr = ID3D11DepthStencilView_QueryInterface(dsview, &IID_ID3D10DepthStencilView, (void **)&iface);
-        ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-                "Test %u: Depth stencil view should implement ID3D10DepthStencilView.\n", i);
-        if (SUCCEEDED(hr)) IUnknown_Release(iface);
+        /* Not available on all Windows versions. */
+        check_interface(dsview, &IID_ID3D10DepthStencilView, TRUE, TRUE);
 
         memset(&dsv_desc, 0, sizeof(dsv_desc));
         ID3D11DepthStencilView_GetDesc(dsview, &dsv_desc);
@@ -2872,7 +2845,7 @@ static void test_depthstencil_view_interfaces(void)
     hr = ID3D11DepthStencilView_QueryInterface(dsview, &IID_ID3D10DepthStencilView, (void **)&d3d10_dsview);
     ID3D11DepthStencilView_Release(dsview);
     ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-        "Depth stencil view should implement ID3D10DepthStencilView.\n");
+            "Depth stencil view should implement ID3D10DepthStencilView.\n");
 
     if (FAILED(hr))
     {
@@ -2910,7 +2883,6 @@ static void test_create_rendertarget_view(void)
     ID3D11Texture2D *texture2d;
     ID3D11Resource *texture;
     ID3D11Buffer *buffer;
-    IUnknown *iface;
     unsigned int i;
     HRESULT hr;
 
@@ -3060,16 +3032,16 @@ static void test_create_rendertarget_view(void)
     hr = ID3D11Device_CreateBuffer(device, &buffer_desc, &data, &buffer);
     ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateBuffer(device, &buffer_desc, NULL, &buffer);
     ok(SUCCEEDED(hr), "Failed to create a buffer, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11Buffer_GetDevice(buffer, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
@@ -3081,23 +3053,21 @@ static void test_create_rendertarget_view(void)
     hr = ID3D11Device_CreateRenderTargetView(device, NULL, &rtv_desc, &rtview);
     ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource *)buffer, &rtv_desc, &rtview);
     ok(SUCCEEDED(hr), "Failed to create a rendertarget view, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11RenderTargetView_GetDevice(rtview, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
-    hr = ID3D11RenderTargetView_QueryInterface(rtview, &IID_ID3D10RenderTargetView, (void **)&iface);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Render target view should implement ID3D10RenderTargetView.\n");
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
+    /* Not available on all Windows versions. */
+    check_interface(rtview, &IID_ID3D10RenderTargetView, TRUE, TRUE);
 
     ID3D11RenderTargetView_Release(rtview);
     ID3D11Buffer_Release(buffer);
@@ -3153,16 +3123,14 @@ static void test_create_rendertarget_view(void)
             get_rtv_desc(current_desc, &tests[i].rtv_desc);
         }
 
-        expected_refcount = get_refcount((IUnknown *)texture);
+        expected_refcount = get_refcount(texture);
         hr = ID3D11Device_CreateRenderTargetView(device, texture, current_desc, &rtview);
         ok(SUCCEEDED(hr), "Test %u: Failed to create render target view, hr %#x.\n", i, hr);
-        refcount = get_refcount((IUnknown *)texture);
+        refcount = get_refcount(texture);
         ok(refcount == expected_refcount, "Got refcount %u, expected %u.\n", refcount, expected_refcount);
 
-        hr = ID3D11RenderTargetView_QueryInterface(rtview, &IID_ID3D10RenderTargetView, (void **)&iface);
-        ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-                "Test %u: Render target view should implement ID3D10RenderTargetView.\n", i);
-        if (SUCCEEDED(hr)) IUnknown_Release(iface);
+        /* Not available on all Windows versions. */
+        check_interface(rtview, &IID_ID3D10RenderTargetView, TRUE, TRUE);
 
         memset(&rtv_desc, 0, sizeof(rtv_desc));
         ID3D11RenderTargetView_GetDesc(rtview, &rtv_desc);
@@ -3223,7 +3191,6 @@ static void test_create_shader_resource_view(void)
     ID3D11Texture2D *texture2d;
     ID3D11Resource *texture;
     ID3D11Buffer *buffer;
-    IUnknown *iface;
     unsigned int i;
     HRESULT hr;
 
@@ -3399,27 +3366,22 @@ static void test_create_shader_resource_view(void)
     hr = ID3D11Device_CreateShaderResourceView(device, NULL, &srv_desc, &srview);
     ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateShaderResourceView(device, (ID3D11Resource *)buffer, &srv_desc, &srview);
     ok(SUCCEEDED(hr), "Failed to create a shader resource view, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11ShaderResourceView_GetDevice(srview, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
-    hr = ID3D11ShaderResourceView_QueryInterface(srview, &IID_ID3D10ShaderResourceView, (void **)&iface);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Shader resource view should implement ID3D10ShaderResourceView.\n");
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
-    hr = ID3D11ShaderResourceView_QueryInterface(srview, &IID_ID3D10ShaderResourceView1, (void **)&iface);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Shader resource view should implement ID3D10ShaderResourceView1.\n");
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
+    /* Not available on all Windows versions. */
+    check_interface(srview, &IID_ID3D10ShaderResourceView, TRUE, TRUE);
+    check_interface(srview, &IID_ID3D10ShaderResourceView1, TRUE, TRUE);
 
     ID3D11ShaderResourceView_Release(srview);
     ID3D11Buffer_Release(buffer);
@@ -3522,20 +3484,15 @@ static void test_create_shader_resource_view(void)
             get_srv_desc(current_desc, &tests[i].srv_desc);
         }
 
-        expected_refcount = get_refcount((IUnknown *)texture);
+        expected_refcount = get_refcount(texture);
         hr = ID3D11Device_CreateShaderResourceView(device, texture, current_desc, &srview);
         ok(SUCCEEDED(hr), "Test %u: Failed to create a shader resource view, hr %#x.\n", i, hr);
-        refcount = get_refcount((IUnknown *)texture);
+        refcount = get_refcount(texture);
         ok(refcount == expected_refcount, "Got refcount %u, expected %u.\n", refcount, expected_refcount);
 
-        hr = ID3D11ShaderResourceView_QueryInterface(srview, &IID_ID3D10ShaderResourceView, (void **)&iface);
-        ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-                "Test %u: Shader resource view should implement ID3D10ShaderResourceView.\n", i);
-        if (SUCCEEDED(hr)) IUnknown_Release(iface);
-        hr = ID3D11ShaderResourceView_QueryInterface(srview, &IID_ID3D10ShaderResourceView1, (void **)&iface);
-        ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-                "Test %u: Shader resource view should implement ID3D10ShaderResourceView1.\n", i);
-        if (SUCCEEDED(hr)) IUnknown_Release(iface);
+        /* Not available on all Windows versions. */
+        check_interface(srview, &IID_ID3D10ShaderResourceView, TRUE, TRUE);
+        check_interface(srview, &IID_ID3D10ShaderResourceView1, TRUE, TRUE);
 
         memset(&srv_desc, 0, sizeof(srv_desc));
         ID3D11ShaderResourceView_GetDesc(srview, &srv_desc);
@@ -3845,7 +3802,6 @@ static void test_create_shader(const D3D_FEATURE_LEVEL feature_level)
     ID3D11GeometryShader *gs;
     ID3D11VertexShader *vs;
     ID3D11PixelShader *ps;
-    IUnknown *iface;
     HRESULT hr;
 
     device_desc.feature_level = &feature_level;
@@ -3880,14 +3836,14 @@ static void test_create_shader(const D3D_FEATURE_LEVEL feature_level)
     ok(hr == E_INVALIDARG, "Created a SM4 vertex shader from a pixel shader source, hr %#x, feature level %#x.\n",
             hr, feature_level);
 
-    expected_refcount = get_refcount((IUnknown *)device) + (feature_level >= D3D_FEATURE_LEVEL_10_0);
+    expected_refcount = get_refcount(device) + (feature_level >= D3D_FEATURE_LEVEL_10_0);
     hr = ID3D11Device_CreateVertexShader(device, vs_4_0, sizeof(vs_4_0), NULL, &vs);
     if (feature_level >= D3D_FEATURE_LEVEL_10_0)
         ok(SUCCEEDED(hr), "Failed to create SM4 vertex shader, hr %#x, feature level %#x.\n", hr, feature_level);
     else
         ok(hr == E_INVALIDARG, "Created a SM4 vertex shader, hr %#x, feature level %#x.\n", hr, feature_level);
 
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n",
             refcount, expected_refcount);
     if (feature_level >= D3D_FEATURE_LEVEL_10_0)
@@ -3896,15 +3852,13 @@ static void test_create_shader(const D3D_FEATURE_LEVEL feature_level)
         expected_refcount = refcount + 1;
         ID3D11VertexShader_GetDevice(vs, &tmp);
         ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-        refcount = get_refcount((IUnknown *)device);
+        refcount = get_refcount(device);
         ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n",
                 refcount, expected_refcount);
         ID3D11Device_Release(tmp);
 
-        hr = ID3D11VertexShader_QueryInterface(vs, &IID_ID3D10VertexShader, (void **)&iface);
-        ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-                "Vertex shader should implement ID3D10VertexShader.\n");
-        if (SUCCEEDED(hr)) IUnknown_Release(iface);
+        /* Not available on all Windows versions. */
+        check_interface(vs, &IID_ID3D10VertexShader, TRUE, TRUE);
 
         refcount = ID3D11VertexShader_Release(vs);
         ok(!refcount, "Vertex shader has %u references left.\n", refcount);
@@ -3928,14 +3882,14 @@ static void test_create_shader(const D3D_FEATURE_LEVEL feature_level)
     }
 
     /* pixel shader */
-    expected_refcount = get_refcount((IUnknown *)device) + (feature_level >= D3D_FEATURE_LEVEL_10_0);
+    expected_refcount = get_refcount(device) + (feature_level >= D3D_FEATURE_LEVEL_10_0);
     hr = ID3D11Device_CreatePixelShader(device, ps_4_0, sizeof(ps_4_0), NULL, &ps);
     if (feature_level >= D3D_FEATURE_LEVEL_10_0)
         ok(SUCCEEDED(hr), "Failed to create SM4 pixel shader, hr %#x, feature level %#x.\n", hr, feature_level);
     else
         ok(hr == E_INVALIDARG, "Created a SM4 pixel shader, hr %#x, feature level %#x.\n", hr, feature_level);
 
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n",
             refcount, expected_refcount);
     if (feature_level >= D3D_FEATURE_LEVEL_10_0)
@@ -3944,15 +3898,13 @@ static void test_create_shader(const D3D_FEATURE_LEVEL feature_level)
         expected_refcount = refcount + 1;
         ID3D11PixelShader_GetDevice(ps, &tmp);
         ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-        refcount = get_refcount((IUnknown *)device);
+        refcount = get_refcount(device);
         ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n",
                 refcount, expected_refcount);
         ID3D11Device_Release(tmp);
 
-        hr = ID3D11PixelShader_QueryInterface(ps, &IID_ID3D10PixelShader, (void **)&iface);
-        ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-                "Pixel shader should implement ID3D10PixelShader.\n");
-        if (SUCCEEDED(hr)) IUnknown_Release(iface);
+        /* Not available on all Windows versions. */
+        check_interface(ps, &IID_ID3D10PixelShader, TRUE, TRUE);
 
         refcount = ID3D11PixelShader_Release(ps);
         ok(!refcount, "Pixel shader has %u references left.\n", refcount);
@@ -3975,14 +3927,14 @@ static void test_create_shader(const D3D_FEATURE_LEVEL feature_level)
     }
 
     /* geometry shader */
-    expected_refcount = get_refcount((IUnknown *)device) + (feature_level >= D3D_FEATURE_LEVEL_10_0);
+    expected_refcount = get_refcount(device) + (feature_level >= D3D_FEATURE_LEVEL_10_0);
     hr = ID3D11Device_CreateGeometryShader(device, gs_4_0, sizeof(gs_4_0), NULL, &gs);
     if (feature_level >= D3D_FEATURE_LEVEL_10_0)
         ok(SUCCEEDED(hr), "Failed to create SM4 geometry shader, hr %#x, feature level %#x.\n", hr, feature_level);
     else
         ok(hr == E_INVALIDARG, "Created a SM4 geometry shader, hr %#x, feature level %#x.\n", hr, feature_level);
 
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n",
             refcount, expected_refcount);
     if (feature_level >= D3D_FEATURE_LEVEL_10_0)
@@ -3991,15 +3943,13 @@ static void test_create_shader(const D3D_FEATURE_LEVEL feature_level)
         expected_refcount = refcount + 1;
         ID3D11GeometryShader_GetDevice(gs, &tmp);
         ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-        refcount = get_refcount((IUnknown *)device);
+        refcount = get_refcount(device);
         ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n",
                 refcount, expected_refcount);
         ID3D11Device_Release(tmp);
 
-        hr = ID3D11GeometryShader_QueryInterface(gs, &IID_ID3D10GeometryShader, (void **)&iface);
-        ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-                "Geometry shader should implement ID3D10GeometryShader.\n");
-        if (SUCCEEDED(hr)) IUnknown_Release(iface);
+        /* Not available on all Windows versions. */
+        check_interface(gs, &IID_ID3D10GeometryShader, TRUE, TRUE);
 
         refcount = ID3D11GeometryShader_Release(gs);
         ok(!refcount, "Geometry shader has %u references left.\n", refcount);
@@ -4092,19 +4042,19 @@ static void test_create_sampler_state(void)
     desc.MinLOD = 0.0f;
     desc.MaxLOD = 16.0f;
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateSamplerState(device, &desc, &sampler_state1);
     ok(SUCCEEDED(hr), "Failed to create sampler state, hr %#x.\n", hr);
     hr = ID3D11Device_CreateSamplerState(device, &desc, &sampler_state2);
     ok(SUCCEEDED(hr), "Failed to create sampler state, hr %#x.\n", hr);
     ok(sampler_state1 == sampler_state2, "Got different sampler state objects.\n");
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11SamplerState_GetDevice(sampler_state1, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
@@ -4300,7 +4250,6 @@ static void test_create_blend_state(void)
     ULONG refcount, expected_refcount;
     ID3D11Device *device, *tmp;
     unsigned int i, j;
-    IUnknown *iface;
     HRESULT hr;
 
     if (!(device = create_device(NULL)))
@@ -4324,19 +4273,19 @@ static void test_create_blend_state(void)
     desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
     desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateBlendState(device, &desc, &blend_state1);
     ok(SUCCEEDED(hr), "Failed to create blend state, hr %#x.\n", hr);
     hr = ID3D11Device_CreateBlendState(device, &desc, &blend_state2);
     ok(SUCCEEDED(hr), "Failed to create blend state, hr %#x.\n", hr);
     ok(blend_state1 == blend_state2, "Got different blend state objects.\n");
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11BlendState_GetDevice(blend_state1, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
@@ -4373,14 +4322,9 @@ static void test_create_blend_state(void)
                 obtained_desc.RenderTarget[0].RenderTargetWriteMask, i);
     }
 
-    hr = ID3D11BlendState_QueryInterface(blend_state1, &IID_ID3D10BlendState, (void **)&iface);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Blend state should implement ID3D10BlendState.\n");
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
-    hr = ID3D11BlendState_QueryInterface(blend_state1, &IID_ID3D10BlendState1, (void **)&iface);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Blend state should implement ID3D10BlendState1.\n");
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
+    /* Not available on all Windows versions. */
+    hr = check_interface(blend_state1, &IID_ID3D10BlendState, TRUE, TRUE);
+    hr = check_interface(blend_state1, &IID_ID3D10BlendState1, TRUE, TRUE);
 
     refcount = ID3D11BlendState_Release(blend_state1);
     ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
@@ -4444,7 +4388,6 @@ static void test_create_blend_state(void)
 static void test_create_depthstencil_state(void)
 {
     ID3D11DepthStencilState *ds_state1, *ds_state2;
-    ID3D10DepthStencilState *d3d10_ds_state;
     ULONG refcount, expected_refcount;
     D3D11_DEPTH_STENCIL_DESC ds_desc;
     ID3D11Device *device, *tmp;
@@ -4474,26 +4417,24 @@ static void test_create_depthstencil_state(void)
     ds_desc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
     ds_desc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateDepthStencilState(device, &ds_desc, &ds_state1);
     ok(SUCCEEDED(hr), "Failed to create depthstencil state, hr %#x.\n", hr);
     hr = ID3D11Device_CreateDepthStencilState(device, &ds_desc, &ds_state2);
     ok(SUCCEEDED(hr), "Failed to create depthstencil state, hr %#x.\n", hr);
     ok(ds_state1 == ds_state2, "Got different depthstencil state objects.\n");
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11DepthStencilState_GetDevice(ds_state1, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
-    hr = ID3D11DepthStencilState_QueryInterface(ds_state1, &IID_ID3D10DepthStencilState, (void **)&d3d10_ds_state);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Depth stencil state should implement ID3D10DepthStencilState.\n");
-    if (SUCCEEDED(hr)) ID3D10DepthStencilState_Release(d3d10_ds_state);
+    /* Not available on all Windows versions. */
+    hr = check_interface(ds_state1, &IID_ID3D10DepthStencilState, TRUE, TRUE);
 
     refcount = ID3D11DepthStencilState_Release(ds_state2);
     ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
@@ -4579,19 +4520,19 @@ static void test_create_rasterizer_state(void)
     desc.MultisampleEnable = FALSE;
     desc.AntialiasedLineEnable = FALSE;
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateRasterizerState(device, &desc, &rast_state1);
     ok(SUCCEEDED(hr), "Failed to create rasterizer state, hr %#x.\n", hr);
     hr = ID3D11Device_CreateRasterizerState(device, &desc, &rast_state2);
     ok(SUCCEEDED(hr), "Failed to create rasterizer state, hr %#x.\n", hr);
     ok(rast_state1 == rast_state2, "Got different rasterizer state objects.\n");
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11RasterizerState_GetDevice(rast_state1, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
@@ -4666,7 +4607,6 @@ static void test_create_query(void)
     ID3D11Device *device, *tmp;
     HRESULT hr, expected_hr;
     ID3D11Query *query;
-    IUnknown *iface;
     unsigned int i;
 
     if (!(device = create_device(NULL)))
@@ -4703,12 +4643,8 @@ static void test_create_query(void)
         if (FAILED(hr))
             continue;
 
-        expected_hr = tests[i].is_predicate ? S_OK : E_NOINTERFACE;
-        hr = ID3D11Query_QueryInterface(query, &IID_ID3D11Predicate, (void **)&predicate);
+        check_interface(query, &IID_ID3D11Predicate, tests[i].is_predicate, FALSE);
         ID3D11Query_Release(query);
-        ok(hr == expected_hr, "Got unexpected hr %#x for query type %u.\n", hr, query_desc.Query);
-        if (SUCCEEDED(hr))
-            ID3D11Predicate_Release(predicate);
 
         expected_hr = tests[i].can_use_create_predicate ? S_FALSE : E_INVALIDARG;
         hr = ID3D11Device_CreatePredicate(device, &query_desc, NULL);
@@ -4722,22 +4658,20 @@ static void test_create_query(void)
     }
 
     query_desc.Query = D3D11_QUERY_OCCLUSION_PREDICATE;
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreatePredicate(device, &query_desc, &predicate);
     ok(SUCCEEDED(hr), "Failed to create predicate, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11Predicate_GetDevice(predicate, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
-    hr = ID3D11Predicate_QueryInterface(predicate, &IID_ID3D10Predicate, (void **)&iface);
-    ok(SUCCEEDED(hr) || broken(hr == E_NOINTERFACE) /* Not available on all Windows versions. */,
-            "Predicate should implement ID3D10Predicate.\n");
-    if (SUCCEEDED(hr)) IUnknown_Release(iface);
+    /* Not available on all Windows versions. */
+    check_interface(predicate, &IID_ID3D10Predicate, TRUE, TRUE);
     ID3D11Predicate_Release(predicate);
 
     refcount = ID3D11Device_Release(device);
@@ -5188,21 +5122,21 @@ static void test_private_data(void)
     ok(size == sizeof(IUnknown *), "Got unexpected size %u.\n", size);
     IDXGIDevice_Release(dxgi_device);
 
-    refcount = get_refcount((IUnknown *)test_object);
+    refcount = get_refcount(test_object);
     hr = ID3D11Device_SetPrivateDataInterface(device, &test_guid, (IUnknown *)test_object);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     expected_refcount = refcount + 1;
-    refcount = get_refcount((IUnknown *)test_object);
+    refcount = get_refcount(test_object);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     hr = ID3D11Device_SetPrivateDataInterface(device, &test_guid, (IUnknown *)test_object);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)test_object);
+    refcount = get_refcount(test_object);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
 
     hr = ID3D11Device_SetPrivateDataInterface(device, &test_guid, NULL);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     --expected_refcount;
-    refcount = get_refcount((IUnknown *)test_object);
+    refcount = get_refcount(test_object);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
 
     hr = ID3D11Device_SetPrivateDataInterface(device, &test_guid, (IUnknown *)test_object);
@@ -5210,7 +5144,7 @@ static void test_private_data(void)
     size = sizeof(data);
     hr = ID3D11Device_SetPrivateData(device, &test_guid, size, data);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)test_object);
+    refcount = get_refcount(test_object);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     hr = ID3D11Device_SetPrivateData(device, &test_guid, 42, NULL);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
@@ -5226,7 +5160,7 @@ static void test_private_data(void)
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     ok(size == sizeof(test_object), "Got unexpected size %u.\n", size);
     ++expected_refcount;
-    refcount = get_refcount((IUnknown *)test_object);
+    refcount = get_refcount(test_object);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     IUnknown_Release(ptr);
     --expected_refcount;
@@ -5240,7 +5174,7 @@ static void test_private_data(void)
     hr = ID3D11Device_GetPrivateData(device, &test_guid, &size, NULL);
     ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
     ok(size == sizeof(device), "Got unexpected size %u.\n", size);
-    refcount = get_refcount((IUnknown *)test_object);
+    refcount = get_refcount(test_object);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
 
     size = 1;
@@ -5288,6 +5222,235 @@ static void test_private_data(void)
     ok(!refcount, "Device has %u references left.\n", refcount);
     refcount = ID3D11Device_Release(test_object);
     ok(!refcount, "Test object has %u references left.\n", refcount);
+}
+
+static void test_state_refcounting(const D3D_FEATURE_LEVEL feature_level)
+{
+    ID3D11RasterizerState *rasterizer_state, *tmp_rasterizer_state;
+    ID3D11SamplerState *sampler, *tmp_sampler;
+    ID3D11ShaderResourceView *srv, *tmp_srv;
+    ID3D11RenderTargetView *rtv, *tmp_rtv;
+    D3D11_RASTERIZER_DESC rasterizer_desc;
+    D3D11_TEXTURE2D_DESC texture_desc;
+    D3D11_SAMPLER_DESC sampler_desc;
+    struct device_desc device_desc;
+    ID3D11DeviceContext *context;
+    ID3D11Texture2D *texture;
+    ID3D11Device *device;
+    ULONG refcount;
+    HRESULT hr;
+
+    device_desc.feature_level = &feature_level;
+    device_desc.flags = 0;
+    if (!(device = create_device(&device_desc)))
+    {
+        skip("Failed to create device for feature level %#x.\n", feature_level);
+        return;
+    }
+
+    ID3D11Device_GetImmediateContext(device, &context);
+
+    /* ID3D11SamplerState */
+    memset(&sampler_desc, 0, sizeof(sampler_desc));
+    sampler_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.MaxLOD = FLT_MAX;
+    hr = ID3D11Device_CreateSamplerState(device, &sampler_desc, &sampler);
+    ok(SUCCEEDED(hr), "Failed to create sampler state, hr %#x.\n", hr);
+
+    hr = ID3D11Device_CreateSamplerState(device, &sampler_desc, &tmp_sampler);
+    ok(SUCCEEDED(hr), "Failed to create sampler state, hr %#x.\n", hr);
+    ok(tmp_sampler == sampler, "Got sampler %p, expected %p.\n", tmp_sampler, sampler);
+    ID3D11SamplerState_Release(tmp_sampler);
+
+    tmp_sampler = sampler;
+    refcount = get_refcount(sampler);
+    ok(refcount == 1, "Got refcount %u, expected 1.\n", refcount);
+    ID3D11DeviceContext_PSSetSamplers(context, 0, 1, &sampler);
+    refcount = ID3D11SamplerState_Release(sampler);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+    sampler = NULL;
+    ID3D11DeviceContext_PSGetSamplers(context, 0, 1, &sampler);
+    ok(sampler == tmp_sampler, "Got sampler %p, expected %p.\n", sampler, tmp_sampler);
+    refcount = ID3D11SamplerState_Release(sampler);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+
+    hr = ID3D11Device_CreateSamplerState(device, &sampler_desc, &tmp_sampler);
+    ok(SUCCEEDED(hr), "Failed to create sampler state, hr %#x.\n", hr);
+    ok(tmp_sampler == sampler, "Got sampler %p, expected %p.\n", tmp_sampler, sampler);
+    refcount = ID3D11SamplerState_Release(tmp_sampler);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+
+    /* ID3D11RasterizerState */
+    memset(&rasterizer_desc, 0, sizeof(rasterizer_desc));
+    rasterizer_desc.FillMode = D3D11_FILL_SOLID;
+    rasterizer_desc.CullMode = D3D11_CULL_BACK;
+    rasterizer_desc.DepthClipEnable = TRUE;
+    hr = ID3D11Device_CreateRasterizerState(device, &rasterizer_desc, &rasterizer_state);
+    ok(SUCCEEDED(hr), "Failed to create rasterizer state, hr %#x.\n", hr);
+
+    ID3D11DeviceContext_RSSetState(context, rasterizer_state);
+    refcount = ID3D11RasterizerState_Release(rasterizer_state);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+    ID3D11DeviceContext_RSGetState(context, &tmp_rasterizer_state);
+    ok(tmp_rasterizer_state == rasterizer_state, "Got rasterizer state %p, expected %p.\n",
+            tmp_rasterizer_state, rasterizer_state);
+    refcount = ID3D11RasterizerState_Release(tmp_rasterizer_state);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+
+    /* ID3D11ShaderResourceView */
+    memset(&texture_desc, 0, sizeof(texture_desc));
+    texture_desc.Width = 32;
+    texture_desc.Height = 32;
+    texture_desc.MipLevels = 1;
+    texture_desc.ArraySize = 1;
+    texture_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    texture_desc.SampleDesc.Count = 1;
+    texture_desc.Usage = D3D11_USAGE_DEFAULT;
+    texture_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    hr = ID3D11Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    hr = ID3D11Device_CreateShaderResourceView(device, (ID3D11Resource *)texture, NULL, &srv);
+    ok(SUCCEEDED(hr), "Failed to create shader resource view, hr %#x.\n", hr);
+    ID3D11Texture2D_Release(texture);
+
+    ID3D11DeviceContext_PSSetShaderResources(context, 0, 1, &srv);
+    refcount = ID3D11ShaderResourceView_Release(srv);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+    ID3D11DeviceContext_PSGetShaderResources(context, 0, 1, &tmp_srv);
+    ok(tmp_srv == srv, "Got SRV %p, expected %p.\n", tmp_srv, srv);
+    refcount = ID3D11ShaderResourceView_Release(tmp_srv);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+
+    /* ID3D11RenderTargetView */
+    texture_desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+    hr = ID3D11Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    hr = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource *)texture, NULL, &rtv);
+    ok(SUCCEEDED(hr), "Failed to create render target view, hr %#x.\n", hr);
+    ID3D11Texture2D_Release(texture);
+
+    ID3D11DeviceContext_OMSetRenderTargets(context, 1, &rtv, NULL);
+    refcount = ID3D11RenderTargetView_Release(rtv);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+    ID3D11DeviceContext_OMGetRenderTargets(context, 1, &tmp_rtv, NULL);
+    ok(tmp_rtv == rtv, "Got RTV %p, expected %p.\n", tmp_rtv, rtv);
+    refcount = ID3D11RenderTargetView_Release(tmp_rtv);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+
+    ID3D11DeviceContext_Release(context);
+    refcount = ID3D11Device_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+}
+
+static void test_device_context_state(void)
+{
+    ID3DDeviceContextState *context_state, *previous_context_state;
+    ID3D11SamplerState *sampler, *tmp_sampler;
+    D3D11_SAMPLER_DESC sampler_desc;
+    D3D_FEATURE_LEVEL feature_level;
+    ID3D11DeviceContext1 *context;
+    ID3D11Device *d3d11_device;
+    ID3D11Device1 *device;
+    ULONG refcount;
+    HRESULT hr;
+
+    if (!(d3d11_device = create_device(NULL)))
+    {
+        skip("Failed to create device.\n");
+        return;
+    }
+
+    hr = ID3D11Device_QueryInterface(d3d11_device, &IID_ID3D11Device1, (void **)&device);
+    ID3D11Device_Release(d3d11_device);
+    if (FAILED(hr))
+    {
+        skip("ID3D11Device1 is not available.\n");
+        return;
+    }
+
+    check_interface(device, &IID_ID3D10Device, FALSE, FALSE);
+    check_interface(device, &IID_ID3D10Device1, FALSE, FALSE);
+
+    feature_level = ID3D11Device1_GetFeatureLevel(device);
+    ID3D11Device1_GetImmediateContext1(device, &context);
+
+    sampler_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    sampler_desc.MipLODBias = 0.0f;
+    sampler_desc.MaxAnisotropy = 0;
+    sampler_desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
+    sampler_desc.BorderColor[0] = 0.0f;
+    sampler_desc.BorderColor[1] = 1.0f;
+    sampler_desc.BorderColor[2] = 0.0f;
+    sampler_desc.BorderColor[3] = 1.0f;
+    sampler_desc.MinLOD = 0.0f;
+    sampler_desc.MaxLOD = 16.0f;
+    hr = ID3D11Device1_CreateSamplerState(device, &sampler_desc, &sampler);
+    ok(SUCCEEDED(hr), "Failed to create sampler state, hr %#x.\n", hr);
+
+    ID3D11DeviceContext1_PSSetSamplers(context, 0, 1, &sampler);
+    tmp_sampler = NULL;
+    ID3D11DeviceContext1_PSGetSamplers(context, 0, 1, &tmp_sampler);
+    ok(tmp_sampler == sampler, "Got sampler %p, expected %p.\n", tmp_sampler, sampler);
+    ID3D11SamplerState_Release(tmp_sampler);
+
+    feature_level = min(feature_level, D3D_FEATURE_LEVEL_10_1);
+    hr = ID3D11Device1_CreateDeviceContextState(device, 0, &feature_level, 1, D3D11_SDK_VERSION,
+            &IID_ID3D10Device, NULL, &context_state);
+    ok(SUCCEEDED(hr), "Failed to create device context state, hr %#x.\n", hr);
+    refcount = get_refcount(context_state);
+    ok(refcount == 1, "Got refcount %u, expected 1.\n", refcount);
+
+    /* Enable ID3D10Device behavior. */
+    previous_context_state = NULL;
+    ID3D11DeviceContext1_SwapDeviceContextState(context, context_state, &previous_context_state);
+    refcount = ID3DDeviceContextState_Release(context_state);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+
+    ID3D11DeviceContext1_PSSetSamplers(context, 0, 1, &sampler);
+    tmp_sampler = (ID3D11SamplerState *)0xdeadbeef;
+    ID3D11DeviceContext1_PSGetSamplers(context, 0, 1, &tmp_sampler);
+    ok(tmp_sampler == (ID3D11SamplerState *)0xdeadbeef, "Got unexpected sampler %p.\n", tmp_sampler);
+    ID3D11DeviceContext1_PSSetSamplers(context, 0, 1, &tmp_sampler);
+
+    check_interface(device, &IID_ID3D10Device, TRUE, FALSE);
+    check_interface(device, &IID_ID3D10Device1, TRUE, FALSE);
+
+    ID3D11DeviceContext1_SwapDeviceContextState(context, previous_context_state, &context_state);
+    refcount = ID3DDeviceContextState_Release(context_state);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+    refcount = ID3DDeviceContextState_Release(previous_context_state);
+    ok(!refcount, "Got refcount %u, expected 0.\n", refcount);
+
+    /* ID3DDeviceContextState retains the previous state. */
+    tmp_sampler = NULL;
+    ID3D11DeviceContext1_PSGetSamplers(context, 0, 1, &tmp_sampler);
+    ok(tmp_sampler == sampler, "Got sampler %p, expected %p.\n", tmp_sampler, sampler);
+    ID3D11SamplerState_Release(tmp_sampler);
+
+    tmp_sampler = NULL;
+    ID3D11DeviceContext1_PSSetSamplers(context, 0, 1, &tmp_sampler);
+    tmp_sampler = (ID3D11SamplerState *)0xdeadbeef;
+    ID3D11DeviceContext1_PSGetSamplers(context, 0, 1, &tmp_sampler);
+    ok(!tmp_sampler, "Got unexpected sampler %p.\n", tmp_sampler);
+    ID3D11DeviceContext1_PSSetSamplers(context, 0, 1, &sampler);
+    tmp_sampler = NULL;
+    ID3D11DeviceContext1_PSGetSamplers(context, 0, 1, &tmp_sampler);
+    ok(tmp_sampler == sampler, "Got sampler %p, expected %p.\n", tmp_sampler, sampler);
+    ID3D11SamplerState_Release(tmp_sampler);
+
+    check_interface(device, &IID_ID3D10Device, TRUE, FALSE);
+    check_interface(device, &IID_ID3D10Device1, TRUE, FALSE);
+
+    ID3D11SamplerState_Release(sampler);
+    ID3D11DeviceContext1_Release(context);
+    refcount = ID3D11Device1_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
 }
 
 static void test_blend(void)
@@ -8855,7 +9018,7 @@ static void test_swapchain_views(void)
     device = test_context.device;
     context = test_context.immediate_context;
 
-    refcount = get_refcount((IUnknown *)test_context.backbuffer);
+    refcount = get_refcount(test_context.backbuffer);
     ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
 
     draw_color_quad(&test_context, &color);
@@ -8868,7 +9031,7 @@ static void test_swapchain_views(void)
     ok(SUCCEEDED(hr), "Failed to create render target view, hr %#x.\n", hr);
     ID3D11DeviceContext_OMSetRenderTargets(context, 1, &rtv, NULL);
 
-    refcount = get_refcount((IUnknown *)test_context.backbuffer);
+    refcount = get_refcount(test_context.backbuffer);
     ok(refcount == 1, "Got unexpected refcount %u.\n", refcount);
 
     draw_color_quad(&test_context, &color);
@@ -10266,9 +10429,9 @@ static void test_create_input_layout(void)
     {
         {"POSITION", 0, DXGI_FORMAT_UNKNOWN, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
+    ULONG refcount, expected_refcount;
     ID3D11InputLayout *input_layout;
     ID3D11Device *device;
-    ULONG refcount;
     unsigned int i;
     HRESULT hr;
 
@@ -10313,11 +10476,15 @@ static void test_create_input_layout(void)
 
     for (i = 0; i < ARRAY_SIZE(vertex_formats); ++i)
     {
+        expected_refcount = get_refcount(device) + 1;
         layout_desc->Format = vertex_formats[i];
         hr = ID3D11Device_CreateInputLayout(device, layout_desc, ARRAY_SIZE(layout_desc),
                 vs_code, sizeof(vs_code), &input_layout);
         ok(SUCCEEDED(hr), "Failed to create input layout for format %#x, hr %#x.\n",
                 vertex_formats[i], hr);
+        refcount = get_refcount(device);
+        ok(refcount == expected_refcount, "Got refcount %u, expected %u.\n",
+                refcount, expected_refcount);
         ID3D11InputLayout_Release(input_layout);
     }
 
@@ -10979,16 +11146,16 @@ static void test_create_unordered_access_view(void)
     hr = ID3D11Device_CreateBuffer(device, &buffer_desc, &data, &buffer);
     ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateBuffer(device, &buffer_desc, NULL, &buffer);
     ok(SUCCEEDED(hr), "Failed to create a buffer, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11Buffer_GetDevice(buffer, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
@@ -11001,16 +11168,16 @@ static void test_create_unordered_access_view(void)
     hr = ID3D11Device_CreateUnorderedAccessView(device, (ID3D11Resource *)buffer, NULL, &uav);
     ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
 
-    expected_refcount = get_refcount((IUnknown *)device) + 1;
+    expected_refcount = get_refcount(device) + 1;
     hr = ID3D11Device_CreateUnorderedAccessView(device, (ID3D11Resource *)buffer, &uav_desc, &uav);
     ok(SUCCEEDED(hr), "Failed to create unordered access view, hr %#x.\n", hr);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount >= expected_refcount, "Got unexpected refcount %u, expected >= %u.\n", refcount, expected_refcount);
     tmp = NULL;
     expected_refcount = refcount + 1;
     ID3D11UnorderedAccessView_GetDevice(uav, &tmp);
     ok(tmp == device, "Got unexpected device %p, expected %p.\n", tmp, device);
-    refcount = get_refcount((IUnknown *)device);
+    refcount = get_refcount(device);
     ok(refcount == expected_refcount, "Got unexpected refcount %u, expected %u.\n", refcount, expected_refcount);
     ID3D11Device_Release(tmp);
 
@@ -11090,10 +11257,10 @@ static void test_create_unordered_access_view(void)
             get_uav_desc(current_desc, &tests[i].uav_desc);
         }
 
-        expected_refcount = get_refcount((IUnknown *)texture);
+        expected_refcount = get_refcount(texture);
         hr = ID3D11Device_CreateUnorderedAccessView(device, texture, current_desc, &uav);
         ok(SUCCEEDED(hr), "Test %u: Failed to create unordered access view, hr %#x.\n", i, hr);
-        refcount = get_refcount((IUnknown *)texture);
+        refcount = get_refcount(texture);
         ok(refcount == expected_refcount, "Got refcount %u, expected %u.\n", refcount, expected_refcount);
 
         memset(&uav_desc, 0, sizeof(uav_desc));
@@ -17586,6 +17753,8 @@ START_TEST(d3d11)
     test_timestamp_query();
     test_device_removed_reason();
     test_private_data();
+    run_for_each_feature_level(test_state_refcounting);
+    test_device_context_state();
     test_blend();
     test_texture();
     test_cube_maps();

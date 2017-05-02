@@ -60,13 +60,24 @@ ULONG CDECL wined3d_rasterizer_state_decref(struct wined3d_rasterizer_state *sta
     TRACE("%p decreasing refcount to %u.\n", state, refcount);
 
     if (!refcount)
+    {
+        state->parent_ops->wined3d_object_destroyed(state->parent);
         wined3d_cs_destroy_object(device->cs, wined3d_rasterizer_state_destroy_object, state);
+    }
 
     return refcount;
 }
 
+void * CDECL wined3d_rasterizer_state_get_parent(const struct wined3d_rasterizer_state *state)
+{
+    TRACE("rasterizer_state %p.\n", state);
+
+    return state->parent;
+}
+
 HRESULT CDECL wined3d_rasterizer_state_create(struct wined3d_device *device,
-        const struct wined3d_rasterizer_state_desc *desc, struct wined3d_rasterizer_state **state)
+        const struct wined3d_rasterizer_state_desc *desc, void *parent,
+        const struct wined3d_parent_ops *parent_ops, struct wined3d_rasterizer_state **state)
 {
     struct wined3d_rasterizer_state *object;
 
@@ -77,6 +88,8 @@ HRESULT CDECL wined3d_rasterizer_state_create(struct wined3d_device *device,
 
     object->refcount = 1;
     object->desc = *desc;
+    object->parent = parent;
+    object->parent_ops = parent_ops;
     object->device = device;
 
     TRACE("Created rasterizer state %p.\n", object);
@@ -3616,7 +3629,7 @@ static void sampler(struct wined3d_context *context, const struct wined3d_state 
         }
         else
         {
-            if (FAILED(wined3d_sampler_create(device, &desc, NULL, &sampler)))
+            if (FAILED(wined3d_sampler_create(device, &desc, NULL, &wined3d_null_parent_ops, &sampler)))
             {
                 ERR("Failed to create sampler.\n");
                 return;
@@ -5004,6 +5017,10 @@ const struct StateEntryTemplate misc_state_template[] =
 {
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),  { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),  state_cb,           }, ARB_UNIFORM_BUFFER_OBJECT       },
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),  { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),  state_cb_warn,      }, WINED3D_GL_EXT_NONE             },
+    { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_HULL),    { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_HULL),    state_cb,           }, ARB_UNIFORM_BUFFER_OBJECT       },
+    { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_HULL),    { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_HULL),    state_cb_warn,      }, WINED3D_GL_EXT_NONE             },
+    { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_DOMAIN),  { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_DOMAIN),  state_cb,           }, ARB_UNIFORM_BUFFER_OBJECT       },
+    { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_DOMAIN),  { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_DOMAIN),  state_cb_warn,      }, WINED3D_GL_EXT_NONE             },
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),{ STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),state_cb,           }, ARB_UNIFORM_BUFFER_OBJECT       },
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),{ STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),state_cb_warn,      }, WINED3D_GL_EXT_NONE             },
     { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   { STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),   state_cb,           }, ARB_UNIFORM_BUFFER_OBJECT       },
@@ -5996,6 +6013,8 @@ static void validate_state_table(struct StateEntry *state_table)
         STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL),
         STATE_SHADER(WINED3D_SHADER_TYPE_COMPUTE),
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_VERTEX),
+        STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_HULL),
+        STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_DOMAIN),
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_GEOMETRY),
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_PIXEL),
         STATE_CONSTANT_BUFFER(WINED3D_SHADER_TYPE_COMPUTE),

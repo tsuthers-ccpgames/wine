@@ -161,6 +161,7 @@ static const struct wined3d_extension_map gl_extension_map[] =
     {"GL_ARB_shadow",                       ARB_SHADOW                    },
     {"GL_ARB_stencil_texturing",            ARB_STENCIL_TEXTURING         },
     {"GL_ARB_sync",                         ARB_SYNC                      },
+    {"GL_ARB_tessellation_shader",          ARB_TESSELLATION_SHADER       },
     {"GL_ARB_texture_border_clamp",         ARB_TEXTURE_BORDER_CLAMP      },
     {"GL_ARB_texture_buffer_object",        ARB_TEXTURE_BUFFER_OBJECT     },
     {"GL_ARB_texture_buffer_range",         ARB_TEXTURE_BUFFER_RANGE      },
@@ -1393,6 +1394,7 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX1060,    "NVIDIA GeForce GTX 1060",          DRIVER_NVIDIA_GEFORCE8,  6144},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX1070,    "NVIDIA GeForce GTX 1070",          DRIVER_NVIDIA_GEFORCE8,  8192},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX1080,    "NVIDIA GeForce GTX 1080",          DRIVER_NVIDIA_GEFORCE8,  8192},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_TITANX_PASCAL,      "NVIDIA TITAN X (Pascal)",          DRIVER_NVIDIA_GEFORCE8,  12288},
 
     /* AMD cards */
     {HW_VENDOR_AMD,        CARD_AMD_RAGE_128PRO,           "ATI Rage Fury",                    DRIVER_AMD_RAGE_128PRO,  16  },
@@ -1886,6 +1888,7 @@ static const struct wined3d_renderer_table
 cards_nvidia_binary[] =
 {
     /* Direct 3D 11 */
+    {"TITAN X (Pascal)",            CARD_NVIDIA_TITANX_PASCAL},     /* GeForce 1000 - highend */
     {"GTX 1080",                    CARD_NVIDIA_GEFORCE_GTX1080},   /* GeForce 1000 - highend */
     {"GTX 1070",                    CARD_NVIDIA_GEFORCE_GTX1070},   /* GeForce 1000 - highend */
     {"GTX 1060",                    CARD_NVIDIA_GEFORCE_GTX1060},   /* GeForce 1000 - midend high */
@@ -2873,6 +2876,9 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
     USE_GL_FUNC(glGetSynciv)
     USE_GL_FUNC(glIsSync)
     USE_GL_FUNC(glWaitSync)
+    /* GL_ARB_tessellation_shader */
+    USE_GL_FUNC(glPatchParameteri)
+    USE_GL_FUNC(glPatchParameterfv)
     /* GL_ARB_texture_buffer_object */
     USE_GL_FUNC(glTexBufferARB)
     /* GL_ARB_texture_buffer_range */
@@ -3660,8 +3666,25 @@ static void wined3d_adapter_init_limits(struct wined3d_gl_info *gl_info)
                     gl_info->limits.uniform_blocks[WINED3D_SHADER_TYPE_VERTEX], gl_max);
         }
     }
-    if ((!gl_info->supported[WINED3D_GL_LEGACY_CONTEXT] || gl_info->supported[ARB_GEOMETRY_SHADER4])
-            && gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT])
+    if (gl_info->supported[ARB_TESSELLATION_SHADER])
+    {
+        gl_info->gl_ops.gl.p_glGetIntegerv(GL_MAX_TESS_CONTROL_UNIFORM_BLOCKS, &gl_max);
+        gl_info->limits.uniform_blocks[WINED3D_SHADER_TYPE_HULL] = min(gl_max, WINED3D_MAX_CBS);
+        TRACE("Max hull uniform blocks: %u (%d).\n",
+                gl_info->limits.uniform_blocks[WINED3D_SHADER_TYPE_HULL], gl_max);
+        gl_info->gl_ops.gl.p_glGetIntegerv(GL_MAX_TESS_CONTROL_TEXTURE_IMAGE_UNITS, &gl_max);
+        gl_info->limits.samplers[WINED3D_SHADER_TYPE_HULL] = gl_max;
+        TRACE("Max hull samplers: %u.\n", gl_info->limits.samplers[WINED3D_SHADER_TYPE_HULL]);
+
+        gl_info->gl_ops.gl.p_glGetIntegerv(GL_MAX_TESS_EVALUATION_UNIFORM_BLOCKS, &gl_max);
+        gl_info->limits.uniform_blocks[WINED3D_SHADER_TYPE_DOMAIN] = min(gl_max, WINED3D_MAX_CBS);
+        TRACE("Max domain uniform blocks: %u (%d).\n",
+                gl_info->limits.uniform_blocks[WINED3D_SHADER_TYPE_DOMAIN], gl_max);
+        gl_info->gl_ops.gl.p_glGetIntegerv(GL_MAX_TESS_EVALUATION_TEXTURE_IMAGE_UNITS, &gl_max);
+        gl_info->limits.samplers[WINED3D_SHADER_TYPE_DOMAIN] = gl_max;
+        TRACE("Max domain samplers: %u.\n", gl_info->limits.samplers[WINED3D_SHADER_TYPE_DOMAIN]);
+    }
+    if (gl_info->supported[WINED3D_GL_VERSION_3_2] && gl_info->supported[ARB_UNIFORM_BUFFER_OBJECT])
     {
         gl_info->gl_ops.gl.p_glGetIntegerv(GL_MAX_GEOMETRY_UNIFORM_BLOCKS, &gl_max);
         gl_info->limits.uniform_blocks[WINED3D_SHADER_TYPE_GEOMETRY] = min(gl_max, WINED3D_MAX_CBS);
@@ -3739,8 +3762,7 @@ static void wined3d_adapter_init_limits(struct wined3d_gl_info *gl_info)
     else
         gl_info->limits.shininess = 128.0f;
 
-    if ((gl_info->supported[ARB_FRAMEBUFFER_OBJECT] || gl_info->supported[EXT_FRAMEBUFFER_MULTISAMPLE])
-            && wined3d_settings.allow_multisampling)
+    if (gl_info->supported[ARB_FRAMEBUFFER_OBJECT] || gl_info->supported[EXT_FRAMEBUFFER_MULTISAMPLE])
     {
         gl_info->gl_ops.gl.p_glGetIntegerv(GL_MAX_SAMPLES, &gl_max);
         gl_info->limits.samples = gl_max;
@@ -3859,6 +3881,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
         {ARB_VERTEX_TYPE_2_10_10_10_REV,   MAKEDWORD_VERSION(3, 3)},
 
         {ARB_GPU_SHADER5,                  MAKEDWORD_VERSION(4, 0)},
+        {ARB_TESSELLATION_SHADER,          MAKEDWORD_VERSION(4, 0)},
         {ARB_TEXTURE_CUBE_MAP_ARRAY,       MAKEDWORD_VERSION(4, 0)},
         {ARB_TEXTURE_GATHER,               MAKEDWORD_VERSION(4, 0)},
         {ARB_TRANSFORM_FEEDBACK2,          MAKEDWORD_VERSION(4, 0)},

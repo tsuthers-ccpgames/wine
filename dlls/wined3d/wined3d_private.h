@@ -388,7 +388,6 @@ struct wined3d_settings
     /* Memory tracking and object counting. */
     UINT64 emulated_textureram;
     char *logo;
-    int allow_multisampling;
     unsigned int sample_count;
     BOOL strict_draw_ordering;
     BOOL check_float_constants;
@@ -2212,6 +2211,7 @@ enum wined3d_pci_device
     CARD_NVIDIA_GEFORCE_GTX1060     = 0x1c03,
     CARD_NVIDIA_GEFORCE_GTX1070     = 0x1b81,
     CARD_NVIDIA_GEFORCE_GTX1080     = 0x1b80,
+    CARD_NVIDIA_TITANX_PASCAL       = 0x1b00,
 
     CARD_VMWARE_SVGA3D              = 0x0405,
 
@@ -2584,6 +2584,9 @@ struct wined3d_rasterizer_state
 {
     LONG refcount;
     struct wined3d_rasterizer_state_desc desc;
+
+    void *parent;
+    const struct wined3d_parent_ops *parent_ops;
 
     struct wined3d_device *device;
 };
@@ -3123,10 +3126,11 @@ struct wined3d_sampler
 {
     struct wine_rb_entry entry;
     LONG refcount;
+    GLuint name;
     struct wined3d_device *device;
     void *parent;
+    const struct wined3d_parent_ops *parent_ops;
     struct wined3d_sampler_desc desc;
-    GLuint name;
 };
 
 void wined3d_sampler_bind(struct wined3d_sampler *sampler, unsigned int unit,

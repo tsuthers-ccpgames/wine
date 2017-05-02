@@ -786,7 +786,7 @@ static void create_default_samplers(struct wined3d_device *device, struct wined3
      * sampler object is used to emulate the direct resource access when there is no sampler state
      * to use.
      */
-    if (FAILED(hr = wined3d_sampler_create(device, &desc, NULL, &device->default_sampler)))
+    if (FAILED(hr = wined3d_sampler_create(device, &desc, NULL, &wined3d_null_parent_ops, &device->default_sampler)))
     {
         ERR("Failed to create default sampler, hr %#x.\n", hr);
         device->default_sampler = NULL;
@@ -799,7 +799,7 @@ static void create_default_samplers(struct wined3d_device *device, struct wined3
     desc.mag_filter = WINED3D_TEXF_LINEAR;
     desc.min_filter = WINED3D_TEXF_LINEAR;
     desc.mip_filter = WINED3D_TEXF_LINEAR;
-    if (FAILED(hr = wined3d_sampler_create(device, &desc, NULL, &device->null_sampler)))
+    if (FAILED(hr = wined3d_sampler_create(device, &desc, NULL, &wined3d_null_parent_ops, &device->null_sampler)))
     {
         ERR("Failed to create null sampler, hr %#x.\n", hr);
         device->null_sampler = NULL;
@@ -2678,6 +2678,36 @@ struct wined3d_shader * CDECL wined3d_device_get_hull_shader(const struct wined3
     return device->state.shader[WINED3D_SHADER_TYPE_HULL];
 }
 
+void CDECL wined3d_device_set_hs_cb(struct wined3d_device *device, unsigned int idx, struct wined3d_buffer *buffer)
+{
+    TRACE("device %p, idx %u, buffer %p.\n", device, idx, buffer);
+
+    wined3d_device_set_constant_buffer(device, WINED3D_SHADER_TYPE_HULL, idx, buffer);
+}
+
+struct wined3d_buffer * CDECL wined3d_device_get_hs_cb(const struct wined3d_device *device, unsigned int idx)
+{
+    TRACE("device %p, idx %u.\n", device, idx);
+
+    return wined3d_device_get_constant_buffer(device, WINED3D_SHADER_TYPE_HULL, idx);
+}
+
+void CDECL wined3d_device_set_hs_resource_view(struct wined3d_device *device,
+        unsigned int idx, struct wined3d_shader_resource_view *view)
+{
+    TRACE("device %p, idx %u, view %p.\n", device, idx, view);
+
+    wined3d_device_set_shader_resource_view(device, WINED3D_SHADER_TYPE_HULL, idx, view);
+}
+
+void CDECL wined3d_device_set_hs_sampler(struct wined3d_device *device,
+        unsigned int idx, struct wined3d_sampler *sampler)
+{
+    TRACE("device %p, idx %u, sampler %p.\n", device, idx, sampler);
+
+    wined3d_device_set_sampler(device, WINED3D_SHADER_TYPE_HULL, idx, sampler);
+}
+
 void CDECL wined3d_device_set_domain_shader(struct wined3d_device *device, struct wined3d_shader *shader)
 {
     struct wined3d_shader *prev;
@@ -2700,6 +2730,36 @@ struct wined3d_shader * CDECL wined3d_device_get_domain_shader(const struct wine
     TRACE("device %p.\n", device);
 
     return device->state.shader[WINED3D_SHADER_TYPE_DOMAIN];
+}
+
+void CDECL wined3d_device_set_ds_cb(struct wined3d_device *device, unsigned int idx, struct wined3d_buffer *buffer)
+{
+    TRACE("device %p, idx %u, buffer %p.\n", device, idx, buffer);
+
+    wined3d_device_set_constant_buffer(device, WINED3D_SHADER_TYPE_DOMAIN, idx, buffer);
+}
+
+struct wined3d_buffer * CDECL wined3d_device_get_ds_cb(const struct wined3d_device *device, unsigned int idx)
+{
+    TRACE("device %p, idx %u.\n", device, idx);
+
+    return wined3d_device_get_constant_buffer(device, WINED3D_SHADER_TYPE_DOMAIN, idx);
+}
+
+void CDECL wined3d_device_set_ds_resource_view(struct wined3d_device *device,
+        unsigned int idx, struct wined3d_shader_resource_view *view)
+{
+    TRACE("device %p, idx %u, view %p.\n", device, idx, view);
+
+    wined3d_device_set_shader_resource_view(device, WINED3D_SHADER_TYPE_DOMAIN, idx, view);
+}
+
+void CDECL wined3d_device_set_ds_sampler(struct wined3d_device *device,
+        unsigned int idx, struct wined3d_sampler *sampler)
+{
+    TRACE("device %p, idx %u, sampler %p.\n", device, idx, sampler);
+
+    wined3d_device_set_sampler(device, WINED3D_SHADER_TYPE_DOMAIN, idx, sampler);
 }
 
 void CDECL wined3d_device_set_geometry_shader(struct wined3d_device *device, struct wined3d_shader *shader)
@@ -2862,6 +2922,18 @@ static void wined3d_device_set_pipeline_unordered_access_view(struct wined3d_dev
         wined3d_unordered_access_view_decref(prev);
 }
 
+static struct wined3d_unordered_access_view *wined3d_device_get_pipeline_unordered_access_view(
+        const struct wined3d_device *device, enum wined3d_pipeline pipeline, unsigned int idx)
+{
+    if (idx >= MAX_UNORDERED_ACCESS_VIEWS)
+    {
+        WARN("Invalid UAV index %u.\n", idx);
+        return NULL;
+    }
+
+    return device->state.unordered_access_view[pipeline][idx];
+}
+
 void CDECL wined3d_device_set_cs_uav(struct wined3d_device *device, unsigned int idx,
         struct wined3d_unordered_access_view *uav)
 {
@@ -2870,12 +2942,28 @@ void CDECL wined3d_device_set_cs_uav(struct wined3d_device *device, unsigned int
     wined3d_device_set_pipeline_unordered_access_view(device, WINED3D_PIPELINE_COMPUTE, idx, uav);
 }
 
+struct wined3d_unordered_access_view * CDECL wined3d_device_get_cs_uav(const struct wined3d_device *device,
+        unsigned int idx)
+{
+    TRACE("device %p, idx %u.\n", device, idx);
+
+    return wined3d_device_get_pipeline_unordered_access_view(device, WINED3D_PIPELINE_COMPUTE, idx);
+}
+
 void CDECL wined3d_device_set_unordered_access_view(struct wined3d_device *device,
         unsigned int idx, struct wined3d_unordered_access_view *uav)
 {
     TRACE("device %p, idx %u, uav %p.\n", device, idx, uav);
 
     wined3d_device_set_pipeline_unordered_access_view(device, WINED3D_PIPELINE_GRAPHICS, idx, uav);
+}
+
+struct wined3d_unordered_access_view * CDECL wined3d_device_get_unordered_access_view(
+        const struct wined3d_device *device, unsigned int idx)
+{
+    TRACE("device %p, idx %u.\n", device, idx);
+
+    return wined3d_device_get_pipeline_unordered_access_view(device, WINED3D_PIPELINE_GRAPHICS, idx);
 }
 
 /* Context activation is done by the caller. */

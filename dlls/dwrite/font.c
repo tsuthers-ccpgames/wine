@@ -501,8 +501,10 @@ static ULONG WINAPI dwritefontface_Release(IDWriteFontFace4 *iface)
             heap_free(This->glyphs[i]);
 
         freetype_notify_cacheremove(iface);
-        factory_release_cached_fontface(This->cached);
-        IDWriteFactory4_Release(This->factory);
+        if (This->cached)
+            factory_release_cached_fontface(This->cached);
+        if (This->factory)
+            IDWriteFactory4_Release(This->factory);
         heap_free(This);
     }
 
@@ -4050,7 +4052,7 @@ static HRESULT eudc_collection_add_family(IDWriteFactory4 *factory, struct dwrit
     return hr;
 }
 
-HRESULT get_eudc_fontcollection(IDWriteFactory4 *factory, IDWriteFontCollection **ret)
+HRESULT get_eudc_fontcollection(IDWriteFactory4 *factory, IDWriteFontCollection1 **ret)
 {
     static const WCHAR eudckeyfmtW[] = {'E','U','D','C','\\','%','u',0};
     struct dwrite_fontcollection *collection;
@@ -4076,7 +4078,9 @@ HRESULT get_eudc_fontcollection(IDWriteFactory4 *factory, IDWriteFontCollection 
         return hr;
     }
 
-    *ret = (IDWriteFontCollection*)&collection->IDWriteFontCollection1_iface;
+    *ret = &collection->IDWriteFontCollection1_iface;
+    collection->factory = factory;
+    IDWriteFactory4_AddRef(factory);
 
     /* return empty collection if EUDC fonts are not configured */
     sprintfW(eudckeypathW, eudckeyfmtW, GetACP());
@@ -4283,7 +4287,7 @@ HRESULT create_fontface(const struct fontface_desc *desc, struct list *cached_li
 
     *ret = NULL;
 
-    fontface = heap_alloc(sizeof(struct dwrite_fontface));
+    fontface = heap_alloc_zero(sizeof(struct dwrite_fontface));
     if (!fontface)
         return E_OUTOFMEMORY;
 
@@ -4301,11 +4305,6 @@ HRESULT create_fontface(const struct fontface_desc *desc, struct list *cached_li
     fontface->ref = 1;
     fontface->type = desc->face_type;
     fontface->file_count = desc->files_number;
-    memset(&fontface->cmap, 0, sizeof(fontface->cmap));
-    memset(&fontface->vdmx, 0, sizeof(fontface->vdmx));
-    memset(&fontface->gasp, 0, sizeof(fontface->gasp));
-    memset(&fontface->cpal, 0, sizeof(fontface->cpal));
-    memset(&fontface->colr, 0, sizeof(fontface->colr));
     fontface->cmap.exists = TRUE;
     fontface->vdmx.exists = TRUE;
     fontface->gasp.exists = TRUE;
@@ -4313,7 +4312,6 @@ HRESULT create_fontface(const struct fontface_desc *desc, struct list *cached_li
     fontface->colr.exists = TRUE;
     fontface->index = desc->index;
     fontface->simulations = desc->simulations;
-    memset(fontface->glyphs, 0, sizeof(fontface->glyphs));
 
     for (i = 0; i < fontface->file_count; i++) {
         hr = get_stream_from_file(desc->files[i], &fontface->streams[i]);
@@ -4338,7 +4336,6 @@ HRESULT create_fontface(const struct fontface_desc *desc, struct list *cached_li
         }
     }
 
-    fontface->flags = 0;
     fontface->charmap = freetype_get_charmap_index(&fontface->IDWriteFontFace4_iface, &is_symbol);
     if (is_symbol)
         fontface->flags |= FONTFACE_IS_SYMBOL;
