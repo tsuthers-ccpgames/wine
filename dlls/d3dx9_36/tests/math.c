@@ -302,23 +302,24 @@ static void D3DXColorTest(void)
 
 static void D3DXFresnelTest(void)
 {
-    FLOAT expected, got;
+    float fresnel;
+    BOOL equal;
 
-    expected = 0.089187;
-    got = D3DXFresnelTerm(0.5f,1.5);
-    ok(relative_error(got, expected) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    fresnel = D3DXFresnelTerm(0.5f, 1.5f);
+    equal = compare_float(fresnel, 8.91867056e-02f, 1);
+    ok(equal, "Got unexpected Fresnel term %.8e.\n", fresnel);
 }
 
 static void D3DXMatrixTest(void)
 {
     D3DXMATRIX expectedmat, gotmat, mat, mat2, mat3;
+    BOOL expected, got, equal;
+    float angle, determinant;
     D3DXMATRIX *funcpointer;
     D3DXPLANE plane;
     D3DXQUATERNION q, r;
     D3DXVECTOR3 at, axis, eye, last;
     D3DXVECTOR4 light;
-    BOOL expected, got;
-    FLOAT angle, determinant, expectedfloat, gotfloat;
 
     U(mat).m[0][1] = 5.0f; U(mat).m[0][2] = 7.0f; U(mat).m[0][3] = 8.0f;
     U(mat).m[1][0] = 11.0f; U(mat).m[1][2] = 16.0f; U(mat).m[1][3] = 33.0f;
@@ -387,19 +388,19 @@ static void D3DXMatrixTest(void)
     expect_matrix(&expectedmat, &gotmat, 0);
 
 /*____________D3DXMatrixfDeterminant_____________*/
-    expectedfloat = -147888.0f;
-    gotfloat = D3DXMatrixDeterminant(&mat);
-    ok(relative_error(gotfloat, expectedfloat ) < admitted_error, "Expected: %f, Got: %f\n", expectedfloat, gotfloat);
+    determinant = D3DXMatrixDeterminant(&mat);
+    equal = compare_float(determinant, -147888.0f, 0);
+    ok(equal, "Got unexpected determinant %.8e.\n", determinant);
 
 /*____________D3DXMatrixInverse______________*/
     U(expectedmat).m[0][0] = 16067.0f/73944.0f; U(expectedmat).m[0][1] = -10165.0f/147888.0f; U(expectedmat).m[0][2] = -2729.0f/147888.0f; U(expectedmat).m[0][3] = -1631.0f/49296.0f;
     U(expectedmat).m[1][0] = -565.0f/36972.0f; U(expectedmat).m[1][1] = 2723.0f/73944.0f; U(expectedmat).m[1][2] = -1073.0f/73944.0f; U(expectedmat).m[1][3] = 289.0f/24648.0f;
     U(expectedmat).m[2][0] = -389.0f/2054.0f; U(expectedmat).m[2][1] = 337.0f/4108.0f; U(expectedmat).m[2][2] = 181.0f/4108.0f; U(expectedmat).m[2][3] = 317.0f/4108.0f;
     U(expectedmat).m[3][0] = 163.0f/5688.0f; U(expectedmat).m[3][1] = -101.0f/11376.0f; U(expectedmat).m[3][2] = -73.0f/11376.0f; U(expectedmat).m[3][3] = -127.0f/3792.0f;
-    expectedfloat = -147888.0f;
     D3DXMatrixInverse(&gotmat,&determinant,&mat);
     expect_matrix(&expectedmat, &gotmat, 1);
-    ok(relative_error( determinant, expectedfloat ) < admitted_error, "Expected: %f, Got: %f\n", expectedfloat, determinant);
+    equal = compare_float(determinant, -147888.0f, 0);
+    ok(equal, "Got unexpected determinant %.8e.\n", determinant);
     funcpointer = D3DXMatrixInverse(&gotmat,NULL,&mat2);
     ok(funcpointer == NULL, "Expected: %p, Got: %p\n", NULL, funcpointer);
 
@@ -737,10 +738,10 @@ static void D3DXQuaternionTest(void)
 {
     D3DXMATRIX mat;
     D3DXQUATERNION expectedquat, gotquat, Nq, Nq1, nul, smallq, smallr, q, r, s, t, u;
+    BOOL expectedbool, gotbool, equal;
+    float angle, got, scale, scale2;
     LPD3DXQUATERNION funcpointer;
     D3DXVECTOR3 axis, expectedvec;
-    FLOAT angle, expected, got, scale, scale2;
-    BOOL expectedbool, gotbool;
 
     nul.x = 0.0f; nul.y = 0.0f; nul.z = 0.0f; nul.w = 0.0f;
     q.x = 1.0f, q.y = 2.0f; q.z = 4.0f; q.w = 10.0f;
@@ -769,16 +770,16 @@ static void D3DXQuaternionTest(void)
     ok(funcpointer == NULL, "Expected: %p, Got: %p\n", NULL, funcpointer);
 
 /*_______________D3DXQuaternionDot______________________*/
-    expected = 55.0f;
     got = D3DXQuaternionDot(&q,&r);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 55.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
     /* Tests the case NULL */
-    expected=0.0f;
     got = D3DXQuaternionDot(NULL,&r);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-    expected=0.0f;
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
     got = D3DXQuaternionDot(NULL,NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
 
 /*_______________D3DXQuaternionExp______________________________*/
     expectedquat.x = -0.216382f; expectedquat.y = -0.432764f; expectedquat.z = -0.8655270f; expectedquat.w = -0.129449f;
@@ -826,22 +827,22 @@ static void D3DXQuaternionTest(void)
     ok(gotbool == FALSE, "Expected boolean: %d, Got boolean: %d\n", FALSE, gotbool);
 
 /*_______________D3DXQuaternionLength__________________________*/
-   expected = 11.0f;
-   got = D3DXQuaternionLength(&q);
-   ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-   /* Tests the case NULL */
-    expected=0.0f;
+    got = D3DXQuaternionLength(&q);
+    equal = compare_float(got, 11.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
+    /* Tests the case NULL. */
     got = D3DXQuaternionLength(NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
 
 /*_______________D3DXQuaternionLengthSq________________________*/
-    expected = 121.0f;
     got = D3DXQuaternionLengthSq(&q);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 121.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
     /* Tests the case NULL */
-    expected=0.0f;
     got = D3DXQuaternionLengthSq(NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
 
 /*_______________D3DXQuaternionLn______________________________*/
     expectedquat.x = 1.0f; expectedquat.y = 2.0f; expectedquat.z = 4.0f; expectedquat.w = 0.0f;
@@ -1100,25 +1101,26 @@ static void D3DXQuaternionTest(void)
 /*_______________D3DXQuaternionToAxisAngle__________________*/
     Nq.x = 1.0f/22.0f; Nq.y = 2.0f/22.0f; Nq.z = 4.0f/22.0f; Nq.w = 10.0f/22.0f;
     expectedvec.x = 1.0f/22.0f; expectedvec.y = 2.0f/22.0f; expectedvec.z = 4.0f/22.0f;
-    expected = 2.197869f;
     D3DXQuaternionToAxisAngle(&Nq,&axis,&angle);
     expect_vec3(&expectedvec, &axis, 0);
-    ok(relative_error(angle,  expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, angle);
+    equal = compare_float(angle, 2.197869f, 0);
+    ok(equal, "Got unexpected angle %.8e.\n", angle);
     /* Test if |w|>1.0f */
     expectedvec.x = 1.0f; expectedvec.y = 2.0f; expectedvec.z = 4.0f;
     D3DXQuaternionToAxisAngle(&q,&axis,&angle);
     expect_vec3(&expectedvec, &axis, 0);
     /* Test the null quaternion */
     expectedvec.x = 0.0f; expectedvec.y = 0.0f; expectedvec.z = 0.0f;
-    expected = 3.141593f;
     D3DXQuaternionToAxisAngle(&nul, &axis, &angle);
     expect_vec3(&expectedvec, &axis, 0);
-    ok(relative_error(angle, expected) < admitted_error, "Expected: %f, Got: %f\n", expected, angle);
+    equal = compare_float(angle, 3.14159274e+00f, 0);
+    ok(equal, "Got unexpected angle %.8e.\n", angle);
 
     D3DXQuaternionToAxisAngle(&nul, &axis, NULL);
     D3DXQuaternionToAxisAngle(&nul, NULL, &angle);
     expect_vec3(&expectedvec, &axis, 0);
-    ok(relative_error(angle, expected) < admitted_error, "Expected: %f, Got: %f\n", expected, angle);
+    equal = compare_float(angle, 3.14159274e+00f, 0);
+    ok(equal, "Got unexpected angle %.8e.\n", angle);
 }
 
 static void D3DXVector2Test(void)
@@ -1126,8 +1128,9 @@ static void D3DXVector2Test(void)
     D3DXVECTOR2 expectedvec, gotvec, nul, u, v, w, x;
     LPD3DXVECTOR2 funcpointer;
     D3DXVECTOR4 expectedtrans, gottrans;
+    float coeff1, coeff2, got, scale;
     D3DXMATRIX mat;
-    FLOAT coeff1, coeff2, expected, got, scale;
+    BOOL equal;
 
     nul.x = 0.0f; nul.y = 0.0f;
     u.x = 3.0f; u.y = 4.0f;
@@ -1164,28 +1167,28 @@ static void D3DXVector2Test(void)
     expect_vec2(&expectedvec, &gotvec, 0);
 
 /*_______________D3DXVec2CCW__________________________*/
-   expected = 55.0f;
-   got = D3DXVec2CCW(&u,&v);
-   ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-   /* Tests the case NULL */
-    expected=0.0f;
-    got = D3DXVec2CCW(NULL,&v);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-    expected=0.0f;
-    got = D3DXVec2CCW(NULL,NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    got = D3DXVec2CCW(&u, &v);
+    equal = compare_float(got, 55.0f, 0);
+    ok(equal, "Got unexpected ccw %.8e.\n", got);
+    /* Tests the case NULL. */
+    got = D3DXVec2CCW(NULL, &v);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected ccw %.8e.\n", got);
+    got = D3DXVec2CCW(NULL, NULL);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected ccw %.8e.\n", got);
 
 /*_______________D3DXVec2Dot__________________________*/
-    expected = 15.0f;
-    got = D3DXVec2Dot(&u,&v);
-    ok(relative_error(got,  expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    got = D3DXVec2Dot(&u, &v);
+    equal = compare_float(got, 15.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
     /* Tests the case NULL */
-    expected=0.0f;
-    got = D3DXVec2Dot(NULL,&v);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-    expected=0.0f;
-    got = D3DXVec2Dot(NULL,NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    got = D3DXVec2Dot(NULL, &v);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
+    got = D3DXVec2Dot(NULL, NULL);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
 
 /*_______________D3DXVec2Hermite__________________________*/
     expectedvec.x = 2604.625f; expectedvec.y = -4533.0f;
@@ -1193,22 +1196,22 @@ static void D3DXVector2Test(void)
     expect_vec2(&expectedvec, &gotvec, 0);
 
 /*_______________D3DXVec2Length__________________________*/
-   expected = 5.0f;
-   got = D3DXVec2Length(&u);
-   ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-   /* Tests the case NULL */
-    expected=0.0f;
+    got = D3DXVec2Length(&u);
+    equal = compare_float(got, 5.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
+    /* Tests the case NULL. */
     got = D3DXVec2Length(NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
 
 /*_______________D3DXVec2LengthSq________________________*/
-   expected = 25.0f;
-   got = D3DXVec2LengthSq(&u);
-   ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-   /* Tests the case NULL */
-    expected=0.0f;
+    got = D3DXVec2LengthSq(&u);
+    equal = compare_float(got, 25.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
+    /* Tests the case NULL. */
     got = D3DXVec2LengthSq(NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
 
 /*_______________D3DXVec2Lerp__________________________*/
     expectedvec.x = 68.0f; expectedvec.y = -28.5f;
@@ -1298,7 +1301,8 @@ static void D3DXVector3Test(void)
     LPD3DXVECTOR3 funcpointer;
     D3DXVECTOR4 expectedtrans, gottrans;
     D3DXMATRIX mat, projection, view, world;
-    FLOAT coeff1, coeff2, expected, got, scale;
+    float coeff1, coeff2, got, scale;
+    BOOL equal;
 
     nul.x = 0.0f; nul.y = 0.0f; nul.z = 0.0f;
     u.x = 9.0f; u.y = 6.0f; u.z = 2.0f;
@@ -1363,16 +1367,16 @@ static void D3DXVector3Test(void)
     ok(funcpointer == NULL, "Expected: %p, Got: %p\n", NULL, funcpointer);
 
 /*_______________D3DXVec3Dot__________________________*/
-    expected = -8.0f;
-    got = D3DXVec3Dot(&u,&v);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    got = D3DXVec3Dot(&u, &v);
+    equal = compare_float(got, -8.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
     /* Tests the case NULL */
-    expected=0.0f;
-    got = D3DXVec3Dot(NULL,&v);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-    expected=0.0f;
-    got = D3DXVec3Dot(NULL,NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    got = D3DXVec3Dot(NULL, &v);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
+    got = D3DXVec3Dot(NULL, NULL);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
 
 /*_______________D3DXVec3Hermite__________________________*/
     expectedvec.x = -6045.75f; expectedvec.y = -6650.0f; expectedvec.z = 1358.875f;
@@ -1380,22 +1384,22 @@ static void D3DXVector3Test(void)
     expect_vec3(&expectedvec, &gotvec, 0);
 
 /*_______________D3DXVec3Length__________________________*/
-    expected = 11.0f;
     got = D3DXVec3Length(&u);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-   /* Tests the case NULL */
-    expected=0.0f;
+    equal = compare_float(got, 11.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
+    /* Tests the case NULL. */
     got = D3DXVec3Length(NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
 
 /*_______________D3DXVec3LengthSq________________________*/
-    expected = 121.0f;
     got = D3DXVec3LengthSq(&u);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-   /* Tests the case NULL */
-    expected=0.0f;
+    equal = compare_float(got, 121.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
+    /* Tests the case NULL. */
     got = D3DXVec3LengthSq(NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
 
 /*_______________D3DXVec3Lerp__________________________*/
     expectedvec.x = 54.5f; expectedvec.y = 64.5f, expectedvec.z = 41.0f ;
@@ -1533,8 +1537,9 @@ static void D3DXVector4Test(void)
     D3DXVECTOR4 expectedvec, gotvec, u, v, w, x;
     LPD3DXVECTOR4 funcpointer;
     D3DXVECTOR4 expectedtrans, gottrans;
+    float coeff1, coeff2, got, scale;
     D3DXMATRIX mat;
-    FLOAT coeff1, coeff2, expected, got, scale;
+    BOOL equal;
 
     u.x = 1.0f; u.y = 2.0f; u.z = 4.0f; u.w = 10.0;
     v.x = -3.0f; v.y = 4.0f; v.z = -5.0f; v.w = 7.0;
@@ -1575,16 +1580,16 @@ static void D3DXVector4Test(void)
     expect_vec4(&expectedvec, &gotvec, 0);
 
 /*_______________D3DXVec4Dot__________________________*/
-    expected = 55.0f;
-    got = D3DXVec4Dot(&u,&v);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-    /* Tests the case NULL */
-    expected=0.0f;
-    got = D3DXVec4Dot(NULL,&v);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-    expected=0.0f;
-    got = D3DXVec4Dot(NULL,NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    got = D3DXVec4Dot(&u, &v);
+    equal = compare_float(got, 55.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
+    /* Tests the case NULL. */
+    got = D3DXVec4Dot(NULL, &v);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
+    got = D3DXVec4Dot(NULL, NULL);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected dot %.8e.\n", got);
 
 /*_______________D3DXVec4Hermite_________________________*/
     expectedvec.x = 1224.625f; expectedvec.y = 3461.625f; expectedvec.z = -4758.875f; expectedvec.w = -5781.5f;
@@ -1592,22 +1597,22 @@ static void D3DXVector4Test(void)
     expect_vec4(&expectedvec, &gotvec, 0);
 
 /*_______________D3DXVec4Length__________________________*/
-   expected = 11.0f;
-   got = D3DXVec4Length(&u);
-   ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-   /* Tests the case NULL */
-    expected=0.0f;
+    got = D3DXVec4Length(&u);
+    equal = compare_float(got, 11.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
+    /* Tests the case NULL. */
     got = D3DXVec4Length(NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
 
 /*_______________D3DXVec4LengthSq________________________*/
-    expected = 121.0f;
     got = D3DXVec4LengthSq(&u);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
-    /* Tests the case NULL */
-    expected=0.0f;
+    equal = compare_float(got, 121.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
+    /* Tests the case NULL. */
     got = D3DXVec4LengthSq(NULL);
-    ok(relative_error(got, expected ) < admitted_error, "Expected: %f, Got: %f\n", expected, got);
+    equal = compare_float(got, 0.0f, 0);
+    ok(equal, "Got unexpected length %.8e.\n", got);
 
 /*_______________D3DXVec4Lerp__________________________*/
     expectedvec.x = 27.0f; expectedvec.y = -11.0f; expectedvec.z = 62.5;  expectedvec.w = 29.5;
@@ -2454,14 +2459,14 @@ static void test_D3DXFloat_Array(void)
     unsigned int i;
     void *out = NULL;
     D3DXFLOAT16 half;
-    FLOAT single;
+    BOOL equal;
 
     /* Input floats through bit patterns because compilers do not generate reliable INF and NaN values. */
     union convert
     {
         DWORD d;
-        FLOAT f;
-    };
+        float f;
+    } single;
 
     struct
     {
@@ -2482,7 +2487,7 @@ static void test_D3DXFloat_Array(void)
         { { 0x477ff100 }, 0x7c00, 0x7c00, { 0x47800000 }, { 0x47800000 } }, /* 65521.0f */
 
         { { 0x477ffe00 }, 0x7c00, 0x7c00, { 0x47800000 }, { 0x47800000 } }, /* 65534.0f */
-        { { 0x477fff00 }, 0x7c00, 0x7c00, { 0x477fff00 }, { 0x47800000 } }, /* 65535.0f */
+        { { 0x477fff00 }, 0x7c00, 0x7c00, { 0x47800000 }, { 0x47800000 } }, /* 65535.0f */
         { { 0x47800000 }, 0x7c00, 0x7c00, { 0x47800000 }, { 0x47800000 } }, /* 65536.0f */
         { { 0xc79c4000 }, 0xfc00, 0xfce2, { 0xc7800000 }, { 0xc79c4000 } }, /* -80000.0f */
         { { 0xc77fdf00 }, 0xfbff, 0xfbff, { 0xc77fe000 }, { 0xc77fe000 } }, /* -65503.0f */
@@ -2491,7 +2496,7 @@ static void test_D3DXFloat_Array(void)
         { { 0xc77ff000 }, 0xfbff, 0xfc00, { 0xc77fe000 }, { 0xc7800000 } }, /* -65520.0f */
         { { 0xc77ff100 }, 0xfc00, 0xfc00, { 0xc7800000 }, { 0xc7800000 } }, /* -65521.0f */
         { { 0xc77ffe00 }, 0xfc00, 0xfc00, { 0xc7800000 }, { 0xc7800000 } }, /* -65534.0f */
-        { { 0xc77fff00 }, 0xfc00, 0xfc00, { 0xc77fff00 }, { 0xc7800000 } }, /* -65535.0f */
+        { { 0xc77fff00 }, 0xfc00, 0xfc00, { 0xc7800000 }, { 0xc7800000 } }, /* -65535.0f */
 
         { { 0xc7800000 }, 0xfc00, 0xfc00, { 0xc7800000 }, { 0xc7800000 } }, /* -65536.0f */
         { { 0x7f800000 }, 0x7c00, 0x7fff, { 0x47800000 }, { 0x47ffe000 } }, /* INF */
@@ -2500,21 +2505,21 @@ static void test_D3DXFloat_Array(void)
         { { 0xffc00000 }, 0xffff, 0xffff, { 0xc7ffe000 }, { 0xc7ffe000 } }, /* -NaN */
 
         { { 0x00000000 }, 0x0000, 0x0000, { 0x00000000 }, { 0x00000000 } }, /* 0.0f */
-        { { 0x80000000 }, 0x8000, 0x8000, { 0x00000000 }, { 0x00000000 } }, /* -0.0f */
+        { { 0x80000000 }, 0x8000, 0x8000, { 0x80000000 }, { 0x80000000 } }, /* -0.0f */
         { { 0x330007ff }, 0x0000, 0x0000, { 0x00000000 }, { 0x00000000 } }, /* 2.9809595e-08f */
         { { 0xb30007ff }, 0x8000, 0x8000, { 0x80000000 }, { 0x80000000 } }, /* -2.9809595e-08f */
-        { { 0x33000800 }, 0x0001, 0x0000, { 0x337ffff3 }, { 0x337ffff3 } }, /* 2.9809598e-08f */
+        { { 0x33000800 }, 0x0001, 0x0000, { 0x33800000 }, { 0x00000000 } }, /* 2.9809598e-08f */
 
-        { { 0xb3000800 }, 0x8001, 0x8000, { 0xb37ffff3 } ,{ 0xb37ffff3 } }, /* -2.9809598e-08f */
-        { { 0x33c00000 }, 0x0002, 0x0001, { 0x33ffffd7 }, { 0x337ffff3 } }, /* 8.9406967e-08f */
+        { { 0xb3000800 }, 0x8001, 0x8000, { 0xb3800000 }, { 0x80000000 } }, /* -2.9809598e-08f */
+        { { 0x33c00000 }, 0x0002, 0x0001, { 0x34000000 }, { 0x33800000 } }, /* 8.9406967e-08f */
     };
 
     /* exception on NULL out or in parameter */
-    out = D3DXFloat32To16Array(&half, &single, 0);
+    out = D3DXFloat32To16Array(&half, &single.f, 0);
     ok(out == &half, "Got %p, expected %p.\n", out, &half);
 
-    out = D3DXFloat16To32Array(&single, &half, 0);
-    ok(out == &single, "Got %p, expected %p.\n", out, &single);
+    out = D3DXFloat16To32Array(&single.f, &half, 0);
+    ok(out == &single.f, "Got %p, expected %p.\n", out, &single.f);
 
     for (i = 0; i < sizeof(testdata)/sizeof(testdata[0]); i++)
     {
@@ -2524,23 +2529,26 @@ static void test_D3DXFloat_Array(void)
            "Got %x, expected %x or %x for index %d.\n", half.value, testdata[i].half_ver1,
            testdata[i].half_ver2, i);
 
-        out = D3DXFloat16To32Array(&single, (D3DXFLOAT16 *)&testdata[i].half_ver1, 1);
-        ok(out == &single, "Got %p, expected %p.\n", out, &single);
-        ok(relative_error(single, testdata[i].single_out_ver1.f) < admitted_error,
-           "Got %g, expected %g for index %d.\n", single, testdata[i].single_out_ver1.f, i);
+        out = D3DXFloat16To32Array(&single.f, (D3DXFLOAT16 *)&testdata[i].half_ver1, 1);
+        ok(out == &single.f, "Got %p, expected %p.\n", out, &single.f);
+        equal = compare_float(single.f, testdata[i].single_out_ver1.f, 0);
+        ok(equal, "Got %#x, expected %#x at index %u.\n", single.d, testdata[i].single_out_ver1.d, i);
 
-        out = D3DXFloat16To32Array(&single, (D3DXFLOAT16 *)&testdata[i].half_ver2, 1);
-        ok(out == &single, "Got %p, expected %p.\n", out, &single);
-        ok(relative_error(single, testdata[i].single_out_ver2.f) < admitted_error,
-           "Got %g, expected %g for index %d.\n", single, testdata[i].single_out_ver2.f, i);
+        out = D3DXFloat16To32Array(&single.f, (D3DXFLOAT16 *)&testdata[i].half_ver2, 1);
+        ok(out == &single.f, "Got %p, expected %p.\n", out, &single.f);
+        equal = compare_float(single.f, testdata[i].single_out_ver2.f, 0);
+        ok(equal, "Got %#x, expected %#x at index %u.\n", single.d, testdata[i].single_out_ver2.d, i);
     }
 }
 
 static void test_D3DXSHAdd(void)
 {
-    UINT i, k;
-    FLOAT *ret = (FLOAT *)0xdeadbeef;
-    const FLOAT in1[50] =
+    float out[50] = {0.0f};
+    unsigned int i, k;
+    float *ret;
+    BOOL equal;
+
+    static const float in1[50] =
     {
         1.11f, 1.12f, 1.13f, 1.14f, 1.15f, 1.16f, 1.17f, 1.18f,
         1.19f, 1.20f, 1.21f, 1.22f, 1.23f, 1.24f, 1.25f, 1.26f,
@@ -2550,7 +2558,7 @@ static void test_D3DXSHAdd(void)
         1.51f, 1.52f, 1.53f, 1.54f, 1.55f, 1.56f, 1.57f, 1.58f,
         1.59f, 1.60f,
     };
-    const FLOAT in2[50] =
+    static const float in2[50] =
     {
         2.11f, 2.12f, 2.13f, 2.14f, 2.15f, 2.16f, 2.17f, 2.18f,
         2.19f, 2.20f, 2.21f, 2.22f, 2.23f, 2.24f, 2.25f, 2.26f,
@@ -2560,7 +2568,6 @@ static void test_D3DXSHAdd(void)
         2.51f, 2.52f, 2.53f, 2.54f, 2.55f, 2.56f, 2.57f, 2.58f,
         2.59f, 2.60f,
     };
-    FLOAT out[50] = {0.0f};
 
     /*
      * Order is not limited by D3DXSH_MINORDER and D3DXSH_MAXORDER!
@@ -2576,19 +2583,21 @@ static void test_D3DXSHAdd(void)
 
         for (i = 0; i < count; ++i)
         {
-            ok(relative_error(in1[i] + in2[i], out[i]) < admitted_error,
-                    "%u-%u: D3DXSHAdd() failed, got %f, expected %f\n", k, i, out[i], in1[i] + in2[i]);
+            equal = compare_float(in1[i] + in2[i], out[i], 0);
+            ok(equal, "%u-%u: Got %.8e, expected %.8e.\n", k, i, out[i], in1[i] + in2[i]);
         }
-        ok(relative_error(out[count], 0.0f) < admitted_error, "%u-%u: D3DXSHAdd() failed, got %f, expected 0.0\n", k, k * k, out[count]);
+        equal = compare_float(out[count], 0.0f, 0);
+        ok(equal, "%u-%u: Got %.8e, expected 0.0.\n", k, k * k, out[count]);
     }
 }
 
 static void test_D3DXSHDot(void)
 {
+    float a[49], b[49], got;
     unsigned int i;
-    FLOAT a[49], b[49], got;
-    const FLOAT expected[] =
-    { 0.5f, 0.5f, 25.0f, 262.5f, 1428.0f, 5362.0f, 15873.0f, 39812.0f, };
+    BOOL equal;
+
+    static const float expected[] = {0.5f, 0.5f, 25.0f, 262.5f, 1428.0f, 5362.5f, 15873.0f, 39812.5f};
 
     for (i = 0; i < 49; i++)
     {
@@ -2600,17 +2609,21 @@ static void test_D3DXSHDot(void)
     for (i = 0; i <= D3DXSH_MAXORDER + 1; i++)
     {
         got = D3DXSHDot(i, a, b);
-        ok(relative_error(got, expected[i]) < admitted_error, "order %d: expected %f, received %f\n", i, expected[i], got);
+        equal = compare_float(got, expected[i], 0);
+        ok(equal, "order %u: Got %.8e, expected %.8e.\n", i, got, expected[i]);
     }
-
-    return;
 }
 
 static void test_D3DXSHEvalConeLight(void)
 {
+    float bout[49], expected, gout[49], rout[49];
+    unsigned int j, l, order;
     D3DXVECTOR3 dir;
-    FLOAT bout[49], expected, gout[49], rout[49];
-    const FLOAT table[] = {
+    HRESULT hr;
+    BOOL equal;
+
+    static const float table[] =
+    {
     /* Red colour */
         1.604815f, -3.131381f, 7.202175f, -2.870432f, 6.759296f, -16.959688f,
         32.303082f, -15.546381f, -0.588878f, -5.902123f, 40.084042f, -77.423569f,
@@ -2653,12 +2666,14 @@ static void test_D3DXSHEvalConeLight(void)
         15.691326f, -26.775339f, 45.859665f, -24.544060f, -1.367048f, 4.013170f,
         -1.039392f, 8.582172f, -9.440103f, -117.862114f, 517.839600f, -820.820740f,
         1374.188232f, -752.419067f, -45.114819f, 153.427063f, -53.766754f, 5.478452f, };
-    struct
+    const struct
     {
-        FLOAT *red_received, *green_received, *blue_received;
-        const FLOAT *red_expected, *green_expected, *blue_expected;
-        FLOAT radius, roffset, goffset, boffset;
-    } test[] = {
+        float *red_received, *green_received, *blue_received;
+        const float *red_expected, *green_expected, *blue_expected;
+        float radius, roffset, goffset, boffset;
+    }
+    test[] =
+    {
         { rout, gout, bout, table, &table[72], &table[144], 0.5f, 1.01f, 1.02f, 1.03f, },
         { rout, gout, bout, &table[36], &table[108], &table[180], 1.6f, 1.01f, 1.02f, 1.03f, },
         { rout, rout, rout, &table[144], &table[144], &table[144], 0.5f, 1.03f, 1.03f, 1.03f, },
@@ -2668,9 +2683,8 @@ static void test_D3DXSHEvalConeLight(void)
     /* D3DXSHEvalConeLight accepts NULL green or blue colour. */
         { rout, NULL, bout, table, NULL, &table[144], 0.5f, 1.01f, 0.0f, 1.03f, },
         { rout, gout, NULL, table, &table[72], NULL, 0.5f, 1.01f, 1.02f, 0.0f, },
-        { rout, NULL, NULL, table, NULL, NULL, 0.5f, 1.01f, 0.0f, 0.0f, }, };
-    HRESULT hr;
-    unsigned int j, l, order;
+        { rout, NULL, NULL, table, NULL, NULL, 0.5f, 1.01f, 0.0f, 0.0f, },
+    };
 
     dir.x = 1.1f; dir.y = 1.2f; dir.z = 2.76f;
 
@@ -2696,8 +2710,9 @@ static void test_D3DXSHEvalConeLight(void)
                     expected = j + test[l].roffset;
                 else
                     expected = test[l].red_expected[j];
-                ok(relative_error(expected, test[l].red_received[j]) < admitted_error,
-                    "Red: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, test[l].red_received[j]);
+                equal = compare_float(test[l].red_received[j], expected, 128);
+                ok(equal, "Red: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                        l, order, j, expected, test[l].red_received[j]);
 
                 if (test[l].green_received)
                 {
@@ -2705,8 +2720,9 @@ static void test_D3DXSHEvalConeLight(void)
                         expected = j + test[l].goffset;
                     else
                         expected = test[l].green_expected[j];
-                    ok(relative_error(expected, test[l].green_received[j]) < admitted_error,
-                        "Green: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, test[l].green_received[j]);
+                    equal = compare_float(test[l].green_received[j], expected, 64);
+                    ok(equal, "Green: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                            l, order, j, expected, test[l].green_received[j]);
                 }
 
                 if (test[l].blue_received)
@@ -2715,8 +2731,9 @@ static void test_D3DXSHEvalConeLight(void)
                         expected = j + test[l].boffset;
                     else
                         expected = test[l].blue_expected[j];
-                    ok(relative_error(expected, test[l].blue_received[j]) < admitted_error,
-                        "Blue: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, test[l].blue_received[j]);
+                    equal = compare_float(test[l].blue_received[j], expected, 128);
+                    ok(equal, "Blue: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                            l, order, j, expected, test[l].blue_received[j]);
                 }
             }
         }
@@ -2743,17 +2760,17 @@ static void test_D3DXSHEvalConeLight(void)
 
         for (j = 0; j < 49; j++)
         {
-            expected = red[j];
-            ok(relative_error(expected, rout[j]) < admitted_error,
-                "Red: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, rout[j]);
+            equal = compare_float(red[j], rout[j], 0);
+            ok(equal, "Red: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                    l, order, j, red[j], rout[j]);
 
-            expected = green[j];
-            ok(relative_error(expected, gout[j]) < admitted_error,
-                "Green: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, gout[j]);
+            equal = compare_float(green[j], gout[j], 0);
+            ok(equal, "Green: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                    l, order, j, green[j], gout[j]);
 
-            expected = blue[j];
-            ok(relative_error(expected, bout[j]) < admitted_error,
-                "Blue: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, bout[j]);
+            equal = compare_float(blue[j], bout[j], 0);
+            ok(equal, "Blue: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                    l, order, j, blue[j], bout[j]);
         }
     }
 
@@ -2768,16 +2785,20 @@ static void test_D3DXSHEvalConeLight(void)
 
 static void test_D3DXSHEvalDirection(void)
 {
+    float a[49], expected, *received_ptr;
     unsigned int i, order;
     D3DXVECTOR3 d;
-    FLOAT a[49], expected[49], *received_ptr;
-    const FLOAT table[36] =
-    { 0.282095f, -0.977205f, 1.465808f, -0.488603f, 2.185097f, -6.555291f,
-      8.200181f, -3.277646f, -1.638823f, 1.180087f, 17.343668f, -40.220032f,
-      47.020218f, -20.110016f, -13.007751f, 6.490479f, -15.020058f, 10.620785f,
-      117.325661f, -240.856750f, 271.657288f, -120.428375f, -87.994247f, 58.414314f,
-      -4.380850f, 24.942520f, -149.447693f, 78.278130f, 747.791748f, -1427.687866f,
-      1574.619141, -713.843933f, -560.843811f, 430.529724, -43.588909, -26.911665, };
+    BOOL equal;
+
+    static const float table[36] =
+    {
+         2.82094806e-01f, -9.77205038e-01f,  1.46580756e+00f, -4.88602519e-01f,  2.18509698e+00f, -6.55529118e+00f,
+         8.20018101e+00f, -3.27764559e-00f, -1.63882279e+00f,  1.18008721e+00f,  1.73436680e+01f, -4.02200317e+01f,
+         4.70202179e+01f, -2.01100159e+01f, -1.30077515e+01f,  6.49047947e+00f, -1.50200577e+01f,  1.06207848e+01f,
+         1.17325661e+02f, -2.40856750e+02f,  2.71657288e+02f, -1.20428375e+02f, -8.79942474e+01f,  5.84143143e+01f,
+        -4.38084984e+00f,  2.49425201e+01f, -1.49447693e+02f,  7.82781296e+01f,  7.47791748e+02f, -1.42768787e+03f,
+         1.57461914e+03f, -7.13843933e+02f, -5.60843811e+02f,  4.30529724e+02f, -4.35889091e+01f, -2.69116650e+01f,
+    };
 
     d.x = 1.0; d.y = 2.0f; d.z = 3.0f;
 
@@ -2791,22 +2812,31 @@ static void test_D3DXSHEvalDirection(void)
 
         for (i = 0; i < 49; i++)
         {
-            /* if the order is < D3DXSH_MINORDER or order > D3DXSH_MAXORDER or the index of the element is greater than order * order - 1, D3DXSHEvalDirection does not modify the output */
-            if ( (order < D3DXSH_MINORDER) || (order > D3DXSH_MAXORDER) || (i >= order * order) )
-                expected[i] = 1.5f + i;
+            /* if the order is < D3DXSH_MINORDER or order > D3DXSH_MAXORDER or
+             * the index of the element is greater than order * order - 1,
+             * D3DXSHEvalDirection() does not modify the output. */
+            if ((order < D3DXSH_MINORDER) || (order > D3DXSH_MAXORDER) || (i >= order * order))
+                expected = 1.5f + i;
             else
-                expected[i] = table[i];
+                expected = table[i];
 
-            ok(relative_error(a[i], expected[i]) < admitted_error, "order %u, index %u: expected %f, received %f\n", order, i, expected[i], a[i]);
+            equal = compare_float(a[i], expected, 2);
+            ok(equal, "order %u, index %u: Got unexpected result %.8e, expected %.8e.\n",
+                    order, i, a[i], expected);
         }
     }
 }
 
 static void test_D3DXSHEvalDirectionalLight(void)
 {
+    float *blue_out, bout[49], expected, gout[49], *green_out, *red_out, rout[49];
+    unsigned int j, l, order, startindex;
     D3DXVECTOR3 dir;
-    FLOAT *blue_out, bout[49], expected, gout[49], *green_out, *red_out, rout[49];
-    static const FLOAT table[] = {
+    HRESULT hr;
+    BOOL equal;
+
+    static const float table[] =
+    {
     /* Red colour */
       2.008781f, -4.175174f, 9.602900f, -3.827243f, 1.417963f, -2.947181f,
       6.778517f, -2.701583f, 7.249108f, -18.188671f, 34.643921f, -16.672949f,
@@ -2855,13 +2885,15 @@ static void test_D3DXSHEvalDirectionalLight(void)
       741.729919f, -1265.671997f, 2167.789307f, -1160.199219f, -64.620430f, 189.702820f,
       -49.132126f, 71.788422f, -78.964867f, -985.896790f, 4331.640625f, -6866.027344f,
       11494.852539f, -6293.858398f, -377.377899f, 1283.391479f, -449.749817f, 45.826328f, };
-    struct
+    const struct
     {
-        FLOAT *red_in, *green_in, *blue_in;
-        const FLOAT *red_out, *green_out, *blue_out;
-        FLOAT roffset, goffset, boffset;
-    } test[] =
-    { { rout, gout, bout, table, &table[90], &table[180], 1.01f, 1.02f, 1.03f, },
+        float *red_in, *green_in, *blue_in;
+        const float *red_out, *green_out, *blue_out;
+        float roffset, goffset, boffset;
+    }
+    test[] =
+    {
+      { rout, gout, bout, table, &table[90], &table[180], 1.01f, 1.02f, 1.03f, },
       { rout, rout, rout, &table[180], &table[180], &table[180], 1.03f, 1.03f, 1.03f, },
       { rout, rout, bout, &table[90], &table[90], &table[180], 1.02f, 1.02f, 1.03f, },
       { rout, gout, gout, table, &table[180], &table[180], 1.01f, 1.03f, 1.03f, },
@@ -2869,9 +2901,8 @@ static void test_D3DXSHEvalDirectionalLight(void)
     /* D3DXSHEvalDirectionaLight accepts NULL green or blue colour. */
       { rout, NULL, bout, table, NULL, &table[180], 1.01f, 0.0f, 1.03f, },
       { rout, gout, NULL, table, &table[90], NULL, 1.01f, 1.02f, 0.0f, },
-      { rout, NULL, NULL, table, NULL, NULL, 1.01f, 0.0f, 0.0f, }, };
-    HRESULT hr;
-    unsigned int j, l, order, startindex;
+      { rout, NULL, NULL, table, NULL, NULL, 1.01f, 0.0f, 0.0f, },
+    };
 
     dir.x = 1.1f; dir.y= 1.2f; dir.z = 2.76f;
 
@@ -2903,8 +2934,9 @@ static void test_D3DXSHEvalDirectionalLight(void)
                     expected = j + test[l].roffset;
                 else
                     expected = test[l].red_out[startindex + j];
-                ok(relative_error(expected, red_out[j]) < admitted_error,
-                  "Red: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, red_out[j]);
+                equal = compare_float(expected, red_out[j], 8);
+                ok(equal, "Red: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                        l, order, j, expected, red_out[j]);
 
                 if ( green_out )
                 {
@@ -2912,8 +2944,9 @@ static void test_D3DXSHEvalDirectionalLight(void)
                         expected = j + test[l].goffset;
                     else
                         expected = test[l].green_out[startindex + j];
-                    ok(relative_error(expected, green_out[j]) < admitted_error,
-                      "Green: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, green_out[j]);
+                    equal = compare_float(expected, green_out[j], 8);
+                    ok(equal, "Green: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                            l, order, j, expected, green_out[j]);
                 }
 
                 if ( blue_out )
@@ -2922,8 +2955,9 @@ static void test_D3DXSHEvalDirectionalLight(void)
                         expected = j + test[l].boffset;
                     else
                         expected = test[l].blue_out[startindex + j];
-                    ok(relative_error(expected, blue_out[j]) < admitted_error,
-                      "Blue: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, blue_out[j]);
+                    equal = compare_float(expected, blue_out[j], 4);
+                    ok(equal, "Blue: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                            l, order, j, expected, blue_out[j]);
                 }
             }
 
@@ -2942,22 +2976,30 @@ static void test_D3DXSHEvalDirectionalLight(void)
 
 static void test_D3DXSHEvalHemisphereLight(void)
 {
+    float bout[49], expected, gout[49], rout[49];
+    unsigned int j, l, order;
     D3DXCOLOR bottom, top;
     D3DXVECTOR3 dir;
-    FLOAT bout[49], expected, gout[49], rout[49];
-    const FLOAT table[] = {
-    /* Red colour */
-      23.422981f, 15.859521f, -36.476898f, 14.537894f,
-    /* Green colour */
-      19.966694f, 6.096982f, -14.023058f, 5.588900f,
-    /* Blue colour */
-      24.566214f, 8.546826f, -19.657701f, 7.834591f, };
-    struct
+    HRESULT hr;
+    BOOL equal;
+
+    static const float table[] =
     {
-        FLOAT *red_received, *green_received, *blue_received;
-        const FLOAT *red_expected, *green_expected, *blue_expected;
-        const FLOAT roffset, goffset, boffset;
-    } test[] = {
+        /* Red colour. */
+        23.422981f, 15.859521f, -36.476898f, 14.537894f,
+        /* Green colour. */
+        19.966694f,  6.096982f, -14.023058f,  5.588900f,
+        /* Blue colour. */
+        24.566214f,  8.546826f, -19.657701f,  7.834591f,
+    };
+    const struct
+    {
+        float *red_received, *green_received, *blue_received;
+        const float *red_expected, *green_expected, *blue_expected;
+        const float roffset, goffset, boffset;
+    }
+    test[] =
+    {
         { rout, gout, bout, table, &table[4], &table[8], 1.01f, 1.02f, 1.03f, },
         { rout, rout, rout, &table[8], &table[8], &table[8], 1.03f, 1.03f, 1.03f, },
         { rout, rout, bout, &table[4], &table[4], &table[8], 1.02f, 1.02f, 1.03f, },
@@ -2966,9 +3008,8 @@ static void test_D3DXSHEvalHemisphereLight(void)
     /* D3DXSHEvalHemisphereLight accepts NULL green or blue colour. */
         { rout, NULL, bout, table, NULL, &table[8], 1.01f, 1.02f, 1.03f, },
         { rout, gout, NULL, table, &table[4], NULL, 1.01f, 1.02f, 1.03f, },
-        { rout, NULL, NULL, table, NULL, NULL, 1.01f, 1.02f, 1.03f, }, };
-    HRESULT hr;
-    unsigned int j, l, order;
+        { rout, NULL, NULL, table, NULL, NULL, 1.01f, 1.02f, 1.03f, },
+    };
 
     dir.x = 1.1f; dir.y = 1.2f; dir.z = 2.76f;
     top.r = 0.1f; top.g = 2.1f; top.b = 2.3f; top.a = 4.3f;
@@ -2997,8 +3038,9 @@ static void test_D3DXSHEvalHemisphereLight(void)
                      expected = 0.0f;
                 else
                     expected = test[l].roffset + j;
-                ok(relative_error(test[l].red_received[j], expected) < admitted_error,
-                    "Red: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, test[l].red_received[j]);
+                equal = compare_float(test[l].red_received[j], expected, 4);
+                ok(equal, "Red: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                        l, order, j, expected, test[l].red_received[j]);
 
                 if (test[l].green_received)
                 {
@@ -3008,8 +3050,9 @@ static void test_D3DXSHEvalHemisphereLight(void)
                          expected = 0.0f;
                     else
                          expected = test[l].goffset + j;
-                    ok(relative_error(expected, test[l].green_received[j]) < admitted_error,
-                        "Green: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, test[l].green_received[j]);
+                    equal = compare_float(expected, test[l].green_received[j], 4);
+                    ok(equal, "Green: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                            l, order, j, expected, test[l].green_received[j]);
                 }
 
                 if (test[l].blue_received)
@@ -3020,8 +3063,9 @@ static void test_D3DXSHEvalHemisphereLight(void)
                         expected = 0.0f;
                     else
                         expected = test[l].boffset + j;
-                    ok(relative_error(expected, test[l].blue_received[j]) < admitted_error,
-                        "Blue: case %u, order %u: expected[%u] = %f, received %f\n", l, order, j, expected, test[l].blue_received[j]);
+                    equal = compare_float(expected, test[l].blue_received[j], 4);
+                    ok(equal, "Blue: case %u, order %u: expected[%u] = %.8e, received %.8e.\n",
+                            l, order, j, expected, test[l].blue_received[j]);
                 }
             }
         }
@@ -3176,13 +3220,17 @@ static void test_D3DXSHEvalSphericalLight(void)
 
 static void test_D3DXSHMultiply2(void)
 {
+    float a[20], b[20], c[20];
     unsigned int i;
-    FLOAT a[20], b[20], c[20];
-    /* D3DXSHMultiply2 only modifies the first 4 elements of the array */
-    const FLOAT expected[20] =
-    { 3.418594f, 1.698211f, 1.703853f, 1.709494f, 4.0f, 5.0f,
-      6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f,
-      14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f };
+    BOOL equal;
+
+    /* D3DXSHMultiply2() only modifies the first 4 elements of the array. */
+    static const float expected[20] =
+    {
+         3.41859412f,  1.69821072f,  1.70385253f,  1.70949447f,  4.0f,  5.0f,  6.0f,
+                7.0f,         8.0f,         9.0f,        10.0f, 11.0f, 12.0f, 13.0f,
+               14.0f,        15.0f,        16.0f,        17.0f, 18.0f, 19.0f,
+    };
 
     for (i = 0; i < 20; i++)
     {
@@ -3193,25 +3241,32 @@ static void test_D3DXSHMultiply2(void)
 
     D3DXSHMultiply2(c, a, b);
     for (i = 0; i < 20; i++)
-        ok(relative_error(c[i], expected[i]) < admitted_error, "Expected[%d] = %f, received = %f\n", i, expected[i], c[i]);
+    {
+        equal = compare_float(c[i], expected[i], 2);
+        ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[i], c[i]);
+    }
 }
 
 static void test_D3DXSHMultiply3(void)
 {
+    float a[20], b[20], c[20];
     unsigned int i;
-    FLOAT a[20], b[20], c[20];
-    /* D3DXSHMultiply3 only modifies the first 9 elements of the array */
+    BOOL equal;
+
+    /* D3DXSHMultiply3() only modifies the first 9 elements of the array. */
     static const float expected[20] =
     {
-        7.813913f, 2.256058f, 5.9484005f, 4.970894f, 2.899858f, 3.598946f,
-        1.726572f, 5.573538f, 0.622063f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f,
-        14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f
+        7.81391382e+00f, 2.25605774e+00f, 5.94839954e+00f, 4.97089481e+00f, 2.89985824e+00f, 3.59894633e+00f,
+        1.72657156e+00f, 5.57353783e+00f, 6.22063160e-01f, 9.00000000e+00f, 1.00000000e+01f, 1.10000000e+01f,
+        1.20000000e+01f, 1.30000000e+01f, 1.40000000e+01f, 1.50000000e+01f, 1.60000000e+01f, 1.70000000e+01f,
+        1.80000000e+01f, 1.90000000e+01f,
     };
     static const float expected_aliased[20] =
     {
-        454.092499f,2.126404f, 5.570401f, 15.330379f, 22.796087f, 43.604126f,
-        4.273841f, 175.772034f, 237.672729f, 1.09f, 1.1f, 1.11f, 1.12f, 1.13f,
-        1.14f, 1.15f, 1.16f, 1.17f, 1.18f, 1.19f
+        4.54092499e+02f, 2.12640405e+00f, 5.57040071e+00f, 1.53303785e+01f, 2.27960873e+01f, 4.36041260e+01f,
+        4.27384138e+00f, 1.75772034e+02f, 2.37672729e+02f, 1.09000003e+00f, 1.10000002e+00f, 1.11000001e+00f,
+        1.12000000e+00f, 1.13000000e+00f, 1.13999999e+00f, 1.14999998e+00f, 1.15999997e+00f, 1.16999996e+00f,
+        1.17999995e+00f, 1.19000006e+00f,
     };
 
     for (i = 0; i < 20; i++)
@@ -3223,35 +3278,45 @@ static void test_D3DXSHMultiply3(void)
 
     D3DXSHMultiply3(c, a, b);
     for (i = 0; i < 20; i++)
-        ok(relative_error(c[i], expected[i]) < admitted_error,
-                "Expected[%d] = %f, received = %f\n", i, expected[i], c[i]);
-    for (i = 0; i < 20; i++)
-        c[i] = a[i];
+    {
+        equal = compare_float(c[i], expected[i], 4);
+        ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[i], c[i]);
+    }
+
+    memcpy(c, a, sizeof(c));
     D3DXSHMultiply3(c, c, b);
     for (i = 0; i < 20; i++)
-        ok(relative_error(c[i], expected_aliased[i]) < admitted_error,
-                "Expected[%d] = %f, received = %f\n", i, expected_aliased[i], c[i]);
+    {
+        equal = compare_float(c[i], expected_aliased[i], 32);
+        ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected_aliased[i], c[i]);
+    }
 }
 
 static void test_D3DXSHMultiply4(void)
 {
+    float a[20], b[20], c[20];
     unsigned int i;
-    FLOAT a[20], b[20], c[20];
-    /* D3DXSHMultiply4 only modifies the first 16 elements of the array */
-    const FLOAT expected[] =
-    { /* c, a, b */
-        14.182599f, 2.615703f, 12.828601f, 9.820596f, 3.039696f, 4.530442f,
-        5.820584f, 12.249846f, 2.194346f, 3.900152f, 5.416609f, 5.601813f,
-        0.959982f, 7.037550f, 3.625230f, 0.463601f, 16.0f, 17.0f, 18.0f, 19.0f,
-      /* c, c, b */
-        -211441.265625f, -2529.157715f, -10023.393555f, -441.277191f, -163.994385f,
-        -526.305115f, 29636.187500f, -3931.830811f, -13577.111328f, -3978.973877f,
-        -10330.341797f, -13779.787109f, -16685.109375f, -44981.375000f, -73269.742188f,
-        -95237.335938f, 16.0f, 17.0f, 18.0f, 19.0f,
-      /* c, c, c */
-        0.236682f, -0.717649f, -0.180500f, -0.077124f, 0.144831f, 0.573286f,
-        -0.337959f, 0.055694f, -0.442100f, 0.147702f, -0.055157f, 0.084337f,
-        0.179877f, 0.009099f, 0.232200f, 0.074142f, 1.6f, 1.7f, 1.8f, 1.9f, };
+    BOOL equal;
+
+    /* D3DXSHMultiply4() only modifies the first 16 elements of the array. */
+    static const float expected[] =
+    {
+        /* c, a, b */
+         1.41825991e+01f,  2.61570334e+00f,  1.28286009e+01f,  9.82059574e+00f,  3.03969646e+00f,  4.53044176e+00f,
+         5.82058382e+00f,  1.22498465e+01f,  2.19434643e+00f,  3.90015244e+00f,  5.41660881e+00f,  5.60181284e+00f,
+         9.59981740e-01f,  7.03754997e+00f,  3.62523031e+00f,  4.63601470e-01f,  1.60000000e+01f,  1.70000000e+01f,
+         1.80000000e+01f,  1.90000000e+01f,
+        /* c, c, b */
+        -2.11441266e+05f, -2.52915771e+03f, -1.00233936e+04f, -4.41277191e+02f, -1.63994385e+02f, -5.26305115e+02f,
+         2.96361875e+04f, -3.93183081e+03f, -1.35771113e+04f, -3.97897388e+03f, -1.03303418e+04f, -1.37797871e+04f,
+        -1.66851094e+04f, -4.49813750e+04f, -7.32697422e+04f, -9.52373359e+04f,  1.60000000e+01f,  1.70000000e+01f,
+         1.80000000e+01f,  1.90000000e+01f,
+        /* c, c, c */
+         2.36682415e-01f, -7.17648506e-01f, -1.80499524e-01f, -7.71235973e-02f,  1.44830629e-01f,  5.73285699e-01f,
+        -3.37959230e-01f,  5.56938872e-02f, -4.42100227e-01f,  1.47701755e-01f, -5.51566519e-02f,  8.43374059e-02f,
+         1.79876596e-01f,  9.09878965e-03f,  2.32199892e-01f,  7.41420984e-02f,  1.60000002e+00f,  1.70000005e+00f,
+         1.80000007e+00f,  1.89999998e+00f,
+    };
 
     for (i = 0; i < 20; i++)
     {
@@ -3262,7 +3327,10 @@ static void test_D3DXSHMultiply4(void)
 
     D3DXSHMultiply4(c, a, b);
     for (i = 0; i < 20; i++)
-        ok(relative_error(c[i], expected[i]) < admitted_error, "Expected[%d] = %f, received = %f\n", i, expected[i], c[i]);
+    {
+        equal = compare_float(c[i], expected[i], 16);
+        ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[i], c[i]);
+    }
 
     for (i = 0; i < 20; i++)
     {
@@ -3272,60 +3340,72 @@ static void test_D3DXSHMultiply4(void)
 
     D3DXSHMultiply4(c, c, b);
     for (i = 0; i < 20; i++)
-        ok(relative_error(c[i], expected[20 + i]) < admitted_error, "Expected[%d] = %f, received = %f\n", i, expected[20 + i], c[i]);
+    {
+        equal = compare_float(c[i], expected[20 + i], 32);
+        ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[20 + i], c[i]);
+    }
 
     for (i = 0; i < 20; i++)
         c[i] = 0.1f * i;
 
     D3DXSHMultiply4(c, c, c);
     for (i = 0; i < 20; i++)
-        ok(relative_error(c[i], expected[40 + i]) < admitted_error, "Expected[%d] = %f, received = %f\n", i, expected[40 + i], c[i]);
+    {
+        equal = compare_float(c[i], expected[40 + i], 8);
+        ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[40 + i], c[i]);
+    }
 }
 
 static void test_D3DXSHRotate(void)
 {
-    D3DXMATRIX m[4];
-    FLOAT expected, in[49], out[49], *out_temp, *received_ptr;
-    static const FLOAT table[]=
-    { /* Rotation around X-axis Pi/2 */
-        1.01f, -3.01f, 2.01f, 4.01f, -8.01f, -6.01f,
-        -11.307890f, 5.01f, -1.565839f, 1.093598f, -11.01f, 19.833414f,
-        -15.268191f, -19.004118f, -3.364889f, -9.562627f, 12.099654f, -0.272131f,
-        30.241013f, 26.919991f, 39.236877f, -22.632446f, 6.707388f, -11.768282f,
-        3.443672f, -6.07445f, 11.61839f, 1.527561f, 37.89633f, -56.9012f,
-        47.42289f, 50.39153f, 10.61819f, 25.50101f, 0.049241f, 16.98330f,
-
-        1.01f, -3.01f, -3.01f, 4.01f, -8.01f, -6.01f, -11.307889f, -8.01f, 14.297919f,
-      /* Rotation around X-axis -Pi/2 */
-        1.01f, 3.01f, -2.01f, 4.01f, 8.01f, -6.01f,
-        -11.307890f, -5.01f, -1.565839f, -1.093598f, -11.01f, -19.833414f,
-        15.268191f, -19.004118f, 3.364889f, -9.562627f, -12.099654f, -0.272131f,
-        -30.241013f, 26.919991f, 39.236877f, 22.632446f, 6.707388f, 11.768282f,
-        3.443672f, 6.07445f, 11.61839f, -1.527561f, 37.89633f, 56.9012f,
-        -47.42289f, 50.39153f, -10.61819f, 25.50101f, -0.049248f, 16.98330f,
-
-        1.01f, 3.01f, -3.01f, 4.01f, 8.01f, -6.01f, -11.307890f, -8.01f, 14.297919f,
-      /* Yaw Pi/3, Pitch Pi/4, Roll Pi/5 */
-        1.01f, 4.944899f, 1.442301f, 1.627281f, 0.219220f, 10.540824f,
-        -9.136903f, 2.763750f, -7.30904f,  -5.875721f, 5.303124f,  -8.682154f,
-        -25.683384f, 1.680279f, -18.808388f, 7.653656f, 16.939133f, -17.328018f,
-        14.629795f, -54.467102f, -12.231035f, -4.089857f, -9.444222f, 3.056035f,
-        0.179257f, -10.041875f, 23.090092f, -23.188709f, 11.727098f, -65.183090f,
-        48.671577f, -15.073209f, 38.793171f, -26.039536f, 6.192769f, -17.672247f,
-
-        1.01f, 4.944899f, -0.891142f, 4.607695f, 0.219218f, 10.773325f,
-        -8.204769f, 13.563829f, -12.007767f,
-      /* Rotation around Z-axis Pi/6 */
-        1.01f, 3.745711f, 3.01f, 2.467762f, 10.307889f, 9.209813f,
-        7.01f, 3.931864f, 0.166212f, 16.01f, 18.504042f, 17.405966f,
-        13.01f, 6.128016f, -2.029941f, -10.01f, 13.154292f, 24.01f,
-        29.432245f, 28.334167f, 21.01f, 9.056221f, -4.958143f, -18.01f,
-        -27.236094f, -4.520332f, 16.814543f, 34.01f, 43.092495f, 41.994423f,
-        31.01f, 12.716471f, -8.618400f, -28.01f, -40.896347f, -44.190571,
-
-        1.01f, 3.745711f, 3.01f, 1.599906f, 10.307889f, 9.209813f,
-        7.01f, 2.331957f, -4.421894f, };
+    float expected, in[49], out[49], *out_temp, *received_ptr;
     unsigned int i, j, l, order;
+    D3DXMATRIX m[4];
+    BOOL equal;
+
+    static const float table[]=
+    {
+        /* Rotation around the x-axis, π/2. */
+         1.00999999e+00f, -3.00999999e+00f,  2.00999975e+00f,  4.01000023e+00f, -8.01000023e+00f, -6.00999928e+00f,
+        -1.13078899e+01f,  5.00999975e+00f, -1.56583869e+00f,  1.09359801e+00f, -1.10099983e+01f,  1.98334141e+01f,
+        -1.52681913e+01f, -1.90041180e+01f, -3.36488891e+00f, -9.56262684e+00f,  1.20996542e+01f, -2.72131383e-01f,
+         3.02410126e+01f,  2.69199905e+01f,  3.92368774e+01f, -2.26324463e+01f,  6.70738792e+00f, -1.17682819e+01f,
+         3.44367194e+00f, -6.07445812e+00f,  1.16183939e+01f,  1.52756083e+00f,  3.78963356e+01f, -5.69012184e+01f,
+         4.74228935e+01f,  5.03915329e+01f,  1.06181908e+01f,  2.55010109e+01f,  4.92456071e-02f,  1.69833069e+01f,
+
+         1.00999999e+00f, -3.00999999e+00f, -3.01000023e+00f,  4.01000023e+00f, -8.01000023e+00f, -6.00999928e+00f,
+        -1.13078890e+01f, -8.01000023e+00f,  1.42979193e+01f,
+        /* Rotation around the x-axis, -π/2. */
+         1.00999999e+00f,  3.00999999e+00f, -2.01000023e+00f,  4.01000023e+00f,  8.01000023e+00f, -6.01000118e+00f,
+        -1.13078880e+01f, -5.01000071e+00f, -1.56583774e+00f, -1.09359753e+00f, -1.10100021e+01f, -1.98334103e+01f,
+         1.52681961e+01f, -1.90041142e+01f,  3.36489248e+00f, -9.56262398e+00f, -1.20996523e+01f, -2.72129118e-01f,
+        -3.02410049e+01f,  2.69200020e+01f,  3.92368736e+01f,  2.26324520e+01f,  6.70738268e+00f,  1.17682877e+01f,
+         3.44367099e+00f,  6.07445717e+00f,  1.16183996e+01f, -1.52756333e+00f,  3.78963509e+01f,  5.69011993e+01f,
+        -4.74229126e+01f,  5.03915253e+01f, -1.06182041e+01f,  2.55009995e+01f, -4.92481887e-02f,  1.69833050e+01f,
+
+         1.00999999e+00f,  3.00999999e+00f, -3.01000023e+00f,  4.01000023e+00f,  8.01000023e+00f, -6.01000118e+00f,
+        -1.13078899e+01f, -8.01000023e+00f,  1.42979193e+01f,
+        /* Yaw π/3, pitch π/4, roll π/5. */
+         1.00999999e+00f,  4.94489908e+00f,  1.44230127e+00f,  1.62728095e+00f,  2.19220325e-01f,  1.05408239e+01f,
+        -9.13690281e+00f,  2.76374960e+00f, -7.30904531e+00f, -5.87572050e+00f,  5.30312395e+00f, -8.68215370e+00f,
+        -2.56833839e+01f,  1.68027866e+00f, -1.88083878e+01f,  7.65365601e+00f,  1.69391327e+01f, -1.73280182e+01f,
+         1.46297951e+01f, -5.44671021e+01f, -1.22310352e+01f, -4.08985710e+00f, -9.44422245e+00f,  3.05603528e+00f,
+         1.79257303e-01f, -1.00418749e+01f,  2.30900917e+01f, -2.31887093e+01f,  1.17270985e+01f, -6.51830902e+01f,
+         4.86715775e+01f, -1.50732088e+01f,  3.87931709e+01f, -2.60395355e+01f,  6.19276857e+00f, -1.76722469e+01f,
+
+         1.00999999e+00f,  4.94489908e+00f, -8.91142070e-01f,  4.60769463e+00f,  2.19218358e-01f,  1.07733250e+01f,
+        -8.20476913e+00f,  1.35638294e+01f, -1.20077667e+01f,
+        /* Rotation around the z-axis, π/6. */
+         1.00999999e+00f,  3.74571109e+00f,  3.00999999e+00f,  2.46776199e+00f,  1.03078890e+01f,  9.20981312e+00f,
+         7.01000023e+00f,  3.93186355e+00f,  1.66212186e-01f,  1.60099983e+01f,  1.85040417e+01f,  1.74059658e+01f,
+         1.30100002e+01f,  6.12801647e+00f, -2.02994061e+00f, -1.00100012e+01f,  1.31542921e+01f,  2.40099964e+01f,
+         2.94322453e+01f,  2.83341675e+01f,  2.10100021e+01f,  9.05622101e+00f, -4.95814323e+00f, -1.80100002e+01f,
+        -2.72360935e+01f, -4.52033186e+00f,  1.68145428e+01f,  3.40099945e+01f,  4.30924950e+01f,  4.19944229e+01f,
+         3.10100002e+01f,  1.27164707e+01f, -8.61839962e+00f, -2.80100021e+01f, -4.08963470e+01f, -4.41905708e+01f,
+
+         1.00999999e+00f,  3.74571109e+00f,  3.00999999e+00f,  1.59990644e+00f,  1.03078890e+01f,  9.20981312e+00f,
+         7.01000023e+00f,  2.33195710e+00f, -4.42189360e+00f,
+    };
 
     D3DXMatrixRotationX(&m[0], -D3DX_PI / 2.0f);
     D3DXMatrixRotationX(&m[1], D3DX_PI / 2.0f);
@@ -3350,7 +3430,8 @@ static void test_D3DXSHRotate(void)
                 }
 
                 received_ptr = D3DXSHRotate(out_temp, order, &m[j], in);
-                ok(received_ptr == out_temp, "Order %u, expected %p, received %p\n", order, out, received_ptr);
+                ok(received_ptr == out_temp, "Order %u, expected %p, received %p.\n",
+                        order, out, received_ptr);
 
                 for (i = 0; i < 49; i++)
                 {
@@ -3365,8 +3446,9 @@ static void test_D3DXSHRotate(void)
                         expected = table[45 * j + i];
                     else
                         expected = table[45 * j + 36 +i];
-                    ok(relative_error(out_temp[i], expected) < admitted_error,
-                        "Order %u index %u, expected %f, received %f\n", order, i, expected, out_temp[i]);
+                    equal = compare_float(out_temp[i], expected, 4096);
+                    ok(equal, "Order %u index %u, expected %.8e, received %.8e.\n",
+                            order, i, expected, out_temp[i]);
                 }
             }
         }
@@ -3375,72 +3457,77 @@ static void test_D3DXSHRotate(void)
 
 static void test_D3DXSHRotateZ(void)
 {
+    float expected, in[49], out[49], *out_temp, *received_ptr;
     unsigned int end, i, j, l, order, square;
-    FLOAT expected, in[49], out[49], *out_temp, *received_ptr;
-    const FLOAT angle[] = { D3DX_PI / 3.0f, -D3DX_PI / 3.0f, 4.0f * D3DX_PI / 3.0f, }, table[] =
-    { /* Angle = D3DX_PI / 3.0f */
-      1.01f, 4.477762f, 3.010000f, 0.264289f, 5.297888f, 9.941864f,
-      7.010000f, -1.199813f, -8.843789f, -10.010002f, 7.494040f, 18.138016f,
-      13.010000, -3.395966f, -17.039942f, -16.009998f, -30.164297f, -18.010004f,
-      10.422242f, 29.066219f, 21.010000f, -6.324171f, -27.968145f, -24.009998f,
-      2.226099f, -18.180565, -43.824551f, -28.010004f, 14.082493f, 42.726471f,
-      31.010000f, -9.984426f, -41.628399f, -34.009995f, 5.886358f, 40.530331f,
+    BOOL equal;
 
-      1.01f, 4.477762f, 0.0f, -5.816784f, 5.297888f, 6.936864f,
-      0.0f, -9.011250f, -2.294052f, -10.010002f, 12.999042f, 12.133017f,
-      0.0f, -15.761250f, -5.628748f, 0.0f, -30.164297f, 0.0f,
-      19.927244f, 19.061220f, 0.0f, -24.761251f, -8.628748f, 0.0f,
-      -13.061530f, -18.180565f, -30.319553f, 0.0f, 28.587496f, 27.721474f,
-      0.0f, -36.011253f, -12.378746f, 0.0f, -13.128758f, -23.617250f,
+    static const float angle[] = {D3DX_PI / 3.0f, -D3DX_PI / 3.0f, 4.0f * D3DX_PI / 3.0f};
+    static const float table[] =
+    {
+        /* Angle π/3. */
+         1.00999999e+00f,  4.47776222e+00f,  3.00999999e+00f,  2.64288902e-01f,  5.29788828e+00f,  9.94186401e+00f,
+         7.01000023e+00f, -1.19981313e+00f, -8.84378910e+00f, -1.00100021e+01f,  7.49403954e+00f,  1.81380157e+01f,
+         1.30100002e+01f, -3.39596605e+00f, -1.70399418e+01f, -1.60099983e+01f, -3.01642971e+01f, -1.80100040e+01f,
+         1.04222422e+01f,  2.90662193e+01f,  2.10100002e+01f, -6.32417059e+00f, -2.79681454e+01f, -2.40099983e+01f,
+         2.22609901e+00f, -1.81805649e+01f, -4.38245506e+01f, -2.80100040e+01f,  1.40824928e+01f,  4.27264709e+01f,
+         3.10100002e+01f, -9.98442554e+00f, -4.16283989e+01f, -3.40099945e+01f,  5.88635778e+00f,  4.05303307e+01f,
 
-      1.010000f, 3.977762f, 3.977762f, 1.114195f, 7.245791f, 10.559759f,
-      10.559759f, -0.995160f, -0.467341f, 0.467339f, 12.765371f, 18.515701f,
-      18.515701f, -1.797287f, 0.493916f, -0.493916f, -21.412342f, 21.412338f,
-      9.221072f, 23.671757f, 23.671757f, 3.850195f, -20.468727f, 20.468723f,
-      -10.662103f, -36.516628f, -12.061245f, 12.061240f, 22.556875f, 38.999908f,
-      38.999908f, -0.034875f, -10.427902f, 10.427900f, -36.838284f, -27.652803f,
-      /* Angle = -D3DX_PI / 3.0f */
-      1.01f, -2.467762f, 3.010000f, 3.745711f, -10.307890f, -3.931864f,
-      7.010000f, 9.209813f, -0.166214f, -10.010002f, -18.504044f, -6.128017f,
-      13.010000f, 17.405966f, 2.029938f, -16.009998f, 13.154303f, -18.010004f,
-      -29.432247f, -9.056221f, 21.010000f, 28.334169f, 4.958139f, -24.010002f,
-      -27.236092f, 44.190582f, 16.814558f, -28.009996f, -43.092499f, -12.716474f,
-      31.010000f, 41.994423f, 8.618393f, -34.010002f, -40.896347f, -4.520310f,
+         1.00999999e+00f,  4.47776222e+00f,  0.00000000e+00f, -5.81678391e+00f,  5.29788828e+00f,  6.93686390e+00f,
+         0.00000000e+00f, -9.01125050e+00f, -2.29405236e+00f, -1.00100021e+01f,  1.29990416e+01f,  1.21330166e+01f,
+         0.00000000e+00f, -1.57612505e+01f, -5.62874842e+00f,  0.00000000e+00f, -3.01642971e+01f, -3.29017075e-06f,
+         1.99272442e+01f,  1.90612202e+01f,  0.00000000e+00f, -2.47612514e+01f, -8.62874794e+00f,  0.00000000e+00f,
+        -1.30615301e+01f, -1.81805649e+01f, -3.03195534e+01f, -4.66050415e-06f,  2.85874958e+01f,  2.77214737e+01f,
+         0.00000000e+00f, -3.60112534e+01f, -1.23787460e+01f,  0.00000000e+00f, -1.31287584e+01f, -2.36172504e+01f,
 
-      1.01f, -2.467762f, 0.0f, -3.205718f, -10.307890f, -6.936864f,
-      0.0f, -9.011250f, -4.463446f, -10.009998f, -12.999042f, -12.133017f,
-      0.0f, -15.761250f, -5.628748f, 0.0f, 13.154303f, 0.0f,
-      -19.927244f, -19.061220f, 0.0f, -24.761251f, -8.628748f, 0.0f,
-      -5.695983f, 44.190582f, 30.319553f, 0.0f, -28.587496f, -27.721474f,
-      0.0f, -36.011253f, -12.378746f, 0.0f, -13.128758f, -57.405258f,
+         1.00999999e+00f,  3.97776222e+00f,  3.97776222e+00f,  1.11419535e+00f,  7.24579096e+00f,  1.05597591e+01f,
+         1.05597591e+01f, -9.95159924e-01f, -4.67341393e-01f,  4.67339337e-01f,  1.27653713e+01f,  1.85157013e+01f,
+         1.85157013e+01f, -1.79728663e+00f,  4.93915796e-01f, -4.93915856e-01f, -2.14123421e+01f,  2.14123383e+01f,
+         9.22107220e+00f,  2.36717567e+01f,  2.36717567e+01f,  3.85019469e+00f, -2.04687271e+01f,  2.04687233e+01f,
+        -1.06621027e+01f, -3.65166283e+01f, -1.20612450e+01f,  1.20612402e+01f,  2.25568752e+01f,  3.89999084e+01f,
+         3.89999084e+01f, -3.48751247e-02f, -1.04279022e+01f,  1.04279003e+01f, -3.68382835e+01f, -2.76528034e+01f,
+        /* Angle -π/3. */
+         1.00999999e+00f, -2.46776247e+00f,  3.00999999e+00f,  3.74571109e+00f, -1.03078899e+01f, -3.93186426e+00f,
+         7.01000023e+00f,  9.20981312e+00f, -1.66213632e-01f, -1.00099983e+01f, -1.85040436e+01f, -6.12801695e+00f,
+         1.30100002e+01f,  1.74059658e+01f,  2.02993774e+00f, -1.60100021e+01f,  1.31543026e+01f, -1.80099964e+01f,
+        -2.94322472e+01f, -9.05622101e+00f,  2.10100002e+01f,  2.83341694e+01f,  4.95813942e+00f, -2.40100021e+01f,
+        -2.72360916e+01f,  4.41905823e+01f,  1.68145580e+01f, -2.80099964e+01f, -4.30924988e+01f, -1.27164736e+01f,
+         3.10100002e+01f,  4.19944229e+01f,  8.61839294e+00f, -3.40100021e+01f, -4.08963470e+01f, -4.52030993e+00f,
 
-      1.010000f, -2.967762f, -2.967762f, -0.609195f, -7.498291f, -10.686009f,
-      -10.686009f, -11.836716f, 5.390780f, -5.390779f, -10.303651f, -17.284842f,
-      -17.284842f, -17.565643f, 4.114273f, -4.114273f, 23.716436f, -23.716433f,
-      -8.069025f, -23.095732f, -23.095732f, -18.535847f, -11.271107f, 11.271104f,
-      -2.072484f, 30.149330f, 15.244893f, -15.244888f, -20.965050f, -38.203999f,
-      -38.203999f, -37.258266f, 5.426677f, -5.426679f, -23.396751f, -9.903559f,
-      /* Angle = 4.0f * D3DX_PI / 3.0f */
-      1.01f, -4.477762f, 3.010000f, -0.264289f, 5.297887f, -9.941864f,
-      7.010000f, 1.199814f, -8.843788f, 10.010004f, 7.494038f, -18.138016f,
-      13.010000f, 3.395967f, -17.039940f, 16.009996f, -30.164293f, 18.010006f,
-      10.422239f, -29.066219f, 21.010000f, 6.324172f, -27.968143f, 24.009993f,
-      2.226105f, 18.180552f, -43.824543f, 28.010008f, 14.082489f, -42.726471f,
-      31.010000f, 9.984427f, -41.628399f, 34.009987f, 5.886366f, -40.530327f,
+         1.00999999e+00f, -2.46776247e+00f,  0.00000000e+00f, -3.20571756e+00f, -1.03078899e+01f, -6.93686390e+00f,
+         0.00000000e+00f, -9.01125050e+00f, -4.46344614e+00f, -1.00099983e+01f, -1.29990416e+01f, -1.21330166e+01f,
+         0.00000000e+00f, -1.57612505e+01f, -5.62874842e+00f,  0.00000000e+00f,  1.31543026e+01f,  3.29017075e-06f,
+        -1.99272442e+01f, -1.90612202e+01f,  0.00000000e+00f, -2.47612514e+01f, -8.62874794e+00f,  0.00000000e+00f,
+        -5.69598293e+00f,  4.41905823e+01f,  3.03195534e+01f,  4.66050415e-06f, -2.85874958e+01f, -2.77214737e+01f,
+         0.00000000e+00f, -3.60112534e+01f, -1.23787460e+01f,  0.00000000e+00f, -1.31287584e+01f, -5.74052582e+01f,
 
-      1.01f, -4.477762f, 0.0f, -1.938928f, 5.297887f, -6.936864f,
-      0.0f, -3.003751f, -2.294051f, 10.010004f, 12.999040f, -12.133017f,
-      0.0f, -5.253751f, -5.628747f, 0.0f, -30.164293f, 0.0f,
-      19.927242f, -19.061220f, 0.0f, -8.253753f, -8.628746f, 0.0f,
-      -13.061535f, 18.180552f, -30.319553f, 0.0f, 28.587492f, -27.721474f,
-      0.0f, -12.003753f, -12.378742f, 0.0f, -13.128765f, -7.872400f,
+         1.00999999e+00f, -2.96776223e+00f, -2.96776223e+00f, -6.09195352e-01f, -7.49829102e+00f, -1.06860094e+01f,
+        -1.06860094e+01f, -1.18367157e+01f,  5.39078045e+00f, -5.39077854e+00f, -1.03036509e+01f, -1.72848415e+01f,
+        -1.72848415e+01f, -1.75656433e+01f,  4.11427259e+00f, -4.11427307e+00f,  2.37164364e+01f, -2.37164326e+01f,
+        -8.06902504e+00f, -2.30957317e+01f, -2.30957317e+01f, -1.85358467e+01f, -1.12711067e+01f,  1.12711039e+01f,
+        -2.07248449e+00f,  3.01493301e+01f,  1.52448931e+01f, -1.52448883e+01f, -2.09650497e+01f, -3.82039986e+01f,
+        -3.82039986e+01f, -3.72582664e+01f,  5.42667723e+00f, -5.42667913e+00f, -2.33967514e+01f, -9.90355873e+00f,
+        /* Angle 4π/3. */
+         1.00999999e+00f, -4.47776222e+00f,  3.00999999e+00f, -2.64288664e-01f,  5.29788685e+00f, -9.94186401e+00f,
+         7.01000023e+00f,  1.19981360e+00f, -8.84378815e+00f,  1.00100040e+01f,  7.49403811e+00f, -1.81380157e+01f,
+         1.30100002e+01f,  3.39596677e+00f, -1.70399399e+01f,  1.60099964e+01f, -3.01642933e+01f,  1.80100060e+01f,
+         1.04222393e+01f, -2.90662193e+01f,  2.10100002e+01f,  6.32417202e+00f, -2.79681435e+01f,  2.40099926e+01f,
+         2.22610497e+00f,  1.81805515e+01f, -4.38245430e+01f,  2.80100079e+01f,  1.40824890e+01f, -4.27264709e+01f,
+         3.10100002e+01f,  9.98442745e+00f, -4.16283989e+01f,  3.40099869e+01f,  5.88636589e+00f, -4.05303268e+01f,
 
-      1.010000f, -3.977762f, -3.977762f, 2.863566f, 6.371104f, -10.122416f,
-      -10.122416f, 10.578746f, -7.769295f, -7.769290f, 16.883686f, -20.574858f,
-      -20.574858f, 24.909130f, -5.726166f, -5.726164f, -18.796221f, -18.796211f,
-      29.325350f, -33.723892f, -33.723892f, 42.258442f, -4.851232f, -4.851226f,
-      -2.533393f, 32.452259f, -46.545670f, -46.545654f, 51.860325f, -53.651630f,
-      -53.651630f, 71.738174f, 4.440616f, 4.440629f, 25.884174f, -10.748116f, };
+         1.00999999e+00f, -4.47776222e+00f,  0.00000000e+00f, -1.93892837e+00f,  5.29788685e+00f, -6.93686390e+00f,
+         0.00000000e+00f, -3.00375080e+00f, -2.29405141e+00f,  1.00100040e+01f,  1.29990396e+01f, -1.21330166e+01f,
+         0.00000000e+00f, -5.25375128e+00f, -5.62874699e+00f, -5.68378528e-06f, -3.01642933e+01f,  7.00829787e-06f,
+         1.99272423e+01f, -1.90612202e+01f,  0.00000000e+00f, -8.25375271e+00f, -8.62874603e+00f, -4.09131496e-12f,
+        -1.30615349e+01f,  1.81805515e+01f, -3.03195534e+01f,  9.92720470e-06f,  2.85874920e+01f, -2.77214737e+01f,
+         0.00000000e+00f, -1.20037527e+01f, -1.23787422e+01f, -5.79531909e-12f, -1.31287651e+01f, -7.87240028e+00f,
+
+         1.00999999e+00f, -3.97776222e+00f, -3.97776222e+00f,  2.86356640e+00f,  6.37110424e+00f, -1.01224155e+01f,
+        -1.01224155e+01f,  1.05787458e+01f, -7.76929522e+00f, -7.76928997e+00f,  1.68836861e+01f, -2.05748577e+01f,
+        -2.05748577e+01f,  2.49091301e+01f, -5.72616625e+00f, -5.72616386e+00f, -1.87962208e+01f, -1.87962112e+01f,
+         2.93253498e+01f, -3.37238922e+01f, -3.37238922e+01f,  4.22584419e+01f, -4.85123205e+00f, -4.85122633e+00f,
+        -2.53339314e+00f,  3.24522591e+01f, -4.65456696e+01f, -4.65456543e+01f,  5.18603249e+01f, -5.36516304e+01f,
+        -5.36516304e+01f,  7.17381744e+01f,  4.44061565e+00f,  4.44062901e+00f,  2.58841743e+01f, -1.07481155e+01f,
+    };
 
     for (l = 0; l < 3; l++)
     {
@@ -3478,7 +3565,10 @@ static void test_D3DXSHRotateZ(void)
                             expected = ( i + 1.0f ) * ( i + 1.0f );
                     else
                         expected = table[36 * (l + 3 * j) + i];
-                    ok(relative_error(expected, out_temp[i]) < admitted_error, "angle %f, order %u index %u, expected %f, received %f\n", angle[j], order, i, expected, out_temp[i]);
+                    equal = compare_float(expected, out_temp[i], 256);
+                    ok(equal || (fabs(expected) < 2.0e-5f && fabs(out_temp[i]) < 2.0e-5f),
+                            "angle %.8e, order %u index %u, expected %.8e, received %.8e.\n",
+                            angle[j], order, i, expected, out_temp[i]);
                 }
             }
         }

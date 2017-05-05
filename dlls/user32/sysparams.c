@@ -174,7 +174,6 @@ static const WCHAR SMCAPTIONWIDTH_VALNAME[]=           {METRICS_KEY,'S','m','C',
 static const WCHAR SMCAPTIONHEIGHT_VALNAME[]=          {METRICS_KEY,'S','m','C','a','p','t','i','o','n','H','e','i','g','h','t',0};
 static const WCHAR MENUWIDTH_VALNAME[]=                {METRICS_KEY,'M','e','n','u','W','i','d','t','h',0};
 static const WCHAR MENUHEIGHT_VALNAME[]=               {METRICS_KEY,'M','e','n','u','H','e','i','g','h','t',0};
-static const WCHAR ICONSIZE_VALNAME[]=                 {METRICS_KEY,'S','h','e','l','l',' ','I','c','o','n',' ','S','i','z','e',0};
 static const WCHAR PADDEDBORDERWIDTH_VALNAME[]=        {METRICS_KEY,'P','a','d','d','e','d','B','o','r','d','e','r','W','i','d','t','h',0};
 static const WCHAR CAPTIONLOGFONT_VALNAME[]=           {METRICS_KEY,'C','a','p','t','i','o','n','F','o','n','t',0};
 static const WCHAR SMCAPTIONLOGFONT_VALNAME[]=         {METRICS_KEY,'S','m','C','a','p','t','i','o','n','F','o','n','t',0};
@@ -1158,7 +1157,6 @@ static UINT_ENTRY( DRAGHEIGHT, 4 );
 static UINT_ENTRY( DOUBLECLICKTIME, 500 );
 static UINT_ENTRY( FONTSMOOTHING, 2 );
 static UINT_ENTRY( GRIDGRANULARITY, 0 );
-static UINT_ENTRY( ICONSIZE, 32 );
 static UINT_ENTRY( KEYBOARDDELAY, 1 );
 static UINT_ENTRY( KEYBOARDSPEED, 31 );
 static UINT_ENTRY( MENUSHOWDELAY, 400 );
@@ -1323,7 +1321,6 @@ static union sysparam_all_entry * const default_entries[] =
     (union sysparam_all_entry *)&entry_FOREGROUNDFLASHCOUNT,
     (union sysparam_all_entry *)&entry_FOREGROUNDLOCKTIMEOUT,
     (union sysparam_all_entry *)&entry_ICONHORIZONTALSPACING,
-    (union sysparam_all_entry *)&entry_ICONSIZE,
     (union sysparam_all_entry *)&entry_ICONTITLEWRAP,
     (union sysparam_all_entry *)&entry_ICONVERTICALSPACING,
     (union sysparam_all_entry *)&entry_KEYBOARDDELAY,
@@ -1490,7 +1487,12 @@ BOOL WINAPI SystemParametersInfoW( UINT uiAction, UINT uiParam,
         if (pvParam != NULL)
             ret = get_entry( &entry_ICONHORIZONTALSPACING, uiParam, pvParam );
         else
-            ret = set_entry( &entry_ICONHORIZONTALSPACING, max( 32, uiParam ), pvParam, fWinIni );
+        {
+            int min_val = 32;
+            if (IsProcessDPIAware())
+                min_val = MulDiv( min_val, get_display_dpi(), USER_DEFAULT_SCREEN_DPI );
+            ret = set_entry( &entry_ICONHORIZONTALSPACING, max( min_val, uiParam ), pvParam, fWinIni );
+        }
         break;
     case SPI_GETSCREENSAVETIMEOUT:
         ret = get_entry( &entry_SCREENSAVETIMEOUT, uiParam, pvParam );
@@ -1528,7 +1530,12 @@ BOOL WINAPI SystemParametersInfoW( UINT uiAction, UINT uiParam,
         if (pvParam != NULL)
             ret = get_entry( &entry_ICONVERTICALSPACING, uiParam, pvParam );
         else
-            ret = set_entry( &entry_ICONVERTICALSPACING, max( 32, uiParam ), pvParam, fWinIni );
+        {
+            int min_val = 32;
+            if (IsProcessDPIAware())
+                min_val = MulDiv( min_val, get_display_dpi(), USER_DEFAULT_SCREEN_DPI );
+            ret = set_entry( &entry_ICONVERTICALSPACING, max( min_val, uiParam ), pvParam, fWinIni );
+        }
         break;
     case SPI_GETICONTITLEWRAP:
         ret = get_entry( &entry_ICONTITLEWRAP, uiParam, pvParam );
@@ -2400,7 +2407,9 @@ INT WINAPI GetSystemMetrics( INT index )
         return max( 8, ret );
     case SM_CXICON:
     case SM_CYICON:
-        get_entry( &entry_ICONSIZE, 0, &ret );
+        ret = 32;
+        if (IsProcessDPIAware())
+            ret = MulDiv( ret, get_display_dpi(), USER_DEFAULT_SCREEN_DPI );
         return ret;
     case SM_CXCURSOR:
     case SM_CYCURSOR:
@@ -2492,7 +2501,10 @@ INT WINAPI GetSystemMetrics( INT index )
         return GetSystemMetrics(SM_CYMINIMIZED) + max( 0, (INT)ret );
     case SM_CXSMICON:
     case SM_CYSMICON:
-        return 16;
+        ret = 16;
+        if (IsProcessDPIAware())
+            ret = MulDiv( ret, get_display_dpi(), USER_DEFAULT_SCREEN_DPI ) & ~1;
+        return ret;
     case SM_CYSMCAPTION:
         return GetSystemMetrics(SM_CYSMSIZE) + 1;
     case SM_CXSMSIZE:
@@ -2898,10 +2910,9 @@ BOOL WINAPI EnumDisplaySettingsExW(LPCWSTR lpszDeviceName, DWORD iModeNum,
 /***********************************************************************
  *              SetProcessDPIAware   (USER32.@)
  */
-BOOL WINAPI SetProcessDPIAware( VOID )
+BOOL WINAPI SetProcessDPIAware(void)
 {
-    FIXME( "stub!\n");
-
+    TRACE("\n");
     return TRUE;
 }
 
@@ -2910,8 +2921,8 @@ BOOL WINAPI SetProcessDPIAware( VOID )
  */
 BOOL WINAPI IsProcessDPIAware(void)
 {
-    FIXME( "stub!\n");
-    return FALSE;
+    TRACE("returning TRUE\n");
+    return TRUE;
 }
 
 /**********************************************************************

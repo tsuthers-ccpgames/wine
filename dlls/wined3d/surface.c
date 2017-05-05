@@ -2596,7 +2596,9 @@ static void ffp_blitter_clear(struct wined3d_blitter *blitter, struct wined3d_de
 
     if (flags & (WINED3DCLEAR_ZBUFFER | WINED3DCLEAR_STENCIL))
     {
-        if (fb->depth_stencil && fb->depth_stencil->resource->pool == WINED3D_POOL_SYSTEM_MEM)
+        view = fb->depth_stencil;
+        if (view && (view->resource->pool == WINED3D_POOL_SYSTEM_MEM
+                || ffp_blitter_use_cpu_clear(view)))
             goto next;
     }
 
@@ -3358,6 +3360,10 @@ static void surface_cpu_blt_colour_fill(struct wined3d_rendertarget_view *view,
         FIXME("Not implemented for format %s.\n", debug_d3dformat(view->format->id));
         return;
     }
+
+    if (view->format->id != view->resource->format->id)
+        FIXME("View format %s doesn't match resource format %s.\n",
+                debug_d3dformat(view->format->id), debug_d3dformat(view->resource->format->id));
 
     if (view->resource->type == WINED3D_RTYPE_BUFFER)
     {

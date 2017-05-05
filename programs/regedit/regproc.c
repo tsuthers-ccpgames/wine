@@ -671,18 +671,16 @@ static enum reg_versions parse_file_header(WCHAR *s)
     return REG_VERSION_INVALID;
 }
 
-static char *get_lineA(FILE *fp)
+static WCHAR *get_lineA(FILE *fp)
 {
+    static WCHAR *lineW;
     static size_t size;
     static char *buf, *next;
     char *line;
 
-    if (!fp)
-    {
-        if (size) HeapFree(GetProcessHeap(), 0, buf);
-        size = 0;
-        return NULL;
-    }
+    HeapFree(GetProcessHeap(), 0, lineW);
+
+    if (!fp) goto cleanup;
 
     if (!size)
     {
@@ -712,7 +710,8 @@ static char *get_lineA(FILE *fp)
             if (!(count = fread(buf + len, 1, size - len - 1, fp)))
             {
                 next = NULL;
-                return buf;
+                lineW = GetWideString(buf);
+                return lineW;
             }
             buf[len + count] = 0;
             next = buf;
@@ -735,47 +734,44 @@ static char *get_lineA(FILE *fp)
             line = next;
             continue;
         }
-        return line;
+        lineW = GetWideString(line);
+        return lineW;
     }
-    HeapFree(GetProcessHeap(), 0, buf);
+
+cleanup:
+    lineW = NULL;
+    if (size) HeapFree(GetProcessHeap(), 0, buf);
     size = 0;
     return NULL;
 }
 
-static BOOL processRegLinesA(FILE *fp, char *two_chars)
+static BOOL processRegLinesA(FILE *fp, WCHAR *(*get_line)(FILE *), char *two_chars)
 {
-    char *line, *header;
-    WCHAR *lineW;
+    WCHAR *line, *header;
     int reg_version;
 
-    line = get_lineA(fp);
+    line = get_line(fp);
 
-    header = HeapAlloc(GetProcessHeap(), 0, strlen(line) + 3);
+    header = HeapAlloc(GetProcessHeap(), 0, (lstrlenW(line) + 3) * sizeof(WCHAR));
     CHECK_ENOUGH_MEMORY(header);
-    strcpy(header, two_chars);
-    strcpy(header + 2, line);
+    header[0] = two_chars[0];
+    header[1] = two_chars[1];
+    lstrcpyW(header + 2, line);
 
-    lineW = GetWideString(header);
+    reg_version = parse_file_header(header);
     HeapFree(GetProcessHeap(), 0, header);
-
-    reg_version = parse_file_header(lineW);
-    HeapFree(GetProcessHeap(), 0, lineW);
     if (reg_version == REG_VERSION_FUZZY || reg_version == REG_VERSION_INVALID)
     {
-        get_lineA(NULL); /* Reset static variables */
+        get_line(NULL); /* Reset static variables */
         return reg_version == REG_VERSION_FUZZY;
     }
 
-    while ((line = get_lineA(fp)))
+    while ((line = get_line(fp)))
     {
-        lineW = GetWideString(line);
-
         if (reg_version == REG_VERSION_31)
-            processRegEntry31(lineW);
+            processRegEntry31(line);
         else
-            processRegEntry(lineW, FALSE);
-
-        HeapFree(GetProcessHeap(), 0, lineW);
+            processRegEntry(line, FALSE);
     }
 
     closeKey();
@@ -788,12 +784,7 @@ static WCHAR *get_lineW(FILE *fp)
     static WCHAR *buf, *next;
     WCHAR *line;
 
-    if (!fp)
-    {
-        if (size) HeapFree(GetProcessHeap(), 0, buf);
-        size = 0;
-        return NULL;
-    }
+    if (!fp) goto cleanup;
 
     if (!size)
     {
@@ -849,25 +840,27 @@ static WCHAR *get_lineW(FILE *fp)
         }
         return line;
     }
-    HeapFree( GetProcessHeap(), 0, buf );
+
+cleanup:
+    if (size) HeapFree(GetProcessHeap(), 0, buf);
     size = 0;
     return NULL;
 }
 
-static BOOL processRegLinesW(FILE *fp)
+static BOOL processRegLinesW(FILE *fp, WCHAR *(*get_line)(FILE *))
 {
     WCHAR *line;
     int reg_version;
 
-    line = get_lineW(fp);
+    line = get_line(fp);
     reg_version = parse_file_header(line);
     if (reg_version == REG_VERSION_FUZZY || reg_version == REG_VERSION_INVALID)
     {
-        get_lineW(NULL); /* Reset static variables */
+        get_line(NULL); /* Reset static variables */
         return reg_version == REG_VERSION_FUZZY;
     }
 
-    while ((line = get_lineW(fp)))
+    while ((line = get_line(fp)))
         processRegEntry(line, TRUE);
 
     closeKey();
@@ -1353,9 +1346,9 @@ BOOL import_registry_file(FILE* reg_file)
         return FALSE;
 
     if (s[0] == 0xff && s[1] == 0xfe)
-        return processRegLinesW(reg_file);
+        return processRegLinesW(reg_file, get_lineW);
     else
-        return processRegLinesA(reg_file, (char *)s);
+        return processRegLinesA(reg_file, get_lineA, (char *)s);
 }
 
 /******************************************************************************
