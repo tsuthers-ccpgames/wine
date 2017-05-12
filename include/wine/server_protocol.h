@@ -885,6 +885,24 @@ struct get_process_info_reply
 
 
 
+struct get_process_vm_counters_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+};
+struct get_process_vm_counters_reply
+{
+    struct reply_header __header;
+    mem_size_t peak_virtual_size;
+    mem_size_t virtual_size;
+    mem_size_t peak_working_set_size;
+    mem_size_t working_set_size;
+    mem_size_t pagefile_usage;
+    mem_size_t peak_pagefile_usage;
+};
+
+
+
 struct set_process_info_request
 {
     struct request_header __header;
@@ -3151,14 +3169,10 @@ struct get_serial_info_request
 struct get_serial_info_reply
 {
     struct reply_header __header;
-    unsigned int readinterval;
-    unsigned int readconst;
-    unsigned int readmult;
-    unsigned int writeconst;
-    unsigned int writemult;
     unsigned int eventmask;
     unsigned int cookie;
     unsigned int pending_write;
+    char __pad_20[4];
 };
 
 
@@ -3168,20 +3182,12 @@ struct set_serial_info_request
     struct request_header __header;
     obj_handle_t handle;
     int          flags;
-    unsigned int readinterval;
-    unsigned int readconst;
-    unsigned int readmult;
-    unsigned int writeconst;
-    unsigned int writemult;
-    unsigned int eventmask;
-    char __pad_44[4];
+    char __pad_20[4];
 };
 struct set_serial_info_reply
 {
     struct reply_header __header;
 };
-#define SERIALINFO_SET_TIMEOUTS  0x01
-#define SERIALINFO_SET_MASK      0x02
 #define SERIALINFO_PENDING_WRITE 0x04
 #define SERIALINFO_PENDING_WAIT  0x08
 
@@ -5553,6 +5559,7 @@ enum request
     REQ_terminate_process,
     REQ_terminate_thread,
     REQ_get_process_info,
+    REQ_get_process_vm_counters,
     REQ_set_process_info,
     REQ_get_thread_info,
     REQ_get_thread_times,
@@ -5843,6 +5850,7 @@ union generic_request
     struct terminate_process_request terminate_process_request;
     struct terminate_thread_request terminate_thread_request;
     struct get_process_info_request get_process_info_request;
+    struct get_process_vm_counters_request get_process_vm_counters_request;
     struct set_process_info_request set_process_info_request;
     struct get_thread_info_request get_thread_info_request;
     struct get_thread_times_request get_thread_times_request;
@@ -6131,6 +6139,7 @@ union generic_reply
     struct terminate_process_reply terminate_process_reply;
     struct terminate_thread_reply terminate_thread_reply;
     struct get_process_info_reply get_process_info_reply;
+    struct get_process_vm_counters_reply get_process_vm_counters_reply;
     struct set_process_info_reply set_process_info_reply;
     struct get_thread_info_reply get_thread_info_reply;
     struct get_thread_times_reply get_thread_times_reply;
@@ -6407,6 +6416,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 527
+#define SERVER_PROTOCOL_VERSION 531
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

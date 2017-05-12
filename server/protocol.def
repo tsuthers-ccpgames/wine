@@ -845,6 +845,19 @@ struct rawinput_device
 @END
 
 
+/* Retrieve information about a process memory usage */
+@REQ(get_process_vm_counters)
+    obj_handle_t handle;                        /* process handle */
+@REPLY
+    mem_size_t peak_virtual_size;               /* peak virtual memory in bytes */
+    mem_size_t virtual_size;                    /* virtual memory in bytes */
+    mem_size_t peak_working_set_size;           /* peak real memory in bytes */
+    mem_size_t working_set_size;                /* real memory in bytes */
+    mem_size_t pagefile_usage;                  /* swapped-out memory in bytes */
+    mem_size_t peak_pagefile_usage;             /* peak swapped-out memory in bytes */
+@END
+
+
 /* Set a process information */
 @REQ(set_process_info)
     obj_handle_t handle;       /* process handle */
@@ -2299,11 +2312,6 @@ enum message_type
     obj_handle_t handle;       /* handle to comm port */
     int          flags;
 @REPLY
-    unsigned int readinterval;
-    unsigned int readconst;
-    unsigned int readmult;
-    unsigned int writeconst;
-    unsigned int writemult;
     unsigned int eventmask;
     unsigned int cookie;
     unsigned int pending_write;
@@ -2314,15 +2322,7 @@ enum message_type
 @REQ(set_serial_info)
     obj_handle_t handle;       /* handle to comm port */
     int          flags;        /* bitmask to set values (see below) */
-    unsigned int readinterval;
-    unsigned int readconst;
-    unsigned int readmult;
-    unsigned int writeconst;
-    unsigned int writemult;
-    unsigned int eventmask;
 @END
-#define SERIALINFO_SET_TIMEOUTS  0x01
-#define SERIALINFO_SET_MASK      0x02
 #define SERIALINFO_PENDING_WRITE 0x04
 #define SERIALINFO_PENDING_WAIT  0x08
 

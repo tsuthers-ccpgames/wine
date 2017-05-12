@@ -1063,8 +1063,6 @@ static void quirk_broken_arb_fog(struct wined3d_gl_info *gl_info)
 
 static void quirk_broken_viewport_subpixel_bits(struct wined3d_gl_info *gl_info)
 {
-    TRACE("Disabling ARB_viewport_array.\n");
-    gl_info->supported[ARB_VIEWPORT_ARRAY] = FALSE;
     if (gl_info->supported[ARB_CLIP_CONTROL])
     {
         TRACE("Disabling ARB_clip_control.\n");
@@ -1394,6 +1392,7 @@ static const struct gpu_description gpu_description_table[] =
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX1060,    "NVIDIA GeForce GTX 1060",          DRIVER_NVIDIA_GEFORCE8,  6144},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX1070,    "NVIDIA GeForce GTX 1070",          DRIVER_NVIDIA_GEFORCE8,  8192},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX1080,    "NVIDIA GeForce GTX 1080",          DRIVER_NVIDIA_GEFORCE8,  8192},
+    {HW_VENDOR_NVIDIA,     CARD_NVIDIA_GEFORCE_GTX1080TI,  "NVIDIA GeForce GTX 1080 Ti",       DRIVER_NVIDIA_GEFORCE8,  11264},
     {HW_VENDOR_NVIDIA,     CARD_NVIDIA_TITANX_PASCAL,      "NVIDIA TITAN X (Pascal)",          DRIVER_NVIDIA_GEFORCE8,  12288},
 
     /* AMD cards */
@@ -1889,6 +1888,7 @@ cards_nvidia_binary[] =
 {
     /* Direct 3D 11 */
     {"TITAN X (Pascal)",            CARD_NVIDIA_TITANX_PASCAL},     /* GeForce 1000 - highend */
+    {"GTX 1080 Ti",                 CARD_NVIDIA_GEFORCE_GTX1080TI}, /* GeForce 1000 - highend */
     {"GTX 1080",                    CARD_NVIDIA_GEFORCE_GTX1080},   /* GeForce 1000 - highend */
     {"GTX 1070",                    CARD_NVIDIA_GEFORCE_GTX1070},   /* GeForce 1000 - highend */
     {"GTX 1060",                    CARD_NVIDIA_GEFORCE_GTX1060},   /* GeForce 1000 - midend high */
@@ -4164,8 +4164,11 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
 
         gl_info->gl_ops.gl.p_glGetIntegerv(GL_VIEWPORT_SUBPIXEL_BITS, &subpixel_bits);
         TRACE("Viewport supports %d subpixel bits.\n", subpixel_bits);
-        if (subpixel_bits < 8)
-            gl_info->supported[ARB_VIEWPORT_ARRAY] = FALSE;
+        if (subpixel_bits < 8 && gl_info->supported[ARB_CLIP_CONTROL])
+        {
+            TRACE("Disabling ARB_clip_control because viewport subpixel bits < 8.\n");
+            gl_info->supported[ARB_CLIP_CONTROL] = FALSE;
+        }
     }
     if (gl_info->supported[ARB_CLIP_CONTROL] && !gl_info->supported[ARB_VIEWPORT_ARRAY])
     {

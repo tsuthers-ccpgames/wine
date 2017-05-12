@@ -218,22 +218,26 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (void) addWindow:(WineWindow*)window
     {
+        BOOL needsStart;
         @synchronized(self) {
-            BOOL needsStart = !_windows.count;
+            needsStart = !_windows.count;
             [_windows addObject:window];
-            if (needsStart)
-                CVDisplayLinkStart(_link);
         }
+        if (needsStart)
+            CVDisplayLinkStart(_link);
     }
 
     - (void) removeWindow:(WineWindow*)window
     {
+        BOOL shouldStop = FALSE;
         @synchronized(self) {
             BOOL wasRunning = _windows.count > 0;
             [_windows removeObject:window];
             if (wasRunning && !_windows.count)
-                CVDisplayLinkStop(_link);
+                shouldStop = TRUE;
         }
+        if (shouldStop)
+            CVDisplayLinkStop(_link);
     }
 
     - (void) fire
@@ -292,6 +296,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 {
     NSMutableArray* glContexts;
     NSMutableArray* pendingGlContexts;
+    BOOL _everHadGLContext;
     BOOL _cachedHasGLDescendant;
     BOOL _cachedHasGLDescendantValid;
     BOOL clearedGlSurface;
@@ -301,6 +306,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     int backingSize[2];
 }
+
+@property (readonly, nonatomic) BOOL everHadGLContext;
 
     - (void) addGLContext:(WineOpenGLContext*)context;
     - (void) removeGLContext:(WineOpenGLContext*)context;
@@ -353,6 +360,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
 
 @implementation WineContentView
+
+@synthesize everHadGLContext = _everHadGLContext;
 
     - (void) dealloc
     {
@@ -463,7 +472,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (void) addGLContext:(WineOpenGLContext*)context
     {
-        BOOL hadContext = [self hasGLContext];
+        BOOL hadContext = _everHadGLContext;
         if (!glContexts)
             glContexts = [[NSMutableArray alloc] init];
         if (!pendingGlContexts)
@@ -485,6 +494,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
             [self setNeedsDisplay:YES];
         }
 
+        _everHadGLContext = YES;
         if (!hadContext)
             [self invalidateHasGLDescendant];
         [(WineWindow*)[self window] updateForGLSubviews];
@@ -492,11 +502,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (void) removeGLContext:(WineOpenGLContext*)context
     {
-        BOOL hadContext = [self hasGLContext];
         [glContexts removeObjectIdenticalTo:context];
         [pendingGlContexts removeObjectIdenticalTo:context];
-        if (hadContext && ![self hasGLContext])
-            [self invalidateHasGLDescendant];
         [(WineWindow*)[self window] updateForGLSubviews];
     }
 
@@ -515,16 +522,11 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         [self updateGLContexts:NO];
     }
 
-    - (BOOL) hasGLContext
-    {
-        return [glContexts count] || [pendingGlContexts count];
-    }
-
     - (BOOL) _hasGLDescendant
     {
         if ([self isHidden])
             return NO;
-        if ([self hasGLContext])
+        if (_everHadGLContext)
             return YES;
         for (WineContentView* view in [self subviews])
         {
@@ -2481,7 +2483,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         NSRect contentRect = [[self contentView] frame];
         BOOL coveredByGLView = FALSE;
         WineContentView* view = (WineContentView*)[[self contentView] hitTest:NSMakePoint(NSMidX(contentRect), NSMidY(contentRect))];
-        if ([view isKindOfClass:[WineContentView class]] && [view hasGLContext])
+        if ([view isKindOfClass:[WineContentView class]] && view.everHadGLContext)
         {
             NSRect frame = [view convertRect:[view bounds] toView:nil];
             if (NSContainsRect(frame, contentRect))

@@ -1619,10 +1619,10 @@ struct wined3d_material
 
 struct wined3d_viewport
 {
-    UINT x;
-    UINT y;
-    UINT width;
-    UINT height;
+    float x;
+    float y;
+    float width;
+    float height;
     float min_z;
     float max_z;
 };
@@ -2216,6 +2216,9 @@ HRESULT __cdecl wined3d_device_get_display_mode(const struct wined3d_device *dev
         struct wined3d_display_mode *mode, enum wined3d_display_rotation *rotation);
 struct wined3d_shader * __cdecl wined3d_device_get_domain_shader(const struct wined3d_device *device);
 struct wined3d_buffer * __cdecl wined3d_device_get_ds_cb(const struct wined3d_device *device, unsigned int idx);
+struct wined3d_shader_resource_view * __cdecl wined3d_device_get_ds_resource_view(const struct wined3d_device *device,
+        unsigned int idx);
+struct wined3d_sampler * __cdecl wined3d_device_get_ds_sampler(const struct wined3d_device *device, unsigned int idx);
 void __cdecl wined3d_device_get_gamma_ramp(const struct wined3d_device *device,
         UINT swapchain_idx, struct wined3d_gamma_ramp *ramp);
 struct wined3d_shader * __cdecl wined3d_device_get_geometry_shader(const struct wined3d_device *device);
@@ -2224,6 +2227,9 @@ struct wined3d_shader_resource_view * __cdecl wined3d_device_get_gs_resource_vie
         UINT idx);
 struct wined3d_sampler * __cdecl wined3d_device_get_gs_sampler(const struct wined3d_device *device, UINT idx);
 struct wined3d_buffer * __cdecl wined3d_device_get_hs_cb(const struct wined3d_device *device, unsigned int idx);
+struct wined3d_shader_resource_view * __cdecl wined3d_device_get_hs_resource_view(const struct wined3d_device *device,
+        unsigned int idx);
+struct wined3d_sampler * __cdecl wined3d_device_get_hs_sampler(const struct wined3d_device *device, unsigned int idx);
 struct wined3d_shader * __cdecl wined3d_device_get_hull_shader(const struct wined3d_device *device);
 struct wined3d_buffer * __cdecl wined3d_device_get_index_buffer(const struct wined3d_device *device,
         enum wined3d_format_id *format, unsigned int *offset);
@@ -2419,8 +2425,8 @@ ULONG __cdecl wined3d_palette_incref(struct wined3d_palette *palette);
 HRESULT __cdecl wined3d_palette_set_entries(struct wined3d_palette *palette,
         DWORD flags, DWORD start, DWORD count, const PALETTEENTRY *entries);
 
-HRESULT __cdecl wined3d_query_create(struct wined3d_device *device,
-        enum wined3d_query_type type, void *parent, struct wined3d_query **query);
+HRESULT __cdecl wined3d_query_create(struct wined3d_device *device, enum wined3d_query_type type,
+        void *parent, const struct wined3d_parent_ops *parent_ops, struct wined3d_query **query);
 ULONG __cdecl wined3d_query_decref(struct wined3d_query *query);
 HRESULT __cdecl wined3d_query_get_data(struct wined3d_query *query, void *data, UINT data_size, DWORD flags);
 UINT __cdecl wined3d_query_get_data_size(const struct wined3d_query *query);

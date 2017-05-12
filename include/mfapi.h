@@ -32,10 +32,17 @@ typedef unsigned __int64 MFWORKITEM_KEY;
 HRESULT WINAPI MFCancelWorkItem(MFWORKITEM_KEY key);
 HRESULT WINAPI MFCreateAttributes(IMFAttributes **attributes, UINT32 size);
 HRESULT WINAPI MFGetTimerPeriodicity(DWORD *periodicity);
+HRESULT WINAPI MFTEnum(GUID category, UINT32 flags, MFT_REGISTER_TYPE_INFO *input_type,
+                       MFT_REGISTER_TYPE_INFO *output_type, IMFAttributes *attributes,
+                       CLSID **pclsids, UINT32 *pcount);
 HRESULT WINAPI MFLockPlatform(void);
+HRESULT WINAPI MFTRegister(CLSID clsid, GUID category, LPWSTR name, UINT32 flags, UINT32 cinput,
+                           MFT_REGISTER_TYPE_INFO *input_types, UINT32 coutput,
+                           MFT_REGISTER_TYPE_INFO *output_types, IMFAttributes *attributes);
 HRESULT WINAPI MFShutdown(void);
 HRESULT WINAPI MFStartup(ULONG version, DWORD flags);
 HRESULT WINAPI MFUnlockPlatform(void);
+HRESULT WINAPI MFTUnregister(CLSID clsid);
 HRESULT WINAPI MFGetPluginControl(IMFPluginControl**);
 
 #endif /* __WINE_MFAPI_H */

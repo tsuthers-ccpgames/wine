@@ -39,6 +39,7 @@
 #include "winuser.h"
 #include "winioctl.h"
 #include "ddk/wdm.h"
+#include "ddk/ntddser.h"
 #define USE_WS_PREFIX
 #include "winsock2.h"
 #include "file.h"
@@ -116,7 +117,12 @@ static void dump_ioctl_code( const char *prefix, const ioctl_code_t *code )
         CASE(FSCTL_DISMOUNT_VOLUME);
         CASE(FSCTL_PIPE_DISCONNECT);
         CASE(FSCTL_PIPE_LISTEN);
+        CASE(FSCTL_PIPE_PEEK);
         CASE(FSCTL_PIPE_WAIT);
+        CASE(IOCTL_SERIAL_GET_TIMEOUTS);
+        CASE(IOCTL_SERIAL_GET_WAIT_MASK);
+        CASE(IOCTL_SERIAL_SET_TIMEOUTS);
+        CASE(IOCTL_SERIAL_SET_WAIT_MASK);
         CASE(WS_SIO_ADDRESS_LIST_CHANGE);
         default: fprintf( stderr, "%s%08x", prefix, *code ); break;
 #undef CASE
@@ -1338,6 +1344,21 @@ static void dump_get_process_info_reply( const struct get_process_info_reply *re
     dump_cpu_type( ", cpu=", &req->cpu );
     fprintf( stderr, ", debugger_present=%d", req->debugger_present );
     fprintf( stderr, ", debug_children=%d", req->debug_children );
+}
+
+static void dump_get_process_vm_counters_request( const struct get_process_vm_counters_request *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+}
+
+static void dump_get_process_vm_counters_reply( const struct get_process_vm_counters_reply *req )
+{
+    dump_uint64( " peak_virtual_size=", &req->peak_virtual_size );
+    dump_uint64( ", virtual_size=", &req->virtual_size );
+    dump_uint64( ", peak_working_set_size=", &req->peak_working_set_size );
+    dump_uint64( ", working_set_size=", &req->working_set_size );
+    dump_uint64( ", pagefile_usage=", &req->pagefile_usage );
+    dump_uint64( ", peak_pagefile_usage=", &req->peak_pagefile_usage );
 }
 
 static void dump_set_process_info_request( const struct set_process_info_request *req )
@@ -2830,12 +2851,7 @@ static void dump_get_serial_info_request( const struct get_serial_info_request *
 
 static void dump_get_serial_info_reply( const struct get_serial_info_reply *req )
 {
-    fprintf( stderr, " readinterval=%08x", req->readinterval );
-    fprintf( stderr, ", readconst=%08x", req->readconst );
-    fprintf( stderr, ", readmult=%08x", req->readmult );
-    fprintf( stderr, ", writeconst=%08x", req->writeconst );
-    fprintf( stderr, ", writemult=%08x", req->writemult );
-    fprintf( stderr, ", eventmask=%08x", req->eventmask );
+    fprintf( stderr, " eventmask=%08x", req->eventmask );
     fprintf( stderr, ", cookie=%08x", req->cookie );
     fprintf( stderr, ", pending_write=%08x", req->pending_write );
 }
@@ -2844,12 +2860,6 @@ static void dump_set_serial_info_request( const struct set_serial_info_request *
 {
     fprintf( stderr, " handle=%04x", req->handle );
     fprintf( stderr, ", flags=%d", req->flags );
-    fprintf( stderr, ", readinterval=%08x", req->readinterval );
-    fprintf( stderr, ", readconst=%08x", req->readconst );
-    fprintf( stderr, ", readmult=%08x", req->readmult );
-    fprintf( stderr, ", writeconst=%08x", req->writeconst );
-    fprintf( stderr, ", writemult=%08x", req->writemult );
-    fprintf( stderr, ", eventmask=%08x", req->eventmask );
 }
 
 static void dump_register_async_request( const struct register_async_request *req )
@@ -4462,6 +4472,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_terminate_process_request,
     (dump_func)dump_terminate_thread_request,
     (dump_func)dump_get_process_info_request,
+    (dump_func)dump_get_process_vm_counters_request,
     (dump_func)dump_set_process_info_request,
     (dump_func)dump_get_thread_info_request,
     (dump_func)dump_get_thread_times_request,
@@ -4748,6 +4759,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_terminate_process_reply,
     (dump_func)dump_terminate_thread_reply,
     (dump_func)dump_get_process_info_reply,
+    (dump_func)dump_get_process_vm_counters_reply,
     NULL,
     (dump_func)dump_get_thread_info_reply,
     (dump_func)dump_get_thread_times_reply,
@@ -5034,6 +5046,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "terminate_process",
     "terminate_thread",
     "get_process_info",
+    "get_process_vm_counters",
     "set_process_info",
     "get_thread_info",
     "get_thread_times",

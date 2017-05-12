@@ -122,6 +122,18 @@ static HRESULT test_InitAudio(void)
     ok(hr == S_OK, "InitAudio failed: %08x\n", hr);
     destroy_performance(performance, NULL, NULL);
 
+    /* Refcounts for auto generated dmusic and dsound */
+    create_performance(&performance, NULL, NULL, FALSE);
+    dmusic = NULL;
+    dsound = NULL;
+    hr = IDirectMusicPerformance8_InitAudio(performance, &dmusic, &dsound, NULL, 0, 64, 0, NULL);
+    ok(hr == S_OK, "InitAudio failed: %08x\n", hr);
+    ref = get_refcount(dsound);
+    todo_wine ok(ref == 3, "dsound ref count got %d expected 3\n", ref);
+    ref = get_refcount(dmusic);
+    ok(ref == 2, "dmusic ref count got %d expected 2\n", ref);
+    destroy_performance(performance, NULL, NULL);
+
     /* dsound without SetCooperativeLevel() */
     create_performance(&performance, NULL, &dsound, FALSE);
     hr = IDirectMusicPerformance8_InitAudio(performance, NULL, &dsound, NULL, 0, 0, 0, NULL);
@@ -169,11 +181,11 @@ static HRESULT test_InitAudio(void)
     IDirectMusic_SetDirectSound(dmusic, dsound, NULL);
     ok(hr == S_OK, "SetDirectSound failed: %08x\n", hr);
     ref = get_refcount(dsound);
-    todo_wine ok(ref == 2, "dsound ref count got %d expected 2\n", ref);
+    ok(ref == 2, "dsound ref count got %d expected 2\n", ref);
     hr = IDirectMusicPerformance8_InitAudio(performance, &dmusic, NULL, NULL, 0, 64, 0, NULL);
     ok(hr == S_OK, "InitAudio failed: %08x\n", hr);
     ref = get_refcount(dsound);
-    todo_wine ok(ref == 2, "dsound ref count got %d expected 2\n", ref);
+    ok(ref == 2, "dsound ref count got %d expected 2\n", ref);
     ref = get_refcount(dmusic);
     ok(ref == 2, "dmusic ref count got %d expected 2\n", ref);
     destroy_performance(performance, dmusic, dsound);
@@ -183,11 +195,11 @@ static HRESULT test_InitAudio(void)
     IDirectMusic_SetDirectSound(dmusic, dsound, NULL);
     ok(hr == S_OK, "SetDirectSound failed: %08x\n", hr);
     ref = get_refcount(dsound);
-    todo_wine ok(ref == 2, "dsound ref count got %d expected 2\n", ref);
+    ok(ref == 2, "dsound ref count got %d expected 2\n", ref);
     hr = IDirectMusicPerformance8_InitAudio(performance, &dmusic, &dsound, NULL, 0, 64, 0, NULL);
     ok(hr == S_OK, "InitAudio failed: %08x\n", hr);
     ref = get_refcount(dsound);
-    todo_wine ok(ref == 3, "dsound ref count got %d expected 3\n", ref);
+    ok(ref == 3, "dsound ref count got %d expected 3\n", ref);
     ref = get_refcount(dmusic);
     ok(ref == 2, "dmusic ref count got %d expected 2\n", ref);
     destroy_performance(performance, dmusic, dsound);

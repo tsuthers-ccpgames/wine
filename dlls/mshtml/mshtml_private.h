@@ -233,6 +233,7 @@ TID_LIST
 
 typedef enum {
     COMPAT_MODE_QUIRKS,
+    COMPAT_MODE_IE5,
     COMPAT_MODE_IE7,
     COMPAT_MODE_IE8,
     COMPAT_MODE_IE9,
@@ -242,6 +243,13 @@ typedef enum {
 
 #define COMPAT_MODE_CNT (COMPAT_MODE_IE11+1)
 #define COMPAT_MODE_NONE COMPAT_MODE_QUIRKS
+
+typedef struct {
+    unsigned document_mode;
+    unsigned ie_version;
+} compat_mode_info_t;
+
+extern const compat_mode_info_t compat_mode_info[COMPAT_MODE_CNT] DECLSPEC_HIDDEN;
 
 typedef struct dispex_data_t dispex_data_t;
 typedef struct dispex_dynamic_data_t dispex_dynamic_data_t;
@@ -318,7 +326,7 @@ void dispex_unlink(DispatchEx*) DECLSPEC_HIDDEN;
 void release_typelib(void) DECLSPEC_HIDDEN;
 HRESULT get_class_typeinfo(const CLSID*,ITypeInfo**) DECLSPEC_HIDDEN;
 const dispex_static_data_vtbl_t *dispex_get_vtbl(DispatchEx*) DECLSPEC_HIDDEN;
-void dispex_info_add_interface(dispex_data_t*,tid_t) DECLSPEC_HIDDEN;
+void dispex_info_add_interface(dispex_data_t*,tid_t,const DISPID*) DECLSPEC_HIDDEN;
 
 static inline void init_dispex(DispatchEx *dispex, IUnknown *outer, dispex_static_data_t *desc)
 {
@@ -760,7 +768,6 @@ typedef struct {
     IHTMLDOMNode_tid,       \
     IHTMLDOMNode2_tid,      \
     IHTMLElement_tid,       \
-    IHTMLElement2_tid,      \
     IHTMLElement3_tid,      \
     IHTMLElement4_tid,      \
     IHTMLUniqueName_tid

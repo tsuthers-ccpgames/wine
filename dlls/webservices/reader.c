@@ -2214,8 +2214,7 @@ HRESULT WINAPI WsReadQualifiedName( WS_XML_READER *handle, WS_HEAP *heap, WS_XML
     struct reader *reader = (struct reader *)handle;
     HRESULT hr;
 
-    TRACE( "%p %p %s %s %s %p\n", handle, heap, debugstr_xmlstr(prefix), debugstr_xmlstr(localname),
-           debugstr_xmlstr(ns), error );
+    TRACE( "%p %p %p %p %p %p\n", handle, heap, prefix, localname, ns, error );
     if (error) FIXME( "ignoring error parameter\n" );
 
     if (!reader || !heap) return E_INVALIDARG;
@@ -4419,6 +4418,42 @@ HRESULT WINAPI WsReadValue( WS_XML_READER *handle, WS_VALUE_TYPE value_type, voi
 
     hr = read_type( reader, WS_ELEMENT_TYPE_MAPPING, type, NULL, NULL, NULL, WS_READ_REQUIRED_VALUE,
                     NULL, value, size );
+
+    LeaveCriticalSection( &reader->cs );
+    return hr;
+}
+
+/**************************************************************************
+ *          WsReadAttribute		[webservices.@]
+ */
+HRESULT WINAPI WsReadAttribute( WS_XML_READER *handle, const WS_ATTRIBUTE_DESCRIPTION *desc,
+                                WS_READ_OPTION option, WS_HEAP *heap, void *value, ULONG size,
+                                WS_ERROR *error )
+{
+    struct reader *reader = (struct reader *)handle;
+    HRESULT hr;
+
+    TRACE( "%p %p %u %p %p %u %p\n", handle, desc, option, heap, value, size, error );
+    if (error) FIXME( "ignoring error parameter\n" );
+
+    if (!reader || !desc || !value) return E_INVALIDARG;
+
+    EnterCriticalSection( &reader->cs );
+
+    if (reader->magic != READER_MAGIC)
+    {
+        LeaveCriticalSection( &reader->cs );
+        return E_INVALIDARG;
+    }
+
+    if (!reader->input_type)
+    {
+        LeaveCriticalSection( &reader->cs );
+        return WS_E_INVALID_OPERATION;
+    }
+
+    hr = read_type( reader, WS_ATTRIBUTE_TYPE_MAPPING, desc->type, desc->attributeLocalName,
+                    desc->attributeNs, desc->typeDescription, option, heap, value, size );
 
     LeaveCriticalSection( &reader->cs );
     return hr;
