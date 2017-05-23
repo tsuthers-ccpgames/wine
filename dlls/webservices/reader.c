@@ -151,16 +151,28 @@ void destroy_nodes( struct node *node )
 static WS_XML_ATTRIBUTE *dup_attribute( const WS_XML_ATTRIBUTE *src )
 {
     WS_XML_ATTRIBUTE *dst;
-    const WS_XML_STRING *prefix = (src->prefix && src->prefix->length) ? src->prefix : NULL;
+    const WS_XML_STRING *prefix = src->prefix;
     const WS_XML_STRING *localname = src->localName;
     const WS_XML_STRING *ns = src->localName;
+    const WS_XML_TEXT *text = src->value;
 
     if (!(dst = heap_alloc( sizeof(*dst) ))) return NULL;
     dst->singleQuote = src->singleQuote;
     dst->isXmlNs     = src->isXmlNs;
-    if (prefix && !(dst->prefix = alloc_xml_string( prefix->bytes, prefix->length ))) goto error;
-    if (localname && !(dst->localName = alloc_xml_string( localname->bytes, localname->length ))) goto error;
-    if (ns && !(dst->ns = alloc_xml_string( ns->bytes, ns->length ))) goto error;
+
+    if (!prefix) dst->prefix = NULL;
+    else if (!(dst->prefix = alloc_xml_string( prefix->bytes, prefix->length ))) goto error;
+    if (!(dst->localName = alloc_xml_string( localname->bytes, localname->length ))) goto error;
+    if (!(dst->ns = alloc_xml_string( ns->bytes, ns->length ))) goto error;
+
+    if (text)
+    {
+        WS_XML_UTF8_TEXT *utf8;
+        const WS_XML_UTF8_TEXT *utf8_src = (const WS_XML_UTF8_TEXT *)text;
+        if (!(utf8 = alloc_utf8_text( utf8_src->value.bytes, utf8_src->value.length ))) goto error;
+        dst->value = &utf8->text;
+    }
+
     return dst;
 
 error:
@@ -223,7 +235,7 @@ static struct node *dup_text_node( const WS_XML_TEXT_NODE *src )
     if (src->text)
     {
         WS_XML_UTF8_TEXT *utf8;
-        const WS_XML_UTF8_TEXT *utf8_src = (WS_XML_UTF8_TEXT *)src->text;
+        const WS_XML_UTF8_TEXT *utf8_src = (const WS_XML_UTF8_TEXT *)src->text;
         if (!(utf8 = alloc_utf8_text( utf8_src->value.bytes, utf8_src->value.length )))
         {
             free_node( node );
@@ -405,25 +417,6 @@ static void clear_prefixes( struct prefix *prefixes, ULONG count )
         prefixes[i].ns.bytes  = NULL;
         prefixes[i].ns.length = 0;
     }
-}
-
-HRESULT copy_node( WS_XML_READER *handle, struct node **node )
-{
-    struct reader *reader = (struct reader *)handle;
-    HRESULT hr;
-
-    EnterCriticalSection( &reader->cs );
-
-    if (reader->magic != READER_MAGIC)
-    {
-        LeaveCriticalSection( &reader->cs );
-        return E_INVALIDARG;
-    }
-
-    hr = dup_tree( node, reader->current );
-
-    LeaveCriticalSection( &reader->cs );
-    return hr;
 }
 
 static HRESULT set_prefix( struct prefix *prefix, const WS_XML_STRING *str, const WS_XML_STRING *ns )
@@ -1652,6 +1645,44 @@ static HRESULT read_node( struct reader *reader )
         else if (!read_cmp( reader, "/>", 2 ) || !read_cmp( reader, ">", 1 )) return read_startelement( reader );
         else return read_text( reader );
     }
+}
+
+HRESULT copy_node( WS_XML_READER *handle, struct node **node )
+{
+    struct reader *reader = (struct reader *)handle;
+    const struct list *ptr;
+    const struct node *start;
+    HRESULT hr;
+
+    EnterCriticalSection( &reader->cs );
+
+    if (reader->magic != READER_MAGIC)
+    {
+        LeaveCriticalSection( &reader->cs );
+        return E_INVALIDARG;
+    }
+
+    if (reader->current != reader->root) ptr = &reader->current->entry;
+    else /* copy whole tree */
+    {
+        if (!read_end_of_data( reader ))
+        {
+            for (;;)
+            {
+                if ((hr = read_node( reader )) != S_OK) goto done;
+                if (node_type( reader->current ) == WS_XML_NODE_TYPE_EOF) break;
+            }
+        }
+        ptr = list_head( &reader->root->children );
+    }
+
+    start = LIST_ENTRY( ptr, struct node, entry );
+    if (node_type( start ) == WS_XML_NODE_TYPE_EOF) hr = WS_E_INVALID_OPERATION;
+    else hr = dup_tree( node, start );
+
+done:
+    LeaveCriticalSection( &reader->cs );
+    return hr;
 }
 
 /**************************************************************************
@@ -4631,12 +4662,12 @@ HRESULT WINAPI WsSetInputToBuffer( WS_XML_READER *handle, WS_XML_BUFFER *buffer,
 
     if ((hr = init_reader( reader )) != S_OK) goto done;
 
-    charset = detect_charset( xmlbuf->ptr, xmlbuf->size, &offset );
+    charset = detect_charset( xmlbuf->bytes.bytes, xmlbuf->bytes.length, &offset );
     hr = prop_set( reader->prop, reader->prop_count, WS_XML_READER_PROPERTY_CHARSET, &charset,
                    sizeof(charset) );
     if (hr != S_OK) goto done;
 
-    set_input_buffer( reader, xmlbuf, (const unsigned char *)xmlbuf->ptr + offset, xmlbuf->size - offset );
+    set_input_buffer( reader, xmlbuf, xmlbuf->bytes.bytes + offset, xmlbuf->bytes.length - offset );
     if (!(node = alloc_node( WS_XML_NODE_TYPE_BOF ))) hr = E_OUTOFMEMORY;
     else read_insert_bof( reader, node );
 

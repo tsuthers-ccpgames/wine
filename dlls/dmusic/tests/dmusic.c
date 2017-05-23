@@ -68,7 +68,7 @@ static void test_dmusic(void)
 
     /* No port can be created before SetDirectSound is called */
     hr = IDirectMusic_CreatePort(dmusic, &GUID_NULL, &port_params, &port, NULL);
-    todo_wine ok(hr == DMUS_E_DSOUND_NOT_SET, "IDirectMusic_CreatePort returned: %x\n", hr);
+    ok(hr == DMUS_E_DSOUND_NOT_SET, "IDirectMusic_CreatePort returned: %x\n", hr);
 
     hr = IDirectMusic_SetDirectSound(dmusic, NULL, NULL);
     ok(hr == S_OK, "IDirectMusic_SetDirectSound returned: %x\n", hr);
@@ -176,10 +176,16 @@ static void test_setdsound(void)
     ok(hr == S_OK, "CreatePort returned: %x\n", hr);
     ref = get_refcount(dsound);
     ok(ref == 2, "dsound ref count got %d expected 2\n", ref);
+    IDirectMusicPort_AddRef(port);
+    ref = IDirectMusicPort_Release(port);
+    ok(ref == 1, "port ref count got %d expected 1\n", ref);
     hr = IDirectMusicPort_Activate(port, TRUE);
     ok(hr == S_OK, "Port Activate returned: %x\n", hr);
     ref = get_refcount(dsound);
     ok(ref == 4, "dsound ref count got %d expected 4\n", ref);
+    IDirectMusicPort_AddRef(port);
+    ref = IDirectMusicPort_Release(port);
+    ok(ref == 1, "port ref count got %d expected 1\n", ref);
 
     /* Releasing dsound from dmusic */
     hr = IDirectMusic_SetDirectSound(dmusic, NULL, NULL);

@@ -690,6 +690,7 @@ enum WINED3D_SHADER_INSTRUCTION_HANDLER
     WINED3DSIH_CMP,
     WINED3DSIH_CND,
     WINED3DSIH_CONTINUE,
+    WINED3DSIH_CONTINUEP,
     WINED3DSIH_COUNTBITS,
     WINED3DSIH_CRS,
     WINED3DSIH_CUT,
@@ -1098,10 +1099,36 @@ struct wined3d_shader_semantic
     struct wined3d_shader_dst_param reg;
 };
 
+enum wined3d_shader_input_sysval_semantic
+{
+    WINED3D_SIV_POSITION                     = 1,
+    WINED3D_SIV_CLIP_DISTANCE                = 2,
+    WINED3D_SIV_CULL_DISTANCE                = 3,
+    WINED3D_SIV_RENDER_TARGET_ARRAY_INDEX    = 4,
+    WINED3D_SIV_VIEWPORT_ARRAY_INDEX         = 5,
+    WINED3D_SIV_VERTEX_ID                    = 6,
+    WINED3D_SIV_PRIMITIVE_ID                 = 7,
+    WINED3D_SIV_INSTANCE_ID                  = 8,
+    WINED3D_SIV_IS_FRONT_FACE                = 9,
+    WINED3D_SIV_SAMPLE_INDEX                 = 10,
+    WINED3D_SIV_QUAD_U0_TESS_FACTOR          = 11,
+    WINED3D_SIV_QUAD_V0_TESS_FACTOR          = 12,
+    WINED3D_SIV_QUAD_U1_TESS_FACTOR          = 13,
+    WINED3D_SIV_QUAD_V1_TESS_FACTOR          = 14,
+    WINED3D_SIV_QUAD_U_INNER_TESS_FACTOR     = 15,
+    WINED3D_SIV_QUAD_V_INNER_TESS_FACTOR     = 16,
+    WINED3D_SIV_TRIANGLE_U_TESS_FACTOR       = 17,
+    WINED3D_SIV_TRIANGLE_V_TESS_FACTOR       = 18,
+    WINED3D_SIV_TRIANGLE_W_TESS_FACTOR       = 19,
+    WINED3D_SIV_TRIANGLE_INNER_TESS_FACTOR   = 20,
+    WINED3D_SIV_LINE_DETAIL_TESS_FACTOR      = 21,
+    WINED3D_SIV_LINE_DENSITY_TESS_FACTOR     = 22,
+};
+
 struct wined3d_shader_register_semantic
 {
     struct wined3d_shader_dst_param reg;
-    enum wined3d_sysval_semantic sysval_semantic;
+    enum wined3d_shader_input_sysval_semantic sysval_semantic;
 };
 
 struct wined3d_shader_structured_resource
@@ -1147,6 +1174,12 @@ struct wined3d_shader_texel_offset
     signed char u, v, w;
 };
 
+struct wined3d_shader_primitive_type
+{
+    enum wined3d_primitive_type type;
+    unsigned int patch_vertex_count;
+};
+
 struct wined3d_shader_instruction
 {
     const struct wined3d_shader_context *ctx;
@@ -1163,7 +1196,7 @@ struct wined3d_shader_instruction
     {
         struct wined3d_shader_semantic semantic;
         struct wined3d_shader_register_semantic register_semantic;
-        enum wined3d_primitive_type primitive_type;
+        struct wined3d_shader_primitive_type primitive_type;
         struct wined3d_shader_dst_param dst;
         struct wined3d_shader_src_param src;
         unsigned int count;
@@ -1320,6 +1353,16 @@ struct vs_compile_args
     BYTE padding : 1;
     WORD swizzle_map;   /* MAX_ATTRIBS, 16 */
     unsigned int next_shader_input_count;
+};
+
+struct ds_compile_args
+{
+    enum wined3d_tessellator_output_primitive tessellator_output_primitive;
+    enum wined3d_tessellator_partitioning tessellator_partitioning;
+    unsigned int output_count : 16;
+    unsigned int next_shader_type : 3;
+    unsigned int render_offscreen : 1;
+    unsigned int padding : 12;
 };
 
 struct gs_compile_args
@@ -2625,6 +2668,7 @@ struct wined3d_state
     int base_vertex_index;
     int load_base_vertex_index; /* Non-indexed drawing needs 0 here, indexed needs base_vertex_index. */
     GLenum gl_primitive_type;
+    GLint gl_patch_vertices;
     struct wined3d_query *predicate;
     BOOL predicate_value;
 
@@ -3241,6 +3285,13 @@ void state_init(struct wined3d_state *state, struct wined3d_fb_state *fb,
         DWORD flags) DECLSPEC_HIDDEN;
 void state_unbind_resources(struct wined3d_state *state) DECLSPEC_HIDDEN;
 
+enum wined3d_cs_queue_id
+{
+    WINED3D_CS_QUEUE_DEFAULT = 0,
+    WINED3D_CS_QUEUE_MAP,
+    WINED3D_CS_QUEUE_COUNT,
+};
+
 enum wined3d_push_constants
 {
     WINED3D_PUSH_CONSTANTS_VS_F,
@@ -3263,9 +3314,9 @@ struct wined3d_cs_queue
 
 struct wined3d_cs_ops
 {
-    void *(*require_space)(struct wined3d_cs *cs, size_t size);
-    void (*submit)(struct wined3d_cs *cs);
-    void (*finish)(struct wined3d_cs *cs);
+    void *(*require_space)(struct wined3d_cs *cs, size_t size, enum wined3d_cs_queue_id queue_id);
+    void (*submit)(struct wined3d_cs *cs, enum wined3d_cs_queue_id queue_id);
+    void (*finish)(struct wined3d_cs *cs, enum wined3d_cs_queue_id queue_id);
     void (*push_constants)(struct wined3d_cs *cs, enum wined3d_push_constants p,
             unsigned int start_idx, unsigned int count, const void *constants);
 };
@@ -3280,7 +3331,7 @@ struct wined3d_cs
     HANDLE thread;
     DWORD thread_id;
 
-    struct wined3d_cs_queue queue;
+    struct wined3d_cs_queue queue[WINED3D_CS_QUEUE_COUNT];
     size_t data_size, start, end;
     void *data;
     struct list query_poll_list;
@@ -3304,11 +3355,13 @@ void wined3d_cs_emit_clear(struct wined3d_cs *cs, DWORD rect_count, const RECT *
         DWORD flags, const struct wined3d_color *color, float depth, DWORD stencil) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_clear_rendertarget_view(struct wined3d_cs *cs, struct wined3d_rendertarget_view *view,
         const RECT *rect, DWORD flags, const struct wined3d_color *color, float depth, DWORD stencil) DECLSPEC_HIDDEN;
+void wined3d_cs_emit_clear_unordered_access_view_uint(struct wined3d_cs *cs,
+        struct wined3d_unordered_access_view *view, const struct wined3d_uvec4 *clear_value) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_dispatch(struct wined3d_cs *cs,
         unsigned int group_count_x, unsigned int group_count_y, unsigned int group_count_z) DECLSPEC_HIDDEN;
-void wined3d_cs_emit_draw(struct wined3d_cs *cs, GLenum primitive_type, int base_vertex_idx,
-        unsigned int start_idx, unsigned int index_count, unsigned int start_instance,
-        unsigned int instance_count, BOOL indexed) DECLSPEC_HIDDEN;
+void wined3d_cs_emit_draw(struct wined3d_cs *cs, GLenum primitive_type, unsigned int patch_vertex_count,
+        int base_vertex_idx, unsigned int start_idx, unsigned int index_count,
+        unsigned int start_instance, unsigned int instance_count, BOOL indexed) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_flush(struct wined3d_cs *cs) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_preload_resource(struct wined3d_cs *cs, struct wined3d_resource *resource) DECLSPEC_HIDDEN;
 void wined3d_cs_emit_present(struct wined3d_cs *cs, struct wined3d_swapchain *swapchain,
@@ -3524,6 +3577,8 @@ struct wined3d_unordered_access_view
     struct wined3d_view_desc desc;
 };
 
+void wined3d_unordered_access_view_clear_uint(struct wined3d_unordered_access_view *view,
+        const struct wined3d_uvec4 *clear_value, struct wined3d_context *context) DECLSPEC_HIDDEN;
 void wined3d_unordered_access_view_invalidate_location(struct wined3d_unordered_access_view *view,
         DWORD location) DECLSPEC_HIDDEN;
 
@@ -3601,6 +3656,7 @@ const char *debug_fboattachment(GLenum attachment) DECLSPEC_HIDDEN;
 const char *debug_fbostatus(GLenum status) DECLSPEC_HIDDEN;
 const char *debug_glerror(GLenum error) DECLSPEC_HIDDEN;
 const char *debug_ivec4(const struct wined3d_ivec4 *v) DECLSPEC_HIDDEN;
+const char *debug_uvec4(const struct wined3d_uvec4 *v) DECLSPEC_HIDDEN;
 const char *debug_shader_type(enum wined3d_shader_type shader_type) DECLSPEC_HIDDEN;
 const char *debug_vec4(const struct wined3d_vec4 *v) DECLSPEC_HIDDEN;
 void dump_color_fixup_desc(struct color_fixup_desc fixup) DECLSPEC_HIDDEN;
@@ -3690,13 +3746,39 @@ int shader_addline(struct wined3d_string_buffer *buffer, const char *fmt, ...) P
 BOOL string_buffer_resize(struct wined3d_string_buffer *buffer, int rc) DECLSPEC_HIDDEN;
 int shader_vaddline(struct wined3d_string_buffer *buffer, const char *fmt, va_list args) DECLSPEC_HIDDEN;
 
-/* Vertex shader utility functions */
-BOOL vshader_get_input(const struct wined3d_shader *shader,
-        BYTE usage_req, BYTE usage_idx_req, unsigned int *regnum) DECLSPEC_HIDDEN;
+struct wined3d_shader_phase
+{
+    const DWORD *start;
+    const DWORD *end;
+    unsigned int instance_count;
+    unsigned int temporary_count;
+};
 
 struct wined3d_vertex_shader
 {
     struct wined3d_shader_attribute attributes[MAX_ATTRIBS];
+};
+
+struct wined3d_hull_shader
+{
+    struct
+    {
+        struct wined3d_shader_phase *control_point;
+        unsigned int fork_count;
+        unsigned int join_count;
+        struct wined3d_shader_phase *fork;
+        SIZE_T fork_size;
+        struct wined3d_shader_phase *join;
+        SIZE_T join_size;
+    } phases;
+    unsigned int output_vertex_count;
+    enum wined3d_tessellator_output_primitive tessellator_output_primitive;
+    enum wined3d_tessellator_partitioning tessellator_partitioning;
+};
+
+struct wined3d_domain_shader
+{
+    enum wined3d_tessellator_domain tessellator_domain;
 };
 
 struct wined3d_geometry_shader
@@ -3752,6 +3834,7 @@ struct wined3d_shader
 
     struct wined3d_shader_signature input_signature;
     struct wined3d_shader_signature output_signature;
+    struct wined3d_shader_signature patch_constant_signature;
     char *signature_strings;
 
     /* Pointer to the parent device */
@@ -3761,6 +3844,8 @@ struct wined3d_shader
     union
     {
         struct wined3d_vertex_shader vs;
+        struct wined3d_hull_shader hs;
+        struct wined3d_domain_shader ds;
         struct wined3d_geometry_shader gs;
         struct wined3d_pixel_shader ps;
         struct wined3d_compute_shader cs;
@@ -3772,9 +3857,14 @@ void find_ps_compile_args(const struct wined3d_state *state, const struct wined3
         BOOL position_transformed, struct ps_compile_args *args,
         const struct wined3d_context *context) DECLSPEC_HIDDEN;
 
+BOOL vshader_get_input(const struct wined3d_shader *shader,
+        BYTE usage_req, BYTE usage_idx_req, unsigned int *regnum) DECLSPEC_HIDDEN;
 void find_vs_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
         WORD swizzle_map, struct vs_compile_args *args,
         const struct wined3d_d3d_info *d3d_info) DECLSPEC_HIDDEN;
+
+void find_ds_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
+        struct ds_compile_args *args, const struct wined3d_context *context) DECLSPEC_HIDDEN;
 
 void find_gs_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
         struct gs_compile_args *args) DECLSPEC_HIDDEN;
@@ -3784,8 +3874,9 @@ BOOL string_buffer_init(struct wined3d_string_buffer *buffer) DECLSPEC_HIDDEN;
 void string_buffer_free(struct wined3d_string_buffer *buffer) DECLSPEC_HIDDEN;
 unsigned int shader_find_free_input_register(const struct wined3d_shader_reg_maps *reg_maps,
         unsigned int max) DECLSPEC_HIDDEN;
-HRESULT shader_generate_main(const struct wined3d_shader *shader, struct wined3d_string_buffer *buffer,
-        const struct wined3d_shader_reg_maps *reg_maps, void *backend_ctx) DECLSPEC_HIDDEN;
+HRESULT shader_generate_code(const struct wined3d_shader *shader, struct wined3d_string_buffer *buffer,
+        const struct wined3d_shader_reg_maps *reg_maps, void *backend_ctx,
+        const DWORD *start, const DWORD *end) DECLSPEC_HIDDEN;
 BOOL shader_match_semantic(const char *semantic_name, enum wined3d_decl_usage usage) DECLSPEC_HIDDEN;
 
 static inline BOOL shader_is_scalar(const struct wined3d_shader_register *reg)

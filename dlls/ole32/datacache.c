@@ -55,8 +55,9 @@
 #include "wingdi.h"
 #include "winuser.h"
 #include "winerror.h"
-#include "wine/unicode.h"
 #include "ole2.h"
+#include "compobj_private.h"
+#include "wine/unicode.h"
 #include "wine/list.h"
 #include "wine/debug.h"
 
@@ -223,12 +224,41 @@ const char *debugstr_formatetc(const FORMATETC *formatetc)
         formatetc->lindex, formatetc->tymed);
 }
 
+/***********************************************************************
+ *           bitmap_info_size
+ *
+ * Return the size of the bitmap info structure including color table.
+ */
+int bitmap_info_size( const BITMAPINFO * info, WORD coloruse )
+{
+    unsigned int colors, size, masks = 0;
+
+    if (info->bmiHeader.biSize == sizeof(BITMAPCOREHEADER))
+    {
+        const BITMAPCOREHEADER *core = (const BITMAPCOREHEADER *)info;
+        colors = (core->bcBitCount <= 8) ? 1 << core->bcBitCount : 0;
+        return sizeof(BITMAPCOREHEADER) + colors *
+            ((coloruse == DIB_RGB_COLORS) ? sizeof(RGBTRIPLE) : sizeof(WORD));
+    }
+    else  /* assume BITMAPINFOHEADER */
+    {
+        colors = info->bmiHeader.biClrUsed;
+        if (colors > 256) /* buffer overflow otherwise */
+            colors = 256;
+        if (!colors && (info->bmiHeader.biBitCount <= 8))
+            colors = 1 << info->bmiHeader.biBitCount;
+        if (info->bmiHeader.biCompression == BI_BITFIELDS) masks = 3;
+        size = max( info->bmiHeader.biSize, sizeof(BITMAPINFOHEADER) + masks * sizeof(DWORD) );
+        return size + colors * ((coloruse == DIB_RGB_COLORS) ? sizeof(RGBQUAD) : sizeof(WORD));
+    }
+}
+
 static void DataCacheEntry_Destroy(DataCache *cache, DataCacheEntry *cache_entry)
 {
     list_remove(&cache_entry->entry);
     if (cache_entry->stream)
         IStream_Release(cache_entry->stream);
-    HeapFree(GetProcessHeap(), 0, cache_entry->fmtetc.ptd);
+    CoTaskMemFree(cache_entry->fmtetc.ptd);
     ReleaseStgMedium(&cache_entry->stgmedium);
     if(cache_entry->sink_id)
         IDataObject_DUnadvise(cache->running_object, cache_entry->sink_id);
@@ -299,7 +329,30 @@ static HRESULT check_valid_clipformat_and_tymed(CLIPFORMAT cfFormat, DWORD tymed
     }
 }
 
-static HRESULT DataCache_CreateEntry(DataCache *This, const FORMATETC *formatetc, DataCacheEntry **cache_entry, BOOL load)
+static BOOL init_cache_entry(DataCacheEntry *entry, const FORMATETC *fmt, DWORD advf,
+                             DWORD id)
+{
+    HRESULT hr;
+
+    hr = copy_formatetc(&entry->fmtetc, fmt);
+    if (FAILED(hr)) return FALSE;
+
+    entry->data_cf = 0;
+    entry->stgmedium.tymed = TYMED_NULL;
+    entry->stgmedium.pUnkForRelease = NULL;
+    entry->stream = NULL;
+    entry->stream_type = no_stream;
+    entry->id = id;
+    entry->dirty = TRUE;
+    entry->stream_number = -1;
+    entry->sink_id = 0;
+    entry->advise_flags = advf;
+
+    return TRUE;
+}
+
+static HRESULT DataCache_CreateEntry(DataCache *This, const FORMATETC *formatetc, DWORD advf,
+                                     DataCacheEntry **cache_entry, BOOL load)
 {
     HRESULT hr;
 
@@ -313,24 +366,17 @@ static HRESULT DataCache_CreateEntry(DataCache *This, const FORMATETC *formatetc
     if (!*cache_entry)
         return E_OUTOFMEMORY;
 
-    (*cache_entry)->fmtetc = *formatetc;
-    if (formatetc->ptd)
-    {
-        (*cache_entry)->fmtetc.ptd = HeapAlloc(GetProcessHeap(), 0, formatetc->ptd->tdSize);
-        memcpy((*cache_entry)->fmtetc.ptd, formatetc->ptd, formatetc->ptd->tdSize);
-    }
-    (*cache_entry)->data_cf = 0;
-    (*cache_entry)->stgmedium.tymed = TYMED_NULL;
-    (*cache_entry)->stgmedium.pUnkForRelease = NULL;
-    (*cache_entry)->stream = NULL;
-    (*cache_entry)->stream_type = no_stream;
-    (*cache_entry)->id = This->last_cache_id++;
-    (*cache_entry)->dirty = TRUE;
-    (*cache_entry)->stream_number = -1;
-    (*cache_entry)->sink_id = 0;
-    (*cache_entry)->advise_flags = 0;
+    if (!init_cache_entry(*cache_entry, formatetc, advf, This->last_cache_id))
+        goto fail;
+
     list_add_tail(&This->cache_list, &(*cache_entry)->entry);
+    This->last_cache_id++;
+
     return hr;
+
+fail:
+    HeapFree(GetProcessHeap(), 0, *cache_entry);
+    return E_OUTOFMEMORY;
 }
 
 /************************************************************************
@@ -587,7 +633,9 @@ static HRESULT load_dib( DataCacheEntry *cache_entry, IStream *stm )
     STATSTG stat;
     void *dib;
     HGLOBAL hglobal;
-    ULONG read;
+    ULONG read, info_size, bi_size;
+    BITMAPFILEHEADER file;
+    BITMAPINFOHEADER *info;
 
     if (cache_entry->stream_type != contents_stream)
     {
@@ -598,24 +646,71 @@ static HRESULT load_dib( DataCacheEntry *cache_entry, IStream *stm )
     hr = IStream_Stat( stm, &stat, STATFLAG_NONAME );
     if (FAILED( hr )) return hr;
 
+    if (stat.cbSize.QuadPart < sizeof(file) + sizeof(DWORD)) return E_FAIL;
+    hr = IStream_Read( stm, &file, sizeof(file), &read );
+    if (hr != S_OK || read != sizeof(file)) return E_FAIL;
+    stat.cbSize.QuadPart -= sizeof(file);
+
     hglobal = GlobalAlloc( GMEM_MOVEABLE, stat.cbSize.u.LowPart );
     if (!hglobal) return E_OUTOFMEMORY;
     dib = GlobalLock( hglobal );
 
-    hr = IStream_Read( stm, dib, stat.cbSize.u.LowPart, &read );
-    GlobalUnlock( hglobal );
+    hr = IStream_Read( stm, dib, sizeof(DWORD), &read );
+    if (hr != S_OK || read != sizeof(DWORD)) goto fail;
+    bi_size = *(DWORD *)dib;
+    if (stat.cbSize.QuadPart < bi_size) goto fail;
 
-    if (hr != S_OK || read != stat.cbSize.u.LowPart)
+    hr = IStream_Read( stm, (char *)dib + sizeof(DWORD), bi_size - sizeof(DWORD), &read );
+    if (hr != S_OK || read != bi_size - sizeof(DWORD)) goto fail;
+
+    info_size = bitmap_info_size( dib, DIB_RGB_COLORS );
+    if (stat.cbSize.QuadPart < info_size) goto fail;
+    if (info_size > bi_size)
     {
-        GlobalFree( hglobal );
-        return E_FAIL;
+        hr = IStream_Read( stm, (char *)dib + bi_size, info_size - bi_size, &read );
+        if (hr != S_OK || read != info_size - bi_size) goto fail;
     }
+    stat.cbSize.QuadPart -= info_size;
+
+    if (file.bfOffBits)
+    {
+        LARGE_INTEGER skip;
+
+        skip.QuadPart = file.bfOffBits - sizeof(file) - info_size;
+        if (stat.cbSize.QuadPart < skip.QuadPart) goto fail;
+        hr = IStream_Seek( stm, skip, STREAM_SEEK_CUR, NULL );
+        if (hr != S_OK) goto fail;
+        stat.cbSize.QuadPart -= skip.QuadPart;
+    }
+
+    hr = IStream_Read( stm, (char *)dib + info_size, stat.cbSize.u.LowPart, &read );
+    if (hr != S_OK || read != stat.cbSize.QuadPart) goto fail;
+
+    if (bi_size >= sizeof(*info))
+    {
+        info = (BITMAPINFOHEADER *)dib;
+        if (info->biXPelsPerMeter == 0 || info->biYPelsPerMeter == 0)
+        {
+            HDC hdc = GetDC( 0 );
+            info->biXPelsPerMeter = MulDiv( GetDeviceCaps( hdc, LOGPIXELSX ), 10000, 254 );
+            info->biYPelsPerMeter = MulDiv( GetDeviceCaps( hdc, LOGPIXELSY ), 10000, 254 );
+            ReleaseDC( 0, hdc );
+        }
+    }
+
+    GlobalUnlock( hglobal );
 
     cache_entry->data_cf = cache_entry->fmtetc.cfFormat;
     cache_entry->stgmedium.tymed = TYMED_HGLOBAL;
     cache_entry->stgmedium.u.hGlobal = hglobal;
 
     return S_OK;
+
+fail:
+    GlobalUnlock( hglobal );
+    GlobalFree( hglobal );
+    return E_FAIL;
+
 }
 
 /************************************************************************
@@ -1259,7 +1354,7 @@ static HRESULT add_cache_entry( DataCache *This, const FORMATETC *fmt, IStream *
 
     cache_entry = DataCache_GetEntryForFormatEtc( This, fmt );
     if (!cache_entry)
-        hr = DataCache_CreateEntry( This, fmt, &cache_entry, TRUE );
+        hr = DataCache_CreateEntry( This, fmt, 0, &cache_entry, TRUE );
     if (SUCCEEDED( hr ))
     {
         DataCacheEntry_DiscardData( cache_entry );
@@ -1655,16 +1750,14 @@ static HRESULT WINAPI DataCache_Draw(
       }
       case CF_DIB:
       {
-          BITMAPFILEHEADER *file_head;
           BITMAPINFO *info;
           BYTE *bits;
 
           if ((cache_entry->stgmedium.tymed != TYMED_HGLOBAL) ||
-              !((file_head = GlobalLock( cache_entry->stgmedium.u.hGlobal ))))
+              !((info = GlobalLock( cache_entry->stgmedium.u.hGlobal ))))
               continue;
 
-          info = (BITMAPINFO *)(file_head + 1);
-          bits = (BYTE *) file_head + file_head->bfOffBits;
+          bits = (BYTE *) info + bitmap_info_size( info, DIB_RGB_COLORS );
           StretchDIBits( hdcDraw, lprcBounds->left, lprcBounds->top,
                          lprcBounds->right - lprcBounds->left, lprcBounds->bottom - lprcBounds->top,
                          0, 0, info->bmiHeader.biWidth, info->bmiHeader.biHeight,
@@ -1875,16 +1968,13 @@ static HRESULT WINAPI DataCache_GetExtent(
       }
       case CF_DIB:
       {
-          BITMAPFILEHEADER *file_head;
           BITMAPINFOHEADER *info;
           LONG x_pels_m, y_pels_m;
 
 
           if ((cache_entry->stgmedium.tymed != TYMED_HGLOBAL) ||
-              !((file_head = GlobalLock( cache_entry->stgmedium.u.hGlobal ))))
+              !((info = GlobalLock( cache_entry->stgmedium.u.hGlobal ))))
               continue;
-
-          info = (BITMAPINFOHEADER *)(file_head + 1);
 
           x_pels_m = info->biXPelsPerMeter;
           y_pels_m = info->biYPelsPerMeter;
@@ -2007,12 +2097,11 @@ static HRESULT WINAPI DataCache_Cache(
         return CACHE_S_SAMECACHE;
     }
 
-    hr = DataCache_CreateEntry(This, pformatetc, &cache_entry, FALSE);
+    hr = DataCache_CreateEntry(This, pformatetc, advf, &cache_entry, FALSE);
 
     if (SUCCEEDED(hr))
     {
         *pdwConnection = cache_entry->id;
-        cache_entry->advise_flags = advf;
         setup_sink(This, cache_entry);
     }
 

@@ -129,14 +129,14 @@ static HRESULT WINAPI IDirectMusic8Impl_CreatePort(LPDIRECTMUSIC8 iface, REFCLSI
 
     TRACE("(%p)->(%s, %p, %p, %p)\n", This, debugstr_dmguid(rclsid_port), port_params, port, unkouter);
 
-    if (!rclsid_port)
+    if (!rclsid_port || !port)
         return E_POINTER;
     if (!port_params)
         return E_INVALIDARG;
-    if (!port)
-        return E_POINTER;
     if (unkouter)
         return CLASS_E_NOAGGREGATION;
+    if (!This->dsound)
+        return DMUS_E_DSOUND_NOT_SET;
 
     if (TRACE_ON(dmusic))
         dump_DMUS_PORTPARAMS(port_params);
@@ -160,9 +160,11 @@ static HRESULT WINAPI IDirectMusic8Impl_CreatePort(LPDIRECTMUSIC8 iface, REFCLSI
             }
             This->num_ports++;
             if (!This->ports)
-                This->ports = HeapAlloc(GetProcessHeap(), 0, sizeof(IDirectMusicPort *) * This->num_ports);
+                This->ports = HeapAlloc(GetProcessHeap(), 0,
+                        sizeof(*This->ports) * This->num_ports);
             else
-                This->ports = HeapReAlloc(GetProcessHeap(), 0, This->ports, sizeof(IDirectMusicPort *) * This->num_ports);
+                This->ports = HeapReAlloc(GetProcessHeap(), 0, This->ports,
+                        sizeof(*This->ports) * This->num_ports);
             This->ports[This->num_ports - 1] = new_port;
             *port = new_port;
             return S_OK;
@@ -170,6 +172,39 @@ static HRESULT WINAPI IDirectMusic8Impl_CreatePort(LPDIRECTMUSIC8 iface, REFCLSI
     }
 
     return E_NOINTERFACE;
+}
+
+void dmusic_remove_port(IDirectMusic8Impl *dmusic, IDirectMusicPort *port)
+{
+    BOOL found = FALSE;
+    int i;
+
+    TRACE("Removing port %p.\n", port);
+
+    for (i = 0; i < dmusic->num_ports; i++)
+    {
+        if (dmusic->ports[i] == port) {
+            found = TRUE;
+            break;
+        }
+    }
+
+    if (!found)
+    {
+        ERR("Port %p not found in ports array.\n", port);
+        return;
+    }
+
+    if (!--dmusic->num_ports) {
+        HeapFree(GetProcessHeap(), 0, dmusic->ports);
+        dmusic->ports = NULL;
+        return;
+    }
+
+    memmove(&dmusic->ports[i], &dmusic->ports[i + 1],
+            (dmusic->num_ports - i) * sizeof(*dmusic->ports));
+    dmusic->ports = HeapReAlloc(GetProcessHeap(), 0, dmusic->ports,
+            sizeof(*dmusic->ports) * dmusic->num_ports);
 }
 
 static HRESULT WINAPI IDirectMusic8Impl_EnumMasterClock(LPDIRECTMUSIC8 iface, DWORD index, LPDMUS_CLOCKINFO clock_info)

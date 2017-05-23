@@ -111,6 +111,8 @@ static const struct wined3d_extension_map gl_extension_map[] =
 
     /* ARB */
     {"GL_ARB_blend_func_extended",          ARB_BLEND_FUNC_EXTENDED       },
+    {"GL_ARB_clear_buffer_object",          ARB_CLEAR_BUFFER_OBJECT       },
+    {"GL_ARB_clear_texture",                ARB_CLEAR_TEXTURE             },
     {"GL_ARB_clip_control",                 ARB_CLIP_CONTROL              },
     {"GL_ARB_color_buffer_float",           ARB_COLOR_BUFFER_FLOAT        },
     {"GL_ARB_compute_shader",               ARB_COMPUTE_SHADER            },
@@ -2709,6 +2711,12 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
     /* GL_ARB_blend_func_extended */
     USE_GL_FUNC(glBindFragDataLocationIndexed)
     USE_GL_FUNC(glGetFragDataIndex)
+    /* GL_ARB_clear_buffer_object */
+    USE_GL_FUNC(glClearBufferData)
+    USE_GL_FUNC(glClearBufferSubData)
+    /* GL_ARB_clear_texture */
+    USE_GL_FUNC(glClearTexImage)
+    USE_GL_FUNC(glClearTexSubImage)
     /* GL_ARB_clip_control */
     USE_GL_FUNC(glClipControl)
     /* GL_ARB_color_buffer_float */
@@ -3899,6 +3907,7 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
         {ARB_TEXTURE_COMPRESSION_BPTC,     MAKEDWORD_VERSION(4, 2)},
         {ARB_TEXTURE_STORAGE,              MAKEDWORD_VERSION(4, 2)},
 
+        {ARB_CLEAR_BUFFER_OBJECT,          MAKEDWORD_VERSION(4, 3)},
         {ARB_COMPUTE_SHADER,               MAKEDWORD_VERSION(4, 3)},
         {ARB_DEBUG_OUTPUT,                 MAKEDWORD_VERSION(4, 3)},
         {ARB_ES3_COMPATIBILITY,            MAKEDWORD_VERSION(4, 3)},
@@ -3910,6 +3919,8 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter *adapter,
         {ARB_TEXTURE_BUFFER_RANGE,         MAKEDWORD_VERSION(4, 3)},
         {ARB_TEXTURE_QUERY_LEVELS,         MAKEDWORD_VERSION(4, 3)},
         {ARB_TEXTURE_VIEW,                 MAKEDWORD_VERSION(4, 3)},
+
+        {ARB_CLEAR_TEXTURE,                MAKEDWORD_VERSION(4, 4)},
 
         {ARB_CLIP_CONTROL,                 MAKEDWORD_VERSION(4, 5)},
         {ARB_DERIVATIVE_CONTROL,           MAKEDWORD_VERSION(4, 5)},
@@ -6564,6 +6575,10 @@ static BOOL wined3d_adapter_init(struct wined3d_adapter *adapter, UINT ordinal, 
         wined3d_caps_gl_ctx_destroy(&caps_gl_ctx);
         return FALSE;
     }
+
+    if (wined3d_settings.offscreen_rendering_mode == ORM_BACKBUFFER)
+        ERR_(winediag)("You are using the backbuffer for offscreen rendering. "
+                "This is unsupported, and will be removed in a future version.\n");
 
     wined3d_adapter_init_fb_cfgs(adapter, caps_gl_ctx.dc);
     /* We haven't found any suitable formats. This should only happen in

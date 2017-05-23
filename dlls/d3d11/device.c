@@ -442,11 +442,15 @@ static void STDMETHODCALLTYPE d3d11_immediate_context_IASetPrimitiveTopology(ID3
         D3D11_PRIMITIVE_TOPOLOGY topology)
 {
     struct d3d_device *device = device_from_immediate_ID3D11DeviceContext(iface);
+    enum wined3d_primitive_type primitive_type;
+    unsigned int patch_vertex_count;
 
-    TRACE("iface %p, topology %u.\n", iface, topology);
+    TRACE("iface %p, topology %#x.\n", iface, topology);
+
+    wined3d_primitive_type_from_d3d11_primitive_topology(topology, &primitive_type, &patch_vertex_count);
 
     wined3d_mutex_lock();
-    wined3d_device_set_primitive_type(device->wined3d_device, (enum wined3d_primitive_type)topology);
+    wined3d_device_set_primitive_type(device->wined3d_device, primitive_type, patch_vertex_count);
     wined3d_mutex_unlock();
 }
 
@@ -827,7 +831,7 @@ static void STDMETHODCALLTYPE d3d11_immediate_context_SOSetTargets(ID3D11DeviceC
         struct d3d_buffer *buffer = unsafe_impl_from_ID3D11Buffer(buffers[i]);
 
         wined3d_device_set_stream_output(device->wined3d_device, i,
-                buffer ? buffer->wined3d_buffer : NULL, offsets[i]);
+                buffer ? buffer->wined3d_buffer : NULL, offsets ? offsets[i] : 0);
     }
     for (; i < D3D11_SO_BUFFER_SLOT_COUNT; ++i)
     {
@@ -1049,8 +1053,17 @@ static void STDMETHODCALLTYPE d3d11_immediate_context_ClearRenderTargetView(ID3D
 static void STDMETHODCALLTYPE d3d11_immediate_context_ClearUnorderedAccessViewUint(ID3D11DeviceContext *iface,
         ID3D11UnorderedAccessView *unordered_access_view, const UINT values[4])
 {
-    FIXME("iface %p, unordered_access_view %p, values {%u %u %u %u} stub!\n",
+    struct d3d_device *device = device_from_immediate_ID3D11DeviceContext(iface);
+    struct d3d11_unordered_access_view *view;
+
+    TRACE("iface %p, unordered_access_view %p, values {%u, %u, %u, %u}.\n",
             iface, unordered_access_view, values[0], values[1], values[2], values[3]);
+
+    view = unsafe_impl_from_ID3D11UnorderedAccessView(unordered_access_view);
+    wined3d_mutex_lock();
+    wined3d_device_clear_unordered_access_view_uint(device->wined3d_device,
+            view->wined3d_view, (const struct wined3d_uvec4 *)values);
+    wined3d_mutex_unlock();
 }
 
 static void STDMETHODCALLTYPE d3d11_immediate_context_ClearUnorderedAccessViewFloat(ID3D11DeviceContext *iface,
@@ -1686,12 +1699,16 @@ static void STDMETHODCALLTYPE d3d11_immediate_context_IAGetPrimitiveTopology(ID3
         D3D11_PRIMITIVE_TOPOLOGY *topology)
 {
     struct d3d_device *device = device_from_immediate_ID3D11DeviceContext(iface);
+    enum wined3d_primitive_type primitive_type;
+    unsigned int patch_vertex_count;
 
     TRACE("iface %p, topology %p.\n", iface, topology);
 
     wined3d_mutex_lock();
-    wined3d_device_get_primitive_type(device->wined3d_device, (enum wined3d_primitive_type *)topology);
+    wined3d_device_get_primitive_type(device->wined3d_device, &primitive_type, &patch_vertex_count);
     wined3d_mutex_unlock();
+
+    d3d11_primitive_topology_from_wined3d_primitive_type(primitive_type, patch_vertex_count, topology);
 }
 
 static void STDMETHODCALLTYPE d3d11_immediate_context_VSGetShaderResources(ID3D11DeviceContext *iface,
@@ -2444,7 +2461,7 @@ static void STDMETHODCALLTYPE d3d11_immediate_context_ClearState(ID3D11DeviceCon
     }
     wined3d_device_set_index_buffer(device->wined3d_device, NULL, WINED3DFMT_UNKNOWN, 0);
     wined3d_device_set_vertex_declaration(device->wined3d_device, NULL);
-    wined3d_device_set_primitive_type(device->wined3d_device, WINED3D_PT_UNDEFINED);
+    wined3d_device_set_primitive_type(device->wined3d_device, WINED3D_PT_UNDEFINED, 0);
     for (i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
     {
         wined3d_device_set_rendertarget_view(device->wined3d_device, i, NULL, FALSE);
@@ -3932,10 +3949,10 @@ static void STDMETHODCALLTYPE d3d10_device_IASetPrimitiveTopology(ID3D10Device1 
 {
     struct d3d_device *device = impl_from_ID3D10Device(iface);
 
-    TRACE("iface %p, topology %s\n", iface, debug_d3d10_primitive_topology(topology));
+    TRACE("iface %p, topology %s.\n", iface, debug_d3d10_primitive_topology(topology));
 
     wined3d_mutex_lock();
-    wined3d_device_set_primitive_type(device->wined3d_device, (enum wined3d_primitive_type)topology);
+    wined3d_device_set_primitive_type(device->wined3d_device, (enum wined3d_primitive_type)topology, 0);
     wined3d_mutex_unlock();
 }
 
@@ -4583,10 +4600,10 @@ static void STDMETHODCALLTYPE d3d10_device_IAGetPrimitiveTopology(ID3D10Device1 
 {
     struct d3d_device *device = impl_from_ID3D10Device(iface);
 
-    TRACE("iface %p, topology %p\n", iface, topology);
+    TRACE("iface %p, topology %p.\n", iface, topology);
 
     wined3d_mutex_lock();
-    wined3d_device_get_primitive_type(device->wined3d_device, (enum wined3d_primitive_type *)topology);
+    wined3d_device_get_primitive_type(device->wined3d_device, (enum wined3d_primitive_type *)topology, NULL);
     wined3d_mutex_unlock();
 }
 

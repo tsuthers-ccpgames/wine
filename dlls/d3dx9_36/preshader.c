@@ -37,12 +37,17 @@ enum pres_ops
     PRESHADER_OP_RSQ,
     PRESHADER_OP_SIN,
     PRESHADER_OP_COS,
+    PRESHADER_OP_ASIN,
+    PRESHADER_OP_ACOS,
+    PRESHADER_OP_ATAN,
     PRESHADER_OP_MIN,
     PRESHADER_OP_MAX,
     PRESHADER_OP_LT,
     PRESHADER_OP_GE,
     PRESHADER_OP_ADD,
     PRESHADER_OP_MUL,
+    PRESHADER_OP_ATAN2,
+    PRESHADER_OP_DIV,
     PRESHADER_OP_CMP,
     PRESHADER_OP_DOT,
     PRESHADER_OP_DOTSWIZ6,
@@ -50,6 +55,21 @@ enum pres_ops
 };
 
 typedef double (*pres_op_func)(double *args, int n);
+
+static double to_signed_nan(double v)
+{
+    static const union
+    {
+        ULONG64 ulong64_value;
+        double double_value;
+    }
+    signed_nan =
+    {
+        0xfff8000000000000
+    };
+
+    return isnan(v) ? signed_nan.double_value : v;
+}
 
 static double pres_mov(double *args, int n) {return args[0];}
 static double pres_add(double *args, int n) {return args[0] + args[1];}
@@ -82,7 +102,7 @@ static double pres_ge(double *args, int n)  {return args[0] >= args[1] ? 1.0 : 0
 static double pres_frc(double *args, int n) {return args[0] - floor(args[0]);}
 static double pres_min(double *args, int n) {return fmin(args[0], args[1]);}
 static double pres_max(double *args, int n) {return fmax(args[0], args[1]);}
-static double pres_cmp(double *args, int n) {return args[0] < 0.0 ? args[2] : args[1];}
+static double pres_cmp(double *args, int n) {return args[0] >= 0.0 ? args[1] : args[2];}
 static double pres_sin(double *args, int n) {return sin(args[0]);}
 static double pres_cos(double *args, int n) {return cos(args[0]);}
 static double pres_rsq(double *args, int n)
@@ -104,8 +124,20 @@ static double pres_log(double *args, int n)
     if (v == 0.0)
         return 0.0;
     else
+#ifdef HAVE_LOG2
         return log2(v);
+#else
+        return log(v) / log(2);
+#endif
 }
+static double pres_asin(double *args, int n) {return to_signed_nan(asin(args[0]));}
+static double pres_acos(double *args, int n) {return to_signed_nan(acos(args[0]));}
+static double pres_atan(double *args, int n) {return atan(args[0]);}
+static double pres_atan2(double *args, int n) {return atan2(args[0], args[1]);}
+
+/* According to the test results 'div' operation always returns 0. Compiler does not seem to ever
+ * generate it, using rcp + mul instead, so probably it is not implemented in native d3dx. */
+static double pres_div(double *args, int n) {return 0.0;}
 
 #define PRES_OPCODE_MASK 0x7ff00000
 #define PRES_OPCODE_SHIFT 20
@@ -139,12 +171,17 @@ static const struct op_info pres_op_info[] =
     {0x107, "rsq", 1, 0, pres_rsq}, /* PRESHADER_OP_RSQ */
     {0x108, "sin", 1, 0, pres_sin}, /* PRESHADER_OP_SIN */
     {0x109, "cos", 1, 0, pres_cos}, /* PRESHADER_OP_COS */
+    {0x10a, "asin", 1, 0, pres_asin}, /* PRESHADER_OP_ASIN */
+    {0x10b, "acos", 1, 0, pres_acos}, /* PRESHADER_OP_ACOS */
+    {0x10c, "atan", 1, 0, pres_atan}, /* PRESHADER_OP_ATAN */
     {0x200, "min", 2, 0, pres_min}, /* PRESHADER_OP_MIN */
     {0x201, "max", 2, 0, pres_max}, /* PRESHADER_OP_MAX */
     {0x202, "lt",  2, 0, pres_lt }, /* PRESHADER_OP_LT  */
     {0x203, "ge",  2, 0, pres_ge }, /* PRESHADER_OP_GE  */
     {0x204, "add", 2, 0, pres_add}, /* PRESHADER_OP_ADD */
     {0x205, "mul", 2, 0, pres_mul}, /* PRESHADER_OP_MUL */
+    {0x206, "atan2", 2, 0, pres_atan2}, /* PRESHADER_OP_ATAN2 */
+    {0x208, "div", 2, 0, pres_div}, /* PRESHADER_OP_DIV */
     {0x300, "cmp", 3, 0, pres_cmp}, /* PRESHADER_OP_CMP */
     {0x500, "dot", 2, 1, pres_dot}, /* PRESHADER_OP_DOT */
     {0x70e, "d3ds_dotswiz", 6, 0, pres_dotswiz6}, /* PRESHADER_OP_DOTSWIZ6 */
@@ -261,21 +298,13 @@ static void regstore_free_tables(struct d3dx_regstore *rs)
     }
 }
 
-static void regstore_set_values(struct d3dx_regstore *rs, unsigned int table, void *data,
-        unsigned int start_offset, unsigned int count)
+static void regstore_set_modified_reg(struct d3dx_regstore *rs, unsigned int table,
+        unsigned int start, unsigned int end)
 {
-    unsigned int block_idx, start, end, start_block, end_block;
+    unsigned int block_idx, start_block, end_block;
 
-    if (!count)
-        return;
-
-    memcpy((BYTE *)rs->tables[table] + start_offset * table_info[table].component_size,
-            data, count * table_info[table].component_size);
-
-    start = get_reg_offset(table, start_offset);
     start_block = start / PRES_BITMASK_BLOCK_SIZE;
     start -= start_block * PRES_BITMASK_BLOCK_SIZE;
-    end = get_reg_offset(table, start_offset + count - 1);
     end_block = end / PRES_BITMASK_BLOCK_SIZE;
     end = (end_block + 1) * PRES_BITMASK_BLOCK_SIZE - 1 - end;
 
@@ -292,6 +321,27 @@ static void regstore_set_values(struct d3dx_regstore *rs, unsigned int table, vo
 
         rs->table_value_set[table][end_block] |= ~0u >> end;
     }
+}
+
+static void regstore_set_modified(struct d3dx_regstore *rs, unsigned int table,
+        unsigned int start_offset, unsigned int count)
+{
+    if (!count)
+        return;
+
+    regstore_set_modified_reg(rs, table, get_reg_offset(table, start_offset),
+            get_reg_offset(table, start_offset + count - 1));
+}
+
+static void regstore_set_values(struct d3dx_regstore *rs, unsigned int table, void *data,
+        unsigned int start_offset, unsigned int count)
+{
+    if (!count)
+        return;
+
+    memcpy((BYTE *)rs->tables[table] + start_offset * table_info[table].component_size,
+            data, count * table_info[table].component_size);
+    regstore_set_modified(rs, table, start_offset, count);
 }
 
 static unsigned int regstore_is_val_set_reg(struct d3dx_regstore *rs, unsigned int table, unsigned int reg_idx)
@@ -335,13 +385,8 @@ static void regstore_set_double(struct d3dx_regstore *rs, unsigned int table, un
             1u << (reg_idx % PRES_BITMASK_BLOCK_SIZE);
 }
 
-static void regstore_reset_table(struct d3dx_regstore *rs, unsigned int table)
+static void regstore_reset_modified(struct d3dx_regstore *rs, unsigned int table)
 {
-    unsigned int size;
-
-    size = rs->table_sizes[table] * table_info[table].reg_component_count * table_info[table].component_size;
-
-    memset(rs->tables[table], 0, size);
     memset(rs->table_value_set[table], 0,
             sizeof(*rs->table_value_set[table]) *
             ((rs->table_sizes[table] + PRES_BITMASK_BLOCK_SIZE - 1) / PRES_BITMASK_BLOCK_SIZE));
@@ -809,7 +854,7 @@ static HRESULT parse_preshader(struct d3dx_preshader *pres, unsigned int *ptr, u
 }
 
 void d3dx_create_param_eval(struct d3dx9_base_effect *base_effect, void *byte_code, unsigned int byte_code_size,
-        D3DXPARAMETER_TYPE type, struct d3dx_param_eval **peval_out)
+        D3DXPARAMETER_TYPE type, struct d3dx_param_eval **peval_out, ULONG64 *version_counter)
 {
     struct d3dx_param_eval *peval;
     unsigned int *ptr;
@@ -831,6 +876,8 @@ void d3dx_create_param_eval(struct d3dx9_base_effect *base_effect, void *byte_co
     peval = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*peval));
     if (!peval)
         goto err_out;
+
+    peval->version_counter = version_counter;
 
     peval->param_type = type;
     switch (type)
@@ -930,7 +977,8 @@ void d3dx_free_param_eval(struct d3dx_param_eval *peval)
     HeapFree(GetProcessHeap(), 0, peval);
 }
 
-static void set_constants(struct d3dx_regstore *rs, struct d3dx_const_tab *const_tab, BOOL update_all)
+static void set_constants(struct d3dx_regstore *rs, struct d3dx_const_tab *const_tab,
+        ULONG64 new_update_version)
 {
     unsigned int const_idx;
 
@@ -945,7 +993,7 @@ static void set_constants(struct d3dx_regstore *rs, struct d3dx_const_tab *const
         BOOL transpose;
         unsigned int count;
 
-        if (!(update_all || is_param_dirty(param)))
+        if (!is_param_dirty(param, const_tab->update_version))
             continue;
 
         transpose = (const_set->constant_class == D3DXPC_MATRIX_COLUMNS && param->class == D3DXPC_MATRIX_ROWS)
@@ -1016,6 +1064,7 @@ static void set_constants(struct d3dx_regstore *rs, struct d3dx_const_tab *const
             }
         }
     }
+    const_tab->update_version = new_update_version;
 }
 
 #define INITIAL_CONST_SET_SIZE 16
@@ -1284,26 +1333,46 @@ static HRESULT execute_preshader(struct d3dx_preshader *pres)
     return D3D_OK;
 }
 
-static BOOL is_const_tab_input_dirty(struct d3dx_const_tab *ctab)
+static void set_preshader_modified(struct d3dx_preshader *pres)
 {
     unsigned int i;
 
-    for (i = 0; i < ctab->const_set_count; ++i)
+    for (i = 0; i < pres->ins_count; ++i)
     {
-        if (is_param_dirty(ctab->const_set[i].param))
+        const struct d3dx_pres_ins *ins = &pres->ins[i];
+        const struct d3dx_pres_reg *reg = &ins->output.reg;
+
+        if (reg->table == PRES_REGTAB_TEMP)
+            continue;
+
+        regstore_set_modified(&pres->regs, reg->table, reg->offset,
+                pres_op_info[ins->op].func_all_comps ? 1 : ins->component_count);
+    }
+}
+
+static BOOL is_const_tab_input_dirty(struct d3dx_const_tab *ctab, ULONG64 update_version)
+{
+    unsigned int i;
+
+    if (update_version == ULONG64_MAX)
+        update_version = ctab->update_version;
+    for (i = 0; i < ctab->input_count; ++i)
+    {
+        if (ctab->inputs_param[i]
+                && is_param_dirty(ctab->inputs_param[i], update_version))
             return TRUE;
     }
     return FALSE;
 }
 
-BOOL is_param_eval_input_dirty(struct d3dx_param_eval *peval)
+BOOL is_param_eval_input_dirty(struct d3dx_param_eval *peval, ULONG64 update_version)
 {
-    return is_const_tab_input_dirty(&peval->pres.inputs)
-            || is_const_tab_input_dirty(&peval->shader_inputs);
+    return is_const_tab_input_dirty(&peval->pres.inputs, update_version)
+            || is_const_tab_input_dirty(&peval->shader_inputs, update_version);
 }
 
 HRESULT d3dx_evaluate_parameter(struct d3dx_param_eval *peval, const struct d3dx_parameter *param,
-        void *param_value, BOOL update_all)
+        void *param_value)
 {
     HRESULT hr;
     unsigned int i;
@@ -1312,10 +1381,14 @@ HRESULT d3dx_evaluate_parameter(struct d3dx_param_eval *peval, const struct d3dx
 
     TRACE("peval %p, param %p, param_value %p.\n", peval, param, param_value);
 
-    set_constants(&peval->pres.regs, &peval->pres.inputs, update_all);
+    if (is_const_tab_input_dirty(&peval->pres.inputs, ULONG64_MAX))
+    {
+        set_constants(&peval->pres.regs, &peval->pres.inputs,
+                next_update_version(peval->version_counter));
 
-    if (FAILED(hr = execute_preshader(&peval->pres)))
-        return hr;
+        if (FAILED(hr = execute_preshader(&peval->pres)))
+            return hr;
+    }
 
     elements_table = table_info[PRES_REGTAB_OCONST].reg_component_count
             * peval->pres.regs.table_sizes[PRES_REGTAB_OCONST];
@@ -1397,7 +1470,7 @@ static HRESULT set_shader_constants_device(ID3DXEffectStateManager *manager, str
         }
         start += count;
     }
-    regstore_reset_table(rs, table);
+    regstore_reset_modified(rs, table);
     return result;
 }
 
@@ -1410,22 +1483,51 @@ HRESULT d3dx_param_eval_set_shader_constants(ID3DXEffectStateManager *manager, s
     struct d3dx_preshader *pres = &peval->pres;
     struct d3dx_regstore *rs = &pres->regs;
     unsigned int i;
+    ULONG64 new_update_version = next_update_version(peval->version_counter);
+    BOOL update_device = update_all;
 
     TRACE("device %p, peval %p, param_type %u.\n", device, peval, peval->param_type);
 
-    if (update_all || is_const_tab_input_dirty(&pres->inputs))
+    if (is_const_tab_input_dirty(&pres->inputs, ULONG64_MAX))
     {
-        set_constants(rs, &pres->inputs, update_all);
+        set_constants(rs, &pres->inputs, new_update_version);
         if (FAILED(hr = execute_preshader(pres)))
             return hr;
+        update_device = TRUE;
     }
 
-    set_constants(rs, &peval->shader_inputs, update_all);
-    result = D3D_OK;
-    for (i = 0; i < ARRAY_SIZE(set_tables); ++i)
+    if (is_const_tab_input_dirty(&peval->shader_inputs, ULONG64_MAX))
     {
-        if (FAILED(hr = set_shader_constants_device(manager, device, rs, peval->param_type, set_tables[i])))
-            result = hr;
+        set_constants(rs, &peval->shader_inputs, new_update_version);
+        update_device = TRUE;
+    }
+    result = D3D_OK;
+
+    if (update_device)
+    {
+        if (update_all)
+        {
+            for (i = 0; i < peval->shader_inputs.input_count; ++i)
+            {
+                unsigned int table;
+
+                if (!peval->shader_inputs.inputs[i].RegisterCount)
+                    continue;
+                table = peval->shader_inputs.regset2table[peval->shader_inputs.inputs[i].RegisterSet];
+                if (table < PRES_REGTAB_COUNT)
+                    regstore_set_modified_reg(rs, table,
+                            peval->shader_inputs.inputs[i].RegisterIndex,
+                            peval->shader_inputs.inputs[i].RegisterIndex
+                            + peval->shader_inputs.inputs[i].RegisterCount - 1);
+            }
+            set_preshader_modified(pres);
+        }
+
+        for (i = 0; i < ARRAY_SIZE(set_tables); ++i)
+        {
+            if (FAILED(hr = set_shader_constants_device(manager, device, rs, peval->param_type, set_tables[i])))
+                result = hr;
+        }
     }
     return result;
 }

@@ -109,8 +109,7 @@ static void MakeMULTISZDisplayable(LPWSTR multi)
 /*******************************************************************************
  * Local module support methods
  */
-static void AddEntryToList(HWND hwndLV, LPWSTR Name, DWORD dwValType,
-    void* ValBuf, DWORD dwCount, BOOL bHighlight)
+static void AddEntryToList(HWND hwndLV, LPWSTR Name, DWORD dwValType, void *ValBuf, DWORD dwCount)
 {
     LINE_INFO* linfo;
     LVITEMW item;
@@ -137,9 +136,7 @@ static void AddEntryToList(HWND hwndLV, LPWSTR Name, DWORD dwValType,
     item.stateMask = LVIS_FOCUSED | LVIS_SELECTED;
     item.pszText = Name ? Name : LPSTR_TEXTCALLBACKW;
     item.cchTextMax = Name ? lstrlenW(item.pszText) : 0;
-    if (bHighlight) {
-        item.stateMask = item.state = LVIS_FOCUSED;
-    }
+
     switch (dwValType)
     {
     case REG_SZ:
@@ -403,11 +400,16 @@ static LRESULT CALLBACK ListWndProc(HWND hWnd, UINT message, WPARAM wParam, LPAR
 	        LPNMLVDISPINFOW dispInfo = (LPNMLVDISPINFOW)lParam;
 		LPWSTR oldName = GetItemText(hWnd, dispInfo->item.iItem);
                 LONG ret;
+                LVITEMW item;
+
                 if (!oldName) return -1; /* cannot rename a default value */
 	        ret = RenameValue(hWnd, g_currentRootKey, g_currentPath, oldName, dispInfo->item.pszText);
 		if (ret)
                 {
                     RefreshListView(hWnd, g_currentRootKey, g_currentPath, dispInfo->item.pszText);
+                    item.state = LVIS_FOCUSED | LVIS_SELECTED;
+                    item.stateMask = LVIS_FOCUSED | LVIS_SELECTED;
+                    SendMessageW(hWnd, LVM_SETITEMSTATE, dispInfo->item.iItem, (LPARAM)&item);
                 }
 		HeapFree(GetProcessHeap(), 0, oldName);
 		return 0;
@@ -461,7 +463,7 @@ static LRESULT CALLBACK ListWndProc(HWND hWnd, UINT message, WPARAM wParam, LPAR
         break;
     case WM_CONTEXTMENU: {
         int cnt = SendMessageW(hWnd, LVM_GETNEXTITEM, -1, MAKELPARAM(LVNI_SELECTED, 0));
-        TrackPopupMenu(GetSubMenu(hPopupMenus, cnt == -1 ? PM_NEW : PM_MODIFYVALUE),
+        TrackPopupMenu(GetSubMenu(hPopupMenus, cnt == -1 ? PM_NEW_VALUE : PM_MODIFY_VALUE),
                        TPM_RIGHTBUTTON, (short)LOWORD(lParam), (short)HIWORD(lParam),
                        0, hFrameWnd, NULL);
         break;
@@ -552,20 +554,25 @@ BOOL RefreshListView(HWND hwndLV, HKEY hKeyRoot, LPCWSTR keyPath, LPCWSTR highli
 
     valSize = max_val_size;
     if (RegQueryValueExW(hKey, NULL, NULL, &valType, valBuf, &valSize) == ERROR_FILE_NOT_FOUND) {
-        AddEntryToList(hwndLV, NULL, REG_SZ, NULL, 0, !highlightValue);
+        AddEntryToList(hwndLV, NULL, REG_SZ, NULL, 0);
     }
     for(index = 0; index < val_count; index++) {
-        BOOL bSelected = (valName == highlightValue); /* NOT a bug, we check for double NULL here */
         valNameLen = max_val_name_len;
         valSize = max_val_size;
 	valType = 0;
         errCode = RegEnumValueW(hKey, index, valName, &valNameLen, NULL, &valType, valBuf, &valSize);
 	if (errCode != ERROR_SUCCESS) goto done;
         valBuf[valSize] = 0;
-        if (highlightValue && !lstrcmpW(valName, highlightValue))
-            bSelected = TRUE;
-        AddEntryToList(hwndLV, valName[0] ? valName : NULL, valType, valBuf, valSize, bSelected);
+        AddEntryToList(hwndLV, valName[0] ? valName : NULL, valType, valBuf, valSize);
     }
+
+    memset(&item, 0, sizeof(item));
+    if (!highlightValue)
+    {
+        item.state = item.stateMask = LVIS_FOCUSED;
+        SendMessageW(hwndLV, LVM_SETITEMSTATE, 0, (LPARAM)&item);
+    }
+
     SendMessageW(hwndLV, LVM_SORTITEMS, (WPARAM)hwndLV, (LPARAM)CompareFunc);
 
     g_currentRootKey = hKeyRoot;

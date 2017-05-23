@@ -421,13 +421,45 @@ static NSString* WineLocalizedString(unsigned int stringID)
         }
     }
 
-    - (void) keyboardSelectionDidChange
+    static BOOL EqualInputSource(TISInputSourceRef source1, TISInputSourceRef source2)
     {
-        TISInputSourceRef inputSourceLayout;
+        if (!source1 && !source2)
+            return TRUE;
+        if (!source1 || !source2)
+            return FALSE;
+        return CFEqual(source1, source2);
+    }
+
+    - (void) keyboardSelectionDidChange:(BOOL)force
+    {
+        TISInputSourceRef inputSource, inputSourceLayout;
+
+        if (!force)
+        {
+            NSTextInputContext* context = [NSTextInputContext currentInputContext];
+            if (!context || ![context client])
+                return;
+        }
+
+        inputSource = TISCopyCurrentKeyboardInputSource();
+        inputSourceLayout = TISCopyCurrentKeyboardLayoutInputSource();
+        if (!force && EqualInputSource(inputSource, lastKeyboardInputSource) &&
+            EqualInputSource(inputSourceLayout, lastKeyboardLayoutInputSource))
+        {
+            if (inputSource) CFRelease(inputSource);
+            if (inputSourceLayout) CFRelease(inputSourceLayout);
+            return;
+        }
+
+        if (lastKeyboardInputSource)
+            CFRelease(lastKeyboardInputSource);
+        lastKeyboardInputSource = inputSource;
+        if (lastKeyboardLayoutInputSource)
+            CFRelease(lastKeyboardLayoutInputSource);
+        lastKeyboardLayoutInputSource = inputSourceLayout;
 
         inputSourceIsInputMethodValid = FALSE;
 
-        inputSourceLayout = TISCopyCurrentKeyboardLayoutInputSource();
         if (inputSourceLayout)
         {
             CFDataRef uchr;
@@ -442,7 +474,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 event->keyboard_changed.keyboard_type = self.keyboardType;
                 event->keyboard_changed.iso_keyboard = (KBGetLayoutType(self.keyboardType) == kKeyboardISO);
                 event->keyboard_changed.uchr = CFDataCreateCopy(NULL, uchr);
-                event->keyboard_changed.input_source = TISCopyCurrentKeyboardInputSource();
+                event->keyboard_changed.input_source = (TISInputSourceRef)CFRetain(inputSource);
 
                 if (event->keyboard_changed.uchr)
                 {
@@ -456,8 +488,20 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
                 macdrv_release_event(event);
             }
+        }
+    }
 
-            CFRelease(inputSourceLayout);
+    - (void) keyboardSelectionDidChange
+    {
+        [self keyboardSelectionDidChange:NO];
+    }
+
+    - (void) setKeyboardType:(CGEventSourceKeyboardType)newType
+    {
+        if (newType != keyboardType)
+        {
+            keyboardType = newType;
+            [self keyboardSelectionDidChange:YES];
         }
     }
 

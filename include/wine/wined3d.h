@@ -72,6 +72,7 @@ enum wined3d_primitive_type
     WINED3D_PT_LINESTRIP_ADJ                = 11,
     WINED3D_PT_TRIANGLELIST_ADJ             = 12,
     WINED3D_PT_TRIANGLESTRIP_ADJ            = 13,
+    WINED3D_PT_PATCH                        = 14,
 };
 
 enum wined3d_device_type
@@ -762,18 +763,12 @@ enum wined3d_sysval_semantic
     WINED3D_SV_INSTANCE_ID                  = 8,
     WINED3D_SV_IS_FRONT_FACE                = 9,
     WINED3D_SV_SAMPLE_INDEX                 = 10,
-    WINED3D_SV_QUAD_U0_TESS_FACTOR          = 11,
-    WINED3D_SV_QUAD_V0_TESS_FACTOR          = 12,
-    WINED3D_SV_QUAD_U1_TESS_FACTOR          = 13,
-    WINED3D_SV_QUAD_V1_TESS_FACTOR          = 14,
-    WINED3D_SV_QUAD_U_INNER_TESS_FACTOR     = 15,
-    WINED3D_SV_QUAD_V_INNER_TESS_FACTOR     = 16,
-    WINED3D_SV_TRIANGLE_U_TESS_FACTOR       = 17,
-    WINED3D_SV_TRIANGLE_V_TESS_FACTOR       = 18,
-    WINED3D_SV_TRIANGLE_W_TESS_FACTOR       = 19,
-    WINED3D_SV_TRIANGLE_INNER_TESS_FACTOR   = 20,
-    WINED3D_SV_LINE_DETAIL_TESS_FACTOR      = 21,
-    WINED3D_SV_LINE_DENSITY_TESS_FACTOR     = 22,
+    WINED3D_SV_TESS_FACTOR_QUADEDGE         = 11,
+    WINED3D_SV_TESS_FACTOR_QUADINT          = 12,
+    WINED3D_SV_TESS_FACTOR_TRIEDGE          = 13,
+    WINED3D_SV_TESS_FACTOR_TRIINT           = 14,
+    WINED3D_SV_TESS_FACTOR_LINEDET          = 15,
+    WINED3D_SV_TESS_FACTOR_LINEDEN          = 16,
 };
 
 enum wined3d_component_type
@@ -1991,6 +1986,7 @@ struct wined3d_shader_desc
     enum wined3d_shader_byte_code_format format;
     struct wined3d_shader_signature input_signature;
     struct wined3d_shader_signature output_signature;
+    struct wined3d_shader_signature patch_constant_signature;
     unsigned int max_version;
 };
 
@@ -2174,6 +2170,8 @@ HRESULT __cdecl wined3d_device_clear(struct wined3d_device *device, DWORD rect_c
 HRESULT __cdecl wined3d_device_clear_rendertarget_view(struct wined3d_device *device,
         struct wined3d_rendertarget_view *view, const RECT *rect, DWORD flags,
         const struct wined3d_color *color, float depth, DWORD stencil);
+void __cdecl wined3d_device_clear_unordered_access_view_uint(struct wined3d_device *device,
+        struct wined3d_unordered_access_view *view, const struct wined3d_uvec4 *clear_value);
 void __cdecl wined3d_device_copy_resource(struct wined3d_device *device,
         struct wined3d_resource *dst_resource, struct wined3d_resource *src_resource);
 HRESULT __cdecl wined3d_device_copy_sub_resource_region(struct wined3d_device *device,
@@ -2241,7 +2239,7 @@ float __cdecl wined3d_device_get_npatch_mode(const struct wined3d_device *device
 struct wined3d_shader * __cdecl wined3d_device_get_pixel_shader(const struct wined3d_device *device);
 struct wined3d_query * __cdecl wined3d_device_get_predication(struct wined3d_device *device, BOOL *value);
 void __cdecl wined3d_device_get_primitive_type(const struct wined3d_device *device,
-        enum wined3d_primitive_type *primitive_topology);
+        enum wined3d_primitive_type *primitive_topology, unsigned int *patch_vertex_count);
 struct wined3d_buffer * __cdecl wined3d_device_get_ps_cb(const struct wined3d_device *device, UINT idx);
 HRESULT __cdecl wined3d_device_get_ps_consts_b(const struct wined3d_device *device,
         unsigned int start_idx, unsigned int count, BOOL *constants);
@@ -2357,7 +2355,7 @@ void __cdecl wined3d_device_set_pixel_shader(struct wined3d_device *device, stru
 void __cdecl wined3d_device_set_predication(struct wined3d_device *device,
         struct wined3d_query *predicate, BOOL value);
 void __cdecl wined3d_device_set_primitive_type(struct wined3d_device *device,
-        enum wined3d_primitive_type primitive_topology);
+        enum wined3d_primitive_type primitive_topology, unsigned int patch_vertex_count);
 void __cdecl wined3d_device_set_ps_cb(struct wined3d_device *device, UINT idx, struct wined3d_buffer *buffer);
 HRESULT __cdecl wined3d_device_set_ps_consts_b(struct wined3d_device *device,
         unsigned int start_idx, unsigned int count, const BOOL *constants);

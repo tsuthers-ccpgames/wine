@@ -344,6 +344,7 @@
 # @ stub GetNextQueueWindow
 @ stdcall GetOpenClipboardWindow()
 @ stdcall GetParent(long)
+@ stdcall GetPhysicalCursorPos(ptr)
 @ stdcall GetPriorityClipboardFormat(ptr long)
 @ stdcall GetProcessDefaultLayout(ptr)
 @ stdcall GetProcessWindowStation()
@@ -490,6 +491,7 @@
 @ stub LockWindowStation
 @ stdcall LockWindowUpdate(long)
 @ stdcall LockWorkStation()
+@ stdcall LogicalToPhysicalPoint(long ptr)
 @ stdcall LookupIconIdFromDirectory(ptr long)
 @ stdcall LookupIconIdFromDirectoryEx(ptr long long long long)
 @ stub MBToWCSEx
@@ -540,6 +542,7 @@
 # @ stub PaintMenuBar
 @ stdcall PeekMessageA(ptr long long long long)
 @ stdcall PeekMessageW(ptr long long long long)
+@ stdcall PhysicalToLogicalPoint(long ptr)
 @ stub PlaySoundEvent
 @ stdcall PostMessageA(long long long long)
 @ stdcall PostMessageW(long long long long)
@@ -658,6 +661,7 @@
 @ stdcall SetMessageExtraInfo(long)
 @ stdcall SetMessageQueue(long)
 @ stdcall SetParent(long long)
+@ stdcall SetPhysicalCursorPos(long long)
 @ stdcall SetProcessDefaultLayout(long)
 @ stdcall SetProcessDPIAware()
 @ stdcall SetProcessWindowStation(long)

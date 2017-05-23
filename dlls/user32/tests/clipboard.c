@@ -28,7 +28,6 @@
 
 static BOOL (WINAPI *pAddClipboardFormatListener)(HWND hwnd);
 static BOOL (WINAPI *pRemoveClipboardFormatListener)(HWND hwnd);
-static DWORD (WINAPI *pGetClipboardSequenceNumber)(void);
 static BOOL (WINAPI *pGetUpdatedClipboardFormats)( UINT *formats, UINT count, UINT *out_count );
 
 static int thread_from_line;
@@ -598,7 +597,7 @@ static void test_synthesized(void)
     HGLOBAL h, htext;
     HENHMETAFILE emf;
     BOOL r;
-    UINT cf, i, j, count, rendered;
+    UINT cf, i, j, count, rendered, seq, old_seq;
     HANDLE data;
     HWND hwnd;
 
@@ -763,10 +762,14 @@ static void test_synthesized(void)
             ok(cf == tests[i].expected[j], "%u.%u: got %04x instead of %04x\n",
                i, j, cf, tests[i].expected[j] );
             if (cf != tests[i].expected[j]) break;
+            old_seq = GetClipboardSequenceNumber();
             data = GetClipboardData( cf );
             ok(data != NULL ||
                broken( tests[i].format == CF_DIBV5 && cf == CF_DIB ), /* >= Vista */
                "%u: couldn't get data, cf %04x err %d\n", i, cf, GetLastError());
+            seq = GetClipboardSequenceNumber();
+            todo_wine_if(cf != tests[i].format && cf != CF_LOCALE)
+                ok(seq == old_seq, "sequence changed (test %d %d)\n", i, cf);
             switch (cf)
             {
             case CF_LOCALE:
@@ -874,6 +877,13 @@ static void test_synthesized(void)
     DestroyWindow( hwnd );
 }
 
+static DWORD WINAPI clipboard_render_data_thread(void *param)
+{
+    HANDLE handle = SetClipboardData( CF_UNICODETEXT, create_textW() );
+    ok( handle != 0, "SetClipboardData failed: %d\n", GetLastError() );
+    return 0;
+}
+
 static CRITICAL_SECTION clipboard_cs;
 static HWND next_wnd;
 static UINT wm_drawclipboard;
@@ -882,6 +892,7 @@ static UINT wm_destroyclipboard;
 static UINT wm_renderformat;
 static UINT nb_formats;
 static BOOL cross_thread;
+static BOOL do_render_format;
 
 static LRESULT CALLBACK clipboard_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
@@ -914,6 +925,27 @@ static LRESULT CALLBACK clipboard_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARA
     case WM_RENDERFORMAT:
         ok( !wm_renderformat, "multiple WM_RENDERFORMAT %04x / %04lx\n", wm_renderformat, wp );
         wm_renderformat = wp;
+
+        if (do_render_format)
+        {
+            UINT seq, old_seq;
+            HANDLE handle;
+
+            old_seq = GetClipboardSequenceNumber();
+            handle = SetClipboardData( CF_TEXT, create_textA() );
+            ok( handle != 0, "SetClipboardData failed: %d\n", GetLastError() );
+            seq = GetClipboardSequenceNumber();
+            todo_wine ok( seq == old_seq, "sequence changed\n" );
+            old_seq = seq;
+
+            handle = CreateThread( NULL, 0, clipboard_render_data_thread, NULL, 0, NULL );
+            ok( handle != NULL, "CreateThread failed: %d\n", GetLastError() );
+            ok( WaitForSingleObject(handle, INFINITE) == WAIT_OBJECT_0, "WaitForSingleObject failed\n" );
+            CloseHandle( handle );
+            seq = GetClipboardSequenceNumber();
+            todo_wine ok( seq == old_seq, "sequence changed\n" );
+        }
+
         break;
     case WM_CLIPBOARDUPDATE:
         ok( msg_flags == ISMEX_NOSEND, "WM_CLIPBOARDUPDATE wrong flags %x\n", msg_flags );
@@ -948,6 +980,19 @@ static LRESULT CALLBACK clipboard_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARA
     return DefWindowProcA(hwnd, msg, wp, lp);
 }
 
+static void get_clipboard_data_process(void)
+{
+    HANDLE data;
+    BOOL r;
+
+    r = OpenClipboard(0);
+    ok(r, "OpenClipboard failed: %d\n", GetLastError());
+    data = GetClipboardData( CF_UNICODETEXT );
+    ok( data != NULL, "GetClipboardData failed: %d\n", GetLastError());
+    r = CloseClipboard();
+    ok(r, "CloseClipboard failed: %d\n", GetLastError());
+}
+
 static DWORD WINAPI clipboard_thread(void *param)
 {
     HWND ret, win = param;
@@ -959,7 +1004,7 @@ static DWORD WINAPI clipboard_thread(void *param)
     cross_thread = (GetWindowThreadProcessId( win, NULL ) != GetCurrentThreadId());
     trace( "%s-threaded test\n", cross_thread ? "multi" : "single" );
 
-    if (pGetClipboardSequenceNumber) old_seq = pGetClipboardSequenceNumber();
+    old_seq = GetClipboardSequenceNumber();
 
     EnterCriticalSection(&clipboard_cs);
     SetLastError(0xdeadbeef);
@@ -998,11 +1043,8 @@ static DWORD WINAPI clipboard_thread(void *param)
         ok( r, "RemoveClipboardFormatListener failed err %d\n", GetLastError());
     }
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( seq == old_seq, "sequence changed\n" );
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( seq == old_seq, "sequence changed\n" );
     if (!cross_thread)
     {
         ok( wm_drawclipboard == 1, "WM_DRAWCLIPBOARD not received\n" );
@@ -1025,11 +1067,8 @@ static DWORD WINAPI clipboard_thread(void *param)
     r = OpenClipboard(win);
     ok(r, "OpenClipboard failed: %d\n", GetLastError());
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( seq == old_seq, "sequence changed\n" );
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( seq == old_seq, "sequence changed\n" );
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1047,12 +1086,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     r = EmptyClipboard();
     ok(r, "EmptyClipboard failed: %d\n", GetLastError());
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1072,12 +1108,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     r = EmptyClipboard();
     ok(r, "EmptyClipboard failed: %d\n", GetLastError());
     /* sequence changes again, even though it was already empty */
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1099,12 +1132,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     handle = SetClipboardData( CF_TEXT, create_textA() );
     ok(handle != 0, "SetClipboardData failed: %d\n", GetLastError());
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1121,12 +1151,9 @@ static DWORD WINAPI clipboard_thread(void *param)
 
     SetClipboardData( CF_UNICODETEXT, 0 );
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1143,12 +1170,9 @@ static DWORD WINAPI clipboard_thread(void *param)
 
     SetClipboardData( CF_UNICODETEXT, 0 );  /* same data again */
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1172,12 +1196,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     ok(r, "CloseClipboard failed: %d\n", GetLastError());
     LeaveCriticalSection(&clipboard_cs);
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 2, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 2, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( wm_drawclipboard == 1, "WM_DRAWCLIPBOARD not received\n" );
@@ -1195,11 +1216,8 @@ static DWORD WINAPI clipboard_thread(void *param)
     r = OpenClipboard(win);
     ok(r, "OpenClipboard failed: %d\n", GetLastError());
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( seq == old_seq, "sequence changed\n" );
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( seq == old_seq, "sequence changed\n" );
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1223,18 +1241,17 @@ static DWORD WINAPI clipboard_thread(void *param)
     fmt = SendMessageA( win, WM_USER+4, 0, 0 );
     ok( fmt == CF_UNICODETEXT, "WM_RENDERFORMAT received %04x\n", fmt );
 
+    do_render_format = TRUE;
     handle = GetClipboardData( CF_OEMTEXT );
-    ok( !handle, "got data for CF_OEMTEXT\n" );
+    ok( handle != NULL, "didn't get data for CF_OEMTEXT\n" );
     fmt = SendMessageA( win, WM_USER+4, 0, 0 );
     ok( fmt == CF_UNICODETEXT, "WM_RENDERFORMAT received %04x\n", fmt );
+    do_render_format = FALSE;
 
     SetClipboardData( CF_WAVE, 0 );
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    todo_wine ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1251,13 +1268,10 @@ static DWORD WINAPI clipboard_thread(void *param)
 
     r = CloseClipboard();
     ok(r, "CloseClipboard failed: %d\n", GetLastError());
-    if (pGetClipboardSequenceNumber)
-    {
-        /* no synthesized format, so CloseClipboard doesn't change the sequence */
-        seq = pGetClipboardSequenceNumber();
-        ok( seq == old_seq, "sequence changed\n" );
-        old_seq = seq;
-    }
+    /* no synthesized format, so CloseClipboard doesn't change the sequence */
+    seq = GetClipboardSequenceNumber();
+    ok( seq == old_seq, "sequence changed\n" );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( wm_drawclipboard == 1, "WM_DRAWCLIPBOARD not received\n" );
@@ -1277,11 +1291,8 @@ static DWORD WINAPI clipboard_thread(void *param)
     r = CloseClipboard();
     ok(r, "CloseClipboard failed: %d\n", GetLastError());
     /* nothing changed */
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( seq == old_seq, "sequence changed\n" );
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( seq == old_seq, "sequence changed\n" );
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1327,12 +1338,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     r = OpenClipboard(win);
     ok(r, "OpenClipboard failed: %d\n", GetLastError());
     SetClipboardData( CF_WAVE, GlobalAlloc( GMEM_FIXED, 1 ));
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 2, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 2, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1354,12 +1362,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     ok(r, "CloseClipboard failed: %d\n", GetLastError());
     LeaveCriticalSection(&clipboard_cs);
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( seq == old_seq, "sequence changed\n" );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( seq == old_seq, "sequence changed\n" );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( wm_drawclipboard == 1, "WM_DRAWCLIPBOARD not received\n" );
@@ -1376,12 +1381,9 @@ static DWORD WINAPI clipboard_thread(void *param)
 
     run_process( "grab_clipboard 0" );
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1402,12 +1404,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     r = OpenClipboard(0);
     ok(r, "OpenClipboard failed: %d\n", GetLastError());
     SetClipboardData( CF_WAVE, GlobalAlloc( GMEM_FIXED, 1 ));
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1427,12 +1426,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     ok(r, "CloseClipboard failed: %d\n", GetLastError());
     LeaveCriticalSection(&clipboard_cs);
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( seq == old_seq, "sequence changed\n" );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( seq == old_seq, "sequence changed\n" );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( wm_drawclipboard == 1, "WM_DRAWCLIPBOARD received\n" );
@@ -1449,12 +1445,9 @@ static DWORD WINAPI clipboard_thread(void *param)
 
     run_process( "grab_clipboard 1" );
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 2, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 2, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1475,12 +1468,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     r = OpenClipboard(0);
     ok(r, "OpenClipboard failed: %d\n", GetLastError());
     SetClipboardData( CF_WAVE, GlobalAlloc( GMEM_FIXED, 1 ));
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( (int)(seq - old_seq) == 1, "sequence diff %d\n", seq - old_seq );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( !wm_drawclipboard, "WM_DRAWCLIPBOARD received\n" );
@@ -1500,12 +1490,9 @@ static DWORD WINAPI clipboard_thread(void *param)
     ok(r, "CloseClipboard failed: %d\n", GetLastError());
     LeaveCriticalSection(&clipboard_cs);
 
-    if (pGetClipboardSequenceNumber)
-    {
-        seq = pGetClipboardSequenceNumber();
-        ok( seq == old_seq, "sequence changed\n" );
-        old_seq = seq;
-    }
+    seq = GetClipboardSequenceNumber();
+    ok( seq == old_seq, "sequence changed\n" );
+    old_seq = seq;
     if (!cross_thread)
     {
         ok( wm_drawclipboard == 1, "WM_DRAWCLIPBOARD not received\n" );
@@ -1519,6 +1506,31 @@ static DWORD WINAPI clipboard_thread(void *param)
     ok( count == 1 || broken(!pAddClipboardFormatListener), "WM_CLIPBOARDUPDATE not received\n" );
     fmt = SendMessageA( win, WM_USER+4, 0, 0 );
     ok( !fmt, "WM_RENDERFORMAT received\n" );
+
+    if (cross_thread)
+    {
+        r = OpenClipboard( win );
+        ok(r, "OpenClipboard failed: %d\n", GetLastError());
+        r = EmptyClipboard();
+        ok(r, "EmptyClipboard failed: %d\n", GetLastError());
+        SetClipboardData( CF_TEXT, 0 );
+        r = CloseClipboard();
+        ok(r, "CloseClipboard failed: %d\n", GetLastError());
+
+        do_render_format = TRUE;
+        old_seq = GetClipboardSequenceNumber();
+        run_process( "get_clipboard_data" );
+        seq = GetClipboardSequenceNumber();
+        todo_wine ok( seq == old_seq, "sequence changed\n" );
+        do_render_format = FALSE;
+
+        count = SendMessageA( win, WM_USER+1, 0, 0 );
+        todo_wine ok( count == 1, "WM_DRAWCLIPBOARD not received\n" );
+        count = SendMessageA( win, WM_USER+2, 0, 0 );
+        todo_wine ok( count == 1 || broken(!pAddClipboardFormatListener) /* < Vista */, "WM_CLIPBOARDUPDATE not received\n" );
+        fmt = SendMessageA( win, WM_USER+4, 0, 0 );
+        ok( fmt == CF_TEXT, "WM_RENDERFORMAT received\n" );
+    }
 
     r = PostMessageA(win, WM_USER, 0, 0);
     ok(r, "PostMessage failed: %d\n", GetLastError());
@@ -2416,7 +2428,6 @@ START_TEST(clipboard)
     argv0 = argv[0];
     pAddClipboardFormatListener = (void *)GetProcAddress( mod, "AddClipboardFormatListener" );
     pRemoveClipboardFormatListener = (void *)GetProcAddress( mod, "RemoveClipboardFormatListener" );
-    pGetClipboardSequenceNumber = (void *)GetProcAddress( mod, "GetClipboardSequenceNumber" );
     pGetUpdatedClipboardFormats = (void *)GetProcAddress( mod, "GetUpdatedClipboardFormats" );
 
     if (argc == 4 && !strcmp( argv[2], "set_clipboard_data" ))
@@ -2447,6 +2458,11 @@ START_TEST(clipboard)
     if (argc == 4 && !strcmp( argv[2], "string_data" ))
     {
         test_string_data_process( atoi( argv[3] ));
+        return;
+    }
+    if (argc == 3 && !strcmp( argv[2], "get_clipboard_data" ))
+    {
+        get_clipboard_data_process( );
         return;
     }
 
