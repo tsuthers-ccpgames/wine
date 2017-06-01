@@ -3670,7 +3670,7 @@
 @ stub _Link
 @ cdecl _Lock_shared_ptr_spin_lock()
 @ stub _Lstat
-@ stub _Make_dir
+@ cdecl _Make_dir(wstr) tr2_sys__Make_dir_wchar
 @ cdecl _Mbrtowc(ptr ptr long ptr ptr) _Mbrtowc
 @ stub _Mtx_clear_owner
 @ cdecl _Mtx_current_owns(ptr) _Mtx_current_owns
@@ -3732,7 +3732,7 @@
 @ cdecl _Thrd_start(ptr ptr ptr) _Thrd_start
 @ cdecl _Thrd_yield() _Thrd_yield
 @ stub _To_byte
-@ stub _To_wide
+@ cdecl _To_wide(str ptr)
 @ cdecl _Tolower(long ptr) _Tolower
 @ cdecl _Toupper(long ptr) _Toupper
 @ cdecl _Towlower(long ptr) _Towlower

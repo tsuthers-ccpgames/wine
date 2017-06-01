@@ -37,15 +37,14 @@
 #define WM_NOTIFY_REFLECT (WM_USER+1024)
 
 /* Pop-Up Menus */
-#define PM_TREEVIEW      0
-#define PM_NEW_VALUE     1
-#define PM_MODIFY_VALUE  2
+#define PM_COMPUTER      0
+#define PM_TREEVIEW      1
+#define PM_NEW_VALUE     2
+#define PM_MODIFY_VALUE  3
 
 /* HexEdit Class */
 #define HEM_SETDATA (WM_USER+0)
 #define HEM_GETDATA (WM_USER+1)
-
-extern HINSTANCE hInst;
 
 /******************************************************************************/
 
@@ -118,6 +117,8 @@ extern void SetupStatusBar(HWND hWnd, BOOL bResize);
 extern void UpdateStatusBar(void);
 
 /* listview.c */
+extern void format_value_data(HWND hwndLV, int index, DWORD type, void *data, DWORD size);
+extern int AddEntryToList(HWND hwndLV, WCHAR *Name, DWORD dwValType, void *ValBuf, DWORD dwCount);
 extern HWND CreateListView(HWND hwndParent, UINT id);
 extern BOOL RefreshListView(HWND hwndLV, HKEY hKeyRoot, LPCWSTR keyPath, LPCWSTR highlightValue);
 extern HWND StartValueRename(HWND hwndLV);

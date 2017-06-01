@@ -1334,6 +1334,9 @@ static void test_create_texture2d(void)
                 FALSE, TRUE},
         {DXGI_FORMAT_D32_FLOAT,              1, D3D10_BIND_RENDER_TARGET,   0, FALSE, FALSE},
         {DXGI_FORMAT_D32_FLOAT,              1, D3D10_BIND_DEPTH_STENCIL,   0, TRUE,  FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,     1, D3D10_BIND_SHADER_RESOURCE, 0, TRUE,  FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,     1, D3D10_BIND_RENDER_TARGET,   0, FALSE, FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,     1, D3D10_BIND_DEPTH_STENCIL,   0, FALSE, FALSE},
     };
 
     if (!(device = create_device()))
@@ -1607,6 +1610,9 @@ static void test_create_texture3d(void)
         {DXGI_FORMAT_R8G8B8A8_UNORM,        D3D10_BIND_DEPTH_STENCIL,   FALSE, FALSE},
         {DXGI_FORMAT_D24_UNORM_S8_UINT,     D3D10_BIND_RENDER_TARGET,   FALSE, FALSE},
         {DXGI_FORMAT_D32_FLOAT,             D3D10_BIND_RENDER_TARGET,   FALSE, FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,    D3D10_BIND_SHADER_RESOURCE, TRUE,  FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,    D3D10_BIND_RENDER_TARGET,   FALSE, FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,    D3D10_BIND_DEPTH_STENCIL,   FALSE, FALSE},
     };
 
     if (!(device = create_device()))
@@ -1693,12 +1699,12 @@ static void test_create_texture3d(void)
 static void test_create_buffer(void)
 {
     ID3D11Buffer *d3d11_buffer;
+    HRESULT expected_hr, hr;
     D3D10_BUFFER_DESC desc;
     ID3D10Buffer *buffer;
     ID3D10Device *device;
     unsigned int i;
     ULONG refcount;
-    HRESULT hr;
 
     static const struct test
     {
@@ -1813,6 +1819,18 @@ static void test_create_buffer(void)
     todo_wine ok(hr == E_INVALIDARG, "Got unexpected hr %#x.\n", hr);
     if (SUCCEEDED(hr))
         ID3D10Buffer_Release(buffer);
+
+    memset(&desc, 0, sizeof(desc));
+    desc.BindFlags = D3D10_BIND_CONSTANT_BUFFER;
+    for (i = 0; i <= 32; ++i)
+    {
+        desc.ByteWidth = i;
+        expected_hr = !i || i % 16 ? E_INVALIDARG : S_OK;
+        hr = ID3D10Device_CreateBuffer(device, &desc, NULL, &buffer);
+        ok(hr == expected_hr, "Got unexpected hr %#x for constant buffer size %u.\n", hr, i);
+        if (SUCCEEDED(hr))
+            ID3D10Buffer_Release(buffer);
+    }
 
     refcount = ID3D10Device_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
@@ -5731,6 +5749,13 @@ static void test_texture(void)
          40,  30,  20,  10,
         250, 210, 155, 190,
     };
+    static const DWORD r9g9b9e5_data[] =
+    {
+        0x80000100, 0x80020000, 0x84000000, 0x84000100,
+        0x78000100, 0x78020000, 0x7c000000, 0x78020100,
+        0x70000133, 0x70026600, 0x74cc0000, 0x74cc0133,
+        0x6800019a, 0x68033400, 0x6e680000, 0x6e6b359a,
+    };
     static const struct texture rgba_texture =
     {
         4, 4, 3, 1, DXGI_FORMAT_R8G8B8A8_UNORM,
@@ -5774,6 +5799,8 @@ static void test_texture(void)
             {{r32_float, 4 * sizeof(*r32_float)}}};
     static const struct texture r32u_typeless = {4, 4, 1, 1, DXGI_FORMAT_R32_TYPELESS,
             {{r32_uint, 4 * sizeof(*r32_uint)}}};
+    static const struct texture r9g9b9e5_texture = {4, 4, 1, 1, DXGI_FORMAT_R9G9B9E5_SHAREDEXP,
+            {{r9g9b9e5_data, 4 * sizeof(*r9g9b9e5_data)}}};
     static const DWORD red_colors[] =
     {
         0xff0000ff, 0xff0000ff, 0xff0000ff, 0xff0000ff,
@@ -5865,6 +5892,13 @@ static void test_texture(void)
         0x01000028, 0x0100001e, 0x01000014, 0x0100000a,
         0x010000fa, 0x010000d2, 0x0100009b, 0x010000be,
     };
+    static const DWORD r9g9b9e5_colors[16] =
+    {
+        0xff0000ff, 0xff00ff00, 0xffff0000, 0xffff00ff,
+        0xff00007f, 0xff007f00, 0xff7f0000, 0xff007f7f,
+        0xff00004c, 0xff004c00, 0xff4c0000, 0xff4c004c,
+        0xff000033, 0xff003300, 0xff330000, 0xff333333,
+    };
     static const DWORD zero_colors[4 * 4] = {0};
     static const float red[] = {1.0f, 0.0f, 0.0f, 0.5f};
 
@@ -5900,6 +5934,7 @@ static void test_texture(void)
         {&ps_ld,              &bc1_texture_srgb, POINT,        0.0f, 0.0f,    0.0f,  0.0f, bc_colors},
         {&ps_ld,              &bc2_texture_srgb, POINT,        0.0f, 0.0f,    0.0f,  0.0f, bc_colors},
         {&ps_ld,              &bc3_texture_srgb, POINT,        0.0f, 0.0f,    0.0f,  0.0f, bc_colors},
+        {&ps_ld,              &r9g9b9e5_texture, POINT,        0.0f, 0.0f,    0.0f,  0.0f, r9g9b9e5_colors},
         {&ps_ld,              NULL,              POINT,        0.0f, 0.0f,    0.0f,  0.0f, zero_colors},
         {&ps_ld,              NULL,              POINT,        0.0f, 0.0f, MIP_MAX,  0.0f, zero_colors},
         {&ps_ld_sint8,        &sint8_texture,    POINT,        0.0f, 0.0f,    0.0f,  0.0f, sint8_colors},
@@ -5915,6 +5950,7 @@ static void test_texture(void)
         {&ps_sample,          &rgba_texture,     POINT,        8.0f, 0.0f, MIP_MAX,  0.0f, level_1_colors},
         {&ps_sample,          &srgb_texture,     POINT,        0.0f, 0.0f,    0.0f,  0.0f, srgb_colors},
         {&ps_sample,          &a8_texture,       POINT,        0.0f, 0.0f,    0.0f,  0.0f, a8_colors},
+        {&ps_sample,          &r9g9b9e5_texture, POINT,        0.0f, 0.0f,    0.0f,  0.0f, r9g9b9e5_colors},
         {&ps_sample,          NULL,              POINT,        0.0f, 0.0f,    0.0f,  0.0f, zero_colors},
         {&ps_sample,          NULL,              POINT,        0.0f, 0.0f, MIP_MAX,  0.0f, zero_colors},
         {&ps_sample_b,        &rgba_texture,     POINT,        0.0f, 0.0f, MIP_MAX,  0.0f, rgba_level_0},
@@ -9187,6 +9223,120 @@ static void test_sm4_breakc_instruction(void)
     release_test_context(&test_context);
 }
 
+static void test_sm4_continuec_instruction(void)
+{
+    struct d3d10core_test_context test_context;
+    ID3D10PixelShader *ps;
+    ID3D10Device *device;
+    HRESULT hr;
+
+    /* To get fxc to output continuec_z/continuec_nz instead of an if-block
+     * with a normal continue inside, the shaders have been compiled with
+     * the /Gfa flag. */
+    static const DWORD ps_continuec_nz_code[] =
+    {
+#if 0
+        float4 main() : SV_TARGET
+        {
+            uint counter = 0;
+            int i = -1;
+
+            while (i < 255) {
+                ++i;
+
+                if (i != 0)
+                    continue;
+
+                ++counter;
+            }
+
+            if (counter == 1)
+                return float4(0.0f, 1.0f, 0.0f, 1.0f);
+            else
+                return float4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+#endif
+        0x43425844, 0xaadaac96, 0xbe00fdfb, 0x29356be0, 0x47e79bd6, 0x00000001, 0x00000208, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000003, 0x00000000,
+        0x0000000f, 0x545f5653, 0x45475241, 0xabab0054, 0x52444853, 0x00000190, 0x00000040, 0x00000064,
+        0x03000065, 0x001020f2, 0x00000000, 0x02000068, 0x00000003, 0x08000036, 0x00100032, 0x00000000,
+        0x00004002, 0x00000000, 0xffffffff, 0x00000000, 0x00000000, 0x01000030, 0x07000021, 0x00100042,
+        0x00000000, 0x0010001a, 0x00000000, 0x00004001, 0x000000ff, 0x03040003, 0x0010002a, 0x00000000,
+        0x0700001e, 0x00100022, 0x00000001, 0x0010001a, 0x00000000, 0x00004001, 0x00000001, 0x09000037,
+        0x00100022, 0x00000002, 0x0010001a, 0x00000001, 0x0010001a, 0x00000001, 0x00004001, 0x00000000,
+        0x05000036, 0x00100012, 0x00000002, 0x0010000a, 0x00000000, 0x05000036, 0x00100032, 0x00000000,
+        0x00100046, 0x00000002, 0x05000036, 0x00100042, 0x00000000, 0x0010001a, 0x00000001, 0x03040008,
+        0x0010002a, 0x00000000, 0x0700001e, 0x00100012, 0x00000001, 0x0010000a, 0x00000000, 0x00004001,
+        0x00000001, 0x05000036, 0x00100032, 0x00000000, 0x00100046, 0x00000001, 0x01000016, 0x07000020,
+        0x00100012, 0x00000000, 0x0010000a, 0x00000000, 0x00004001, 0x00000001, 0x08000036, 0x001020f2,
+        0x00000000, 0x00004002, 0x00000000, 0x3f800000, 0x00000000, 0x3f800000, 0x0304003f, 0x0010000a,
+        0x00000000, 0x08000036, 0x001020f2, 0x00000000, 0x00004002, 0x3f800000, 0x00000000, 0x00000000,
+        0x3f800000, 0x0100003e,
+
+    };
+    static const DWORD ps_continuec_z_code[] =
+    {
+#if 0
+        float4 main() : SV_TARGET
+        {
+            uint counter = 0;
+            int i = -1;
+
+            while (i < 255) {
+                ++i;
+
+                if (i == 0)
+                    continue;
+
+                ++counter;
+            }
+
+            if (counter == 255)
+                return float4(0.0f, 1.0f, 0.0f, 1.0f);
+            else
+                return float4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+#endif
+        0x43425844, 0x0322b23d, 0x52b25dc8, 0xa625f5f1, 0x271e3f46, 0x00000001, 0x000001d0, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000003, 0x00000000,
+        0x0000000f, 0x545f5653, 0x45475241, 0xabab0054, 0x52444853, 0x00000158, 0x00000040, 0x00000056,
+        0x03000065, 0x001020f2, 0x00000000, 0x02000068, 0x00000002, 0x08000036, 0x00100032, 0x00000000,
+        0x00004002, 0x00000000, 0xffffffff, 0x00000000, 0x00000000, 0x01000030, 0x07000021, 0x00100042,
+        0x00000000, 0x0010001a, 0x00000000, 0x00004001, 0x000000ff, 0x03040003, 0x0010002a, 0x00000000,
+        0x0700001e, 0x00100022, 0x00000001, 0x0010001a, 0x00000000, 0x00004001, 0x00000001, 0x05000036,
+        0x00100042, 0x00000001, 0x0010000a, 0x00000000, 0x05000036, 0x00100072, 0x00000000, 0x00100966,
+        0x00000001, 0x03000008, 0x0010002a, 0x00000000, 0x0700001e, 0x00100012, 0x00000001, 0x0010000a,
+        0x00000000, 0x00004001, 0x00000001, 0x05000036, 0x00100032, 0x00000000, 0x00100046, 0x00000001,
+        0x01000016, 0x07000020, 0x00100012, 0x00000000, 0x0010000a, 0x00000000, 0x00004001, 0x000000ff,
+        0x08000036, 0x001020f2, 0x00000000, 0x00004002, 0x00000000, 0x3f800000, 0x00000000, 0x3f800000,
+        0x0304003f, 0x0010000a, 0x00000000, 0x08000036, 0x001020f2, 0x00000000, 0x00004002, 0x3f800000,
+        0x00000000, 0x00000000, 0x3f800000, 0x0100003e,
+    };
+
+    if (!init_test_context(&test_context))
+        return;
+
+    device = test_context.device;
+
+    hr = ID3D10Device_CreatePixelShader(device, ps_continuec_nz_code, sizeof(ps_continuec_nz_code), &ps);
+    ok(SUCCEEDED(hr), "Failed to create continuec_nz pixel shader, hr %#x.\n", hr);
+    ID3D10Device_PSSetShader(device, ps);
+    draw_quad(&test_context);
+    check_texture_color(test_context.backbuffer, 0xff00ff00, 0);
+    ID3D10PixelShader_Release(ps);
+
+    hr = ID3D10Device_CreatePixelShader(device, ps_continuec_z_code, sizeof(ps_continuec_z_code), &ps);
+    ok(SUCCEEDED(hr), "Failed to create continuec_z pixel shader, hr %#x.\n", hr);
+    ID3D10Device_PSSetShader(device, ps);
+    draw_quad(&test_context);
+    check_texture_color(test_context.backbuffer, 0xff00ff00, 0);
+    ID3D10PixelShader_Release(ps);
+
+    release_test_context(&test_context);
+}
+
 static void test_create_input_layout(void)
 {
     D3D10_INPUT_ELEMENT_DESC layout_desc[] =
@@ -12447,6 +12597,7 @@ START_TEST(device)
     test_shader_stage_input_output_matching();
     test_sm4_if_instruction();
     test_sm4_breakc_instruction();
+    test_sm4_continuec_instruction();
     test_create_input_layout();
     test_input_assembler();
     test_null_sampler();

@@ -61,7 +61,7 @@
 @ stdcall WsFreeWriter(ptr)
 @ stdcall WsGetChannelProperty(ptr long ptr long ptr)
 @ stub WsGetCustomHeader
-@ stub WsGetDictionary
+@ stdcall WsGetDictionary(long ptr ptr)
 @ stdcall WsGetErrorProperty(ptr long ptr long)
 @ stdcall WsGetErrorString(ptr long ptr)
 @ stub WsGetFaultErrorDetail
@@ -159,7 +159,7 @@
 @ stdcall WsSetReaderPosition(ptr ptr ptr)
 @ stdcall WsSetWriterPosition(ptr ptr ptr)
 @ stub WsShutdownSessionChannel
-@ stub WsSkipNode
+@ stdcall WsSkipNode(ptr ptr)
 @ stub WsStartReaderCanonicalization
 @ stub WsStartWriterCanonicalization
 @ stub WsTrimXmlWhitespace

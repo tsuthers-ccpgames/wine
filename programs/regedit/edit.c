@@ -373,6 +373,15 @@ BOOL ModifyValue(HWND hwnd, HKEY hKeyRoot, LPCWSTR keyPath, LPCWSTR valueName)
         error_code_messagebox(hwnd, IDS_UNSUPPORTED_TYPE, type);
     }
 
+    /* Update the listview item with the new data string */
+    if (result)
+    {
+        int index = SendMessageW(g_pChildWnd->hListWnd, LVM_GETNEXTITEM, -1,
+                                 MAKELPARAM(LVNI_FOCUSED | LVNI_SELECTED, 0));
+        stringValueData = read_value(hwnd, hKey, valueName, &type, &len);
+        format_value_data(g_pChildWnd->hListWnd, index, type, stringValueData, len);
+    }
+
 done:
     HeapFree(GetProcessHeap(), 0, stringValueData);
     stringValueData = NULL;
@@ -443,8 +452,9 @@ BOOL CreateValue(HWND hwnd, HKEY hKeyRoot, LPCWSTR keyPath, DWORD valueType, LPW
     WCHAR newValue[256];
     DWORD valueDword = 0;
     BOOL result = FALSE;
-    int valueNum;
+    int valueNum, index;
     HKEY hKey;
+    LVITEMW item;
          
     lRet = RegOpenKeyExW(hKeyRoot, keyPath, 0, KEY_READ | KEY_SET_VALUE, &hKey);
     if (lRet != ERROR_SUCCESS) {
@@ -470,6 +480,13 @@ BOOL CreateValue(HWND hwnd, HKEY hKeyRoot, LPCWSTR keyPath, DWORD valueType, LPW
         error_code_messagebox(hwnd, IDS_CREATE_VALUE_FAILED);
 	goto done;
     }
+
+    /* Add the new item to the listview */
+    index = AddEntryToList(g_pChildWnd->hListWnd, valueName, valueType, (BYTE *)&valueDword, sizeof(DWORD));
+    item.state = LVIS_FOCUSED | LVIS_SELECTED;
+    item.stateMask = LVIS_FOCUSED | LVIS_SELECTED;
+    SendMessageW(g_pChildWnd->hListWnd, LVM_SETITEMSTATE, index, (LPARAM)&item);
+
     result = TRUE;
 
 done:

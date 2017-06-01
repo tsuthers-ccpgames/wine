@@ -48,6 +48,7 @@ static int searchMask = SEARCH_KEYS | SEARCH_VALUES | SEARCH_CONTENT;
 static WCHAR FileNameBuffer[_MAX_PATH];
 static WCHAR FileTitleBuffer[_MAX_PATH];
 static WCHAR FilterBuffer[_MAX_PATH];
+static WCHAR expandW[32], collapseW[32];
 
 /*******************************************************************************
  * Local module support methods
@@ -102,6 +103,67 @@ static void OnExitMenuLoop(HWND hWnd)
     UpdateStatusBar();
 }
 
+static void update_expand_or_collapse_item(HWND hwndTV, HTREEITEM selection, HMENU hMenu)
+{
+    TVITEMW item;
+    MENUITEMINFOW info;
+
+    item.hItem = selection;
+    item.mask = TVIF_CHILDREN | TVIF_HANDLE | TVIF_STATE;
+    item.stateMask = TVIS_EXPANDED;
+    SendMessageW(hwndTV, TVM_GETITEMW, 0, (LPARAM)&item);
+
+    info.cbSize = sizeof(MENUITEMINFOW);
+    info.fMask = MIIM_FTYPE | MIIM_STRING | MIIM_STATE;
+    info.fType = MFT_STRING;
+    info.fState = MFS_ENABLED;
+    info.dwTypeData = expandW;
+
+    if (!item.cChildren)
+    {
+        info.fState = MFS_GRAYED;
+        goto update;
+    }
+
+    if (item.state & TVIS_EXPANDED)
+        info.dwTypeData = collapseW;
+
+update:
+    SetMenuItemInfoW(hMenu, ID_TREE_EXPAND_COLLAPSE, FALSE, &info);
+}
+
+static void update_delete_and_rename_items(HMENU hMenu, WCHAR *keyName)
+{
+    unsigned int state_d = MF_ENABLED, state_r = MF_ENABLED;
+
+    if (!g_pChildWnd->nFocusPanel)
+    {
+        if (!keyName || !*keyName)
+            state_d = state_r = MF_GRAYED;
+    }
+    else
+    {
+        int index = SendMessageW(g_pChildWnd->hListWnd, LVM_GETNEXTITEM, -1,
+                                 MAKELPARAM(LVIS_FOCUSED | LVIS_SELECTED, 0));
+
+        if (index == -1) state_d = MF_GRAYED;
+        if (index < 1) state_r = MF_GRAYED;
+    }
+
+    EnableMenuItem(hMenu, ID_EDIT_DELETE, state_d | MF_BYCOMMAND);
+    EnableMenuItem(hMenu, ID_EDIT_RENAME, state_r | MF_BYCOMMAND);
+}
+
+static void update_copy_keyname_item(HMENU hMenu, WCHAR *keyName)
+{
+    unsigned int state = MF_ENABLED;
+
+    if (!g_pChildWnd->nFocusPanel && !keyName)
+        state = MF_GRAYED;
+
+    EnableMenuItem(hMenu, ID_EDIT_COPYKEYNAME, state | MF_BYCOMMAND);
+}
+
 static void UpdateMenuItems(HMENU hMenu) {
     HWND hwndTV = g_pChildWnd->hTreeWnd;
     BOOL bAllowEdit = FALSE;
@@ -114,11 +176,11 @@ static void UpdateMenuItems(HMENU hMenu) {
     if (GetFocus() != hwndTV || (keyName && *keyName)) { /* can't modify root keys, but allow for their values */
         bAllowEdit = TRUE;
     }
-    EnableMenuItem(hMenu, ID_EDIT_FIND, MF_ENABLED | MF_BYCOMMAND);
-    EnableMenuItem(hMenu, ID_EDIT_FINDNEXT, MF_ENABLED | MF_BYCOMMAND);
+
+    update_expand_or_collapse_item(hwndTV, selection, hMenu);
     EnableMenuItem(hMenu, ID_EDIT_MODIFY, (bAllowEdit ? MF_ENABLED : MF_GRAYED) | MF_BYCOMMAND);
-    EnableMenuItem(hMenu, ID_EDIT_DELETE, (bAllowEdit ? MF_ENABLED : MF_GRAYED) | MF_BYCOMMAND);
-    EnableMenuItem(hMenu, ID_EDIT_RENAME, (bAllowEdit ? MF_ENABLED : MF_GRAYED) | MF_BYCOMMAND);
+    update_delete_and_rename_items(hMenu, keyName);
+    update_copy_keyname_item(hMenu, keyName);
     EnableMenuItem(hMenu, ID_FAVORITES_ADDTOFAVORITES, (hRootKey ? MF_ENABLED : MF_GRAYED) | MF_BYCOMMAND);
     EnableMenuItem(hMenu, ID_FAVORITES_REMOVEFAVORITE, 
         (GetMenuItemCount(hMenu)>2 ? MF_ENABLED : MF_GRAYED) | MF_BYCOMMAND);
@@ -667,8 +729,6 @@ static BOOL _CmdWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     HKEY hKeyRoot = 0;
     DWORD valueType;
-    int curIndex;
-    BOOL firstItem = TRUE;
 
     if (LOWORD(wParam) >= ID_FAVORITE_FIRST && LOWORD(wParam) <= ID_FAVORITE_LAST) {
         HKEY hKey;
@@ -712,29 +772,35 @@ static BOOL _CmdWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
             HeapFree(GetProcessHeap(), 0, keyPath);
         } else if (hWndDelete == g_pChildWnd->hListWnd) {
-        WCHAR* keyPath = GetItemPath(g_pChildWnd->hTreeWnd, 0, &hKeyRoot);
-        curIndex = SendMessageW(g_pChildWnd->hListWnd, LVM_GETNEXTITEM, -1, MAKELPARAM(LVNI_SELECTED, 0));
-        while(curIndex != -1) {
-            WCHAR* valueName = GetItemText(g_pChildWnd->hListWnd, curIndex);
+            unsigned int num_selected, index;
+            WCHAR *keyPath;
 
-            curIndex = SendMessageW(g_pChildWnd->hListWnd, LVM_GETNEXTITEM, curIndex, MAKELPARAM(LVNI_SELECTED, 0));
-            if(curIndex != -1 && firstItem) {
-                if (MessageBoxW(hWnd, MAKEINTRESOURCEW(IDS_DELETE_VALUE_TEXT_MULTIPLE),
-                                MAKEINTRESOURCEW(IDS_DELETE_VALUE_TITLE),
-                                MB_YESNO | MB_ICONEXCLAMATION) != IDYES)
+            if (!(num_selected = SendMessageW(g_pChildWnd->hListWnd, LVM_GETSELECTEDCOUNT, 0, 0L)))
+                break;
+
+            if (num_selected > 1)
+            {
+                if (messagebox(hWnd, MB_YESNO | MB_ICONEXCLAMATION, IDS_DELETE_VALUE_TITLE,
+                               IDS_DELETE_VALUE_TEXT_MULTIPLE) != IDYES)
                     break;
             }
 
-            if (!DeleteValue(hWnd, hKeyRoot, keyPath, valueName, curIndex==-1 && firstItem))
+            keyPath = GetItemPath(g_pChildWnd->hTreeWnd, 0, &hKeyRoot);
+
+            index = SendMessageW(g_pChildWnd->hListWnd, LVM_GETNEXTITEM, -1, MAKELPARAM(LVNI_SELECTED, 0));
+            while (index != -1)
             {
+                WCHAR *valueName = GetItemText(g_pChildWnd->hListWnd, index);
+                if (!DeleteValue(hWnd, hKeyRoot, keyPath, valueName, num_selected == 1))
+                {
+                    HeapFree(GetProcessHeap(), 0, valueName);
+                    break;
+                }
                 HeapFree(GetProcessHeap(), 0, valueName);
-                break;
+                SendMessageW(g_pChildWnd->hListWnd, LVM_DELETEITEM, index, 0L);
+                index = SendMessageW(g_pChildWnd->hListWnd, LVM_GETNEXTITEM, -1, MAKELPARAM(LVNI_SELECTED, 0));
             }
-            firstItem = FALSE;
-            HeapFree(GetProcessHeap(), 0, valueName);
-        }
-        RefreshListView(g_pChildWnd->hListWnd, hKeyRoot, keyPath, NULL);
-        HeapFree(GetProcessHeap(), 0, keyPath);
+            HeapFree(GetProcessHeap(), 0, keyPath);
         } else if (IsChild(g_pChildWnd->hTreeWnd, hWndDelete) ||
                    IsChild(g_pChildWnd->hListWnd, hWndDelete)) {
             SendMessageW(hWndDelete, WM_KEYDOWN, VK_DELETE, 0);
@@ -746,8 +812,7 @@ static BOOL _CmdWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
         LPCWSTR valueName = GetValueName(g_pChildWnd->hListWnd);
         WCHAR* keyPath = GetItemPath(g_pChildWnd->hTreeWnd, 0, &hKeyRoot);
-        if (ModifyValue(hWnd, hKeyRoot, keyPath, valueName))
-            RefreshListView(g_pChildWnd->hListWnd, hKeyRoot, keyPath, valueName);
+        ModifyValue(hWnd, hKeyRoot, keyPath, valueName);
         HeapFree(GetProcessHeap(), 0, keyPath);
         break;
     }
@@ -829,10 +894,8 @@ static BOOL _CmdWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
         WCHAR* keyPath = GetItemPath(g_pChildWnd->hTreeWnd, 0, &hKeyRoot);
         WCHAR newKey[MAX_NEW_KEY_LEN];
-        if (CreateValue(hWnd, hKeyRoot, keyPath, valueType, newKey)) {
-            RefreshListView(g_pChildWnd->hListWnd, hKeyRoot, keyPath, newKey);
+        if (CreateValue(hWnd, hKeyRoot, keyPath, valueType, newKey))
             StartValueRename(g_pChildWnd->hListWnd);
-        }
         HeapFree(GetProcessHeap(), 0, keyPath);
     }
 	break;
@@ -847,8 +910,14 @@ static BOOL _CmdWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             StartValueRename(g_pChildWnd->hListWnd);
         }
         HeapFree(GetProcessHeap(), 0, keyPath);
-    }
 	break;
+    }
+    case ID_TREE_EXPAND_COLLAPSE:
+    {
+        HTREEITEM selected = (HTREEITEM)SendMessageW(g_pChildWnd->hTreeWnd, TVM_GETNEXTITEM, TVGN_CARET, 0);
+        SendMessageW(g_pChildWnd->hTreeWnd, TVM_EXPAND, TVE_TOGGLE, (LPARAM)selected);
+        break;
+    }
     case ID_REGISTRY_PRINTERSETUP:
         /*PRINTDLG pd;*/
         /*PrintDlg(&pd);*/
@@ -953,6 +1022,8 @@ LRESULT CALLBACK FrameWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
         CreateWindowExW(0, szChildClass, captionW, WS_CHILD | WS_VISIBLE,
                         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                         hWnd, NULL, hInst, 0);
+        LoadStringW(hInst, IDS_EXPAND, expandW, COUNT_OF(expandW));
+        LoadStringW(hInst, IDS_COLLAPSE, collapseW, COUNT_OF(collapseW));
         break;
     case WM_COMMAND:
         if (!_CmdWndProc(hWnd, message, wParam, lParam))

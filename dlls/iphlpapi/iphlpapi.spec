@@ -92,7 +92,7 @@
 #@ stub GetIfStackTable
 @ stdcall GetIfTable( ptr ptr long )
 @ stdcall GetIfTable2( ptr )
-#@ stub GetIfTable2Ex
+@ stdcall GetIfTable2Ex( long ptr )
 @ stub GetIfTableFromStack
 @ stub GetIgmpList
 @ stdcall GetInterfaceInfo( ptr ptr )
@@ -160,7 +160,7 @@
 @ stdcall IcmpSendEcho2(ptr ptr ptr ptr long ptr long ptr ptr long long)
 @ stdcall IcmpSendEcho(ptr long ptr long ptr ptr long long)
 #@ stub if_indextoname
-#@ stub if_nametoindex
+@ stdcall if_nametoindex(str) IPHLP_if_nametoindex
 #@ stub InitializeIpForwardEntry
 #@ stub InitializeIpInterfaceEntry
 #@ stub InitializeUnicastIpAddressEntry

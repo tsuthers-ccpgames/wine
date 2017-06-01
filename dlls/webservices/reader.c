@@ -70,6 +70,220 @@ HRESULT prop_get( const struct prop *prop, ULONG count, ULONG id, void *buf, ULO
     return S_OK;
 }
 
+static CRITICAL_SECTION dict_cs;
+static CRITICAL_SECTION_DEBUG dict_cs_debug =
+{
+    0, 0, &dict_cs,
+    {&dict_cs_debug.ProcessLocksList,
+     &dict_cs_debug.ProcessLocksList},
+     0, 0, {(DWORD_PTR)(__FILE__ ": dict_cs")}
+};
+static CRITICAL_SECTION dict_cs = {&dict_cs_debug, -1, 0, 0, 0, 0};
+
+static ULONG dict_size, *dict_sorted;
+static WS_XML_DICTIONARY dict_builtin =
+{
+    {0x82704485,0x222a,0x4f7c,{0xb9,0x7b,0xe9,0xa4,0x62,0xa9,0x66,0x2b}}
+};
+
+/**************************************************************************
+ *          WsGetDictionary		[webservices.@]
+ */
+HRESULT WINAPI WsGetDictionary( WS_ENCODING encoding, WS_XML_DICTIONARY **dict, WS_ERROR *error )
+{
+    TRACE( "%u %p %p\n", encoding, dict, error );
+    if (error) FIXME( "ignoring error parameter\n" );
+
+    if (!dict) return E_INVALIDARG;
+
+    if (encoding == WS_ENCODING_XML_BINARY_1 || encoding == WS_ENCODING_XML_BINARY_SESSION_1)
+        *dict = &dict_builtin;
+    else
+        *dict = NULL;
+
+    return S_OK;
+}
+
+static inline int cmp_string( const unsigned char *str, ULONG len, const unsigned char *str2, ULONG len2 )
+{
+    if (len < len2) return -1;
+    else if (len > len2) return 1;
+    while (len--)
+    {
+        if (*str == *str2) { str++; str2++; }
+        else return *str - *str2;
+    }
+    return 0;
+}
+
+/* return -1 and string id if found, sort index if not found */
+static int find_string( const unsigned char *data, ULONG len, ULONG *id )
+{
+    int i, c, min = 0, max = dict_builtin.stringCount - 1;
+    while (min <= max)
+    {
+        i = (min + max) / 2;
+        c = cmp_string( data, len,
+                        dict_builtin.strings[dict_sorted[i]].bytes,
+                        dict_builtin.strings[dict_sorted[i]].length );
+        if (c < 0)
+            max = i - 1;
+        else if (c > 0)
+            min = i + 1;
+        else
+        {
+            *id = dict_builtin.strings[dict_sorted[i]].id;
+            return -1;
+        }
+    }
+    return max + 1;
+}
+
+#define MIN_DICTIONARY_SIZE 256
+#define MAX_DICTIONARY_SIZE 2048
+
+static BOOL grow_dict( ULONG size )
+{
+    WS_XML_STRING *tmp;
+    ULONG new_size, *tmp_sorted;
+
+    if (dict_size >= dict_builtin.stringCount + size) return TRUE;
+    if (dict_size + size > MAX_DICTIONARY_SIZE) return FALSE;
+
+    if (!dict_builtin.strings)
+    {
+        new_size = max( MIN_DICTIONARY_SIZE, size );
+        if (!(dict_builtin.strings = heap_alloc( new_size * sizeof(WS_XML_STRING) ))) return FALSE;
+        if (!(dict_sorted = heap_alloc( new_size * sizeof(ULONG) )))
+        {
+            heap_free( dict_builtin.strings );
+            dict_builtin.strings = NULL;
+            return FALSE;
+        }
+        dict_size = new_size;
+        return TRUE;
+    }
+
+    new_size = max( dict_size * 2, size );
+    if (!(tmp = heap_realloc( dict_builtin.strings, new_size * sizeof(*tmp) ))) return FALSE;
+    dict_builtin.strings = tmp;
+    if (!(tmp_sorted = heap_realloc( dict_sorted, new_size * sizeof(*tmp_sorted) ))) return FALSE;
+    dict_sorted = tmp_sorted;
+
+    dict_size = new_size;
+    return TRUE;
+}
+
+static BOOL insert_string( unsigned char *data, ULONG len, int i, ULONG *ret_id )
+{
+    ULONG id = dict_builtin.stringCount;
+    if (!grow_dict( 1 )) return FALSE;
+    memmove( &dict_sorted[i] + 1, &dict_sorted[i], (dict_builtin.stringCount - i) * sizeof(WS_XML_STRING *) );
+    dict_sorted[i] = id;
+
+    dict_builtin.strings[id].length     = len;
+    dict_builtin.strings[id].bytes      = data;
+    dict_builtin.strings[id].dictionary = &dict_builtin;
+    dict_builtin.strings[id].id         = id;
+    dict_builtin.stringCount++;
+    *ret_id = id;
+    return TRUE;
+}
+
+static HRESULT add_xml_string( WS_XML_STRING *str )
+{
+    int index;
+    ULONG id;
+
+    if (str->dictionary) return S_OK;
+
+    EnterCriticalSection( &dict_cs );
+    if ((index = find_string( str->bytes, str->length, &id )) == -1)
+    {
+        heap_free( str->bytes );
+        *str = dict_builtin.strings[id];
+        LeaveCriticalSection( &dict_cs );
+        return S_OK;
+    }
+    if (insert_string( str->bytes, str->length, index, &id ))
+    {
+        *str = dict_builtin.strings[id];
+        LeaveCriticalSection( &dict_cs );
+        return S_OK;
+    }
+    LeaveCriticalSection( &dict_cs );
+    return WS_E_QUOTA_EXCEEDED;
+}
+
+WS_XML_STRING *alloc_xml_string( const unsigned char *data, ULONG len )
+{
+    WS_XML_STRING *ret;
+
+    if (!(ret = heap_alloc_zero( sizeof(*ret) ))) return NULL;
+    if ((ret->length = len) && !(ret->bytes = heap_alloc( len )))
+    {
+        heap_free( ret );
+        return NULL;
+    }
+    if (data)
+    {
+        memcpy( ret->bytes, data, len );
+        if (add_xml_string( ret ) != S_OK) WARN( "string not added to dictionary\n" );
+    }
+    return ret;
+}
+
+void free_xml_string( WS_XML_STRING *str )
+{
+    if (!str) return;
+    if (!str->dictionary) heap_free( str->bytes );
+    heap_free( str );
+}
+
+WS_XML_STRING *dup_xml_string( const WS_XML_STRING *src )
+{
+    WS_XML_STRING *ret;
+    unsigned char *data;
+    int index;
+    ULONG id;
+
+    if (!(ret = heap_alloc( sizeof(*ret) ))) return NULL;
+    if (src->dictionary)
+    {
+        *ret = *src;
+        return ret;
+    }
+
+    EnterCriticalSection( &dict_cs );
+    if ((index = find_string( src->bytes, src->length, &id )) == -1)
+    {
+        *ret = dict_builtin.strings[id];
+        LeaveCriticalSection( &dict_cs );
+        return ret;
+    }
+    if (!(data = heap_alloc( src->length )))
+    {
+        heap_free( ret );
+        LeaveCriticalSection( &dict_cs );
+        return NULL;
+    }
+    memcpy( data, src->bytes, src->length );
+    if (insert_string( data, src->length, index, &id ))
+    {
+        *ret = dict_builtin.strings[id];
+        LeaveCriticalSection( &dict_cs );
+        return ret;
+    }
+    LeaveCriticalSection( &dict_cs );
+
+    WARN( "string not added to dictionary\n" );
+    ret->length     = src->length;
+    ret->bytes      = data;
+    ret->dictionary = NULL;
+    ret->id         = 0;
+    return ret;
+}
+
 struct node *alloc_node( WS_XML_NODE_TYPE type )
 {
     struct node *ret;
@@ -84,9 +298,9 @@ struct node *alloc_node( WS_XML_NODE_TYPE type )
 void free_attribute( WS_XML_ATTRIBUTE *attr )
 {
     if (!attr) return;
-    heap_free( attr->prefix );
-    heap_free( attr->localName );
-    heap_free( attr->ns );
+    free_xml_string( attr->prefix );
+    free_xml_string( attr->localName );
+    free_xml_string( attr->ns );
     heap_free( attr->value );
     heap_free( attr );
 }
@@ -103,9 +317,9 @@ void free_node( struct node *node )
 
         for (i = 0; i < elem->attributeCount; i++) free_attribute( elem->attributes[i] );
         heap_free( elem->attributes );
-        heap_free( elem->prefix );
-        heap_free( elem->localName );
-        heap_free( elem->ns );
+        free_xml_string( elem->prefix );
+        free_xml_string( elem->localName );
+        free_xml_string( elem->ns );
         break;
     }
     case WS_XML_NODE_TYPE_TEXT:
@@ -161,9 +375,9 @@ static WS_XML_ATTRIBUTE *dup_attribute( const WS_XML_ATTRIBUTE *src )
     dst->isXmlNs     = src->isXmlNs;
 
     if (!prefix) dst->prefix = NULL;
-    else if (!(dst->prefix = alloc_xml_string( prefix->bytes, prefix->length ))) goto error;
-    if (!(dst->localName = alloc_xml_string( localname->bytes, localname->length ))) goto error;
-    if (!(dst->ns = alloc_xml_string( ns->bytes, ns->length ))) goto error;
+    else if (!(dst->prefix = dup_xml_string( prefix ))) goto error;
+    if (!(dst->localName = dup_xml_string( localname ))) goto error;
+    if (!(dst->ns = dup_xml_string( ns ))) goto error;
 
     if (text)
     {
@@ -214,9 +428,9 @@ static struct node *dup_element_node( const WS_XML_ELEMENT_NODE *src )
     if (count && !(dst->attributes = dup_attributes( attrs, count ))) goto error;
     dst->attributeCount = count;
 
-    if (prefix && !(dst->prefix = alloc_xml_string( prefix->bytes, prefix->length ))) goto error;
-    if (localname && !(dst->localName = alloc_xml_string( localname->bytes, localname->length ))) goto error;
-    if (ns && !(dst->ns = alloc_xml_string( ns->bytes, ns->length ))) goto error;
+    if (prefix && !(dst->prefix = dup_xml_string( prefix ))) goto error;
+    if (localname && !(dst->localName = dup_xml_string( localname ))) goto error;
+    if (ns && !(dst->ns = dup_xml_string( ns ))) goto error;
     return node;
 
 error:
@@ -351,32 +565,34 @@ enum reader_state
 
 struct prefix
 {
-    WS_XML_STRING str;
-    WS_XML_STRING ns;
+    WS_XML_STRING *str;
+    WS_XML_STRING *ns;
 };
 
 struct reader
 {
-    ULONG                     magic;
-    CRITICAL_SECTION          cs;
-    ULONG                     read_size;
-    ULONG                     read_pos;
-    const unsigned char      *read_bufptr;
-    enum reader_state         state;
-    struct node              *root;
-    struct node              *current;
-    ULONG                     current_attr;
-    struct node              *last;
-    struct prefix            *prefixes;
-    ULONG                     nb_prefixes;
-    ULONG                     nb_prefixes_allocated;
-    WS_XML_READER_INPUT_TYPE  input_type;
-    struct xmlbuf            *input_buf;
-    const unsigned char      *input_data;
-    ULONG                     input_size;
-    ULONG                     text_conv_offset;
-    ULONG                     prop_count;
-    struct prop               prop[sizeof(reader_props)/sizeof(reader_props[0])];
+    ULONG                        magic;
+    CRITICAL_SECTION             cs;
+    ULONG                        read_size;
+    ULONG                        read_pos;
+    const unsigned char         *read_bufptr;
+    enum reader_state            state;
+    struct node                 *root;
+    struct node                 *current;
+    ULONG                        current_attr;
+    struct node                 *last;
+    struct prefix               *prefixes;
+    ULONG                        nb_prefixes;
+    ULONG                        nb_prefixes_allocated;
+    WS_XML_READER_ENCODING_TYPE  input_enc;
+    WS_XML_READER_INPUT_TYPE     input_type;
+    struct xmlbuf               *input_buf;
+    const unsigned char         *input_data;
+    ULONG                        input_size;
+    ULONG                        text_conv_offset;
+    WS_XML_DICTIONARY           *dict;
+    ULONG                        prop_count;
+    struct prop                  prop[sizeof(reader_props)/sizeof(reader_props[0])];
 };
 
 #define READER_MAGIC (('R' << 24) | ('E' << 16) | ('A' << 8) | 'D')
@@ -409,13 +625,10 @@ static void clear_prefixes( struct prefix *prefixes, ULONG count )
     ULONG i;
     for (i = 0; i < count; i++)
     {
-        heap_free( prefixes[i].str.bytes );
-        prefixes[i].str.bytes  = NULL;
-        prefixes[i].str.length = 0;
-
-        heap_free( prefixes[i].ns.bytes );
-        prefixes[i].ns.bytes  = NULL;
-        prefixes[i].ns.length = 0;
+        free_xml_string( prefixes[i].str );
+        prefixes[i].str = NULL;
+        free_xml_string( prefixes[i].ns );
+        prefixes[i].ns  = NULL;
     }
 }
 
@@ -423,17 +636,11 @@ static HRESULT set_prefix( struct prefix *prefix, const WS_XML_STRING *str, cons
 {
     if (str)
     {
-        heap_free( prefix->str.bytes );
-        if (!(prefix->str.bytes = heap_alloc( str->length ))) return E_OUTOFMEMORY;
-        memcpy( prefix->str.bytes, str->bytes, str->length );
-        prefix->str.length = str->length;
+        free_xml_string( prefix->str );
+        if (!(prefix->str = dup_xml_string( str ))) return E_OUTOFMEMORY;
     }
-
-    heap_free( prefix->ns.bytes );
-    if (!(prefix->ns.bytes = heap_alloc( ns->length ))) return E_OUTOFMEMORY;
-    memcpy( prefix->ns.bytes, ns->bytes, ns->length );
-    prefix->ns.length = ns->length;
-
+    if (prefix->ns) free_xml_string( prefix->ns );
+    if (!(prefix->ns = dup_xml_string( ns ))) return E_OUTOFMEMORY;
     return S_OK;
 }
 
@@ -444,7 +651,7 @@ static HRESULT bind_prefix( struct reader *reader, const WS_XML_STRING *prefix, 
 
     for (i = 0; i < reader->nb_prefixes; i++)
     {
-        if (WsXmlStringEquals( prefix, &reader->prefixes[i].str, NULL ) == S_OK)
+        if (WsXmlStringEquals( prefix, reader->prefixes[i].str, NULL ) == S_OK)
             return set_prefix( &reader->prefixes[i], NULL, ns );
     }
     if (i >= reader->nb_prefixes_allocated)
@@ -455,7 +662,6 @@ static HRESULT bind_prefix( struct reader *reader, const WS_XML_STRING *prefix, 
         reader->prefixes = tmp;
         reader->nb_prefixes_allocated *= 2;
     }
-
     if ((hr = set_prefix( &reader->prefixes[i], prefix, ns )) != S_OK) return hr;
     reader->nb_prefixes++;
     return S_OK;
@@ -466,8 +672,8 @@ static const WS_XML_STRING *get_namespace( struct reader *reader, const WS_XML_S
     ULONG i;
     for (i = 0; i < reader->nb_prefixes; i++)
     {
-        if (WsXmlStringEquals( prefix, &reader->prefixes[i].str, NULL ) == S_OK)
-            return &reader->prefixes[i].ns;
+        if (WsXmlStringEquals( prefix, reader->prefixes[i].str, NULL ) == S_OK)
+            return reader->prefixes[i].ns;
     }
     return NULL;
 }
@@ -509,7 +715,9 @@ static void free_reader( struct reader *reader )
 
 static HRESULT init_reader( struct reader *reader )
 {
+    static const WS_XML_STRING empty = {0, NULL};
     struct node *node;
+    HRESULT hr;
 
     reader->state        = READER_STATE_INITIAL;
     destroy_nodes( reader->root );
@@ -517,8 +725,12 @@ static HRESULT init_reader( struct reader *reader )
     reader->current_attr = 0;
     clear_prefixes( reader->prefixes, reader->nb_prefixes );
     reader->nb_prefixes  = 1;
+    if ((hr = bind_prefix( reader, &empty, &empty )) != S_OK) return hr;
+
     if (!(node = alloc_node( WS_XML_NODE_TYPE_EOF ))) return E_OUTOFMEMORY;
     read_insert_eof( reader, node );
+    reader->input_enc    = WS_XML_READER_ENCODING_TYPE_TEXT;
+    reader->dict         = &dict_builtin;
     return S_OK;
 }
 
@@ -782,19 +994,6 @@ HRESULT WINAPI WsGetXmlAttribute( WS_XML_READER *handle, const WS_XML_STRING *at
     return E_NOTIMPL;
 }
 
-WS_XML_STRING *alloc_xml_string( const unsigned char *data, ULONG len )
-{
-    WS_XML_STRING *ret;
-
-    if (!(ret = heap_alloc( sizeof(*ret) + len ))) return NULL;
-    ret->length     = len;
-    ret->bytes      = len ? (BYTE *)(ret + 1) : NULL;
-    ret->dictionary = NULL;
-    ret->id         = 0;
-    if (data) memcpy( ret->bytes, data, len );
-    return ret;
-}
-
 WS_XML_UTF8_TEXT *alloc_utf8_text( const unsigned char *data, ULONG len )
 {
     WS_XML_UTF8_TEXT *ret;
@@ -817,6 +1016,28 @@ static inline BOOL read_end_of_data( struct reader *reader )
 static inline const unsigned char *read_current_ptr( struct reader *reader )
 {
     return &reader->read_bufptr[reader->read_pos];
+}
+
+static inline HRESULT read_peek( struct reader *reader, unsigned char *byte )
+{
+    if (reader->read_pos >= reader->read_size) return WS_E_INVALID_FORMAT;
+    *byte = reader->read_bufptr[reader->read_pos];
+    return S_OK;
+}
+
+static inline HRESULT read_byte( struct reader *reader, unsigned char *byte )
+{
+    if (reader->read_pos >= reader->read_size) return WS_E_INVALID_FORMAT;
+    *byte = reader->read_bufptr[reader->read_pos++];
+    return S_OK;
+}
+
+static inline HRESULT read_bytes( struct reader *reader, unsigned char *bytes, unsigned int len )
+{
+    if (reader->read_pos + len > reader->read_size) return WS_E_INVALID_FORMAT;
+    memcpy( bytes, reader->read_bufptr + reader->read_pos, len );
+    reader->read_pos += len;
+    return S_OK;
 }
 
 /* UTF-8 support based on libs/wine/utf8.c */
@@ -996,7 +1217,7 @@ static HRESULT parse_name( const unsigned char *str, ULONG len, WS_XML_STRING **
     if (!(*prefix = alloc_xml_string( prefix_ptr, prefix_len ))) return E_OUTOFMEMORY;
     if (!(*localname = alloc_xml_string( localname_ptr, localname_len )))
     {
-        heap_free( *prefix );
+        free_xml_string( *prefix );
         *prefix = NULL;
         return E_OUTOFMEMORY;
     }
@@ -1145,12 +1366,156 @@ static HRESULT decode_text( const unsigned char *str, ULONG len, unsigned char *
     return S_OK;
 }
 
-static HRESULT read_attribute( struct reader *reader, WS_XML_ATTRIBUTE **ret )
+static HRESULT read_attribute_value_text( struct reader *reader, WS_XML_ATTRIBUTE *attr )
+{
+    WS_XML_UTF8_TEXT *utf8 = NULL;
+    unsigned int len, ch, skip, quote;
+    const unsigned char *start;
+    HRESULT hr = E_OUTOFMEMORY;
+
+    read_skip_whitespace( reader );
+    if (read_cmp( reader, "=", 1 )) return WS_E_INVALID_FORMAT;
+    read_skip( reader, 1 );
+
+    read_skip_whitespace( reader );
+    if (read_cmp( reader, "\"", 1 ) && read_cmp( reader, "'", 1 )) return WS_E_INVALID_FORMAT;
+    quote = read_utf8_char( reader, &skip );
+    read_skip( reader, 1 );
+
+    len = 0;
+    start = read_current_ptr( reader );
+    for (;;)
+    {
+        if (!(ch = read_utf8_char( reader, &skip ))) return WS_E_INVALID_FORMAT;
+        if (ch == quote) break;
+        read_skip( reader, skip );
+        len += skip;
+    }
+    read_skip( reader, 1 );
+
+    if (attr->isXmlNs)
+    {
+        if (!(attr->ns = alloc_xml_string( start, len ))) goto error;
+        if ((hr = bind_prefix( reader, attr->prefix, attr->ns )) != S_OK) goto error;
+        if (!(utf8 = alloc_utf8_text( NULL, 0 )))
+        {
+            hr = E_OUTOFMEMORY;
+            goto error;
+        }
+    }
+    else
+    {
+        if (!(utf8 = alloc_utf8_text( NULL, len ))) goto error;
+        if ((hr = decode_text( start, len, utf8->value.bytes, &utf8->value.length )) != S_OK) goto error;
+    }
+
+    attr->value = &utf8->text;
+    attr->singleQuote = (quote == '\'');
+    return S_OK;
+
+error:
+    heap_free( utf8 );
+    return hr;
+}
+
+static inline BOOL is_text_type( unsigned char type )
+{
+    return (type >= RECORD_ZERO_TEXT && type <= RECORD_QNAME_DICTIONARY_TEXT_WITH_ENDELEMENT);
+}
+
+static HRESULT read_int31( struct reader *reader, ULONG *len )
+{
+    unsigned char byte;
+    HRESULT hr;
+
+    if ((hr = read_byte( reader, &byte )) != S_OK) return hr;
+    *len = byte & 0x7f;
+    if (!(byte & 0x80)) return S_OK;
+
+    if ((hr = read_byte( reader, &byte )) != S_OK) return hr;
+    *len += (byte & 0x7f) << 7;
+    if (!(byte & 0x80)) return S_OK;
+
+    if ((hr = read_byte( reader, &byte )) != S_OK) return hr;
+    *len += (byte & 0x7f) << 14;
+    if (!(byte & 0x80)) return S_OK;
+
+    if ((hr = read_byte( reader, &byte )) != S_OK) return hr;
+    *len += (byte & 0x7f) << 21;
+    if (!(byte & 0x80)) return S_OK;
+
+    if ((hr = read_byte( reader, &byte )) != S_OK) return hr;
+    *len += (byte & 0x07) << 28;
+    return S_OK;
+}
+
+static HRESULT read_string( struct reader *reader, WS_XML_STRING **str )
+{
+    ULONG len;
+    HRESULT hr;
+    if ((hr = read_int31( reader, &len )) != S_OK) return hr;
+    if (!(*str = alloc_xml_string( NULL, len ))) return E_OUTOFMEMORY;
+    if ((hr = read_bytes( reader, (*str)->bytes, len )) == S_OK)
+    {
+        if (add_xml_string( *str ) != S_OK) WARN( "string not added to dictionary\n" );
+        return S_OK;
+    }
+    free_xml_string( *str );
+    return hr;
+}
+
+static HRESULT read_dict_string( struct reader *reader, WS_XML_STRING **str )
+{
+    ULONG id;
+    HRESULT hr;
+    if ((hr = read_int31( reader, &id )) != S_OK) return hr;
+    if (!reader->dict || (id >>= 1) >= reader->dict->stringCount) return WS_E_INVALID_FORMAT;
+    if (!(*str = alloc_xml_string( NULL, 0 ))) return E_OUTOFMEMORY;
+    *(*str) = reader->dict->strings[id];
+    return S_OK;
+}
+
+static HRESULT read_attribute_value_bin( struct reader *reader, WS_XML_ATTRIBUTE *attr )
+{
+    WS_XML_UTF8_TEXT *utf8 = NULL;
+    unsigned char type;
+    HRESULT hr;
+    ULONG len;
+
+    if ((hr = read_byte( reader, &type )) != S_OK) return hr;
+    if (!is_text_type( type )) return WS_E_INVALID_FORMAT;
+
+    switch (type)
+    {
+    case RECORD_CHARS8_TEXT:
+    {
+        unsigned char len8;
+        if ((hr = read_byte( reader, &len8 )) != S_OK) return hr;
+        len = len8;
+        break;
+    }
+    default:
+        ERR( "unhandled record type %02x\n", type );
+        return WS_E_NOT_SUPPORTED;
+    }
+
+    if (!(utf8 = alloc_utf8_text( NULL, len ))) return E_OUTOFMEMORY;
+    if (!len) utf8->value.bytes = (BYTE *)(utf8 + 1); /* quirk */
+    if ((hr = read_bytes( reader, utf8->value.bytes, len )) != S_OK)
+    {
+        heap_free( utf8 );
+        return hr;
+    }
+
+    attr->value = &utf8->text;
+    return S_OK;
+}
+
+static HRESULT read_attribute_text( struct reader *reader, WS_XML_ATTRIBUTE **ret )
 {
     static const WS_XML_STRING xmlns = {5, (BYTE *)"xmlns"};
     WS_XML_ATTRIBUTE *attr;
-    WS_XML_UTF8_TEXT *text = NULL;
-    unsigned int len = 0, ch, skip, quote;
+    unsigned int len = 0, ch, skip;
     const unsigned char *start;
     WS_XML_STRING *prefix, *localname;
     HRESULT hr = WS_E_INVALID_FORMAT;
@@ -1168,14 +1533,14 @@ static HRESULT read_attribute( struct reader *reader, WS_XML_ATTRIBUTE **ret )
     if (!len) goto error;
 
     if ((hr = parse_name( start, len, &prefix, &localname )) != S_OK) goto error;
-    hr = E_OUTOFMEMORY;
     if (WsXmlStringEquals( prefix, &xmlns, NULL ) == S_OK)
     {
-        heap_free( prefix );
+        free_xml_string( prefix );
         attr->isXmlNs   = 1;
         if (!(attr->prefix = alloc_xml_string( localname->bytes, localname->length )))
         {
-            heap_free( localname );
+            free_xml_string( localname );
+            hr = E_OUTOFMEMORY;
             goto error;
         }
         attr->localName = localname;
@@ -1192,61 +1557,148 @@ static HRESULT read_attribute( struct reader *reader, WS_XML_ATTRIBUTE **ret )
         attr->localName = localname;
     }
 
-    hr = WS_E_INVALID_FORMAT;
-    read_skip_whitespace( reader );
-    if (read_cmp( reader, "=", 1 )) goto error;
-    read_skip( reader, 1 );
-
-    read_skip_whitespace( reader );
-    if (read_cmp( reader, "\"", 1 ) && read_cmp( reader, "'", 1 )) goto error;
-    quote = read_utf8_char( reader, &skip );
-    read_skip( reader, 1 );
-
-    len = 0;
-    start = read_current_ptr( reader );
-    for (;;)
-    {
-        if (!(ch = read_utf8_char( reader, &skip ))) goto error;
-        if (ch == quote) break;
-        read_skip( reader, skip );
-        len += skip;
-    }
-    read_skip( reader, 1 );
-
-    hr = E_OUTOFMEMORY;
-    if (attr->isXmlNs)
-    {
-        if (!(attr->ns = alloc_xml_string( start, len ))) goto error;
-        if ((hr = bind_prefix( reader, attr->prefix, attr->ns )) != S_OK) goto error;
-        if (!(text = alloc_utf8_text( NULL, 0 ))) goto error;
-    }
-    else
-    {
-        if (!(text = alloc_utf8_text( NULL, len ))) goto error;
-        if ((hr = decode_text( start, len, text->value.bytes, &text->value.length )) != S_OK) goto error;
-    }
-
-    attr->value = &text->text;
-    attr->singleQuote = (quote == '\'');
+    if ((hr = read_attribute_value_text( reader, attr )) != S_OK) goto error;
 
     *ret = attr;
     return S_OK;
 
 error:
-    heap_free( text );
     free_attribute( attr );
     return hr;
 }
 
-static struct node *find_parent( struct reader *reader )
+static inline BOOL is_attribute_type( unsigned char type )
+{
+    return (type >= RECORD_SHORT_ATTRIBUTE && type <= RECORD_PREFIX_ATTRIBUTE_Z);
+}
+
+static HRESULT read_attribute_bin( struct reader *reader, WS_XML_ATTRIBUTE **ret )
+{
+    WS_XML_ATTRIBUTE *attr;
+    unsigned char type = 0;
+    HRESULT hr;
+
+    if ((hr = read_byte( reader, &type )) != S_OK) return hr;
+    if (!is_attribute_type( type )) return WS_E_INVALID_FORMAT;
+    if (!(attr = heap_alloc_zero( sizeof(*attr) ))) return E_OUTOFMEMORY;
+
+    if (type >= RECORD_PREFIX_ATTRIBUTE_A && type <= RECORD_PREFIX_ATTRIBUTE_Z)
+    {
+        unsigned char ch = type - RECORD_PREFIX_ATTRIBUTE_A + 'a';
+        if (!(attr->prefix = alloc_xml_string( &ch, 1 )))
+        {
+            hr = E_OUTOFMEMORY;
+            goto error;
+        }
+        if ((hr = read_string( reader, &attr->localName )) != S_OK) goto error;
+        if ((hr = read_attribute_value_bin( reader, attr )) != S_OK) goto error;
+    }
+    else if (type >= RECORD_PREFIX_DICTIONARY_ATTRIBUTE_A && type <= RECORD_PREFIX_DICTIONARY_ATTRIBUTE_Z)
+    {
+        unsigned char ch = type - RECORD_PREFIX_DICTIONARY_ATTRIBUTE_A + 'a';
+        if (!(attr->prefix = alloc_xml_string( &ch, 1 )))
+        {
+            hr = E_OUTOFMEMORY;
+            goto error;
+        }
+        if ((hr = read_dict_string( reader, &attr->localName )) != S_OK) goto error;
+        if ((hr = read_attribute_value_bin( reader, attr )) != S_OK) goto error;
+    }
+    else
+    {
+        switch (type)
+        {
+        case RECORD_SHORT_ATTRIBUTE:
+            if (!(attr->prefix = alloc_xml_string( NULL, 0 )))
+            {
+                hr = E_OUTOFMEMORY;
+                goto error;
+            }
+            if ((hr = read_string( reader, &attr->localName )) != S_OK) goto error;
+            if ((hr = read_attribute_value_bin( reader, attr )) != S_OK) goto error;
+            break;
+
+        case RECORD_ATTRIBUTE:
+            if ((hr = read_string( reader, &attr->prefix )) != S_OK) goto error;
+            if ((hr = read_string( reader, &attr->localName )) != S_OK) goto error;
+            if ((hr = read_attribute_value_bin( reader, attr )) != S_OK) goto error;
+            break;
+
+        case RECORD_SHORT_DICTIONARY_ATTRIBUTE:
+            if (!(attr->prefix = alloc_xml_string( NULL, 0 )))
+            {
+                hr = E_OUTOFMEMORY;
+                goto error;
+            }
+            if ((hr = read_dict_string( reader, &attr->localName )) != S_OK) goto error;
+            if ((hr = read_attribute_value_bin( reader, attr )) != S_OK) goto error;
+            break;
+
+        case RECORD_DICTIONARY_ATTRIBUTE:
+            if ((hr = read_string( reader, &attr->prefix )) != S_OK) goto error;
+            if ((hr = read_dict_string( reader, &attr->localName )) != S_OK) goto error;
+            if ((hr = read_attribute_value_bin( reader, attr )) != S_OK) goto error;
+            break;
+
+        case RECORD_SHORT_XMLNS_ATTRIBUTE:
+            if (!(attr->prefix = alloc_xml_string( NULL, 0 )))
+            {
+                hr = E_OUTOFMEMORY;
+                goto error;
+            }
+            if ((hr = read_string( reader, &attr->ns )) != S_OK) goto error;
+            if ((hr = bind_prefix( reader, attr->prefix, attr->ns )) != S_OK) goto error;
+            attr->isXmlNs = 1;
+            break;
+
+        case RECORD_XMLNS_ATTRIBUTE:
+            if ((hr = read_string( reader, &attr->prefix )) != S_OK) goto error;
+            if ((hr = read_string( reader, &attr->ns )) != S_OK) goto error;
+            if ((hr = bind_prefix( reader, attr->prefix, attr->ns )) != S_OK) goto error;
+            attr->isXmlNs = 1;
+            break;
+
+        case RECORD_SHORT_DICTIONARY_XMLNS_ATTRIBUTE:
+            if (!(attr->prefix = alloc_xml_string( NULL, 0 )))
+            {
+                hr = E_OUTOFMEMORY;
+                goto error;
+            }
+            if ((hr = read_dict_string( reader, &attr->ns )) != S_OK) goto error;
+            if ((hr = bind_prefix( reader, attr->prefix, attr->ns )) != S_OK) goto error;
+            attr->isXmlNs = 1;
+            break;
+
+        case RECORD_DICTIONARY_XMLNS_ATTRIBUTE:
+            if ((hr = read_string( reader, &attr->prefix )) != S_OK) goto error;
+            if ((hr = read_dict_string( reader, &attr->ns )) != S_OK) goto error;
+            if ((hr = bind_prefix( reader, attr->prefix, attr->ns )) != S_OK) goto error;
+            attr->isXmlNs = 1;
+            break;
+
+        default:
+            ERR( "unhandled record type %02x\n", type );
+            return WS_E_NOT_SUPPORTED;
+        }
+    }
+
+    *ret = attr;
+    return S_OK;
+
+error:
+    free_attribute( attr );
+    return hr;
+}
+
+static inline struct node *find_parent( struct reader *reader )
 {
     if (node_type( reader->current ) == WS_XML_NODE_TYPE_END_ELEMENT)
     {
         if (is_valid_parent( reader->current->parent->parent )) return reader->current->parent->parent;
         return NULL;
     }
-    else if (is_valid_parent( reader->current )) return reader->current;
-    else if (is_valid_parent( reader->current->parent )) return reader->current->parent;
+    if (is_valid_parent( reader->current )) return reader->current;
+    if (is_valid_parent( reader->current->parent )) return reader->current->parent;
     return NULL;
 }
 
@@ -1257,26 +1709,60 @@ static HRESULT set_namespaces( struct reader *reader, WS_XML_ELEMENT_NODE *elem 
     ULONG i;
 
     if (!(ns = get_namespace( reader, elem->prefix ))) return WS_E_INVALID_FORMAT;
-    if (!(elem->ns = alloc_xml_string( ns->bytes, ns->length ))) return E_OUTOFMEMORY;
-    if (!elem->ns->length) elem->ns->bytes = (BYTE *)(elem->ns + 1); /* quirk */
+    if (!(elem->ns = dup_xml_string( ns ))) return E_OUTOFMEMORY;
 
     for (i = 0; i < elem->attributeCount; i++)
     {
         WS_XML_ATTRIBUTE *attr = elem->attributes[i];
         if (attr->isXmlNs || WsXmlStringEquals( attr->prefix, &xml, NULL ) == S_OK) continue;
         if (!(ns = get_namespace( reader, attr->prefix ))) return WS_E_INVALID_FORMAT;
-        if (!(attr->ns = alloc_xml_string( ns->bytes, ns->length ))) return E_OUTOFMEMORY;
+        if (!(attr->ns = alloc_xml_string( NULL, ns->length  ))) return E_OUTOFMEMORY;
+        if (attr->ns->length) memcpy( attr->ns->bytes, ns->bytes, ns->length );
     }
     return S_OK;
 }
 
-static HRESULT read_element( struct reader *reader )
+static WS_XML_ELEMENT_NODE *alloc_element_pair(void)
+{
+    struct node *node, *end;
+    if (!(node = alloc_node( WS_XML_NODE_TYPE_ELEMENT ))) return NULL;
+    if (!(end = alloc_node( WS_XML_NODE_TYPE_END_ELEMENT )))
+    {
+        free_node( node );
+        return NULL;
+    }
+    list_add_tail( &node->children, &end->entry );
+    end->parent = node;
+    return &node->hdr;
+}
+
+static HRESULT read_attributes_text( struct reader *reader, WS_XML_ELEMENT_NODE *elem )
+{
+    WS_XML_ATTRIBUTE *attr;
+    HRESULT hr;
+
+    reader->current_attr = 0;
+    for (;;)
+    {
+        read_skip_whitespace( reader );
+        if (!read_cmp( reader, ">", 1 ) || !read_cmp( reader, "/>", 2 )) break;
+        if ((hr = read_attribute_text( reader, &attr )) != S_OK) return hr;
+        if ((hr = append_attribute( elem, attr )) != S_OK)
+        {
+            free_attribute( attr );
+            return hr;
+        }
+        reader->current_attr++;
+    }
+    return S_OK;
+}
+
+static HRESULT read_element_text( struct reader *reader )
 {
     unsigned int len = 0, ch, skip;
     const unsigned char *start;
-    struct node *node = NULL, *endnode, *parent;
+    struct node *node = NULL, *parent;
     WS_XML_ELEMENT_NODE *elem;
-    WS_XML_ATTRIBUTE *attr = NULL;
     HRESULT hr = WS_E_INVALID_FORMAT;
 
     if (read_end_of_data( reader ))
@@ -1287,13 +1773,16 @@ static HRESULT read_element( struct reader *reader )
         return S_OK;
     }
 
-    if (read_cmp( reader, "<", 1 )) goto error;
+    if (read_cmp( reader, "<", 1 )) return WS_E_INVALID_FORMAT;
     read_skip( reader, 1 );
     if (!read_isnamechar( read_utf8_char( reader, &skip )))
     {
         read_rewind( reader, 1 );
-        goto error;
+        return WS_E_INVALID_FORMAT;
     }
+
+    if (!(elem = alloc_element_pair())) return E_OUTOFMEMORY;
+    node = (struct node *)elem;
 
     start = read_current_ptr( reader );
     for (;;)
@@ -1306,29 +1795,9 @@ static HRESULT read_element( struct reader *reader )
     if (!len) goto error;
 
     if (!(parent = find_parent( reader ))) goto error;
-
-    hr = E_OUTOFMEMORY;
-    if (!(node = alloc_node( WS_XML_NODE_TYPE_ELEMENT ))) goto error;
-    if (!(endnode = alloc_node( WS_XML_NODE_TYPE_END_ELEMENT ))) goto error;
-    list_add_tail( &node->children, &endnode->entry );
-    endnode->parent = node;
-
-    elem = (WS_XML_ELEMENT_NODE *)node;
     if ((hr = parse_name( start, len, &elem->prefix, &elem->localName )) != S_OK) goto error;
 
-    reader->current_attr = 0;
-    for (;;)
-    {
-        read_skip_whitespace( reader );
-        if (!read_cmp( reader, ">", 1 ) || !read_cmp( reader, "/>", 2 )) break;
-        if ((hr = read_attribute( reader, &attr )) != S_OK) goto error;
-        if ((hr = append_attribute( elem, attr )) != S_OK)
-        {
-            free_attribute( attr );
-            goto error;
-        }
-        reader->current_attr++;
-    }
+    if ((hr = read_attributes_text( reader, elem )) != S_OK) goto error;
     if ((hr = set_namespaces( reader, elem )) != S_OK) goto error;
 
     read_insert_node( reader, parent, node );
@@ -1340,7 +1809,123 @@ error:
     return hr;
 }
 
-static HRESULT read_text( struct reader *reader )
+static inline BOOL is_element_type( unsigned char type )
+{
+    return (type >= RECORD_SHORT_ELEMENT && type <= RECORD_PREFIX_ELEMENT_Z);
+}
+
+static HRESULT read_attributes_bin( struct reader *reader, WS_XML_ELEMENT_NODE *elem )
+{
+    WS_XML_ATTRIBUTE *attr;
+    unsigned char type;
+    HRESULT hr;
+
+    reader->current_attr = 0;
+    for (;;)
+    {
+        if ((hr = read_peek( reader, &type )) != S_OK) return hr;
+        if (!is_attribute_type( type )) break;
+        if ((hr = read_attribute_bin( reader, &attr )) != S_OK) return hr;
+        if ((hr = append_attribute( elem, attr )) != S_OK)
+        {
+            free_attribute( attr );
+            return hr;
+        }
+        reader->current_attr++;
+    }
+    return S_OK;
+}
+
+static HRESULT read_element_bin( struct reader *reader )
+{
+    struct node *node = NULL, *parent;
+    WS_XML_ELEMENT_NODE *elem;
+    unsigned char type;
+    HRESULT hr;
+
+    if ((hr = read_byte( reader, &type )) != S_OK) return hr;
+    if (!is_element_type( type )) return WS_E_INVALID_FORMAT;
+
+    if (!(elem = alloc_element_pair())) return E_OUTOFMEMORY;
+    node = (struct node *)elem;
+
+    if (type >= RECORD_PREFIX_ELEMENT_A && type <= RECORD_PREFIX_ELEMENT_Z)
+    {
+        unsigned char ch = type - RECORD_PREFIX_ELEMENT_A + 'a';
+        if (!(elem->prefix = alloc_xml_string( &ch, 1 )))
+        {
+            hr = E_OUTOFMEMORY;
+            goto error;
+        }
+        if ((hr = read_string( reader, &elem->localName )) != S_OK) goto error;
+    }
+    else if (type >= RECORD_PREFIX_DICTIONARY_ELEMENT_A && type <= RECORD_PREFIX_DICTIONARY_ELEMENT_Z)
+    {
+        unsigned char ch = type - RECORD_PREFIX_DICTIONARY_ELEMENT_A + 'a';
+        if (!(elem->prefix = alloc_xml_string( &ch, 1 )))
+        {
+            hr = E_OUTOFMEMORY;
+            goto error;
+        }
+        if ((hr = read_dict_string( reader, &elem->localName )) != S_OK) goto error;
+    }
+    else
+    {
+        switch (type)
+        {
+        case RECORD_SHORT_ELEMENT:
+            if (!(elem->prefix = alloc_xml_string( NULL, 0 )))
+            {
+                hr = E_OUTOFMEMORY;
+                goto error;
+            }
+            if ((hr = read_string( reader, &elem->localName )) != S_OK) goto error;
+            break;
+
+        case RECORD_ELEMENT:
+            if ((hr = read_string( reader, &elem->prefix )) != S_OK) goto error;
+            if ((hr = read_string( reader, &elem->localName )) != S_OK) goto error;
+            break;
+
+        case RECORD_SHORT_DICTIONARY_ELEMENT:
+            if (!(elem->prefix = alloc_xml_string( NULL, 0 )))
+            {
+                hr = E_OUTOFMEMORY;
+                goto error;
+            }
+            if ((hr = read_dict_string( reader, &elem->localName )) != S_OK) goto error;
+            break;
+
+        case RECORD_DICTIONARY_ELEMENT:
+            if ((hr = read_string( reader, &elem->prefix )) != S_OK) goto error;
+            if ((hr = read_dict_string( reader, &elem->localName )) != S_OK) goto error;
+            break;
+
+        default:
+            ERR( "unhandled record type %02x\n", type );
+            return WS_E_NOT_SUPPORTED;
+        }
+    }
+
+    if (!(parent = find_parent( reader )))
+    {
+        hr = WS_E_INVALID_FORMAT;
+        goto error;
+    }
+
+    if ((hr = read_attributes_bin( reader, elem )) != S_OK) goto error;
+    if ((hr = set_namespaces( reader, elem )) != S_OK) goto error;
+
+    read_insert_node( reader, parent, node );
+    reader->state = READER_STATE_STARTELEMENT;
+    return S_OK;
+
+error:
+    destroy_nodes( node );
+    return hr;
+}
+
+static HRESULT read_text_text( struct reader *reader )
 {
     unsigned int len = 0, ch, skip;
     const unsigned char *start;
@@ -1382,9 +1967,58 @@ static HRESULT read_text( struct reader *reader )
     return S_OK;
 }
 
-static HRESULT read_node( struct reader * );
+static HRESULT read_text_bin( struct reader *reader )
+{
+    unsigned char type;
+    struct node *node, *parent;
+    WS_XML_TEXT_NODE *text;
+    WS_XML_UTF8_TEXT *utf8;
+    ULONG len;
+    HRESULT hr;
 
-static HRESULT read_startelement( struct reader *reader )
+    if ((hr = read_byte( reader, &type )) != S_OK) return hr;
+    if (!is_text_type( type )) return WS_E_INVALID_FORMAT;
+
+    switch (type)
+    {
+    case RECORD_CHARS8_TEXT_WITH_ENDELEMENT:
+    {
+        unsigned char len8;
+        if ((hr = read_byte( reader, &len8 )) != S_OK) return hr;
+        len = len8;
+        break;
+    }
+    default:
+        ERR( "unhandled record type %02x\n", type );
+        return WS_E_NOT_SUPPORTED;
+    }
+
+    if (!(parent = find_parent( reader ))) return WS_E_INVALID_FORMAT;
+
+    if (!(node = alloc_node( WS_XML_NODE_TYPE_TEXT ))) return E_OUTOFMEMORY;
+    text = (WS_XML_TEXT_NODE *)node;
+    if (!(utf8 = alloc_utf8_text( NULL, len )))
+    {
+        heap_free( node );
+        return E_OUTOFMEMORY;
+    }
+    if ((hr = read_bytes( reader, utf8->value.bytes, len )) != S_OK)
+    {
+        heap_free( utf8 );
+        heap_free( node );
+        return hr;
+    }
+    text->text = &utf8->text;
+
+    read_insert_node( reader, parent, node );
+    reader->state = READER_STATE_TEXT;
+    reader->text_conv_offset = 0;
+    return S_OK;
+}
+
+static HRESULT read_node_text( struct reader * );
+
+static HRESULT read_startelement_text( struct reader *reader )
 {
     read_skip_whitespace( reader );
     if (!read_cmp( reader, "/>", 2 ))
@@ -1398,12 +2032,32 @@ static HRESULT read_startelement( struct reader *reader )
     else if (!read_cmp( reader, ">", 1 ))
     {
         read_skip( reader, 1 );
-        return read_node( reader );
+        return read_node_text( reader );
     }
     return WS_E_INVALID_FORMAT;
 }
 
-static HRESULT read_to_startelement( struct reader *reader, BOOL *found )
+static HRESULT read_node_bin( struct reader * );
+
+static HRESULT read_startelement_bin( struct reader *reader )
+{
+    if (node_type( reader->current ) != WS_XML_NODE_TYPE_ELEMENT) return WS_E_INVALID_FORMAT;
+    return read_node_bin( reader );
+}
+
+static HRESULT read_startelement( struct reader *reader )
+{
+    switch (reader->input_enc)
+    {
+    case WS_XML_READER_ENCODING_TYPE_TEXT:   return read_startelement_text( reader );
+    case WS_XML_READER_ENCODING_TYPE_BINARY: return read_startelement_bin( reader );
+    default:
+        ERR( "unhandled encoding %u\n", reader->input_enc );
+        return WS_E_NOT_SUPPORTED;
+    }
+}
+
+static HRESULT read_to_startelement_text( struct reader *reader, BOOL *found )
 {
     HRESULT hr;
 
@@ -1422,7 +2076,7 @@ static HRESULT read_to_startelement( struct reader *reader, BOOL *found )
     }
 
     read_skip_whitespace( reader );
-    if ((hr = read_element( reader )) == S_OK && found)
+    if ((hr = read_element_text( reader )) == S_OK && found)
     {
         if (reader->state == READER_STATE_STARTELEMENT)
             *found = TRUE;
@@ -1433,6 +2087,39 @@ static HRESULT read_to_startelement( struct reader *reader, BOOL *found )
     return hr;
 }
 
+static HRESULT read_to_startelement_bin( struct reader *reader, BOOL *found )
+{
+    HRESULT hr;
+
+    if (reader->state == READER_STATE_STARTELEMENT)
+    {
+        if (found) *found = TRUE;
+        return S_OK;
+    }
+
+    if ((hr = read_element_bin( reader )) == S_OK && found)
+    {
+        if (reader->state == READER_STATE_STARTELEMENT)
+            *found = TRUE;
+        else
+            *found = FALSE;
+    }
+
+    return hr;
+}
+
+static HRESULT read_to_startelement( struct reader *reader, BOOL *found )
+{
+    switch (reader->input_enc)
+    {
+    case WS_XML_READER_ENCODING_TYPE_TEXT:   return read_to_startelement_text( reader, found );
+    case WS_XML_READER_ENCODING_TYPE_BINARY: return read_to_startelement_bin( reader, found );
+    default:
+        ERR( "unhandled encoding %u\n", reader->input_enc );
+        return WS_E_NOT_SUPPORTED;
+    }
+}
+
 static int cmp_name( const unsigned char *name1, ULONG len1, const unsigned char *name2, ULONG len2 )
 {
     ULONG i;
@@ -1441,8 +2128,8 @@ static int cmp_name( const unsigned char *name1, ULONG len1, const unsigned char
     return 0;
 }
 
-static struct node *read_find_startelement( struct reader *reader, const WS_XML_STRING *prefix,
-                                            const WS_XML_STRING *localname )
+static struct node *find_startelement( struct reader *reader, const WS_XML_STRING *prefix,
+                                       const WS_XML_STRING *localname )
 {
     struct node *parent;
     const WS_XML_STRING *str;
@@ -1461,23 +2148,13 @@ static struct node *read_find_startelement( struct reader *reader, const WS_XML_
     return NULL;
 }
 
-static HRESULT read_endelement( struct reader *reader )
+static HRESULT read_endelement_text( struct reader *reader )
 {
     struct node *parent;
     unsigned int len = 0, ch, skip;
     const unsigned char *start;
     WS_XML_STRING *prefix, *localname;
     HRESULT hr;
-
-    if (reader->state == READER_STATE_EOF) return WS_E_INVALID_FORMAT;
-
-    if (read_end_of_data( reader ))
-    {
-        reader->current = LIST_ENTRY( list_tail( &reader->root->children ), struct node, entry );
-        reader->last    = reader->current;
-        reader->state   = READER_STATE_EOF;
-        return S_OK;
-    }
 
     if (read_cmp( reader, "</", 2 )) return WS_E_INVALID_FORMAT;
     read_skip( reader, 2 );
@@ -1497,9 +2174,9 @@ static HRESULT read_endelement( struct reader *reader )
     }
 
     if ((hr = parse_name( start, len, &prefix, &localname )) != S_OK) return hr;
-    parent = read_find_startelement( reader, prefix, localname );
-    heap_free( prefix );
-    heap_free( localname );
+    parent = find_startelement( reader, prefix, localname );
+    free_xml_string( prefix );
+    free_xml_string( localname );
     if (!parent) return WS_E_INVALID_FORMAT;
 
     reader->current = LIST_ENTRY( list_tail( &parent->children ), struct node, entry );
@@ -1508,7 +2185,46 @@ static HRESULT read_endelement( struct reader *reader )
     return S_OK;
 }
 
-static HRESULT read_comment( struct reader *reader )
+static HRESULT read_endelement_bin( struct reader *reader )
+{
+    struct node *parent;
+    unsigned char type;
+    HRESULT hr;
+
+    if ((hr = read_byte( reader, &type )) != S_OK) return hr;
+    if (type != RECORD_ENDELEMENT) return WS_E_INVALID_FORMAT;
+
+    if (!(parent = find_parent( reader ))) return WS_E_INVALID_FORMAT;
+
+    reader->current = LIST_ENTRY( list_tail( &parent->children ), struct node, entry );
+    reader->last    = reader->current;
+    reader->state   = READER_STATE_ENDELEMENT;
+    return S_OK;
+}
+
+static HRESULT read_endelement( struct reader *reader )
+{
+    if (reader->state == READER_STATE_EOF) return WS_E_INVALID_FORMAT;
+
+    if (read_end_of_data( reader ))
+    {
+        reader->current = LIST_ENTRY( list_tail( &reader->root->children ), struct node, entry );
+        reader->last    = reader->current;
+        reader->state   = READER_STATE_EOF;
+        return S_OK;
+    }
+
+    switch (reader->input_enc)
+    {
+    case WS_XML_READER_ENCODING_TYPE_TEXT:   return read_endelement_text( reader );
+    case WS_XML_READER_ENCODING_TYPE_BINARY: return read_endelement_bin( reader );
+    default:
+        ERR( "unhandled encoding %u\n", reader->input_enc );
+        return WS_E_NOT_SUPPORTED;
+    }
+}
+
+static HRESULT read_comment_text( struct reader *reader )
 {
     unsigned int len = 0, ch, skip;
     const unsigned char *start;
@@ -1541,6 +2257,39 @@ static HRESULT read_comment( struct reader *reader )
         return E_OUTOFMEMORY;
     }
     memcpy( comment->value.bytes, start, len );
+    comment->value.length = len;
+
+    read_insert_node( reader, parent, node );
+    reader->state = READER_STATE_COMMENT;
+    return S_OK;
+}
+
+static HRESULT read_comment_bin( struct reader *reader )
+{
+    struct node *node, *parent;
+    WS_XML_COMMENT_NODE *comment;
+    unsigned char type;
+    ULONG len;
+    HRESULT hr;
+
+    if ((hr = read_byte( reader, &type )) != S_OK) return hr;
+    if (type != RECORD_COMMENT) return WS_E_INVALID_FORMAT;
+    if ((hr = read_int31( reader, &len )) != S_OK) return hr;
+
+    if (!(parent = find_parent( reader ))) return WS_E_INVALID_FORMAT;
+
+    if (!(node = alloc_node( WS_XML_NODE_TYPE_COMMENT ))) return E_OUTOFMEMORY;
+    comment = (WS_XML_COMMENT_NODE *)node;
+    if (!(comment->value.bytes = heap_alloc( len )))
+    {
+        heap_free( node );
+        return E_OUTOFMEMORY;
+    }
+    if ((hr = read_bytes( reader, comment->value.bytes, len )) != S_OK)
+    {
+        free_node( node );
+        return E_OUTOFMEMORY;
+    }
     comment->value.length = len;
 
     read_insert_node( reader, parent, node );
@@ -1618,7 +2367,7 @@ static HRESULT read_endcdata( struct reader *reader )
     return S_OK;
 }
 
-static HRESULT read_node( struct reader *reader )
+static HRESULT read_node_text( struct reader *reader )
 {
     HRESULT hr;
 
@@ -1638,12 +2387,65 @@ static HRESULT read_node( struct reader *reader )
             hr = read_xmldecl( reader );
             if (FAILED( hr )) return hr;
         }
-        else if (!read_cmp( reader, "</", 2 )) return read_endelement( reader );
+        else if (!read_cmp( reader, "</", 2 )) return read_endelement_text( reader );
         else if (!read_cmp( reader, "<![CDATA[", 9 )) return read_startcdata( reader );
-        else if (!read_cmp( reader, "<!--", 4 )) return read_comment( reader );
-        else if (!read_cmp( reader, "<", 1 )) return read_element( reader );
-        else if (!read_cmp( reader, "/>", 2 ) || !read_cmp( reader, ">", 1 )) return read_startelement( reader );
-        else return read_text( reader );
+        else if (!read_cmp( reader, "<!--", 4 )) return read_comment_text( reader );
+        else if (!read_cmp( reader, "<", 1 )) return read_element_text( reader );
+        else if (!read_cmp( reader, "/>", 2 ) || !read_cmp( reader, ">", 1 )) return read_startelement_text( reader );
+        else return read_text_text( reader );
+    }
+}
+
+static HRESULT read_node_bin( struct reader *reader )
+{
+    unsigned char type;
+    HRESULT hr;
+
+    if (node_type( reader->current ) == WS_XML_NODE_TYPE_TEXT)
+    {
+        reader->current = LIST_ENTRY( list_tail( &reader->current->parent->children ), struct node, entry );
+        reader->last    = reader->current;
+        reader->state   = READER_STATE_ENDELEMENT;
+        return S_OK;
+    }
+    if (read_end_of_data( reader ))
+    {
+        reader->current = LIST_ENTRY( list_tail( &reader->root->children ), struct node, entry );
+        reader->last    = reader->current;
+        reader->state   = READER_STATE_EOF;
+        return S_OK;
+    }
+
+    if ((hr = read_peek( reader, &type )) != S_OK) return hr;
+    if (type == RECORD_ENDELEMENT)
+    {
+        return read_endelement_bin( reader );
+    }
+    else if (type == RECORD_COMMENT)
+    {
+        return read_comment_bin( reader );
+    }
+    else if (type >= RECORD_SHORT_ELEMENT && type <= RECORD_PREFIX_ELEMENT_Z)
+    {
+        return read_element_bin( reader );
+    }
+    else if (type >= RECORD_ZERO_TEXT && type <= RECORD_QNAME_DICTIONARY_TEXT_WITH_ENDELEMENT)
+    {
+        return read_text_bin( reader );
+    }
+    FIXME( "unhandled record type %02x\n", type );
+    return WS_E_NOT_SUPPORTED;
+}
+
+static HRESULT read_node( struct reader *reader )
+{
+    switch (reader->input_enc)
+    {
+    case WS_XML_READER_ENCODING_TYPE_TEXT:   return read_node_text( reader );
+    case WS_XML_READER_ENCODING_TYPE_BINARY: return read_node_bin( reader );
+    default:
+        ERR( "unhandled encoding %u\n", reader->input_enc );
+        return WS_E_NOT_SUPPORTED;
     }
 }
 
@@ -1734,6 +2536,52 @@ HRESULT WINAPI WsReadNode( WS_XML_READER *handle, WS_ERROR *error )
     }
 
     hr = read_node( reader );
+
+    LeaveCriticalSection( &reader->cs );
+    return hr;
+}
+
+static HRESULT skip_node( struct reader *reader )
+{
+    const struct node *parent;
+    HRESULT hr;
+
+    if (node_type( reader->current ) == WS_XML_NODE_TYPE_EOF) return WS_E_INVALID_OPERATION;
+    if (node_type( reader->current ) == WS_XML_NODE_TYPE_ELEMENT) parent = reader->current;
+    else parent = NULL;
+
+    for (;;)
+    {
+        if ((hr = read_node( reader ) != S_OK) || !parent) break;
+        if (node_type( reader->current ) != WS_XML_NODE_TYPE_END_ELEMENT) continue;
+        if (reader->current->parent == parent) return read_node( reader );
+    }
+
+    return hr;
+}
+
+/**************************************************************************
+ *          WsSkipNode		[webservices.@]
+ */
+HRESULT WINAPI WsSkipNode( WS_XML_READER *handle, WS_ERROR *error )
+{
+    struct reader *reader = (struct reader *)handle;
+    HRESULT hr;
+
+    TRACE( "%p %p\n", handle, error );
+    if (error) FIXME( "ignoring error parameter\n" );
+
+    if (!reader) return E_INVALIDARG;
+
+    EnterCriticalSection( &reader->cs );
+
+    if (reader->magic != READER_MAGIC)
+    {
+        LeaveCriticalSection( &reader->cs );
+        return E_INVALIDARG;
+    }
+
+    hr = skip_node( reader );
 
     LeaveCriticalSection( &reader->cs );
     return hr;
@@ -4595,6 +5443,15 @@ HRESULT WINAPI WsSetInput( WS_XML_READER *handle, const WS_XML_READER_ENCODING *
         hr = prop_set( reader->prop, reader->prop_count, WS_XML_READER_PROPERTY_CHARSET,
                        &charset, sizeof(charset) );
         if (hr != S_OK) goto done;
+
+        reader->input_enc = WS_XML_READER_ENCODING_TYPE_TEXT;
+        break;
+    }
+    case WS_XML_READER_ENCODING_TYPE_BINARY:
+    {
+        WS_XML_READER_BINARY_ENCODING *bin = (WS_XML_READER_BINARY_ENCODING *)encoding;
+        reader->input_enc = WS_XML_READER_ENCODING_TYPE_BINARY;
+        reader->dict      = bin->staticDictionary;
         break;
     }
     default:

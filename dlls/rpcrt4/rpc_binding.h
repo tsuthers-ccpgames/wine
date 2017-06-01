@@ -63,6 +63,7 @@ typedef struct _RpcConnection
 {
   LONG ref;
   BOOL server;
+  HANDLE wait_release;
   LPSTR NetworkAddr;
   LPSTR Endpoint;
   LPWSTR NetworkOptions;
@@ -91,6 +92,7 @@ typedef struct _RpcConnection
   RPC_SYNTAX_IDENTIFIER ActiveInterface;
   USHORT NextCallId;
   struct list protseq_entry;
+  struct _RpcServerProtseq *protseq;
   struct _RpcBinding *server_binding;
 } RpcConnection;
 
@@ -103,6 +105,7 @@ struct connection_ops {
   int (*read)(RpcConnection *conn, void *buffer, unsigned int len);
   int (*write)(RpcConnection *conn, const void *buffer, unsigned int len);
   int (*close)(RpcConnection *conn);
+  void (*close_read)(RpcConnection *conn);
   void (*cancel_call)(RpcConnection *conn);
   RPC_STATUS (*is_server_listening)(const char *endpoint);
   int (*wait_for_incoming_data)(RpcConnection *conn);
@@ -174,6 +177,8 @@ RPC_STATUS RPCRT4_OpenBinding(RpcBinding* Binding, RpcConnection** Connection,
                               const RPC_SYNTAX_IDENTIFIER *TransferSyntax, const RPC_SYNTAX_IDENTIFIER *InterfaceId) DECLSPEC_HIDDEN;
 RPC_STATUS RPCRT4_CloseBinding(RpcBinding* Binding, RpcConnection* Connection) DECLSPEC_HIDDEN;
 
+void rpcrt4_conn_release_and_wait(RpcConnection *connection) DECLSPEC_HIDDEN;
+
 static inline const char *rpcrt4_conn_get_name(const RpcConnection *Connection)
 {
   return Connection->ops->name;
@@ -194,6 +199,11 @@ static inline int rpcrt4_conn_write(RpcConnection *Connection,
 static inline int rpcrt4_conn_close(RpcConnection *Connection)
 {
   return Connection->ops->close(Connection);
+}
+
+static inline void rpcrt4_conn_close_read(RpcConnection *connection)
+{
+  connection->ops->close_read(connection);
 }
 
 static inline void rpcrt4_conn_cancel_call(RpcConnection *Connection)

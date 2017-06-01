@@ -773,6 +773,7 @@ enum WINED3D_SHADER_INSTRUCTION_HANDLER
     WINED3DSIH_GATHER4,
     WINED3DSIH_GATHER4_C,
     WINED3DSIH_GATHER4_PO,
+    WINED3DSIH_GATHER4_PO_C,
     WINED3DSIH_GE,
     WINED3DSIH_HS_CONTROL_POINT_PHASE,
     WINED3DSIH_HS_DECLS,
@@ -1011,7 +1012,8 @@ struct wined3d_shader_reg_maps
     WORD usescall       : 1;
     WORD usespow        : 1;
     WORD point_size     : 1;
-    WORD padding        : 2;
+    WORD vocp           : 1;
+    WORD padding        : 1;
 
     DWORD rt_mask; /* Used render targets, 32 max. */
 
@@ -1619,6 +1621,7 @@ struct wined3d_query_ops
 {
     BOOL (*query_poll)(struct wined3d_query *query, DWORD flags);
     BOOL (*query_issue)(struct wined3d_query *query, DWORD flags);
+    void (*query_destroy)(struct wined3d_query *query);
 };
 
 struct wined3d_query
@@ -1663,7 +1666,6 @@ enum wined3d_event_query_result
     WINED3D_EVENT_QUERY_ERROR
 };
 
-void wined3d_event_query_destroy(struct wined3d_event_query *query) DECLSPEC_HIDDEN;
 enum wined3d_event_query_result wined3d_event_query_finish(const struct wined3d_event_query *query,
         const struct wined3d_device *device) DECLSPEC_HIDDEN;
 void wined3d_event_query_issue(struct wined3d_event_query *query, const struct wined3d_device *device) DECLSPEC_HIDDEN;
@@ -1692,6 +1694,32 @@ struct wined3d_timestamp_query
 
 void context_alloc_timestamp_query(struct wined3d_context *context, struct wined3d_timestamp_query *query) DECLSPEC_HIDDEN;
 void context_free_timestamp_query(struct wined3d_timestamp_query *query) DECLSPEC_HIDDEN;
+
+union wined3d_gl_so_statistics_query
+{
+    GLuint id[2];
+    struct
+    {
+        GLuint written;
+        GLuint generated;
+    } query;
+};
+
+struct wined3d_so_statistics_query
+{
+    struct wined3d_query query;
+
+    struct list entry;
+    union wined3d_gl_so_statistics_query u;
+    struct wined3d_context *context;
+    unsigned int stream_idx;
+    struct wined3d_query_data_so_statistics statistics;
+    BOOL started;
+};
+
+void context_alloc_so_statistics_query(struct wined3d_context *context,
+        struct wined3d_so_statistics_query *query) DECLSPEC_HIDDEN;
+void context_free_so_statistics_query(struct wined3d_so_statistics_query *query) DECLSPEC_HIDDEN;
 
 struct wined3d_gl_view
 {
@@ -1823,6 +1851,11 @@ struct wined3d_context
     SIZE_T free_timestamp_query_size;
     unsigned int free_timestamp_query_count;
     struct list timestamp_queries;
+
+    union wined3d_gl_so_statistics_query *free_so_statistics_queries;
+    SIZE_T free_so_statistics_query_size;
+    unsigned int free_so_statistics_query_count;
+    struct list so_statistics_queries;
 
     struct wined3d_stream_info stream_info;
 
@@ -2906,6 +2939,7 @@ void wined3d_resource_update_draw_binding(struct wined3d_resource *resource) DEC
 
 /* Tests show that the start address of resources is 32 byte aligned */
 #define RESOURCE_ALIGNMENT 16
+#define WINED3D_CONSTANT_BUFFER_ALIGNMENT 16
 
 struct gl_texture
 {

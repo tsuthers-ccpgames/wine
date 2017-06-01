@@ -157,6 +157,10 @@ my @dll_groups =
   "api-ms-win-power-setting-l1-1-0",
  ],
  [
+  "ntdsapi",
+  "api-ms-win-security-activedirectoryclient-l1-1-0",
+ ],
+ [
   "kernel32",
   "api-ms-win-appmodel-identity-l1-1-0",
   "api-ms-win-appmodel-runtime-l1-1-1",
@@ -224,7 +228,6 @@ my @dll_groups =
   "api-ms-win-core-timezone-l1-1-0",
   "api-ms-win-core-toolhelp-l1-1-0",
   "api-ms-win-core-sysinfo-l1-2-1",
-  "api-ms-win-core-processthreads-l1-1-2",
   "api-ms-win-core-fibers-l1-1-0",
   "api-ms-win-core-fibers-l1-1-1",
   "api-ms-win-core-localization-l1-2-1",
@@ -252,6 +255,7 @@ my @dll_groups =
   "api-ms-win-core-namedpipe-l1-2-0",
   "api-ms-win-core-processthreads-l1-1-0",
   "api-ms-win-core-processthreads-l1-1-1",
+  "api-ms-win-core-processthreads-l1-1-2",
  ],
  [
   "kernel32",

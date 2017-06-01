@@ -540,8 +540,8 @@
 @ stdcall GenerateConsoleCtrlEvent(long long)
 @ stdcall -i386 -private Get16DLLAddress(long str) krnl386.exe16.Get16DLLAddress
 @ stdcall GetACP()
-# @ stub GetActiveProcessorCount
-# @ stub GetActiveProcessorGroupCount
+@ stdcall GetActiveProcessorCount(long)
+@ stdcall GetActiveProcessorGroupCount()
 # @ stub GetApplicationRecoveryCallback
 # @ stub GetApplicationRestartSettings
 @ stdcall GetAtomNameA(long ptr long)
@@ -1449,7 +1449,7 @@
 @ stdcall SetThreadExecutionState(long)
 @ stdcall SetThreadGroupAffinity(long ptr ptr)
 @ stdcall SetThreadIdealProcessor(long long)
-# @ stub SetThreadIdealProcessorEx
+@ stdcall SetThreadIdealProcessorEx(long ptr ptr)
 @ stdcall SetThreadLocale(long)
 @ stdcall SetThreadPreferredUILanguages(long ptr ptr)
 @ stdcall SetThreadPriority(long long)

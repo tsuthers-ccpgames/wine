@@ -3007,7 +3007,7 @@ static void test_D3DXSHEvalHemisphereLight(void)
     top.r = 0.1f; top.g = 2.1f; top.b = 2.3f; top.a = 4.3f;
     bottom.r = 8.71f; bottom.g = 5.41f; bottom.b = 6.94f; bottom.a = 8.43f;
 
-    for (l = 0; l < sizeof(test) / sizeof(test[0]); l++)
+    for (l = 0; l < ARRAY_SIZE(test); ++l)
         for (order = D3DXSH_MINORDER; order <= D3DXSH_MAXORDER + 1; order++)
         {
             for (j = 0; j < 49; j++)
@@ -3160,7 +3160,7 @@ static void test_D3DXSHEvalSphericalLight(void)
 
     dir.x = 1.1f; dir.y = 1.2f; dir.z = 2.76f;
 
-    for (l = 0; l < sizeof(test) / sizeof(test[0]); l++)
+    for (l = 0; l < ARRAY_SIZE(test); ++l)
     {
         for (order = D3DXSH_MINORDER; order <= D3DXSH_MAXORDER; order++)
         {
@@ -3237,7 +3237,7 @@ static void test_D3DXSHMultiply2(void)
                14.0f,        15.0f,        16.0f,        17.0f, 18.0f, 19.0f,
     };
 
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(a); ++i)
     {
         a[i] = 1.0f + i / 100.0f;
         b[i] = 3.0f - i / 100.0f;
@@ -3245,7 +3245,7 @@ static void test_D3DXSHMultiply2(void)
     }
 
     D3DXSHMultiply2(c, a, b);
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(expected); ++i)
     {
         equal = compare_float(c[i], expected[i], 2);
         ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[i], c[i]);
@@ -3274,7 +3274,7 @@ static void test_D3DXSHMultiply3(void)
         1.17999995e+00f, 1.19000006e+00f,
     };
 
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(a); ++i)
     {
         a[i] = 1.0f + i / 100.0f;
         b[i] = 3.0f - i / 100.0f;
@@ -3282,7 +3282,7 @@ static void test_D3DXSHMultiply3(void)
     }
 
     D3DXSHMultiply3(c, a, b);
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(expected); ++i)
     {
         equal = compare_float(c[i], expected[i], 4);
         ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[i], c[i]);
@@ -3290,7 +3290,7 @@ static void test_D3DXSHMultiply3(void)
 
     memcpy(c, a, sizeof(c));
     D3DXSHMultiply3(c, c, b);
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(expected_aliased); ++i)
     {
         equal = compare_float(c[i], expected_aliased[i], 32);
         ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected_aliased[i], c[i]);

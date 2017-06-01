@@ -81,6 +81,8 @@ AC_ARG_WITH(xcomposite,AS_HELP_STRING([--without-xcomposite],[do not use the Xco
             [if test "x$withval" = "xno"; then ac_cv_header_X11_extensions_Xcomposite_h=no; fi])
 AC_ARG_WITH(xcursor,   AS_HELP_STRING([--without-xcursor],[do not use the Xcursor extension]),
             [if test "x$withval" = "xno"; then ac_cv_header_X11_Xcursor_Xcursor_h=no; fi])
+AC_ARG_WITH(xfixes,  AS_HELP_STRING([--without-xfixes],[do not use Xfixes for clipboard change notifications]),
+            [if test "x$withval" = "xno"; then ac_cv_header_X11_extensions_Xfixes_h=no; fi])
 AC_ARG_WITH(xinerama,  AS_HELP_STRING([--without-xinerama],[do not use Xinerama (multi-monitor support)]),
             [if test "x$withval" = "xno"; then ac_cv_header_X11_extensions_Xinerama_h=no; fi])
 AC_ARG_WITH(xinput,    AS_HELP_STRING([--without-xinput],[do not use the Xinput extension]),
@@ -849,6 +851,7 @@ case $host_os in
   linux-android*)
     DLLFLAGS="$DLLFLAGS -fPIC"
     LDEXECFLAGS="-Wl,-pie"
+    enable_wineandroid_drv=${enable_wineandroid_drv:-yes}
     WINE_TRY_CFLAGS([-fPIC -Wl,--export-dynamic],
                     [WINELOADER_LDFLAGS="-Wl,--export-dynamic"])
     WINE_TRY_CFLAGS([-fPIC -Wl,--rpath,\$ORIGIN/../lib],
@@ -863,6 +866,16 @@ case $host_os in
     AC_SUBST(LIBWINE_SHAREDLIB,"libwine.so")
     AC_SUBST(LIBWINE_INSTALL_LIB,"libwine.so")
     AC_SUBST(LIBWINE_LDFLAGS,["-shared -Wl,-soname,libwine.so"])
+
+    if test "x$exec_prefix" = xNONE
+    then
+      case $host_cpu in
+        *i[[3456]]86*) exec_prefix='${prefix}/x86' ;;
+        *x86_64*)      exec_prefix='${prefix}/x86_64' ;;
+        *arm*)         exec_prefix='${prefix}/armeabi-v7a' ;;
+        *aarch64*)     exec_prefix='${prefix}/arm64-v8a' ;;
+      esac
+    fi
     ;;
 
   *)
@@ -936,6 +949,7 @@ esac
 
 enable_winecoreaudio_drv=${enable_winecoreaudio_drv:-no}
 enable_wineqtdecoder=${enable_wineqtdecoder:-no}
+enable_wineandroid_drv=${enable_wineandroid_drv:-no}
 enable_winemac_drv=${enable_winemac_drv:-no}
 test "$ac_cv_header_linux_joystick_h" = "yes" -o "$ac_cv_header_IOKit_hid_IOHIDLib_h" = "yes" || enable_winejoystick_drv=${enable_winejoystick_drv:-no}
 
@@ -999,6 +1013,7 @@ then
                       X11/extensions/XInput2.h \
                       X11/extensions/XShm.h \
                       X11/extensions/Xcomposite.h \
+                      X11/extensions/Xfixes.h \
                       X11/extensions/Xinerama.h \
                       X11/extensions/Xrandr.h \
                       X11/extensions/Xrender.h \
@@ -1096,6 +1111,16 @@ then
         WINE_NOTICE_WITH(xrandr,[test "x$ac_cv_lib_soname_Xrandr" = "x"],
                          [libxrandr ${notice_platform}development files not found, XRandr won't be supported.])
 
+        dnl *** Check for Xfixes extension
+        if test "$ac_cv_header_X11_extensions_Xfixes_h" = "yes"
+        then
+                AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <X11/Xlib.h>
+#include <X11/extensions/Xfixes.h>]], [[static typeof(XFixesQueryVersion) * func; if (func) return 0;]])],
+                  [WINE_CHECK_SONAME(Xfixes,XFixesQueryVersion,,,[$X_LIBS $X_EXTRA_LIBS])])
+        fi
+        WINE_NOTICE_WITH(xfixes,[test "x$ac_cv_lib_soname_Xfixes" = "x"],
+                         [libxfixes ${notice_platform}development files not found, Xfixes won't be supported.])
+
         dnl *** Check for Xinerama extension
         if test "$ac_cv_header_X11_extensions_Xinerama_h" = "yes"
         then
@@ -1162,7 +1187,7 @@ else
     X_LIBS=""
 fi
 
-if test "$enable_winemac_drv" = "no"
+if test "$enable_wineandroid_drv$enable_winemac_drv" = "nono"
 then
     WINE_ERROR_WITH(x,[test "x$X_LIBS" = "x"],
 [X ${notice_platform}development files not found. Wine will be built
@@ -2830,6 +2855,7 @@ WINE_CONFIG_DLL(api-ms-win-ntuser-dc-access-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-power-base-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-power-setting-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-rtcore-ntuser-private-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-security-activedirectoryclient-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-security-audit-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-security-base-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-security-base-l1-2-0)
@@ -3493,6 +3519,7 @@ WINE_CONFIG_TEST(dlls/windowscodecs/tests)
 WINE_CONFIG_DLL(windowscodecsext,,[implib])
 WINE_CONFIG_TEST(dlls/windowscodecsext/tests)
 WINE_CONFIG_DLL(winealsa.drv)
+WINE_CONFIG_DLL(wineandroid.drv,,[clean])
 WINE_CONFIG_DLL(winebus.sys)
 WINE_CONFIG_DLL(winecoreaudio.drv)
 WINE_CONFIG_LIB(winecrt0)

@@ -58,6 +58,7 @@ static DWORD (WINAPI *pGetIfEntry2)(PMIB_IF_ROW2);
 static DWORD (WINAPI *pGetFriendlyIfIndex)(DWORD);
 static DWORD (WINAPI *pGetIfTable)(PMIB_IFTABLE,PULONG,BOOL);
 static DWORD (WINAPI *pGetIfTable2)(PMIB_IF_TABLE2*);
+static DWORD (WINAPI *pGetIfTable2Ex)(MIB_IF_TABLE_LEVEL,PMIB_IF_TABLE2*);
 static DWORD (WINAPI *pGetIpForwardTable)(PMIB_IPFORWARDTABLE,PULONG,BOOL);
 static DWORD (WINAPI *pGetIpNetTable)(PMIB_IPNETTABLE,PULONG,BOOL);
 static DWORD (WINAPI *pGetInterfaceInfo)(PIP_INTERFACE_INFO,PULONG);
@@ -96,6 +97,8 @@ static DWORD (WINAPI *pConvertInterfaceLuidToNameA)(const NET_LUID*,char*,SIZE_T
 static DWORD (WINAPI *pConvertInterfaceNameToLuidA)(const char*,NET_LUID*);
 static DWORD (WINAPI *pConvertInterfaceNameToLuidW)(const WCHAR*,NET_LUID*);
 
+static NET_IFINDEX (WINAPI *pif_nametoindex)(const char*);
+
 static void loadIPHlpApi(void)
 {
   hLibrary = LoadLibraryA("iphlpapi.dll");
@@ -108,6 +111,7 @@ static void loadIPHlpApi(void)
     pGetFriendlyIfIndex = (void *)GetProcAddress(hLibrary, "GetFriendlyIfIndex");
     pGetIfTable = (void *)GetProcAddress(hLibrary, "GetIfTable");
     pGetIfTable2 = (void *)GetProcAddress(hLibrary, "GetIfTable2");
+    pGetIfTable2Ex = (void *)GetProcAddress(hLibrary, "GetIfTable2Ex");
     pGetIpForwardTable = (void *)GetProcAddress(hLibrary, "GetIpForwardTable");
     pGetIpNetTable = (void *)GetProcAddress(hLibrary, "GetIpNetTable");
     pGetInterfaceInfo = (void *)GetProcAddress(hLibrary, "GetInterfaceInfo");
@@ -144,6 +148,7 @@ static void loadIPHlpApi(void)
     pConvertInterfaceLuidToNameW = (void *)GetProcAddress(hLibrary, "ConvertInterfaceLuidToNameW");
     pConvertInterfaceNameToLuidA = (void *)GetProcAddress(hLibrary, "ConvertInterfaceNameToLuidA");
     pConvertInterfaceNameToLuidW = (void *)GetProcAddress(hLibrary, "ConvertInterfaceNameToLuidW");
+    pif_nametoindex = (void *)GetProcAddress(hLibrary, "if_nametoindex");
   }
 }
 
@@ -1792,7 +1797,7 @@ static void test_interface_identifier_conversion(void)
     SIZE_T len;
     WCHAR nameW[IF_MAX_STRING_SIZE + 1];
     char nameA[IF_MAX_STRING_SIZE + 1];
-    NET_IFINDEX index;
+    NET_IFINDEX index, index2;
 
     if (!pConvertInterfaceIndexToLuid)
     {
@@ -1951,6 +1956,24 @@ static void test_interface_identifier_conversion(void)
     ok( !luid.Info.Reserved, "got %x\n", luid.Info.Reserved );
     ok( luid.Info.NetLuidIndex != 0xdead, "index not set\n" );
     ok( luid.Info.IfType == IF_TYPE_ETHERNET_CSMACD, "got %u\n", luid.Info.IfType );
+
+    /* if_nametoindex */
+    if (pif_nametoindex)
+    {
+        index2 = pif_nametoindex( NULL );
+        ok( !index2, "Got unexpected index %u\n", index2 );
+        index2 = pif_nametoindex( nameA );
+        ok( index2 == index, "Got index %u for %s, expected %u\n", index2, nameA, index );
+        /* Wargaming.net Game Center passes a GUID-like string. */
+        index2 = pif_nametoindex( "{00000001-0000-0000-0000-000000000000}" );
+        ok( !index2, "Got unexpected index %u\n", index2 );
+        index2 = pif_nametoindex( wine_dbgstr_guid( &guid ) );
+        ok( !index2, "Got unexpected index %u for input %s\n", index2, wine_dbgstr_guid( &guid ) );
+    }
+    else
+    {
+        skip("if_nametoindex not supported\n");
+    }
 }
 
 static void test_GetIfEntry2(void)
@@ -1999,6 +2022,36 @@ static void test_GetIfTable2(void)
     ret = pGetIfTable2( &table );
     ok( ret == NO_ERROR, "got %u\n", ret );
     ok( table != NULL, "table not set\n" );
+    pFreeMibTable( table );
+}
+
+static void test_GetIfTable2Ex(void)
+{
+    DWORD ret;
+    MIB_IF_TABLE2 *table;
+
+    if (!pGetIfTable2Ex)
+    {
+        win_skip( "GetIfTable2Ex not available\n" );
+        return;
+    }
+
+    table = NULL;
+    ret = pGetIfTable2Ex( MibIfTableNormal, &table );
+    ok( ret == NO_ERROR, "got %u\n", ret );
+    ok( table != NULL, "table not set\n" );
+    pFreeMibTable( table );
+
+    table = NULL;
+    ret = pGetIfTable2Ex( MibIfTableRaw, &table );
+    ok( ret == NO_ERROR, "got %u\n", ret );
+    ok( table != NULL, "table not set\n" );
+    pFreeMibTable( table );
+
+    table = NULL;
+    ret = pGetIfTable2Ex( 2, &table );
+    ok( ret == ERROR_INVALID_PARAMETER, "got %u\n", ret );
+    ok( !table, "table should not be set\n" );
     pFreeMibTable( table );
 }
 
@@ -2187,6 +2240,7 @@ START_TEST(iphlpapi)
     test_interface_identifier_conversion();
     test_GetIfEntry2();
     test_GetIfTable2();
+    test_GetIfTable2Ex();
     test_GetUnicastIpAddressEntry();
     test_GetUnicastIpAddressTable();
     freeIPHlpApi();

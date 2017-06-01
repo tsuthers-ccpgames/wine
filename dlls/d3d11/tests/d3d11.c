@@ -1293,6 +1293,12 @@ static void draw_quad_(unsigned int line, struct d3d11_test_context *context)
     ID3D11DeviceContext_Draw(context->immediate_context, 4, 0);
 }
 
+static void set_quad_color(struct d3d11_test_context *context, const struct vec4 *color)
+{
+    ID3D11DeviceContext_UpdateSubresource(context->immediate_context,
+            (ID3D11Resource *)context->ps_cb, 0, NULL, color, 0, 0);
+}
+
 #define draw_color_quad(c, color) draw_color_quad_(__LINE__, c, color)
 static void draw_color_quad_(unsigned int line, struct d3d11_test_context *context, const struct vec4 *color)
 {
@@ -1334,8 +1340,7 @@ static void draw_color_quad_(unsigned int line, struct d3d11_test_context *conte
     ID3D11DeviceContext_PSSetShader(context->immediate_context, context->ps, NULL, 0);
     ID3D11DeviceContext_PSSetConstantBuffers(context->immediate_context, 0, 1, &context->ps_cb);
 
-    ID3D11DeviceContext_UpdateSubresource(context->immediate_context, (ID3D11Resource *)context->ps_cb, 0,
-            NULL, color, 0, 0);
+    set_quad_color(context, color);
 
     draw_quad_(line, context);
 }
@@ -1764,6 +1769,9 @@ static void test_create_texture2d(void)
                 FALSE, TRUE},
         {DXGI_FORMAT_D32_FLOAT,               1, D3D11_BIND_RENDER_TARGET,    0, FALSE, FALSE},
         {DXGI_FORMAT_D32_FLOAT,               1, D3D11_BIND_DEPTH_STENCIL,    0, TRUE,  FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,      1, D3D11_BIND_SHADER_RESOURCE,  0, TRUE,  FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,      1, D3D11_BIND_RENDER_TARGET,    0, FALSE, FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,      1, D3D11_BIND_DEPTH_STENCIL,    0, FALSE, FALSE},
     };
 
     if (!(device = create_device(NULL)))
@@ -2080,6 +2088,9 @@ static void test_create_texture3d(void)
         {DXGI_FORMAT_R8G8B8A8_UNORM,        D3D11_BIND_DEPTH_STENCIL,   FALSE, FALSE},
         {DXGI_FORMAT_D24_UNORM_S8_UINT,     D3D11_BIND_RENDER_TARGET,   FALSE, FALSE},
         {DXGI_FORMAT_D32_FLOAT,             D3D11_BIND_RENDER_TARGET,   FALSE, FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,    D3D11_BIND_SHADER_RESOURCE, TRUE,  FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,    D3D11_BIND_RENDER_TARGET,   FALSE, FALSE},
+        {DXGI_FORMAT_R9G9B9E5_SHAREDEXP,    D3D11_BIND_DEPTH_STENCIL,   FALSE, FALSE},
     };
 
     if (!(device = create_device(NULL)))
@@ -2311,12 +2322,12 @@ static void test_texture3d_interfaces(void)
 static void test_create_buffer(void)
 {
     ID3D10Buffer *d3d10_buffer;
+    HRESULT expected_hr, hr;
     D3D11_BUFFER_DESC desc;
     ID3D11Buffer *buffer;
     ID3D11Device *device;
     unsigned int i;
     ULONG refcount;
-    HRESULT hr;
 
     static const struct test
     {
@@ -2520,7 +2531,6 @@ static void test_create_buffer(void)
         D3D11_BUFFER_DESC obtained_desc;
         D3D10_BUFFER_DESC d3d10_desc;
         ID3D10Device *d3d10_device;
-        HRESULT expected_hr;
 
         desc.ByteWidth = 1024;
         desc.Usage = D3D11_USAGE_DEFAULT;
@@ -2592,6 +2602,18 @@ static void test_create_buffer(void)
         if (d3d10_device) ID3D10Device_Release(d3d10_device);
 
         ID3D10Buffer_Release(d3d10_buffer);
+    }
+
+    memset(&desc, 0, sizeof(desc));
+    desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    for (i = 0; i <= 32; ++i)
+    {
+        desc.ByteWidth = i;
+        expected_hr = !i || i % 16 ? E_INVALIDARG : S_OK;
+        hr = ID3D11Device_CreateBuffer(device, &desc, NULL, &buffer);
+        ok(hr == expected_hr, "Got unexpected hr %#x for constant buffer size %u.\n", hr, i);
+        if (SUCCEEDED(hr))
+            ID3D11Buffer_Release(buffer);
     }
 
     refcount = ID3D11Device_Release(device);
@@ -4580,13 +4602,13 @@ static void test_create_query(void)
         {D3D11_QUERY_OCCLUSION_PREDICATE,           D3D_FEATURE_LEVEL_10_0, TRUE,  TRUE,  FALSE},
         {D3D11_QUERY_SO_STATISTICS,                 D3D_FEATURE_LEVEL_10_0, FALSE, FALSE, TRUE},
         {D3D11_QUERY_SO_OVERFLOW_PREDICATE,         D3D_FEATURE_LEVEL_10_0, TRUE,  TRUE,  TRUE},
-        {D3D11_QUERY_SO_STATISTICS_STREAM0,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, TRUE},
+        {D3D11_QUERY_SO_STATISTICS_STREAM0,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, FALSE},
         {D3D11_QUERY_SO_OVERFLOW_PREDICATE_STREAM0, D3D_FEATURE_LEVEL_11_0, TRUE,  FALSE, TRUE},
-        {D3D11_QUERY_SO_STATISTICS_STREAM1,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, TRUE},
+        {D3D11_QUERY_SO_STATISTICS_STREAM1,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, FALSE},
         {D3D11_QUERY_SO_OVERFLOW_PREDICATE_STREAM1, D3D_FEATURE_LEVEL_11_0, TRUE,  FALSE, TRUE},
-        {D3D11_QUERY_SO_STATISTICS_STREAM2,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, TRUE},
+        {D3D11_QUERY_SO_STATISTICS_STREAM2,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, FALSE},
         {D3D11_QUERY_SO_OVERFLOW_PREDICATE_STREAM2, D3D_FEATURE_LEVEL_11_0, TRUE,  FALSE, TRUE},
-        {D3D11_QUERY_SO_STATISTICS_STREAM3,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, TRUE},
+        {D3D11_QUERY_SO_STATISTICS_STREAM3,         D3D_FEATURE_LEVEL_11_0, FALSE, FALSE, FALSE},
         {D3D11_QUERY_SO_OVERFLOW_PREDICATE_STREAM3, D3D_FEATURE_LEVEL_11_0, TRUE,  FALSE, TRUE},
     };
 
@@ -4830,6 +4852,48 @@ static void test_occlusion_query(void)
     ok((data.dword[0] == 0x90000000 && data.dword[1] == 0x1)
             || (data.dword[0] == 0xffffffff && !data.dword[1])
             || broken(!data.uint),
+            "Got unexpected query result 0x%08x%08x.\n", data.dword[1], data.dword[0]);
+
+    ID3D11Asynchronous_Release(query);
+
+    /* The following test exercises a code path in wined3d. A wined3d context
+     * associated with the query is destroyed when the swapchain is released. */
+    hr = ID3D11Device_CreateQuery(device, &query_desc, (ID3D11Query **)&query);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+
+    vp.Width = 64.0f;
+    vp.Height = 64.0f;
+    ID3D11DeviceContext_RSSetViewports(context, 1, &vp);
+    ID3D11DeviceContext_ClearRenderTargetView(context, test_context.backbuffer_rtv, white);
+    ID3D11DeviceContext_Begin(context, query);
+    draw_color_quad(&test_context, &red);
+    ID3D11DeviceContext_End(context, query);
+
+    ID3D11RenderTargetView_Release(test_context.backbuffer_rtv);
+    ID3D11Texture2D_Release(test_context.backbuffer);
+    IDXGISwapChain_Release(test_context.swapchain);
+    test_context.swapchain = create_swapchain(device, test_context.window, NULL);
+    hr = IDXGISwapChain_GetBuffer(test_context.swapchain, 0, &IID_ID3D11Texture2D,
+            (void **)&test_context.backbuffer);
+    ok(SUCCEEDED(hr), "Failed to get backbuffer, hr %#x.\n", hr);
+    hr = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource *)test_context.backbuffer,
+            NULL, &test_context.backbuffer_rtv);
+    ok(SUCCEEDED(hr), "Failed to create rendertarget view, hr %#x.\n", hr);
+    ID3D11DeviceContext_OMSetRenderTargets(context, 1, &test_context.backbuffer_rtv, NULL);
+    ID3D11DeviceContext_ClearRenderTargetView(context, test_context.backbuffer_rtv, white);
+
+    for (i = 0; i < 500; ++i)
+    {
+        if ((hr = ID3D11DeviceContext_GetData(context, query, NULL, 0, 0)) != S_FALSE)
+            break;
+        Sleep(10);
+    }
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = ID3D11DeviceContext_GetData(context, query, &data, sizeof(data), 0);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    /* This test occasionally succeeds with CSMT enabled because of a race condition. */
+if (0)
+    todo_wine ok(data.dword[0] == 0x1000 && !data.dword[1],
             "Got unexpected query result 0x%08x%08x.\n", data.dword[1], data.dword[0]);
 
     ID3D11Asynchronous_Release(query);
@@ -6054,6 +6118,13 @@ static void test_texture(void)
          40,  30,  20,  10,
         250, 210, 155, 190,
     };
+    static const DWORD r9g9b9e5_data[] =
+    {
+        0x80000100, 0x80020000, 0x84000000, 0x84000100,
+        0x78000100, 0x78020000, 0x7c000000, 0x78020100,
+        0x70000133, 0x70026600, 0x74cc0000, 0x74cc0133,
+        0x6800019a, 0x68033400, 0x6e680000, 0x6e6b359a,
+    };
     static const struct texture rgba_texture =
     {
         4, 4, 3, 1, DXGI_FORMAT_R8G8B8A8_UNORM,
@@ -6101,6 +6172,8 @@ static void test_texture(void)
         {{r32_float, 4 * sizeof(*r32_float)}}};
     static const struct texture r32u_typeless = {4, 4, 1, 1, DXGI_FORMAT_R32_TYPELESS,
         {{r32_uint, 4 * sizeof(*r32_uint)}}};
+    static const struct texture r9g9b9e5_texture = {4, 4, 1, 1, DXGI_FORMAT_R9G9B9E5_SHAREDEXP,
+        {{r9g9b9e5_data, 4 * sizeof(*r9g9b9e5_data)}}};
     static const DWORD red_colors[] =
     {
         0xff0000ff, 0xff0000ff, 0xff0000ff, 0xff0000ff,
@@ -6199,6 +6272,13 @@ static void test_texture(void)
         0x01000028, 0x0100001e, 0x01000014, 0x0100000a,
         0x010000fa, 0x010000d2, 0x0100009b, 0x010000be,
     };
+    static const DWORD r9g9b9e5_colors[16] =
+    {
+        0xff0000ff, 0xff00ff00, 0xffff0000, 0xffff00ff,
+        0xff00007f, 0xff007f00, 0xff7f0000, 0xff007f7f,
+        0xff00004c, 0xff004c00, 0xff4c0000, 0xff4c004c,
+        0xff000033, 0xff003300, 0xff330000, 0xff333333,
+    };
     static const DWORD zero_colors[4 * 4] = {0};
     static const float red[] = {1.0f, 0.0f, 0.0f, 0.5f};
 
@@ -6238,6 +6318,7 @@ static void test_texture(void)
         {&ps_ld,              &bc6h_s_texture,   POINT,        0.0f, 0.0f,    0.0f,  0.0f, bc_colors},
         {&ps_ld,              &bc7_texture,      POINT,        0.0f, 0.0f,    0.0f,  0.0f, bc7_colors},
         {&ps_ld,              &bc7_texture_srgb, POINT,        0.0f, 0.0f,    0.0f,  0.0f, bc7_colors},
+        {&ps_ld,              &r9g9b9e5_texture, POINT,        0.0f, 0.0f,    0.0f,  0.0f, r9g9b9e5_colors},
         {&ps_ld,              NULL,              POINT,        0.0f, 0.0f,    0.0f,  0.0f, zero_colors},
         {&ps_ld,              NULL,              POINT,        0.0f, 0.0f, MIP_MAX,  0.0f, zero_colors},
         {&ps_ld_sint8,        &sint8_texture,    POINT,        0.0f, 0.0f,    0.0f,  0.0f, sint8_colors},
@@ -6257,6 +6338,7 @@ static void test_texture(void)
         {&ps_sample,          &rgba_texture,     POINT,        8.0f, 0.0f, MIP_MAX,  0.0f, level_1_colors},
         {&ps_sample,          &srgb_texture,     POINT,        0.0f, 0.0f,    0.0f,  0.0f, srgb_colors},
         {&ps_sample,          &a8_texture,       POINT,        0.0f, 0.0f,    0.0f,  0.0f, a8_colors},
+        {&ps_sample,          &r9g9b9e5_texture, POINT,        0.0f, 0.0f,    0.0f,  0.0f, r9g9b9e5_colors},
         {&ps_sample,          NULL,              POINT,        0.0f, 0.0f,    0.0f,  0.0f, zero_colors},
         {&ps_sample,          NULL,              POINT,        0.0f, 0.0f, MIP_MAX,  0.0f, zero_colors},
         {&ps_sample_b,        &rgba_texture,     POINT,        0.0f, 0.0f, MIP_MAX,  0.0f, rgba_level_0},
@@ -13964,7 +14046,7 @@ static void check_format_support(const unsigned int *format_support, D3D_FEATURE
 
         if (formats[i].fl_required <= feature_level)
         {
-            ok(supported, "Format %#x - %s not supported, feature_level %#x, format support %#x.\n",
+            todo_wine ok(supported, "Format %#x - %s not supported, feature_level %#x, format support %#x.\n",
                     format, feature_name, feature_level, format_support[format]);
             continue;
         }
@@ -13989,6 +14071,7 @@ static void test_required_format_support(const D3D_FEATURE_LEVEL feature_level)
     ID3D11Device *device;
     DXGI_FORMAT format;
     ULONG refcount;
+    UINT support;
     HRESULT hr;
 
     static const struct format_support index_buffers[] =
@@ -14005,19 +14088,18 @@ static void test_required_format_support(const D3D_FEATURE_LEVEL feature_level)
         return;
     }
 
+    support = 0xdeadbeef;
+    hr = ID3D11Device_CheckFormatSupport(device, ~0u, &support);
+    ok(hr == E_FAIL, "Got unexpected hr %#x.\n", hr);
+    ok(!support, "Got unexpected format support %#x.\n", support);
+
     memset(format_support, 0, sizeof(format_support));
     for (format = DXGI_FORMAT_UNKNOWN; format <= DXGI_FORMAT_B4G4R4A4_UNORM; ++format)
     {
         hr = ID3D11Device_CheckFormatSupport(device, format, &format_support[format]);
-        todo_wine ok(hr == S_OK || (hr == E_FAIL && !format_support[format]),
+        ok(hr == S_OK || (hr == E_FAIL && !format_support[format]),
                 "Got unexpected result for format %#x: hr %#x, format_support %#x.\n",
                 format, hr, format_support[format]);
-    }
-    if (hr == E_NOTIMPL)
-    {
-        skip("CheckFormatSupport not implemented.\n");
-        ID3D11Device_Release(device);
-        return;
     }
 
     check_format_support(format_support, feature_level,
@@ -18249,6 +18331,402 @@ float4 main(struct ps_data ps_input) : SV_Target
     release_test_context(&test_context);
 }
 
+struct triangle
+{
+    struct vec4 v[3];
+};
+
+#define check_triangles(buffer, triangles, count) check_triangles_(__LINE__, buffer, triangles, count)
+static void check_triangles_(unsigned int line, ID3D11Buffer *buffer,
+        const struct triangle *triangles, unsigned int triangle_count)
+{
+    const struct triangle *current, *expected;
+    struct resource_readback rb;
+    unsigned int i, j, offset;
+    BOOL all_match = TRUE;
+
+    get_buffer_readback(buffer, &rb);
+
+    for (i = 0; i < triangle_count; ++i)
+    {
+        current = get_readback_data(&rb, i, 0, sizeof(*current));
+        expected = &triangles[i];
+
+        offset = ~0u;
+        for (j = 0; j < ARRAY_SIZE(expected->v); ++j)
+        {
+            if (compare_vec4(&current->v[0], &expected->v[j], 0))
+            {
+                offset = j;
+                break;
+            }
+        }
+
+        if (offset == ~0u)
+        {
+            all_match = FALSE;
+            break;
+        }
+
+        for (j = 0; j < ARRAY_SIZE(expected->v); ++j)
+        {
+            if (!compare_vec4(&current->v[j], &expected->v[(j + offset) % 3], 0))
+            {
+                all_match = FALSE;
+                break;
+            }
+        }
+        if (!all_match)
+            break;
+    }
+
+    ok_(__FILE__, line)(all_match, "Triangle %u vertices {%.8e, %.8e, %.8e, %.8e}, "
+            "{%.8e, %.8e, %.8e, %.8e}, {%.8e, %.8e, %.8e, %.8e} "
+            "do not match {%.8e, %.8e, %.8e, %.8e}, {%.8e, %.8e, %.8e, %.8e}, "
+            "{%.8e, %.8e, %.8e, %.8e}.\n", i,
+            current->v[0].x, current->v[0].y, current->v[0].z, current->v[0].w,
+            current->v[1].x, current->v[1].y, current->v[1].z, current->v[1].w,
+            current->v[2].x, current->v[2].y, current->v[2].z, current->v[2].w,
+            expected->v[0].x, expected->v[0].y, expected->v[0].z, expected->v[0].w,
+            expected->v[1].x, expected->v[1].y, expected->v[1].z, expected->v[1].w,
+            expected->v[2].x, expected->v[2].y, expected->v[2].z, expected->v[2].w);
+
+    release_resource_readback(&rb);
+}
+
+static void test_quad_tessellation(void)
+{
+#if 0
+    struct point_data
+    {
+        float4 position : SV_POSITION;
+    };
+
+    struct patch_constant_data
+    {
+        float edges[4] : SV_TessFactor;
+        float inside[2] : SV_InsideTessFactor;
+    };
+
+    float4 tess_factors;
+    float2 inside_tess_factors;
+
+    patch_constant_data patch_constant(InputPatch<point_data, 4> input)
+    {
+        patch_constant_data output;
+
+        output.edges[0] = tess_factors.x;
+        output.edges[1] = tess_factors.y;
+        output.edges[2] = tess_factors.z;
+        output.edges[3] = tess_factors.w;
+        output.inside[0] = inside_tess_factors.x;
+        output.inside[1] = inside_tess_factors.y;
+
+        return output;
+    }
+
+    [domain("quad")]
+    [outputcontrolpoints(4)]
+    [outputtopology("triangle_ccw")]
+    [partitioning("integer")]
+    [patchconstantfunc("patch_constant")]
+    point_data hs_main(InputPatch<point_data, 4> input,
+            uint i : SV_OutputControlPointID)
+    {
+        return input[i];
+    }
+
+    [domain("quad")]
+    point_data ds_main(patch_constant_data input,
+            float2 tess_coord : SV_DomainLocation,
+            const OutputPatch<point_data, 4> patch)
+    {
+        point_data output;
+
+        float4 a = lerp(patch[0].position, patch[1].position, tess_coord.x);
+        float4 b = lerp(patch[2].position, patch[3].position, tess_coord.x);
+        output.position = lerp(a, b, tess_coord.y);
+
+        return output;
+    }
+#endif
+    static const DWORD hs_quad_ccw_code[] =
+    {
+        0x43425844, 0xdf8df700, 0x58b08fb1, 0xbd23d2c3, 0xcf884094, 0x00000001, 0x000002b8, 0x00000004,
+        0x00000030, 0x00000064, 0x00000098, 0x0000015c, 0x4e475349, 0x0000002c, 0x00000001, 0x00000008,
+        0x00000020, 0x00000000, 0x00000001, 0x00000003, 0x00000000, 0x00000f0f, 0x505f5653, 0x5449534f,
+        0x004e4f49, 0x4e47534f, 0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000,
+        0x00000003, 0x00000000, 0x0000000f, 0x505f5653, 0x5449534f, 0x004e4f49, 0x47534350, 0x000000bc,
+        0x00000006, 0x00000008, 0x00000098, 0x00000000, 0x0000000b, 0x00000003, 0x00000000, 0x00000e01,
+        0x00000098, 0x00000001, 0x0000000b, 0x00000003, 0x00000001, 0x00000e01, 0x00000098, 0x00000002,
+        0x0000000b, 0x00000003, 0x00000002, 0x00000e01, 0x00000098, 0x00000003, 0x0000000b, 0x00000003,
+        0x00000003, 0x00000e01, 0x000000a6, 0x00000000, 0x0000000c, 0x00000003, 0x00000004, 0x00000e01,
+        0x000000a6, 0x00000001, 0x0000000c, 0x00000003, 0x00000005, 0x00000e01, 0x545f5653, 0x46737365,
+        0x6f746361, 0x56530072, 0x736e495f, 0x54656469, 0x46737365, 0x6f746361, 0xabab0072, 0x58454853,
+        0x00000154, 0x00030050, 0x00000055, 0x01000071, 0x01002093, 0x01002094, 0x01001895, 0x01000896,
+        0x01002097, 0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000002, 0x01000073, 0x04000067,
+        0x00102012, 0x00000000, 0x0000000b, 0x06000036, 0x00102012, 0x00000000, 0x0020800a, 0x00000000,
+        0x00000000, 0x0100003e, 0x01000073, 0x04000067, 0x00102012, 0x00000001, 0x0000000c, 0x06000036,
+        0x00102012, 0x00000001, 0x0020801a, 0x00000000, 0x00000000, 0x0100003e, 0x01000073, 0x04000067,
+        0x00102012, 0x00000002, 0x0000000d, 0x06000036, 0x00102012, 0x00000002, 0x0020802a, 0x00000000,
+        0x00000000, 0x0100003e, 0x01000073, 0x04000067, 0x00102012, 0x00000003, 0x0000000e, 0x06000036,
+        0x00102012, 0x00000003, 0x0020803a, 0x00000000, 0x00000000, 0x0100003e, 0x01000073, 0x04000067,
+        0x00102012, 0x00000004, 0x0000000f, 0x06000036, 0x00102012, 0x00000004, 0x0020800a, 0x00000000,
+        0x00000001, 0x0100003e, 0x01000073, 0x04000067, 0x00102012, 0x00000005, 0x00000010, 0x06000036,
+        0x00102012, 0x00000005, 0x0020801a, 0x00000000, 0x00000001, 0x0100003e,
+    };
+    static const DWORD ds_quad_code[] =
+    {
+        0x43425844, 0xeb6b7631, 0x07f5469e, 0xed0cbf4a, 0x7158b3a6, 0x00000001, 0x00000284, 0x00000004,
+        0x00000030, 0x00000064, 0x00000128, 0x0000015c, 0x4e475349, 0x0000002c, 0x00000001, 0x00000008,
+        0x00000020, 0x00000000, 0x00000000, 0x00000003, 0x00000000, 0x00000f0f, 0x505f5653, 0x5449534f,
+        0x004e4f49, 0x47534350, 0x000000bc, 0x00000006, 0x00000008, 0x00000098, 0x00000000, 0x0000000b,
+        0x00000003, 0x00000000, 0x00000001, 0x00000098, 0x00000001, 0x0000000b, 0x00000003, 0x00000001,
+        0x00000001, 0x00000098, 0x00000002, 0x0000000b, 0x00000003, 0x00000002, 0x00000001, 0x00000098,
+        0x00000003, 0x0000000b, 0x00000003, 0x00000003, 0x00000001, 0x000000a6, 0x00000000, 0x0000000c,
+        0x00000003, 0x00000004, 0x00000001, 0x000000a6, 0x00000001, 0x0000000c, 0x00000003, 0x00000005,
+        0x00000001, 0x545f5653, 0x46737365, 0x6f746361, 0x56530072, 0x736e495f, 0x54656469, 0x46737365,
+        0x6f746361, 0xabab0072, 0x4e47534f, 0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000,
+        0x00000001, 0x00000003, 0x00000000, 0x0000000f, 0x505f5653, 0x5449534f, 0x004e4f49, 0x58454853,
+        0x00000120, 0x00040050, 0x00000048, 0x01002093, 0x01001895, 0x0100086a, 0x0200005f, 0x0001c032,
+        0x0400005f, 0x002190f2, 0x00000004, 0x00000000, 0x04000067, 0x001020f2, 0x00000000, 0x00000001,
+        0x02000068, 0x00000002, 0x0a000000, 0x001000f2, 0x00000000, 0x80219e46, 0x00000041, 0x00000002,
+        0x00000000, 0x00219e46, 0x00000003, 0x00000000, 0x09000032, 0x001000f2, 0x00000000, 0x0001c006,
+        0x00100e46, 0x00000000, 0x00219e46, 0x00000002, 0x00000000, 0x0a000000, 0x001000f2, 0x00000001,
+        0x80219e46, 0x00000041, 0x00000000, 0x00000000, 0x00219e46, 0x00000001, 0x00000000, 0x09000032,
+        0x001000f2, 0x00000001, 0x0001c006, 0x00100e46, 0x00000001, 0x00219e46, 0x00000000, 0x00000000,
+        0x08000000, 0x001000f2, 0x00000000, 0x00100e46, 0x00000000, 0x80100e46, 0x00000041, 0x00000001,
+        0x08000032, 0x001020f2, 0x00000000, 0x0001c556, 0x00100e46, 0x00000000, 0x00100e46, 0x00000001,
+        0x0100003e,
+    };
+#if 0
+    ...
+    [outputtopology("triangle_cw")]
+    ...
+#endif
+    static const DWORD hs_quad_cw_code[] =
+    {
+        0x43425844, 0x1ab30cc8, 0x94174771, 0x61f4cdd0, 0xa287f62c, 0x00000001, 0x000002b8, 0x00000004,
+        0x00000030, 0x00000064, 0x00000098, 0x0000015c, 0x4e475349, 0x0000002c, 0x00000001, 0x00000008,
+        0x00000020, 0x00000000, 0x00000001, 0x00000003, 0x00000000, 0x00000f0f, 0x505f5653, 0x5449534f,
+        0x004e4f49, 0x4e47534f, 0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000,
+        0x00000003, 0x00000000, 0x0000000f, 0x505f5653, 0x5449534f, 0x004e4f49, 0x47534350, 0x000000bc,
+        0x00000006, 0x00000008, 0x00000098, 0x00000000, 0x0000000b, 0x00000003, 0x00000000, 0x00000e01,
+        0x00000098, 0x00000001, 0x0000000b, 0x00000003, 0x00000001, 0x00000e01, 0x00000098, 0x00000002,
+        0x0000000b, 0x00000003, 0x00000002, 0x00000e01, 0x00000098, 0x00000003, 0x0000000b, 0x00000003,
+        0x00000003, 0x00000e01, 0x000000a6, 0x00000000, 0x0000000c, 0x00000003, 0x00000004, 0x00000e01,
+        0x000000a6, 0x00000001, 0x0000000c, 0x00000003, 0x00000005, 0x00000e01, 0x545f5653, 0x46737365,
+        0x6f746361, 0x56530072, 0x736e495f, 0x54656469, 0x46737365, 0x6f746361, 0xabab0072, 0x58454853,
+        0x00000154, 0x00030050, 0x00000055, 0x01000071, 0x01002093, 0x01002094, 0x01001895, 0x01000896,
+        0x01001897, 0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000002, 0x01000073, 0x04000067,
+        0x00102012, 0x00000000, 0x0000000b, 0x06000036, 0x00102012, 0x00000000, 0x0020800a, 0x00000000,
+        0x00000000, 0x0100003e, 0x01000073, 0x04000067, 0x00102012, 0x00000001, 0x0000000c, 0x06000036,
+        0x00102012, 0x00000001, 0x0020801a, 0x00000000, 0x00000000, 0x0100003e, 0x01000073, 0x04000067,
+        0x00102012, 0x00000002, 0x0000000d, 0x06000036, 0x00102012, 0x00000002, 0x0020802a, 0x00000000,
+        0x00000000, 0x0100003e, 0x01000073, 0x04000067, 0x00102012, 0x00000003, 0x0000000e, 0x06000036,
+        0x00102012, 0x00000003, 0x0020803a, 0x00000000, 0x00000000, 0x0100003e, 0x01000073, 0x04000067,
+        0x00102012, 0x00000004, 0x0000000f, 0x06000036, 0x00102012, 0x00000004, 0x0020800a, 0x00000000,
+        0x00000001, 0x0100003e, 0x01000073, 0x04000067, 0x00102012, 0x00000005, 0x00000010, 0x06000036,
+        0x00102012, 0x00000005, 0x0020801a, 0x00000000, 0x00000001, 0x0100003e,
+    };
+#if 0
+    struct point_data
+    {
+        float4 pos : SV_POSITION;
+    };
+
+    [maxvertexcount(3)]
+    void main(triangle point_data vin[3], inout TriangleStream<point_data> vout)
+    {
+        for (uint i = 0; i < 3; ++i)
+            vout.Append(vin[i]);
+    }
+#endif
+    static const DWORD gs_code[] =
+    {
+        0x43425844, 0x8e49d18d, 0x6d08d6e5, 0xb7015628, 0xf9351fdd, 0x00000001, 0x00000164, 0x00000003,
+        0x0000002c, 0x00000060, 0x00000094, 0x4e475349, 0x0000002c, 0x00000001, 0x00000008, 0x00000020,
+        0x00000000, 0x00000001, 0x00000003, 0x00000000, 0x00000f0f, 0x505f5653, 0x5449534f, 0x004e4f49,
+        0x4e47534f, 0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000001, 0x00000003,
+        0x00000000, 0x0000000f, 0x505f5653, 0x5449534f, 0x004e4f49, 0x52444853, 0x000000c8, 0x00020040,
+        0x00000032, 0x05000061, 0x002010f2, 0x00000003, 0x00000000, 0x00000001, 0x02000068, 0x00000001,
+        0x0100185d, 0x0100285c, 0x04000067, 0x001020f2, 0x00000000, 0x00000001, 0x0200005e, 0x00000003,
+        0x05000036, 0x00100012, 0x00000000, 0x00004001, 0x00000000, 0x01000030, 0x07000050, 0x00100022,
+        0x00000000, 0x0010000a, 0x00000000, 0x00004001, 0x00000003, 0x03040003, 0x0010001a, 0x00000000,
+        0x07000036, 0x001020f2, 0x00000000, 0x00a01e46, 0x0010000a, 0x00000000, 0x00000000, 0x01000013,
+        0x0700001e, 0x00100012, 0x00000000, 0x0010000a, 0x00000000, 0x00004001, 0x00000001, 0x01000016,
+        0x0100003e,
+    };
+    static const D3D11_SO_DECLARATION_ENTRY so_declaration[] =
+    {
+        {0, "SV_POSITION", 0, 0, 4, 0},
+    };
+    static const D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
+    static const struct vec4 green = {0.0f, 1.0f, 0.0f, 1.0f};
+    static const struct vec4 white = {1.0f, 1.0f, 1.0f, 1.0f};
+    static const BYTE zero_data[1024];
+    static const struct triangle expected_quad_ccw[] =
+    {
+        {{{-1.0f, -1.0f, 0.0f, 1.0f},
+          { 1.0f, -1.0f, 0.0f, 1.0f},
+          {-1.0f,  1.0f, 0.0f, 1.0f}}},
+        {{{-1.0f,  1.0f, 0.0f, 1.0f},
+          { 1.0f, -1.0f, 0.0f, 1.0f},
+          { 1.0f,  1.0f, 0.0f, 1.0f}}},
+        {{{ 0.0f,  0.0f, 0.0f, 0.0f},
+          { 0.0f,  0.0f, 0.0f, 0.0f},
+          { 0.0f,  0.0f, 0.0f, 0.0f}}},
+    };
+    static const struct triangle expected_quad_cw[] =
+    {
+        {{{-1.0f, -1.0f, 0.0f, 1.0f},
+          {-1.0f,  1.0f, 0.0f, 1.0f},
+          { 1.0f, -1.0f, 0.0f, 1.0f}}},
+        {{{-1.0f,  1.0f, 0.0f, 1.0f},
+          { 1.0f,  1.0f, 0.0f, 1.0f},
+          { 1.0f, -1.0f, 0.0f, 1.0f}}},
+        {{{ 0.0f,  0.0f, 0.0f, 0.0f},
+          { 0.0f,  0.0f, 0.0f, 0.0f},
+          { 0.0f,  0.0f, 0.0f, 0.0f}}},
+    };
+    struct
+    {
+        float tess_factors[4];
+        float inside_tess_factors[2];
+        DWORD padding[2];
+    } constant;
+
+    D3D11_QUERY_DATA_SO_STATISTICS so_statistics;
+    struct d3d11_test_context test_context;
+    ID3D11DeviceContext *context;
+    ID3D11Buffer *cb, *so_buffer;
+    D3D11_QUERY_DESC query_desc;
+    ID3D11Asynchronous *query;
+    ID3D11GeometryShader *gs;
+    ID3D11DomainShader *ds;
+    const UINT offset = 0;
+    ID3D11HullShader *hs;
+    ID3D11Device *device;
+    unsigned int i;
+    HRESULT hr;
+
+    if (!init_test_context(&test_context, &feature_level))
+        return;
+
+    device = test_context.device;
+    context = test_context.immediate_context;
+
+    draw_color_quad(&test_context, &white);
+    check_texture_color(test_context.backbuffer, 0xffffffff, 0);
+
+    set_quad_color(&test_context, &green);
+    ID3D11DeviceContext_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
+
+    so_buffer = create_buffer(device, D3D11_BIND_STREAM_OUTPUT, sizeof(zero_data), zero_data);
+    hr = ID3D11Device_CreateGeometryShaderWithStreamOutput(device, gs_code, sizeof(gs_code),
+            so_declaration, ARRAY_SIZE(so_declaration), NULL, 0, 0, NULL, &gs);
+    ok(SUCCEEDED(hr), "Failed to create geometry shader with stream output, hr %#x.\n", hr);
+    ID3D11DeviceContext_GSSetShader(context, gs, NULL, 0);
+
+    for (i = 0; i < ARRAY_SIZE(constant.tess_factors); ++i)
+        constant.tess_factors[i] = 1.0f;
+    for (i = 0; i < ARRAY_SIZE(constant.inside_tess_factors); ++i)
+        constant.inside_tess_factors[i] = 1.0f;
+    cb = create_buffer(device, D3D11_BIND_CONSTANT_BUFFER, sizeof(constant), &constant);
+    ID3D11DeviceContext_HSSetConstantBuffers(context, 0, 1, &cb);
+    hr = ID3D11Device_CreateHullShader(device, hs_quad_ccw_code, sizeof(hs_quad_ccw_code), NULL, &hs);
+    ok(SUCCEEDED(hr), "Failed to create hull shader, hr %#x.\n", hr);
+    ID3D11DeviceContext_HSSetShader(context, hs, NULL, 0);
+    hr = ID3D11Device_CreateDomainShader(device, ds_quad_code, sizeof(ds_quad_code), NULL, &ds);
+    ok(SUCCEEDED(hr), "Failed to create domain shader, hr %#x.\n", hr);
+    ID3D11DeviceContext_DSSetShader(context, ds, NULL, 0);
+
+    ID3D11DeviceContext_SOSetTargets(context, 1, &so_buffer, &offset);
+    ID3D11DeviceContext_Draw(context, 4, 0);
+    check_texture_color(test_context.backbuffer, 0xffffffff, 0);
+    ID3D11DeviceContext_SOSetTargets(context, 0, NULL, NULL);
+    check_triangles(so_buffer, expected_quad_ccw, ARRAY_SIZE(expected_quad_ccw));
+
+    ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)so_buffer, 0, NULL, zero_data, 0, 0);
+
+    ID3D11HullShader_Release(hs);
+    hr = ID3D11Device_CreateHullShader(device, hs_quad_cw_code, sizeof(hs_quad_cw_code), NULL, &hs);
+    ok(SUCCEEDED(hr), "Failed to create hull shader, hr %#x.\n", hr);
+    ID3D11DeviceContext_HSSetShader(context, hs, NULL, 0);
+
+    ID3D11DeviceContext_SOSetTargets(context, 1, &so_buffer, &offset);
+    ID3D11DeviceContext_Draw(context, 4, 0);
+    check_texture_color(test_context.backbuffer, 0xff00ff00, 0);
+    ID3D11DeviceContext_SOSetTargets(context, 0, NULL, NULL);
+    check_triangles(so_buffer, expected_quad_cw, ARRAY_SIZE(expected_quad_cw));
+
+    ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)so_buffer, 0, NULL, zero_data, 0, 0);
+
+    ID3D11DeviceContext_SOSetTargets(context, 1, &so_buffer, &offset);
+    query_desc.Query = D3D11_QUERY_SO_STATISTICS_STREAM0;
+    query_desc.MiscFlags = 0;
+    hr = ID3D11Device_CreateQuery(device, &query_desc, (ID3D11Query **)&query);
+    ok(hr == S_OK, "Failed to create query, hr %#x.\n", hr);
+    ID3D11DeviceContext_Begin(context, query);
+
+    set_quad_color(&test_context, &white);
+    for (i = 0; i < ARRAY_SIZE(constant.tess_factors); ++i)
+        constant.tess_factors[i] = 2.0f;
+    ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)cb, 0, NULL, &constant, 0, 0);
+    ID3D11DeviceContext_Draw(context, 4, 0);
+    check_texture_color(test_context.backbuffer, 0xffffffff, 0);
+
+    set_quad_color(&test_context, &green);
+    constant.tess_factors[0] = 0.0f; /* A patch is discarded. */
+    ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)cb, 0, NULL, &constant, 0, 0);
+    ID3D11DeviceContext_Draw(context, 4, 0);
+    check_texture_color(test_context.backbuffer, 0xffffffff, 0);
+
+    ID3D11DeviceContext_End(context, query);
+    for (i = 0; i < 500; ++i)
+    {
+        if ((hr = ID3D11DeviceContext_GetData(context, query, NULL, 0, 0)) != S_FALSE)
+            break;
+        Sleep(10);
+    }
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = ID3D11DeviceContext_GetData(context, query, &so_statistics, sizeof(so_statistics), 0);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(so_statistics.NumPrimitivesWritten == 8, "Got unexpected primitives written %u.\n",
+            (unsigned int)so_statistics.NumPrimitivesWritten);
+    ok(so_statistics.PrimitivesStorageNeeded == 8, "Got unexpected primitives storage needed %u.\n",
+            (unsigned int)so_statistics.PrimitivesStorageNeeded);
+    ID3D11DeviceContext_Begin(context, query);
+
+    constant.tess_factors[0] = 5.0f;
+    ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)cb, 0, NULL, &constant, 0, 0);
+    ID3D11DeviceContext_Draw(context, 4, 0);
+    check_texture_color(test_context.backbuffer, 0xff00ff00, 0);
+
+    ID3D11DeviceContext_End(context, query);
+    for (i = 0; i < 500; ++i)
+    {
+        if ((hr = ID3D11DeviceContext_GetData(context, query, NULL, 0, 0)) != S_FALSE)
+            break;
+        Sleep(10);
+    }
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    hr = ID3D11DeviceContext_GetData(context, query, &so_statistics, sizeof(so_statistics), 0);
+    ok(hr == S_OK, "Got unexpected hr %#x.\n", hr);
+    ok(so_statistics.NumPrimitivesWritten == 11, "Got unexpected primitives written %u.\n",
+            (unsigned int)so_statistics.NumPrimitivesWritten);
+    ok(so_statistics.PrimitivesStorageNeeded == 11, "Got unexpected primitives storage needed %u.\n",
+            (unsigned int)so_statistics.PrimitivesStorageNeeded);
+    ID3D11Asynchronous_Release(query);
+
+    ID3D11Buffer_Release(so_buffer);
+    ID3D11GeometryShader_Release(gs);
+    ID3D11DomainShader_Release(ds);
+    ID3D11HullShader_Release(hs);
+    ID3D11Buffer_Release(cb);
+    release_test_context(&test_context);
+}
+
 #define check_so_desc(a, b, c, d, e, f, g, h) check_so_desc_(__LINE__, a, b, c, d, e, f, g, h)
 static void check_so_desc_(unsigned int line, ID3D11Device *device,
         const DWORD *code, size_t code_size, const D3D11_SO_DECLARATION_ENTRY *entry,
@@ -19445,6 +19923,226 @@ done:
     release_test_context(&test_context);
 }
 
+static void test_gather_c(void)
+{
+    struct
+    {
+        int width, height;
+        int offset_x, offset_y;
+        float compare_value;
+        int padding[3];
+    } constant;
+    struct d3d11_test_context test_context;
+    D3D11_TEXTURE2D_DESC texture_desc;
+    D3D11_SAMPLER_DESC sampler_desc;
+    D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
+    ID3D11ShaderResourceView *srv;
+    ID3D11Texture2D *texture, *rt;
+    ID3D11DeviceContext *context;
+    ID3D11SamplerState *sampler;
+    ID3D11RenderTargetView *rtv;
+    struct resource_readback rb;
+    ID3D11PixelShader *ps;
+    ID3D11Device *device;
+    unsigned int x, y;
+    ID3D11Buffer *cb;
+    HRESULT hr;
+
+    static const D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
+    static const DWORD gather4_c_code[] =
+    {
+#if 0
+        SamplerComparisonState s;
+        Texture2D<float4> t;
+
+        int2 size;
+        int2 offset;
+        float compare;
+
+        float4 main(float4 position : SV_Position) : SV_Target
+        {
+            return t.GatherCmp(s, position.xy / size, compare);
+        }
+#endif
+        0x43425844, 0xd3d04479, 0x901e9208, 0x7074fd0c, 0xbcadb2da, 0x00000001, 0x00000168, 0x00000003,
+        0x0000002c, 0x00000060, 0x00000094, 0x4e475349, 0x0000002c, 0x00000001, 0x00000008, 0x00000020,
+        0x00000000, 0x00000001, 0x00000003, 0x00000000, 0x0000030f, 0x505f5653, 0x7469736f, 0x006e6f69,
+        0x4e47534f, 0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000003,
+        0x00000000, 0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x000000cc, 0x00000050,
+        0x00000033, 0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000002, 0x0300085a, 0x00106000,
+        0x00000000, 0x04001858, 0x00107000, 0x00000000, 0x00005555, 0x04002064, 0x00101032, 0x00000000,
+        0x00000001, 0x03000065, 0x001020f2, 0x00000000, 0x02000068, 0x00000001, 0x0600002b, 0x00100032,
+        0x00000000, 0x00208046, 0x00000000, 0x00000000, 0x0700000e, 0x00100032, 0x00000000, 0x00101046,
+        0x00000000, 0x00100046, 0x00000000, 0x8e00007e, 0x800000c2, 0x00155543, 0x001020f2, 0x00000000,
+        0x00100046, 0x00000000, 0x00107e46, 0x00000000, 0x0010600a, 0x00000000, 0x0020800a, 0x00000000,
+        0x00000001, 0x0100003e,
+    };
+    static const DWORD gather4_po_c_code[] =
+    {
+#if 0
+        SamplerComparisonState s;
+        Texture2D<float4> t;
+
+        int2 size;
+        int2 offset;
+        float compare;
+
+        float4 main(float4 position : SV_Position) : SV_Target
+        {
+            return t.GatherCmp(s, position.xy / size, compare, offset);
+        }
+#endif
+        0x43425844, 0x501de13e, 0x472d2d20, 0x6df0fee4, 0xef27d9e6, 0x00000001, 0x00000174, 0x00000003,
+        0x0000002c, 0x00000060, 0x00000094, 0x4e475349, 0x0000002c, 0x00000001, 0x00000008, 0x00000020,
+        0x00000000, 0x00000001, 0x00000003, 0x00000000, 0x0000030f, 0x505f5653, 0x7469736f, 0x006e6f69,
+        0x4e47534f, 0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000003,
+        0x00000000, 0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x000000d8, 0x00000050,
+        0x00000036, 0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000002, 0x0300085a, 0x00106000,
+        0x00000000, 0x04001858, 0x00107000, 0x00000000, 0x00005555, 0x04002064, 0x00101032, 0x00000000,
+        0x00000001, 0x03000065, 0x001020f2, 0x00000000, 0x02000068, 0x00000001, 0x0600002b, 0x00100032,
+        0x00000000, 0x00208046, 0x00000000, 0x00000000, 0x0700000e, 0x00100032, 0x00000000, 0x00101046,
+        0x00000000, 0x00100046, 0x00000000, 0x91000080, 0x800000c2, 0x00155543, 0x001020f2, 0x00000000,
+        0x00100046, 0x00000000, 0x00208ae6, 0x00000000, 0x00000000, 0x00107e46, 0x00000000, 0x0010600a,
+        0x00000000, 0x0020800a, 0x00000000, 0x00000001, 0x0100003e,
+    };
+    static const float texture_data[] =
+    {
+        0.00f, 0.10f, 0.20f, 0.30f,
+        0.40f, 0.50f, 0.60f, 0.70f,
+        0.80f, 0.90f, 0.05f, 0.15f,
+        0.25f, 0.35f, 0.45f, 0.55f,
+    };
+    static const struct vec4 expected_gather4_c[] =
+    {
+        {0.0f, 1.00, 0.00, 0.0f}, {1.0f, 1.00, 0.00, 0.0f}, {1.0f, 1.00, 0.00, 0.0f}, {1.0f, 1.00, 0.00, 0.0f},
+        {1.0f, 1.00, 1.00, 0.0f}, {1.0f, 0.00, 1.00, 1.0f}, {0.0f, 0.00, 1.00, 1.0f}, {0.0f, 0.00, 1.00, 1.0f},
+        {0.0f, 0.00, 1.00, 1.0f}, {0.0f, 0.00, 0.00, 1.0f}, {0.0f, 1.00, 0.00, 0.0f}, {1.0f, 1.00, 0.00, 0.0f},
+        {0.0f, 0.00, 0.00, 0.0f}, {0.0f, 0.00, 0.00, 0.0f}, {0.0f, 1.00, 1.00, 0.0f}, {1.0f, 1.00, 1.00, 1.0f},
+    };
+    static const struct vec4 expected_gather4_po_c[] =
+    {
+        {1.0f, 0.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f, 1.0f},
+        {0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f},
+        {0.0f, 0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    static const struct vec4 white = {1.0f, 1.0f, 1.0f, 1.0f};
+    static const D3D11_SUBRESOURCE_DATA resource_data = {&texture_data, sizeof(texture_data) / 4};
+
+    if (!init_test_context(&test_context, &feature_level))
+        return;
+
+    device = test_context.device;
+    context = test_context.immediate_context;
+
+    sampler_desc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT;
+    sampler_desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampler_desc.MipLODBias = 0.0f;
+    sampler_desc.MaxAnisotropy = 0;
+    sampler_desc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
+    sampler_desc.BorderColor[0] = 0.0f;
+    sampler_desc.BorderColor[1] = 0.0f;
+    sampler_desc.BorderColor[2] = 0.0f;
+    sampler_desc.BorderColor[3] = 0.0f;
+    sampler_desc.MinLOD = 0.0f;
+    sampler_desc.MaxLOD = D3D11_FLOAT32_MAX;
+
+    hr = ID3D11Device_CreateSamplerState(device, &sampler_desc, &sampler);
+    ok(SUCCEEDED(hr), "Failed to create sampler state, hr %#x.\n", hr);
+    ID3D11DeviceContext_PSSetSamplers(context, 0, 1, &sampler);
+
+    texture_desc.Width = 4;
+    texture_desc.Height = 4;
+    texture_desc.MipLevels = 1;
+    texture_desc.ArraySize = 1;
+    texture_desc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    texture_desc.SampleDesc.Count = 1;
+    texture_desc.SampleDesc.Quality = 0;
+    texture_desc.Usage = D3D11_USAGE_DEFAULT;
+    texture_desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+    texture_desc.CPUAccessFlags = 0;
+    texture_desc.MiscFlags = 0;
+    hr = ID3D11Device_CreateTexture2D(device, &texture_desc, NULL, &rt);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    hr = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource *)rt, NULL, &rtv);
+    ok(SUCCEEDED(hr), "Failed to create render target view, hr %#x.\n", hr);
+    ID3D11DeviceContext_OMSetRenderTargets(context, 1, &rtv, NULL);
+
+    constant.width = texture_desc.Width;
+    constant.height = texture_desc.Height;
+    constant.offset_x = 1;
+    constant.offset_y = 1;
+    constant.compare_value = 0.5f;
+    cb = create_buffer(device, D3D11_BIND_CONSTANT_BUFFER, sizeof(constant), &constant);
+    ID3D11DeviceContext_PSSetConstantBuffers(context, 0, 1, &cb);
+
+    texture_desc.Format = DXGI_FORMAT_R32_TYPELESS;
+    texture_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_DEPTH_STENCIL;
+    hr = ID3D11Device_CreateTexture2D(device, &texture_desc, &resource_data, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+
+    srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
+    srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    U(srv_desc).Texture2D.MostDetailedMip = 0;
+    U(srv_desc).Texture2D.MipLevels = 1;
+    hr = ID3D11Device_CreateShaderResourceView(device, (ID3D11Resource *)texture, &srv_desc, &srv);
+    ok(SUCCEEDED(hr), "Failed to create shader resource view, hr %#x.\n", hr);
+    ID3D11DeviceContext_PSSetShaderResources(context, 0, 1, &srv);
+
+    hr = ID3D11Device_CreatePixelShader(device, gather4_c_code, sizeof(gather4_c_code), NULL, &ps);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+    ID3D11DeviceContext_PSSetShader(context, ps, NULL, 0);
+
+    ID3D11DeviceContext_ClearRenderTargetView(context, rtv, &white.x);
+    draw_quad(&test_context);
+    get_texture_readback(rt, 0, &rb);
+    for (y = 0; y < texture_desc.Height; ++y)
+    {
+        for (x = 0; x < texture_desc.Width; ++x)
+        {
+            const struct vec4 *expected = &expected_gather4_c[y * texture_desc.Width + x];
+            const struct vec4 *got = get_readback_vec4(&rb, x, y);
+            ok(compare_vec4(got, expected, 0),
+                    "Got {%.8e, %.8e, %.8e, %.8e}, expected {%.8e, %.8e, %.8e, %.8e}.\n",
+                    got->x, got->y, got->z, got->w, expected->x, expected->y, expected->z, expected->w);
+        }
+    }
+    release_resource_readback(&rb);
+    ID3D11PixelShader_Release(ps);
+
+    hr = ID3D11Device_CreatePixelShader(device, gather4_po_c_code, sizeof(gather4_po_c_code), NULL, &ps);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+    ID3D11DeviceContext_PSSetShader(context, ps, NULL, 0);
+
+    ID3D11DeviceContext_ClearRenderTargetView(context, rtv, &white.x);
+    draw_quad(&test_context);
+    get_texture_readback(rt, 0, &rb);
+    for (y = 0; y < texture_desc.Height; ++y)
+    {
+        for (x = 0; x < texture_desc.Width; ++x)
+        {
+            const struct vec4 *expected = &expected_gather4_po_c[y * texture_desc.Width + x];
+            const struct vec4 *got = get_readback_vec4(&rb, x, y);
+            ok(compare_vec4(got, expected, 0),
+                    "Got {%.8e, %.8e, %.8e, %.8e}, expected {%.8e, %.8e, %.8e, %.8e}.\n",
+                    got->x, got->y, got->z, got->w, expected->x, expected->y, expected->z, expected->w);
+        }
+    }
+    release_resource_readback(&rb);
+    ID3D11PixelShader_Release(ps);
+
+    ID3D11ShaderResourceView_Release(srv);
+    ID3D11Texture2D_Release(texture);
+
+    ID3D11Buffer_Release(cb);
+    ID3D11Texture2D_Release(rt);
+    ID3D11RenderTargetView_Release(rtv);
+    ID3D11SamplerState_Release(sampler);
+    release_test_context(&test_context);
+}
+
 static void test_fractional_viewports(void)
 {
     struct d3d11_test_context test_context;
@@ -19701,9 +20399,11 @@ START_TEST(d3d11)
     test_compute_shader_registers();
     test_tgsm();
     test_geometry_shader();
+    test_quad_tessellation();
     test_stream_output();
     test_fl10_stream_output_desc();
     test_stream_output_resume();
     test_gather();
+    test_gather_c();
     test_fractional_viewports();
 }
