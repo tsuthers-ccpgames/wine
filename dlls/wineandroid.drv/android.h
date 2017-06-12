@@ -26,12 +26,15 @@
 #include <stdlib.h>
 #include <jni.h>
 #include <android/log.h>
+#include <android/input.h>
+#include <android/native_window_jni.h>
 
 #include "windef.h"
 #include "winbase.h"
 #include "wingdi.h"
 #include "winuser.h"
 #include "wine/gdi_driver.h"
+#include "android_native.h"
 
 
 /**************************************************************************
@@ -40,7 +43,26 @@
 
 #define DECL_FUNCPTR(f) extern typeof(f) * p##f DECLSPEC_HIDDEN
 DECL_FUNCPTR( __android_log_print );
+DECL_FUNCPTR( ANativeWindow_fromSurface );
+DECL_FUNCPTR( ANativeWindow_release );
 #undef DECL_FUNCPTR
+
+
+/**************************************************************************
+ * Android pseudo-device
+ */
+
+extern void start_android_device(void) DECLSPEC_HIDDEN;
+extern void register_native_window( HWND hwnd, struct ANativeWindow *win ) DECLSPEC_HIDDEN;
+extern struct ANativeWindow *create_ioctl_window( HWND hwnd ) DECLSPEC_HIDDEN;
+extern struct ANativeWindow *grab_ioctl_window( struct ANativeWindow *window ) DECLSPEC_HIDDEN;
+extern void release_ioctl_window( struct ANativeWindow *window ) DECLSPEC_HIDDEN;
+extern void destroy_ioctl_window( HWND hwnd ) DECLSPEC_HIDDEN;
+extern int ioctl_window_pos_changed( HWND hwnd, const RECT *window_rect, const RECT *client_rect,
+                                     const RECT *visible_rect, UINT style, UINT flags,
+                                     HWND after, HWND owner ) DECLSPEC_HIDDEN;
+extern int ioctl_set_window_parent( HWND hwnd, HWND parent ) DECLSPEC_HIDDEN;
+extern int ioctl_set_capture( HWND hwnd ) DECLSPEC_HIDDEN;
 
 
 /**************************************************************************
@@ -52,14 +74,29 @@ extern unsigned int screen_height DECLSPEC_HIDDEN;
 extern RECT virtual_screen_rect DECLSPEC_HIDDEN;
 extern MONITORINFOEXW default_monitor DECLSPEC_HIDDEN;
 
+enum android_window_messages
+{
+    WM_ANDROID_REFRESH = 0x80001000,
+};
+
+extern HWND get_capture_window(void) DECLSPEC_HIDDEN;
 extern void init_monitors( int width, int height ) DECLSPEC_HIDDEN;
+extern void update_keyboard_lock_state( WORD vkey, UINT state ) DECLSPEC_HIDDEN;
 
 /* JNI entry points */
 extern void desktop_changed( JNIEnv *env, jobject obj, jint width, jint height ) DECLSPEC_HIDDEN;
+extern void surface_changed( JNIEnv *env, jobject obj, jint win, jobject surface ) DECLSPEC_HIDDEN;
+extern jboolean motion_event( JNIEnv *env, jobject obj, jint win, jint action,
+                              jint x, jint y, jint state, jint vscroll ) DECLSPEC_HIDDEN;
+extern jboolean keyboard_event( JNIEnv *env, jobject obj, jint win, jint action,
+                                jint keycode, jint state ) DECLSPEC_HIDDEN;
 
 enum event_type
 {
     DESKTOP_CHANGED,
+    SURFACE_CHANGED,
+    MOTION_EVENT,
+    KEYBOARD_EVENT,
 };
 
 union event_data
@@ -71,11 +108,34 @@ union event_data
         unsigned int    width;
         unsigned int    height;
     } desktop;
+    struct
+    {
+        enum event_type type;
+        HWND            hwnd;
+        ANativeWindow  *window;
+        unsigned int    width;
+        unsigned int    height;
+    } surface;
+    struct
+    {
+        enum event_type type;
+        HWND            hwnd;
+        INPUT           input;
+    } motion;
+    struct
+    {
+        enum event_type type;
+        HWND            hwnd;
+        UINT            lock_state;
+        INPUT           input;
+    } kbd;
 };
 
 int send_event( const union event_data *data );
 
 extern JavaVM *wine_get_java_vm(void);
 extern jobject wine_get_java_object(void);
+
+extern struct gralloc_module_t *gralloc_module;
 
 #endif  /* __WINE_ANDROID_H */

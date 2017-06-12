@@ -84,6 +84,32 @@ static HRESULT d3drm_create_viewport_object(void **object, IDirect3DRM *d3drm)
     return hr;
 }
 
+static HRESULT d3drm_create_face_object(void **object, IDirect3DRM *d3drm)
+{
+    struct d3drm_face *face;
+    HRESULT hr;
+
+    if (FAILED(hr = d3drm_face_create(&face)))
+        return hr;
+
+    *object = &face->IDirect3DRMFace_iface;
+
+    return hr;
+}
+
+static HRESULT d3drm_create_mesh_builder_object(void **object, IDirect3DRM *d3drm)
+{
+    struct d3drm_mesh_builder *mesh_builder;
+    HRESULT hr;
+
+    if (FAILED(hr = d3drm_mesh_builder_create(&mesh_builder, d3drm)))
+        return hr;
+
+    *object = &mesh_builder->IDirect3DRMMeshBuilder2_iface;
+
+    return hr;
+}
+
 struct d3drm
 {
     IDirect3DRM IDirect3DRM_iface;
@@ -207,16 +233,26 @@ static HRESULT WINAPI d3drm1_CreateMesh(IDirect3DRM *iface, IDirect3DRMMesh **me
 
 static HRESULT WINAPI d3drm1_CreateMeshBuilder(IDirect3DRM *iface, IDirect3DRMMeshBuilder **mesh_builder)
 {
+    struct d3drm *d3drm = impl_from_IDirect3DRM(iface);
+
     TRACE("iface %p, mesh_builder %p.\n", iface, mesh_builder);
 
-    return Direct3DRMMeshBuilder_create(&IID_IDirect3DRMMeshBuilder, (IUnknown **)mesh_builder);
+    return IDirect3DRM2_CreateMeshBuilder(&d3drm->IDirect3DRM2_iface, (IDirect3DRMMeshBuilder2 **)mesh_builder);
 }
 
 static HRESULT WINAPI d3drm1_CreateFace(IDirect3DRM *iface, IDirect3DRMFace **face)
 {
+    struct d3drm_face *object;
+    HRESULT hr;
+
     TRACE("iface %p, face %p.\n", iface, face);
 
-    return Direct3DRMFace_create(&IID_IDirect3DRMFace, (IUnknown **)face);
+    if (FAILED(hr = d3drm_face_create(&object)))
+        return hr;
+
+    *face = &object->IDirect3DRMFace_iface;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI d3drm1_CreateAnimation(IDirect3DRM *iface, IDirect3DRMAnimation **animation)
@@ -407,9 +443,25 @@ static HRESULT WINAPI d3drm1_CreateDeviceFromClipper(IDirect3DRM *iface,
 static HRESULT WINAPI d3drm1_CreateTextureFromSurface(IDirect3DRM *iface,
         IDirectDrawSurface *surface, IDirect3DRMTexture **texture)
 {
-    FIXME("iface %p, surface %p, texture %p stub!\n", iface, surface, texture);
+    struct d3drm *d3drm = impl_from_IDirect3DRM(iface);
+    IDirect3DRMTexture3 *texture3;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, surface %p, texture %p.\n", iface, surface, texture);
+
+    if (!texture)
+        return D3DRMERR_BADVALUE;
+
+    if (FAILED(hr = IDirect3DRM3_CreateTextureFromSurface(&d3drm->IDirect3DRM3_iface, surface, &texture3)))
+    {
+        *texture = NULL;
+        return hr;
+    }
+
+    hr = IDirect3DRMTexture3_QueryInterface(texture3, &IID_IDirect3DRMTexture, (void **)texture);
+    IDirect3DRMTexture3_Release(texture3);
+
+    return hr;
 }
 
 static HRESULT WINAPI d3drm1_CreateShadow(IDirect3DRM *iface, IDirect3DRMVisual *visual,
@@ -711,16 +763,27 @@ static HRESULT WINAPI d3drm2_CreateMesh(IDirect3DRM2 *iface, IDirect3DRMMesh **m
 
 static HRESULT WINAPI d3drm2_CreateMeshBuilder(IDirect3DRM2 *iface, IDirect3DRMMeshBuilder2 **mesh_builder)
 {
+    struct d3drm *d3drm = impl_from_IDirect3DRM2(iface);
+    struct d3drm_mesh_builder *object;
+    HRESULT hr;
+
     TRACE("iface %p, mesh_builder %p.\n", iface, mesh_builder);
 
-    return Direct3DRMMeshBuilder_create(&IID_IDirect3DRMMeshBuilder2, (IUnknown **)mesh_builder);
+    if (FAILED(hr = d3drm_mesh_builder_create(&object, &d3drm->IDirect3DRM_iface)))
+        return hr;
+
+    *mesh_builder = &object->IDirect3DRMMeshBuilder2_iface;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI d3drm2_CreateFace(IDirect3DRM2 *iface, IDirect3DRMFace **face)
 {
+    struct d3drm *d3drm = impl_from_IDirect3DRM2(iface);
+
     TRACE("iface %p, face %p.\n", iface, face);
 
-    return Direct3DRMFace_create(&IID_IDirect3DRMFace, (IUnknown **)face);
+    return IDirect3DRM_CreateFace(&d3drm->IDirect3DRM_iface, face);
 }
 
 static HRESULT WINAPI d3drm2_CreateAnimation(IDirect3DRM2 *iface, IDirect3DRMAnimation **animation)
@@ -882,9 +945,25 @@ static HRESULT WINAPI d3drm2_CreateDeviceFromClipper(IDirect3DRM2 *iface,
 static HRESULT WINAPI d3drm2_CreateTextureFromSurface(IDirect3DRM2 *iface,
         IDirectDrawSurface *surface, IDirect3DRMTexture2 **texture)
 {
-    FIXME("iface %p, surface %p, texture %p stub!\n", iface, surface, texture);
+    struct d3drm *d3drm = impl_from_IDirect3DRM2(iface);
+    IDirect3DRMTexture3 *texture3;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, surface %p, texture %p.\n", iface, surface, texture);
+
+    if (!texture)
+        return D3DRMERR_BADVALUE;
+
+    if (FAILED(hr = IDirect3DRM3_CreateTextureFromSurface(&d3drm->IDirect3DRM3_iface, surface, &texture3)))
+    {
+        *texture = NULL;
+        return hr;
+    }
+
+    hr = IDirect3DRMTexture3_QueryInterface(texture3, &IID_IDirect3DRMTexture, (void **)texture);
+    IDirect3DRMTexture3_Release(texture3);
+
+    return hr;
 }
 
 static HRESULT WINAPI d3drm2_CreateShadow(IDirect3DRM2 *iface, IDirect3DRMVisual *visual,
@@ -1176,6 +1255,8 @@ static HRESULT WINAPI d3drm3_CreateObject(IDirect3DRM3 *iface,
         {&CLSID_CDirect3DRMTexture, d3drm_create_texture_object},
         {&CLSID_CDirect3DRMDevice, d3drm_create_device_object},
         {&CLSID_CDirect3DRMViewport, d3drm_create_viewport_object},
+        {&CLSID_CDirect3DRMFace, d3drm_create_face_object},
+        {&CLSID_CDirect3DRMMeshBuilder, d3drm_create_mesh_builder_object},
     };
 
     TRACE("iface %p, clsid %s, outer %p, iid %s, out %p.\n",
@@ -1249,16 +1330,35 @@ static HRESULT WINAPI d3drm3_CreateMesh(IDirect3DRM3 *iface, IDirect3DRMMesh **m
 
 static HRESULT WINAPI d3drm3_CreateMeshBuilder(IDirect3DRM3 *iface, IDirect3DRMMeshBuilder3 **mesh_builder)
 {
+    struct d3drm *d3drm = impl_from_IDirect3DRM3(iface);
+    struct d3drm_mesh_builder *object;
+    HRESULT hr;
+
     TRACE("iface %p, mesh_builder %p.\n", iface, mesh_builder);
 
-    return Direct3DRMMeshBuilder_create(&IID_IDirect3DRMMeshBuilder3, (IUnknown **)mesh_builder);
+    if (FAILED(hr = d3drm_mesh_builder_create(&object, &d3drm->IDirect3DRM_iface)))
+        return hr;
+
+    *mesh_builder = &object->IDirect3DRMMeshBuilder3_iface;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI d3drm3_CreateFace(IDirect3DRM3 *iface, IDirect3DRMFace2 **face)
 {
+    struct d3drm *d3drm = impl_from_IDirect3DRM3(iface);
+    IDirect3DRMFace *face1;
+    HRESULT hr;
+
     TRACE("iface %p, face %p.\n", iface, face);
 
-    return Direct3DRMFace_create(&IID_IDirect3DRMFace2, (IUnknown **)face);
+    if (FAILED(hr = IDirect3DRM_CreateFace(&d3drm->IDirect3DRM_iface, &face1)))
+        return hr;
+
+    hr = IDirect3DRMFace_QueryInterface(face1, &IID_IDirect3DRMFace2, (void **)face);
+    IDirect3DRMFace_Release(face1);
+
+    return hr;
 }
 
 static HRESULT WINAPI d3drm3_CreateAnimation(IDirect3DRM3 *iface, IDirect3DRMAnimation2 **animation)
@@ -1484,9 +1584,28 @@ static HRESULT WINAPI d3drm3_CreateShadow(IDirect3DRM3 *iface, IUnknown *object,
 static HRESULT WINAPI d3drm3_CreateTextureFromSurface(IDirect3DRM3 *iface,
         IDirectDrawSurface *surface, IDirect3DRMTexture3 **texture)
 {
-    FIXME("iface %p, surface %p, texture %p stub!\n", iface, surface, texture);
+    struct d3drm *d3drm = impl_from_IDirect3DRM3(iface);
+    struct d3drm_texture *object;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, surface %p, texture %p.\n", iface, surface, texture);
+
+    if (!texture)
+        return D3DRMERR_BADVALUE;
+
+    if (FAILED(hr = d3drm_texture_create(&object, &d3drm->IDirect3DRM_iface)))
+        return hr;
+
+    *texture = &object->IDirect3DRMTexture3_iface;
+
+    if (FAILED(IDirect3DRMTexture3_InitFromSurface(*texture, surface)))
+    {
+        IDirect3DRMTexture3_Release(*texture);
+        *texture = NULL;
+        return D3DRMERR_BADVALUE;
+    }
+
+    return D3DRM_OK;
 }
 
 static HRESULT WINAPI d3drm3_CreateViewport(IDirect3DRM3 *iface, IDirect3DRMDevice3 *device,

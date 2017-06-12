@@ -1,8 +1,9 @@
 MODULE    = wsdapi.dll
 IMPORTLIB = wsdapi
-IMPORTS   = kernel32
+IMPORTS   = user32
 
 C_SRCS = \
+	address.c \
 	discovery.c \
 	main.c \
 	memory.c \

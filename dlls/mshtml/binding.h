@@ -69,10 +69,11 @@ typedef struct {
 typedef struct BSCallbackVtbl BSCallbackVtbl;
 
 struct BSCallback {
-    IBindStatusCallback IBindStatusCallback_iface;
-    IServiceProvider    IServiceProvider_iface;
-    IHttpNegotiate2     IHttpNegotiate2_iface;
-    IInternetBindInfo   IInternetBindInfo_iface;
+    IBindStatusCallback   IBindStatusCallback_iface;
+    IServiceProvider      IServiceProvider_iface;
+    IHttpNegotiate2       IHttpNegotiate2_iface;
+    IInternetBindInfo     IInternetBindInfo_iface;
+    IBindCallbackRedirect IBindCallbackRedirect_iface;
 
     const BSCallbackVtbl          *vtbl;
 
@@ -81,6 +82,7 @@ struct BSCallback {
     request_data_t request_data;
     ULONG readed;
     DWORD bindf;
+    DWORD bindinfo_options;
     BOOL bindinfo_ready;
     binding_bom_t bom;
 

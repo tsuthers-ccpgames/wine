@@ -94,7 +94,6 @@ typedef struct {
     MENUITEM    *items;       /* Array of menu items */
     UINT        FocusedItem;  /* Currently focused item */
     HWND	hwndOwner;    /* window receiving the messages for ownerdraw */
-    BOOL        bTimeToHide;  /* Request hiding when receiving a second click in the top-level menu item */
     BOOL        bScrolling;   /* Scroll arrows are active */
     UINT        nScrollPos;   /* Current scroll position */
     UINT        nTotalHeight; /* Total height of menu items inside menu */
@@ -114,6 +113,7 @@ typedef struct {
 #define TF_ENDMENU              0x10000
 #define TF_SUSPENDPOPUP         0x20000
 #define TF_SKIPREMOVE           0x40000
+#define TF_RCVD_BTN_UP          0x80000
 
 typedef struct
 {
@@ -2575,7 +2575,7 @@ static void MENU_SwitchTracking( MTRACKER* pmt, HMENU hPtMenu, UINT id, UINT wFl
  *
  * Return TRUE if we can go on with menu tracking.
  */
-static BOOL MENU_ButtonDown( MTRACKER* pmt, HMENU hPtMenu, UINT wFlags )
+static BOOL MENU_ButtonDown( MTRACKER* pmt, UINT message, HMENU hPtMenu, UINT wFlags )
 {
     TRACE("%p hPtMenu=%p\n", pmt, hPtMenu);
 
@@ -2583,10 +2583,13 @@ static BOOL MENU_ButtonDown( MTRACKER* pmt, HMENU hPtMenu, UINT wFlags )
     {
         UINT pos;
         POPUPMENU *ptmenu = MENU_GetMenu( hPtMenu );
-        enum hittest ht = ht_nowhere;
+        enum hittest ht = ht_item;
 
         if( IS_SYSTEM_MENU(ptmenu) )
+        {
+            if (message == WM_LBUTTONDBLCLK) return FALSE;
             pos = 0;
+        }
         else
             ht = MENU_FindItemByCoords( ptmenu, pmt->pt, &pos );
 
@@ -2643,11 +2646,14 @@ static INT MENU_ButtonUp( MTRACKER* pmt, HMENU hPtMenu, UINT wFlags)
 	    /* If we are dealing with the menu bar                  */
 	    /* and this is a click on an already "popped" item:     */
 	    /* Stop the menu tracking and close the opened submenus */
-	    if((pmt->hTopMenu == hPtMenu) && ptmenu->bTimeToHide)
+            if(((pmt->hTopMenu == hPtMenu) || IS_SYSTEM_MENU(ptmenu)) && (pmt->trackFlags & TF_RCVD_BTN_UP))
 		return 0;
 	}
-	if( GetMenu(ptmenu->hWnd) == hPtMenu )
-	    ptmenu->bTimeToHide = TRUE;
+        if( GetMenu(ptmenu->hWnd) == hPtMenu || IS_SYSTEM_MENU(ptmenu) )
+        {
+            if (pos == NO_SELECTED_ITEM) return 0;
+            pmt->trackFlags |= TF_RCVD_BTN_UP;
+        }
     }
     return -1;
 }
@@ -3042,7 +3048,7 @@ static BOOL MENU_TrackMenu( HMENU hmenu, UINT wFlags, INT x, INT y,
     if (wFlags & TPM_BUTTONDOWN)
     {
 	/* Get the result in order to start the tracking or not */
-	fRemove = MENU_ButtonDown( &mt, hmenu, wFlags );
+	fRemove = MENU_ButtonDown( &mt, WM_LBUTTONDOWN, hmenu, wFlags );
 	fEndMenu = !fRemove;
     }
 
@@ -3128,7 +3134,7 @@ static BOOL MENU_TrackMenu( HMENU hmenu, UINT wFlags, INT x, INT y,
 		case WM_LBUTTONDOWN:
 		    /* If the message belongs to the menu, removes it from the queue */
 		    /* Else, end menu tracking */
-		    fRemove = MENU_ButtonDown( &mt, hmenu, wFlags );
+		    fRemove = MENU_ButtonDown( &mt, msg.message, hmenu, wFlags );
 		    fEndMenu = !fRemove;
 		    break;
 
@@ -3303,9 +3309,6 @@ static BOOL MENU_TrackMenu( HMENU hmenu, UINT wFlags, INT x, INT y,
 	    MENU_SelectItem( mt.hOwnerWnd, mt.hTopMenu, NO_SELECTED_ITEM, FALSE, 0 );
 	    SendMessageW( mt.hOwnerWnd, WM_MENUSELECT, MAKEWPARAM(0,0xffff), 0 );
         }
-
-        /* Reset the variable for hiding menu */
-        if( menu ) menu->bTimeToHide = FALSE;
     }
 
     SetLastError( ERROR_SUCCESS );
@@ -4073,7 +4076,6 @@ HMENU WINAPI CreatePopupMenu(void)
     if (!(hmenu = CreateMenu())) return 0;
     menu = MENU_GetMenu( hmenu );
     menu->wFlags |= MF_POPUP;
-    menu->bTimeToHide = FALSE;
     return hmenu;
 }
 
@@ -4122,7 +4124,6 @@ HMENU WINAPI CreateMenu(void)
 
     if (!(menu = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*menu) ))) return 0;
     menu->FocusedItem = NO_SELECTED_ITEM;
-    menu->bTimeToHide = FALSE;
 
     if (!(hMenu = alloc_user_handle( &menu->obj, USER_MENU ))) HeapFree( GetProcessHeap(), 0, menu );
 

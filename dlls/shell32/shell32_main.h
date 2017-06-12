@@ -109,6 +109,8 @@ HRESULT WINAPI CPanel_ExtractIconW(LPITEMIDLIST pidl, LPCWSTR pszFile, UINT nIco
 HRESULT WINAPI IAutoComplete_Constructor(IUnknown * pUnkOuter, REFIID riid, LPVOID * ppv) DECLSPEC_HIDDEN;
 HRESULT WINAPI ApplicationAssociationRegistration_Constructor(IUnknown *outer, REFIID riid, LPVOID *ppv) DECLSPEC_HIDDEN;
 
+HRESULT WINAPI ApplicationDestinations_Constructor(IUnknown *outer, REFIID riid, LPVOID *ppv) DECLSPEC_HIDDEN;
+
 HRESULT IShellLink_ConstructFromFile(IUnknown * pUnkOuter, REFIID riid, LPCITEMIDLIST pidl, IUnknown **ppv) DECLSPEC_HIDDEN;
 
 LPEXTRACTICONA	IExtractIconA_Constructor(LPCITEMIDLIST) DECLSPEC_HIDDEN;
@@ -234,6 +236,21 @@ static inline WCHAR *strdupW(const WCHAR *src)
     if (dest)
         lstrcpyW(dest, src);
     return dest;
+}
+
+static inline WCHAR *strdupAtoW(const char *str)
+{
+    WCHAR *ret;
+    DWORD len;
+
+    if (!str) return NULL;
+
+    len = MultiByteToWideChar(CP_ACP, 0, str, -1, NULL, 0);
+    ret = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
+    if (ret)
+        MultiByteToWideChar(CP_ACP, 0, str, -1, ret, len);
+
+    return ret;
 }
 
 #endif

@@ -390,6 +390,9 @@ const struct gdi_dc_funcs * CDECL ANDROID_get_gdi_driver( unsigned int version )
 static const JNINativeMethod methods[] =
 {
     { "wine_desktop_changed", "(II)V", desktop_changed },
+    { "wine_surface_changed", "(ILandroid/view/Surface;)V", surface_changed },
+    { "wine_motion_event", "(IIIIII)Z", motion_event },
+    { "wine_keyboard_event", "(IIII)Z", keyboard_event },
 };
 
 #define DECL_FUNCPTR(f) typeof(f) * p##f = NULL
@@ -399,18 +402,52 @@ static const JNINativeMethod methods[] =
     } while(0)
 
 DECL_FUNCPTR( __android_log_print );
+DECL_FUNCPTR( ANativeWindow_fromSurface );
+DECL_FUNCPTR( ANativeWindow_release );
+DECL_FUNCPTR( hw_get_module );
+
+struct gralloc_module_t *gralloc_module = NULL;
+
+static void load_hardware_libs(void)
+{
+    const struct hw_module_t *module;
+    void *libhardware;
+    char error[256];
+
+    if ((libhardware = wine_dlopen( "libhardware.so", RTLD_GLOBAL, error, sizeof(error) )))
+    {
+        LOAD_FUNCPTR( libhardware, hw_get_module );
+    }
+    else
+    {
+        ERR( "failed to load libhardware: %s\n", error );
+        return;
+    }
+
+    if (phw_get_module( GRALLOC_HARDWARE_MODULE_ID, &module ) == 0)
+        gralloc_module = (struct gralloc_module_t *)module;
+    else
+        ERR( "failed to load gralloc module\n" );
+}
 
 static void load_android_libs(void)
 {
-    void *liblog;
+    void *libandroid, *liblog;
     char error[1024];
 
+    if (!(libandroid = wine_dlopen( "libandroid.so", RTLD_GLOBAL, error, sizeof(error) )))
+    {
+        ERR( "failed to load libandroid.so: %s\n", error );
+        return;
+    }
     if (!(liblog = wine_dlopen( "liblog.so", RTLD_GLOBAL, error, sizeof(error) )))
     {
         ERR( "failed to load liblog.so: %s\n", error );
         return;
     }
     LOAD_FUNCPTR( liblog, __android_log_print );
+    LOAD_FUNCPTR( libandroid, ANativeWindow_fromSurface );
+    LOAD_FUNCPTR( libandroid, ANativeWindow_release );
 }
 
 #undef DECL_FUNCPTR
@@ -422,6 +459,8 @@ static BOOL process_attach(void)
     jobject object = wine_get_java_object();
     JNIEnv *jni_env;
     JavaVM *java_vm;
+
+    load_hardware_libs();
 
     if ((java_vm = wine_get_java_vm()))  /* running under Java */
     {

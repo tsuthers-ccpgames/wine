@@ -60,13 +60,13 @@
 @ stdcall WsFreeServiceProxy(ptr)
 @ stdcall WsFreeWriter(ptr)
 @ stdcall WsGetChannelProperty(ptr long ptr long ptr)
-@ stub WsGetCustomHeader
+@ stdcall WsGetCustomHeader(ptr ptr long long long ptr ptr long ptr ptr)
 @ stdcall WsGetDictionary(long ptr ptr)
 @ stdcall WsGetErrorProperty(ptr long ptr long)
 @ stdcall WsGetErrorString(ptr long ptr)
 @ stub WsGetFaultErrorDetail
 @ stub WsGetFaultErrorProperty
-@ stub WsGetHeader
+@ stdcall WsGetHeader(ptr long long long ptr ptr long ptr)
 @ stub WsGetHeaderAttributes
 @ stdcall WsGetHeapProperty(ptr long ptr long ptr)
 @ stdcall WsGetListenerProperty(ptr long ptr long ptr)

@@ -68,7 +68,7 @@ static BOOL CALLBACK MSACM_FillFormatTagsCB(HACMDRIVERID hadid,
 	    HACMDRIVER		had;
 
 	    if (acmDriverOpen(&had, hadid, 0) == MMSYSERR_NOERROR) {
-		ACMFORMATDETAILSW	afd;
+		ACMFORMATDETAILSW	afd = {0};
                 unsigned int            i, len;
 		MMRESULT		mmr;
 		WCHAR			buffer[ACMFORMATDETAILS_FORMAT_CHARS+16];
@@ -78,7 +78,8 @@ static BOOL CALLBACK MSACM_FillFormatTagsCB(HACMDRIVERID hadid,
 		afd.pwfx = HeapAlloc(MSACM_hHeap, 0, paftd->cbFormatSize);
 		if (!afd.pwfx) return FALSE;
 		afd.pwfx->wFormatTag = paftd->dwFormatTag;
-		afd.pwfx->cbSize = paftd->cbFormatSize;
+		if (paftd->dwFormatTag != WAVE_FORMAT_PCM)
+		    afd.pwfx->cbSize = paftd->cbFormatSize - sizeof(WAVEFORMATEX);
 		afd.cbwfx = paftd->cbFormatSize;
 
 		for (i = 0; i < paftd->cStandardFormats; i++) {
@@ -86,6 +87,7 @@ static BOOL CALLBACK MSACM_FillFormatTagsCB(HACMDRIVERID hadid,
                     int j;
 
 		    afd.dwFormatIndex = i;
+		    afd.fdwSupport = 0;
 		    mmr = acmFormatDetailsW(had, &afd, ACM_FORMATDETAILSF_INDEX);
 		    if (mmr == MMSYSERR_NOERROR) {
                        lstrcpynW(buffer, afd.szFormat, ACMFORMATTAGDETAILS_FORMATTAG_CHARS + 1);
@@ -111,7 +113,7 @@ static BOOL CALLBACK MSACM_FillFormatTagsCB(HACMDRIVERID hadid,
 	    HACMDRIVER		had;
 
 	    if (acmDriverOpen(&had, hadid, 0) == MMSYSERR_NOERROR) {
-		ACMFORMATDETAILSW	afd;
+		ACMFORMATDETAILSW	afd = {0};
 
 		afd.cbStruct = sizeof(afd);
 		afd.dwFormatTag = paftd->dwFormatTag;
@@ -375,10 +377,14 @@ MMRESULT WINAPI acmFormatDetailsA(HACMDRIVER had, PACMFORMATDETAILSA pafd,
     ACMFORMATDETAILSW	afdw;
     MMRESULT		mmr;
 
+    if (!pafd)
+        return MMSYSERR_INVALPARAM;
+
     memset(&afdw, 0, sizeof(afdw));
     afdw.cbStruct = sizeof(afdw);
     afdw.dwFormatIndex = pafd->dwFormatIndex;
     afdw.dwFormatTag = pafd->dwFormatTag;
+    afdw.fdwSupport = pafd->fdwSupport;
     afdw.pwfx = pafd->pwfx;
     afdw.cbwfx = pafd->cbwfx;
 
@@ -400,10 +406,26 @@ MMRESULT WINAPI acmFormatDetailsW(HACMDRIVER had, PACMFORMATDETAILSW pafd, DWORD
     MMRESULT			mmr;
     static const WCHAR		fmt1[] = {'%','d',' ','H','z',0};
     static const WCHAR		fmt2[] = {';',' ','%','d',' ','b','i','t','s',0};
+    ACMFORMATTAGDETAILSW	aftd = {0};
 
     TRACE("(%p, %p, %d)\n", had, pafd, fdwDetails);
 
+    if (!pafd)
+        return MMSYSERR_INVALPARAM;
+
     if (pafd->cbStruct < sizeof(*pafd)) return MMSYSERR_INVALPARAM;
+
+    if (!pafd->pwfx)
+        return MMSYSERR_INVALPARAM;
+
+    if (pafd->cbwfx < sizeof(PCMWAVEFORMAT))
+        return MMSYSERR_INVALPARAM;
+
+    if (pafd->fdwSupport)
+        return MMSYSERR_INVALPARAM;
+
+    if (pafd->dwFormatTag == WAVE_FORMAT_UNKNOWN)
+        return MMSYSERR_INVALPARAM;
 
     switch (fdwDetails) {
     case ACM_FORMATDETAILSF_FORMAT:
@@ -429,7 +451,16 @@ MMRESULT WINAPI acmFormatDetailsW(HACMDRIVER had, PACMFORMATDETAILSW pafd, DWORD
 	}
 	break;
     case ACM_FORMATDETAILSF_INDEX:
-	/* should check pafd->dwFormatIndex < aftd->cStandardFormats */
+        aftd.cbStruct = sizeof(aftd);
+        aftd.dwFormatTag = pafd->dwFormatTag;
+        mmr = acmFormatTagDetailsW(had, &aftd, ACM_FORMATTAGDETAILSF_FORMATTAG);
+        if (mmr != MMSYSERR_NOERROR)
+            break;
+        if (pafd->dwFormatIndex >= aftd.cStandardFormats)
+        {
+            mmr = MMSYSERR_INVALPARAM;
+            break;
+        }
 	mmr = MSACM_Message(had, ACMDM_FORMAT_DETAILS, (LPARAM)pafd, fdwDetails);
 	break;
     default:
@@ -491,6 +522,9 @@ MMRESULT WINAPI acmFormatEnumA(HACMDRIVER had, PACMFORMATDETAILSA pafda,
     if (!pafda)
         return MMSYSERR_INVALPARAM;
 
+    if (!fnCallback)
+        return MMSYSERR_INVALPARAM;
+
     if (pafda->cbStruct < sizeof(*pafda))
         return MMSYSERR_INVALPARAM;
 
@@ -498,6 +532,7 @@ MMRESULT WINAPI acmFormatEnumA(HACMDRIVER had, PACMFORMATDETAILSA pafda,
     afdw.cbStruct = sizeof(afdw);
     afdw.dwFormatIndex = pafda->dwFormatIndex;
     afdw.dwFormatTag = pafda->dwFormatTag;
+    afdw.fdwSupport = pafda->fdwSupport;
     afdw.pwfx = pafda->pwfx;
     afdw.cbwfx = pafda->cbwfx;
 
@@ -576,6 +611,7 @@ static BOOL MSACM_FormatEnumHelper(PWINE_ACMDRIVERID padid, HACMDRIVER had,
             for (j = 0; j < aftd.cStandardFormats; j++) {
                 pafd->dwFormatIndex = j;
                 pafd->dwFormatTag = aftd.dwFormatTag;
+                pafd->fdwSupport = 0;
                 if (acmFormatDetailsW(had, pafd, ACM_FORMATDETAILSF_INDEX) != MMSYSERR_NOERROR)
                     continue;
 
@@ -612,6 +648,8 @@ MMRESULT WINAPI acmFormatEnumW(HACMDRIVER had, PACMFORMATDETAILSW pafd,
     PWINE_ACMDRIVERID		padid;
     WAVEFORMATEX		wfxRef;
     BOOL			ret;
+    DWORD			cbwfxMax;
+    MMRESULT			mmr;
 
     TRACE("(%p, %p, %p, %ld, %d)\n",
 	  had, pafd, fnCallback, dwInstance, fdwEnum);
@@ -619,7 +657,16 @@ MMRESULT WINAPI acmFormatEnumW(HACMDRIVER had, PACMFORMATDETAILSW pafd,
     if (!pafd)
         return MMSYSERR_INVALPARAM;
 
+    if (!fnCallback)
+        return MMSYSERR_INVALPARAM;
+
     if (pafd->cbStruct < sizeof(*pafd))
+        return MMSYSERR_INVALPARAM;
+
+    if (pafd->fdwSupport)
+        return MMSYSERR_INVALPARAM;
+
+    if (!pafd->pwfx)
         return MMSYSERR_INVALPARAM;
 
     if (fdwEnum & (ACM_FORMATENUMF_WFORMATTAG|ACM_FORMATENUMF_NCHANNELS|
@@ -637,6 +684,12 @@ MMRESULT WINAPI acmFormatEnumW(HACMDRIVER had, PACMFORMATDETAILSW pafd,
 
     if (fdwEnum & (ACM_FORMATENUMF_CONVERT|ACM_FORMATENUMF_INPUT|ACM_FORMATENUMF_OUTPUT))
 	FIXME("Unsupported fdwEnum values %08x\n", fdwEnum);
+
+    mmr = acmMetrics((HACMOBJ)had, ACM_METRIC_MAX_SIZE_FORMAT, &cbwfxMax);
+    if (mmr != MMSYSERR_NOERROR)
+        return mmr;
+    if (pafd->cbwfx < cbwfxMax)
+        return MMSYSERR_INVALPARAM;
 
     if (had) {
 	HACMDRIVERID	hadid;
@@ -666,6 +719,7 @@ MMRESULT WINAPI acmFormatEnumW(HACMDRIVER had, PACMFORMATDETAILSW pafd,
 MMRESULT WINAPI acmFormatSuggest(HACMDRIVER had, PWAVEFORMATEX pwfxSrc,
 				 PWAVEFORMATEX pwfxDst, DWORD cbwfxDst, DWORD fdwSuggest)
 {
+    ACMFORMATTAGDETAILSW aftd = {0};
     ACMDRVFORMATSUGGEST	adfg;
     MMRESULT		mmr;
 
@@ -678,6 +732,32 @@ MMRESULT WINAPI acmFormatSuggest(HACMDRIVER had, PWAVEFORMATEX pwfxSrc,
     if (fdwSuggest & ~(ACM_FORMATSUGGESTF_NCHANNELS|ACM_FORMATSUGGESTF_NSAMPLESPERSEC|
 		       ACM_FORMATSUGGESTF_WBITSPERSAMPLE|ACM_FORMATSUGGESTF_WFORMATTAG))
 	return MMSYSERR_INVALFLAG;
+
+    /* if we were given PCM, try to convert to PCM */
+    if (pwfxSrc->wFormatTag == WAVE_FORMAT_PCM && !had &&
+        !(fdwSuggest & ACM_FORMATSUGGESTF_WFORMATTAG))
+    {
+        ACMFORMATDETAILSW afd = {0};
+        afd.cbStruct = sizeof(afd);
+        afd.dwFormatTag = WAVE_FORMAT_PCM;
+        afd.pwfx = pwfxSrc;
+        afd.cbwfx = sizeof(PCMWAVEFORMAT);
+        if (!acmFormatDetailsW(had, &afd, ACM_FORMATDETAILSF_FORMAT))
+        {
+            memcpy(pwfxDst, pwfxSrc, sizeof(PCMWAVEFORMAT));
+            return MMSYSERR_NOERROR;
+        }
+    }
+
+    aftd.cbStruct = sizeof(aftd);
+    if (fdwSuggest & ACM_FORMATSUGGESTF_WFORMATTAG)
+        aftd.dwFormatTag = pwfxDst->wFormatTag;
+    mmr = acmFormatTagDetailsW(had, &aftd, ACM_FORMATTAGDETAILSF_LARGESTSIZE);
+    if ((fdwSuggest & ACM_FORMATSUGGESTF_WFORMATTAG) && mmr == ACMERR_NOTPOSSIBLE)
+        return ACMERR_NOTPOSSIBLE;
+
+    if (cbwfxDst < aftd.cbFormatSize)
+        return MMSYSERR_INVALPARAM;
 
     adfg.cbStruct = sizeof(adfg);
     adfg.fdwSuggest = fdwSuggest;

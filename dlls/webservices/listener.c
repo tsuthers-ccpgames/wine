@@ -256,19 +256,23 @@ void WINAPI WsFreeListener( WS_LISTENER *handle )
     free_listener( listener );
 }
 
-HRESULT resolve_hostname( const WCHAR *host, USHORT port, struct sockaddr *addr, int *addr_len )
+HRESULT resolve_hostname( const WCHAR *host, USHORT port, struct sockaddr *addr, int *addr_len, int flags )
 {
     static const WCHAR fmtW[] = {'%','u',0};
     WCHAR service[6];
-    ADDRINFOW *res, *info;
+    ADDRINFOW hints, *res, *info;
     HRESULT hr = WS_E_ADDRESS_NOT_AVAILABLE;
+
+    memset( &hints, 0, sizeof(hints) );
+    hints.ai_flags  = flags;
+    hints.ai_family = AF_INET;
 
     *addr_len = 0;
     sprintfW( service, fmtW, port );
-    if (GetAddrInfoW( host, service, NULL, &res )) return HRESULT_FROM_WIN32( WSAGetLastError() );
+    if (GetAddrInfoW( host, service, &hints, &res )) return HRESULT_FROM_WIN32( WSAGetLastError() );
 
     info = res;
-    while (info && info->ai_family != AF_INET && info->ai_family != AF_INET6) info = info->ai_next;
+    while (info && info->ai_family != AF_INET) info = info->ai_next;
     if (info)
     {
         memcpy( addr, info->ai_addr, info->ai_addrlen );
@@ -315,7 +319,7 @@ static HRESULT open_listener_tcp( struct listener *listener, const WS_STRING *ur
 {
     struct sockaddr_storage storage;
     struct sockaddr *addr = (struct sockaddr *)&storage;
-    int addr_len;
+    int addr_len, on = 1;
     WS_URL_SCHEME_TYPE scheme;
     WCHAR *host;
     USHORT port;
@@ -330,12 +334,19 @@ static HRESULT open_listener_tcp( struct listener *listener, const WS_STRING *ur
 
     winsock_init();
 
-    hr = resolve_hostname( host, port, addr, &addr_len );
+    hr = resolve_hostname( host, port, addr, &addr_len, AI_PASSIVE );
     heap_free( host );
     if (hr != S_OK) return hr;
 
     if ((listener->u.tcp.socket = socket( addr->sa_family, SOCK_STREAM, 0 )) == -1)
         return HRESULT_FROM_WIN32( WSAGetLastError() );
+
+    if (setsockopt( listener->u.tcp.socket, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on) ) < 0)
+    {
+        closesocket( listener->u.tcp.socket );
+        listener->u.tcp.socket = -1;
+        return HRESULT_FROM_WIN32( WSAGetLastError() );
+    }
 
     if (bind( listener->u.tcp.socket, addr, addr_len ) < 0)
     {
@@ -374,7 +385,7 @@ static HRESULT open_listener_udp( struct listener *listener, const WS_STRING *ur
 
     winsock_init();
 
-    hr = resolve_hostname( host, port, addr, &addr_len );
+    hr = resolve_hostname( host, port, addr, &addr_len, AI_PASSIVE );
     heap_free( host );
     if (hr != S_OK) return hr;
 

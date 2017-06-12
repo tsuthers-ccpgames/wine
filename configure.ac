@@ -151,6 +151,8 @@ case $host in
       host_cpu="i386"
       notice_platform="32-bit "
       AC_SUBST(TARGETFLAGS,"-m32")
+      PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-/usr/lib/i386-linux-gnu/pkgconfig:/usr/lib/pkgconfig}
+      export PKG_CONFIG_PATH
       enable_win16=${enable_win16:-yes}
     else
       if test "x${GCC}" = "xyes"
@@ -2699,6 +2701,7 @@ WINE_CONFIG_DLL(aclui,,[implib])
 WINE_CONFIG_DLL(activeds,,[implib])
 WINE_CONFIG_DLL(actxprxy,,[clean])
 WINE_CONFIG_LIB(adsiid)
+WINE_CONFIG_DLL(adsldpc)
 WINE_CONFIG_DLL(advapi32,,[clean,implib])
 WINE_CONFIG_TEST(dlls/advapi32/tests)
 WINE_CONFIG_DLL(advpack,,[implib])
@@ -3181,7 +3184,8 @@ WINE_CONFIG_DLL(mcicda)
 WINE_CONFIG_DLL(mciqtz32)
 WINE_CONFIG_DLL(mciseq)
 WINE_CONFIG_DLL(mciwave)
-WINE_CONFIG_DLL(mf)
+WINE_CONFIG_DLL(mf,,[implib])
+WINE_CONFIG_TEST(dlls/mf/tests)
 WINE_CONFIG_DLL(mf3216)
 WINE_CONFIG_DLL(mfplat,,[implib])
 WINE_CONFIG_TEST(dlls/mfplat/tests)
@@ -3448,6 +3452,7 @@ WINE_CONFIG_TEST(dlls/t2embed/tests)
 WINE_CONFIG_DLL(tapi32,,[implib])
 WINE_CONFIG_DLL(taskschd,,[clean])
 WINE_CONFIG_TEST(dlls/taskschd/tests)
+WINE_CONFIG_DLL(tdh)
 WINE_CONFIG_DLL(tdi.sys)
 WINE_CONFIG_DLL(toolhelp.dll16,enable_win16)
 WINE_CONFIG_DLL(traffic)

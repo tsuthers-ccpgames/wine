@@ -50,19 +50,6 @@ static HKEY reg_class_keys[] = {
 
 #define ARRAY_SIZE(A) (sizeof(A)/sizeof(*A))
 
-/* return values */
-#define NOT_ENOUGH_MEMORY     1
-
-/* processing macros */
-
-/* common check of memory allocation results */
-#define CHECK_ENOUGH_MEMORY(p) \
-if (!(p)) \
-{ \
-    output_message(STRING_OUT_OF_MEMORY, __FILE__, __LINE__); \
-    exit(NOT_ENOUGH_MEMORY); \
-}
-
 /******************************************************************************
  * Allocates memory and converts input from multibyte to wide chars
  * Returned string must be freed by the caller
@@ -252,7 +239,7 @@ static DWORD getDataType(LPWSTR *lpValue, DWORD* parse_type)
             /* "hex(xx):" is special */
             type = (int)strtoulW( *lpValue , &end, 16 );
             if (**lpValue=='\0' || *end!=')' || *(end+1)!=':') {
-                type=REG_NONE;
+                type = REG_UNKNOWN_TYPE;
             } else {
                 *lpValue = end + 2;
             }
@@ -581,6 +568,7 @@ static void processRegEntry(WCHAR* stdInput, BOOL isUnicode)
         keyEnd = strrchrW(stdInput, ']');
         if (keyEnd)
             *keyEnd='\0';
+        else return;
 
         /* delete the key if we encounter '-' at the start of reg key */
         if (stdInput[0] == '-')

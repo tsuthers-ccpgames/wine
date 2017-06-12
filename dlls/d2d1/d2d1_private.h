@@ -30,6 +30,10 @@
 #endif
 #include "dwrite_2.h"
 
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
+#endif
+
 enum d2d_brush_type
 {
     D2D_BRUSH_TYPE_SOLID,
@@ -236,6 +240,17 @@ struct d2d_stroke_style
 HRESULT d2d_stroke_style_init(struct d2d_stroke_style *style, ID2D1Factory *factory,
         const D2D1_STROKE_STYLE_PROPERTIES *desc, const float *dashes, UINT32 dash_count) DECLSPEC_HIDDEN;
 
+struct d2d_layer
+{
+    ID2D1Layer ID2D1Layer_iface;
+    LONG refcount;
+
+    ID2D1Factory *factory;
+    D2D1_SIZE_F size;
+};
+
+HRESULT d2d_layer_create(ID2D1Factory *factory, const D2D1_SIZE_F *size, struct d2d_layer **layer) DECLSPEC_HIDDEN;
+
 struct d2d_mesh
 {
     ID2D1Mesh ID2D1Mesh_iface;
@@ -436,6 +451,18 @@ static inline void d2d_point_transform(D2D1_POINT_2F *dst, const D2D1_MATRIX_3X2
 {
     dst->x = x * matrix->_11 + y * matrix->_21 + matrix->_31;
     dst->y = x * matrix->_12 + y * matrix->_22 + matrix->_32;
+}
+
+static inline void d2d_rect_expand(D2D1_RECT_F *dst, const D2D1_POINT_2F *point)
+{
+    if (point->x < dst->left)
+        dst->left = point->x;
+    if (point->x > dst->right)
+        dst->right = point->x;
+    if (point->y < dst->top)
+        dst->top = point->y;
+    if (point->y > dst->bottom)
+        dst->bottom = point->y;
 }
 
 #endif /* __WINE_D2D1_PRIVATE_H */

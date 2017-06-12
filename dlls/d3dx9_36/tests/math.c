@@ -2898,7 +2898,7 @@ static void test_D3DXSHEvalDirectionalLight(void)
 
     dir.x = 1.1f; dir.y= 1.2f; dir.z = 2.76f;
 
-    for (l = 0; l < sizeof( test ) / sizeof( test[0] ); l++)
+    for (l = 0; l < ARRAY_SIZE(test); ++l)
     {
         startindex = 0;
 
@@ -2908,7 +2908,7 @@ static void test_D3DXSHEvalDirectionalLight(void)
             green_out = test[l].green_in;
             blue_out = test[l].blue_in;
 
-            for (j = 0; j < 49; j++)
+            for (j = 0; j < ARRAY_SIZE(rout); ++j)
             {
                 red_out[j] = 1.01f + j;
                 if ( green_out )
@@ -2920,7 +2920,7 @@ static void test_D3DXSHEvalDirectionalLight(void)
             hr = D3DXSHEvalDirectionalLight(order, &dir, 1.7f, 2.6f, 3.5f, red_out, green_out, blue_out);
             ok(hr == D3D_OK, "Expected %#x, got %#x\n", D3D_OK, hr);
 
-            for (j = 0; j < 49; j++)
+            for (j = 0; j < ARRAY_SIZE(rout); ++j)
             {
                 if ( j >= order * order )
                     expected = j + test[l].roffset;
@@ -3323,7 +3323,7 @@ static void test_D3DXSHMultiply4(void)
          1.80000007e+00f,  1.89999998e+00f,
     };
 
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(a); ++i)
     {
         a[i] = 1.0f + i / 100.0f;
         b[i] = 3.0f - i / 100.0f;
@@ -3331,30 +3331,30 @@ static void test_D3DXSHMultiply4(void)
     }
 
     D3DXSHMultiply4(c, a, b);
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(c); ++i)
     {
         equal = compare_float(c[i], expected[i], 16);
         ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[i], c[i]);
     }
 
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(b); ++i)
     {
         b[i] = 3.0f - i / 100.0f;
         c[i] = i;
     }
 
     D3DXSHMultiply4(c, c, b);
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(c); ++i)
     {
         equal = compare_float(c[i], expected[20 + i], 32);
         ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[20 + i], c[i]);
     }
 
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(c); ++i)
         c[i] = 0.1f * i;
 
     D3DXSHMultiply4(c, c, c);
-    for (i = 0; i < 20; i++)
+    for (i = 0; i < ARRAY_SIZE(c); ++i)
     {
         equal = compare_float(c[i], expected[40 + i], 8);
         ok(equal, "Expected[%u] = %.8e, received = %.8e.\n", i, expected[40 + i], c[i]);
@@ -3424,11 +3424,11 @@ static void test_D3DXSHRotate(void)
         else
             out_temp = in;
 
-        for (j = 0; j < 4; j++)
+        for (j = 0; j < ARRAY_SIZE(m); ++j)
         {
             for (order = 0; order <= D3DXSH_MAXORDER; order++)
             {
-                for (i = 0; i < 49; i++)
+                for (i = 0; i < ARRAY_SIZE(out); ++i)
                 {
                     out[i] = ( i + 1.0f ) * ( i + 1.0f );
                     in[i] = i + 1.01f;
@@ -3438,7 +3438,7 @@ static void test_D3DXSHRotate(void)
                 ok(received_ptr == out_temp, "Order %u, expected %p, received %p.\n",
                         order, out, received_ptr);
 
-                for (i = 0; i < 49; i++)
+                for (i = 0; i < ARRAY_SIZE(out); ++i)
                 {
                     if ((i > 0) && ((i >= order * order) || (order > D3DXSH_MAXORDER)))
                     {
@@ -3546,11 +3546,11 @@ static void test_D3DXSHRotateZ(void)
         else
             end = 48;
 
-        for (j = 0; j < 3; j++)
+        for (j = 0; j < ARRAY_SIZE(angle); ++j)
         {
             for (order = 0; order <= D3DXSH_MAXORDER + 1; order++)
             {
-                for (i = 0; i < 49; i++)
+                for (i = 0; i < ARRAY_SIZE(out); ++i)
                 {
                     out[i] = ( i + 1.0f ) * ( i + 1.0f );
                     in[i] = i + 1.01f;
@@ -3586,7 +3586,7 @@ static void test_D3DXSHScale(void)
     unsigned int i, order;
     BOOL equal;
 
-    for (i = 0; i < 49; i++)
+    for (i = 0; i < ARRAY_SIZE(a); ++i)
     {
         a[i] = i;
         b[i] = i;
@@ -3597,7 +3597,7 @@ static void test_D3DXSHScale(void)
         received_array = D3DXSHScale(b, order, a, 5.0f);
         ok(received_array == b, "Expected %p, received %p\n", b, received_array);
 
-        for (i = 0; i < 49; i++)
+        for (i = 0; i < ARRAY_SIZE(b); ++i)
         {
             if (i < order * order)
                 expected = 5.0f * a[i];

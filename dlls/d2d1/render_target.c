@@ -49,18 +49,6 @@ static ID2D1Brush *d2d_draw_get_text_brush(struct d2d_draw_text_layout_ctx *cont
     return context->brush;
 }
 
-static void d2d_rect_expand(D2D1_RECT_F *dst, const D2D1_POINT_2F *point)
-{
-    if (point->x < dst->left)
-        dst->left = point->x;
-    if (point->y < dst->top)
-        dst->top = point->y;
-    if (point->x > dst->right)
-        dst->right = point->x;
-    if (point->y > dst->bottom)
-        dst->bottom = point->y;
-}
-
 static void d2d_rect_intersect(D2D1_RECT_F *dst, const D2D1_RECT_F *src)
 {
     if (src->left > dst->left)
@@ -458,9 +446,16 @@ static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateCompatibleRenderTar
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateLayer(ID2D1RenderTarget *iface,
         const D2D1_SIZE_F *size, ID2D1Layer **layer)
 {
-    FIXME("iface %p, size %p, layer %p stub!\n", iface, size, layer);
+    struct d2d_d3d_render_target *render_target = impl_from_ID2D1RenderTarget(iface);
+    struct d2d_layer *object;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, size %p, layer %p.\n", iface, size, layer);
+
+    if (SUCCEEDED(hr = d2d_layer_create(render_target->factory, size, &object)))
+        *layer = &object->ID2D1Layer_iface;
+
+    return hr;
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_d3d_render_target_CreateMesh(ID2D1RenderTarget *iface, ID2D1Mesh **mesh)

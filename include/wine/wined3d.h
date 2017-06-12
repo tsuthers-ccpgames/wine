@@ -705,12 +705,12 @@ enum wined3d_query_type
     WINED3D_QUERY_TYPE_SO_STATISTICS         = 21,
     WINED3D_QUERY_TYPE_SO_OVERFLOW           = 22,
     WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM0 = 23,
-    WINED3D_QUERY_TYPE_SO_OVERFLOW_STREAM0   = 24,
-    WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM1 = 25,
-    WINED3D_QUERY_TYPE_SO_OVERFLOW_STREAM1   = 26,
-    WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM2 = 27,
-    WINED3D_QUERY_TYPE_SO_OVERFLOW_STREAM2   = 28,
-    WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM3 = 29,
+    WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM1 = 24,
+    WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM2 = 25,
+    WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM3 = 26,
+    WINED3D_QUERY_TYPE_SO_OVERFLOW_STREAM0   = 27,
+    WINED3D_QUERY_TYPE_SO_OVERFLOW_STREAM1   = 28,
+    WINED3D_QUERY_TYPE_SO_OVERFLOW_STREAM2   = 29,
     WINED3D_QUERY_TYPE_SO_OVERFLOW_STREAM3   = 30,
 };
 
@@ -724,6 +724,21 @@ struct wined3d_query_data_so_statistics
 {
     UINT64 primitives_written;
     UINT64 primitives_generated;
+};
+
+struct wined3d_query_data_pipeline_statistics
+{
+    UINT64 vertices_submitted;
+    UINT64 primitives_submitted;
+    UINT64 vs_invocations;
+    UINT64 gs_invocations;
+    UINT64 gs_primitives;
+    UINT64 clipping_input_primitives;
+    UINT64 clipping_output_primitives;
+    UINT64 ps_invocations;
+    UINT64 hs_invocations;
+    UINT64 ds_invocations;
+    UINT64 cs_invocations;
 };
 
 #define WINED3DISSUE_BEGIN                                      (1u << 1)

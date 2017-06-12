@@ -25,6 +25,22 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 
+static UINT64 get_query_result64(GLuint id, const struct wined3d_gl_info *gl_info)
+{
+    if (gl_info->supported[ARB_TIMER_QUERY])
+    {
+        GLuint64 result;
+        GL_EXTCALL(glGetQueryObjectui64v(id, GL_QUERY_RESULT, &result));
+        return result;
+    }
+    else
+    {
+        GLuint result;
+        GL_EXTCALL(glGetQueryObjectuiv(id, GL_QUERY_RESULT, &result));
+        return result;
+    }
+}
+
 static void wined3d_query_init(struct wined3d_query *query, struct wined3d_device *device,
         enum wined3d_query_type type, const void *data, DWORD data_size,
         const struct wined3d_query_ops *query_ops, void *parent, const struct wined3d_parent_ops *parent_ops)
@@ -59,6 +75,12 @@ static struct wined3d_timestamp_query *wined3d_timestamp_query_from_query(struct
 static struct wined3d_so_statistics_query *wined3d_so_statistics_query_from_query(struct wined3d_query *query)
 {
     return CONTAINING_RECORD(query, struct wined3d_so_statistics_query, query);
+}
+
+static struct wined3d_pipeline_statistics_query *wined3d_pipeline_statistics_query_from_query(
+        struct wined3d_query *query)
+{
+    return CONTAINING_RECORD(query, struct wined3d_pipeline_statistics_query, query);
 }
 
 BOOL wined3d_event_query_supported(const struct wined3d_gl_info *gl_info)
@@ -368,28 +390,15 @@ static BOOL wined3d_occlusion_query_ops_poll(struct wined3d_query *query, DWORD 
     gl_info = context->gl_info;
 
     GL_EXTCALL(glGetQueryObjectuiv(oq->id, GL_QUERY_RESULT_AVAILABLE, &available));
-    checkGLcall("glGetQueryObjectuiv(GL_QUERY_RESULT_AVAILABLE)");
-    TRACE("available %#x.\n", available);
+    TRACE("Available %#x.\n", available);
 
     if (available)
     {
-        if (gl_info->supported[ARB_TIMER_QUERY])
-        {
-            GLuint64 result;
-            GL_EXTCALL(glGetQueryObjectui64v(oq->id, GL_QUERY_RESULT, &result));
-            checkGLcall("glGetQueryObjectui64v(GL_QUERY_RESULT)");
-            oq->samples = result;
-        }
-        else
-        {
-            GLuint result;
-            GL_EXTCALL(glGetQueryObjectuiv(oq->id, GL_QUERY_RESULT, &result));
-            checkGLcall("glGetQueryObjectuiv(GL_QUERY_RESULT)");
-            oq->samples = result;
-        }
+        oq->samples = get_query_result64(oq->id, gl_info);
         TRACE("Returning 0x%s samples.\n", wine_dbgstr_longlong(oq->samples));
     }
 
+    checkGLcall("poll occlusion query");
     context_release(context);
 
     return available;
@@ -634,22 +643,8 @@ static BOOL wined3d_so_statistics_query_ops_poll(struct wined3d_query *query, DW
 
     if (written_available && generated_available)
     {
-        if (gl_info->supported[ARB_TIMER_QUERY])
-        {
-            GLuint64 result;
-            GL_EXTCALL(glGetQueryObjectui64v(pq->u.query.written, GL_QUERY_RESULT, &result));
-            pq->statistics.primitives_written = result;
-            GL_EXTCALL(glGetQueryObjectui64v(pq->u.query.generated, GL_QUERY_RESULT, &result));
-            pq->statistics.primitives_generated = result;
-        }
-        else
-        {
-            GLuint result;
-            GL_EXTCALL(glGetQueryObjectuiv(pq->u.query.written, GL_QUERY_RESULT, &result));
-            pq->statistics.primitives_written = result;
-            GL_EXTCALL(glGetQueryObjectuiv(pq->u.query.generated, GL_QUERY_RESULT, &result));
-            pq->statistics.primitives_generated = result;
-        }
+        pq->statistics.primitives_written = get_query_result64(pq->u.query.written, gl_info);
+        pq->statistics.primitives_generated = get_query_result64(pq->u.query.generated, gl_info);
         TRACE("Returning %s, %s primitives.\n",
                 wine_dbgstr_longlong(pq->statistics.primitives_written),
                 wine_dbgstr_longlong(pq->statistics.primitives_generated));
@@ -715,6 +710,142 @@ static BOOL wined3d_so_statistics_query_ops_issue(struct wined3d_query *query, D
                 GL_EXTCALL(glEndQueryIndexed(GL_PRIMITIVES_GENERATED, pq->stream_idx));
                 checkGLcall("end query");
 
+                context_release(context);
+                poll = TRUE;
+            }
+            else
+            {
+                FIXME("Wrong thread, can't end query.\n");
+            }
+        }
+        pq->started = FALSE;
+    }
+
+    return poll;
+}
+
+static BOOL wined3d_pipeline_query_ops_poll(struct wined3d_query *query, DWORD flags)
+{
+    struct wined3d_pipeline_statistics_query *pq = wined3d_pipeline_statistics_query_from_query(query);
+    struct wined3d_device *device = query->device;
+    const struct wined3d_gl_info *gl_info;
+    struct wined3d_context *context;
+    GLuint available;
+    int i;
+
+    TRACE("query %p, flags %#x.\n", query, flags);
+
+    if (!(context = context_reacquire(device, pq->context)))
+    {
+        FIXME("%p Wrong thread.\n", query);
+        memset(&pq->statistics, 0, sizeof(pq->statistics));
+        return TRUE;
+    }
+    gl_info = context->gl_info;
+
+    for (i = 0; i < ARRAY_SIZE(pq->u.id); ++i)
+    {
+        GL_EXTCALL(glGetQueryObjectuiv(pq->u.id[i], GL_QUERY_RESULT_AVAILABLE, &available));
+        if (!available)
+            break;
+    }
+
+    if (available)
+    {
+        pq->statistics.vertices_submitted = get_query_result64(pq->u.query.vertices, gl_info);
+        pq->statistics.primitives_submitted = get_query_result64(pq->u.query.primitives, gl_info);
+        pq->statistics.vs_invocations = get_query_result64(pq->u.query.vertex_shader, gl_info);
+        pq->statistics.hs_invocations = get_query_result64(pq->u.query.tess_control_shader, gl_info);
+        pq->statistics.ds_invocations = get_query_result64(pq->u.query.tess_eval_shader, gl_info);
+        pq->statistics.gs_invocations = get_query_result64(pq->u.query.geometry_shader, gl_info);
+        pq->statistics.gs_primitives = get_query_result64(pq->u.query.geometry_primitives, gl_info);
+        pq->statistics.ps_invocations = get_query_result64(pq->u.query.fragment_shader, gl_info);
+        pq->statistics.cs_invocations = get_query_result64(pq->u.query.compute_shader, gl_info);
+        pq->statistics.clipping_input_primitives = get_query_result64(pq->u.query.clipping_input, gl_info);
+        pq->statistics.clipping_output_primitives = get_query_result64(pq->u.query.clipping_output, gl_info);
+    }
+
+    checkGLcall("poll pipeline statistics query");
+    context_release(context);
+    return available;
+}
+
+static void wined3d_pipeline_statistics_query_end(struct wined3d_pipeline_statistics_query *query,
+        struct wined3d_context *context)
+{
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+
+    GL_EXTCALL(glEndQuery(GL_VERTICES_SUBMITTED_ARB));
+    GL_EXTCALL(glEndQuery(GL_PRIMITIVES_SUBMITTED_ARB));
+    GL_EXTCALL(glEndQuery(GL_VERTEX_SHADER_INVOCATIONS_ARB));
+    GL_EXTCALL(glEndQuery(GL_TESS_CONTROL_SHADER_PATCHES_ARB));
+    GL_EXTCALL(glEndQuery(GL_TESS_EVALUATION_SHADER_INVOCATIONS_ARB));
+    GL_EXTCALL(glEndQuery(GL_GEOMETRY_SHADER_INVOCATIONS));
+    GL_EXTCALL(glEndQuery(GL_GEOMETRY_SHADER_PRIMITIVES_EMITTED_ARB));
+    GL_EXTCALL(glEndQuery(GL_FRAGMENT_SHADER_INVOCATIONS_ARB));
+    GL_EXTCALL(glEndQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB));
+    GL_EXTCALL(glEndQuery(GL_CLIPPING_INPUT_PRIMITIVES_ARB));
+    GL_EXTCALL(glEndQuery(GL_CLIPPING_OUTPUT_PRIMITIVES_ARB));
+    checkGLcall("end query");
+}
+
+static BOOL wined3d_pipeline_query_ops_issue(struct wined3d_query *query, DWORD flags)
+{
+    struct wined3d_pipeline_statistics_query *pq = wined3d_pipeline_statistics_query_from_query(query);
+    struct wined3d_device *device = query->device;
+    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    struct wined3d_context *context;
+    BOOL poll = FALSE;
+
+    TRACE("query %p, flags %#x.\n", query, flags);
+
+    if (flags & WINED3DISSUE_BEGIN)
+    {
+        if (pq->started)
+        {
+            if ((context = context_reacquire(device, pq->context)))
+            {
+                wined3d_pipeline_statistics_query_end(pq, context);
+            }
+            else
+            {
+                FIXME("Wrong thread, can't restart query.\n");
+                context_free_pipeline_statistics_query(pq);
+                context = context_acquire(device, NULL, 0);
+                context_alloc_pipeline_statistics_query(context, pq);
+            }
+        }
+        else
+        {
+            if (pq->context)
+                context_free_pipeline_statistics_query(pq);
+            context = context_acquire(device, NULL, 0);
+            context_alloc_pipeline_statistics_query(context, pq);
+        }
+
+        GL_EXTCALL(glBeginQuery(GL_VERTICES_SUBMITTED_ARB, pq->u.query.vertices));
+        GL_EXTCALL(glBeginQuery(GL_PRIMITIVES_SUBMITTED_ARB, pq->u.query.primitives));
+        GL_EXTCALL(glBeginQuery(GL_VERTEX_SHADER_INVOCATIONS_ARB, pq->u.query.vertex_shader));
+        GL_EXTCALL(glBeginQuery(GL_TESS_CONTROL_SHADER_PATCHES_ARB, pq->u.query.tess_control_shader));
+        GL_EXTCALL(glBeginQuery(GL_TESS_EVALUATION_SHADER_INVOCATIONS_ARB, pq->u.query.tess_eval_shader));
+        GL_EXTCALL(glBeginQuery(GL_GEOMETRY_SHADER_INVOCATIONS, pq->u.query.geometry_shader));
+        GL_EXTCALL(glBeginQuery(GL_GEOMETRY_SHADER_PRIMITIVES_EMITTED_ARB, pq->u.query.geometry_primitives));
+        GL_EXTCALL(glBeginQuery(GL_FRAGMENT_SHADER_INVOCATIONS_ARB, pq->u.query.fragment_shader));
+        GL_EXTCALL(glBeginQuery(GL_COMPUTE_SHADER_INVOCATIONS_ARB, pq->u.query.compute_shader));
+        GL_EXTCALL(glBeginQuery(GL_CLIPPING_INPUT_PRIMITIVES_ARB, pq->u.query.clipping_input));
+        GL_EXTCALL(glBeginQuery(GL_CLIPPING_OUTPUT_PRIMITIVES_ARB, pq->u.query.clipping_output));
+        checkGLcall("begin query");
+
+        context_release(context);
+        pq->started = TRUE;
+    }
+    if (flags & WINED3DISSUE_END)
+    {
+        if (pq->started)
+        {
+            if ((context = context_reacquire(device, pq->context)))
+            {
+                wined3d_pipeline_statistics_query_end(pq, context);
                 context_release(context);
                 poll = TRUE;
             }
@@ -935,6 +1066,12 @@ static HRESULT wined3d_so_statistics_query_create(struct wined3d_device *device,
 {
     const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
     struct wined3d_so_statistics_query *object;
+    unsigned int stream_idx;
+
+    if (WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM0 <= type && type <= WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM3)
+        stream_idx = type - WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM0;
+    else
+        return WINED3DERR_NOTAVAILABLE;
 
     TRACE("device %p, type %#x, parent %p, parent_ops %p, query %p.\n",
             device, type, parent, parent_ops, query);
@@ -953,27 +1090,52 @@ static HRESULT wined3d_so_statistics_query_create(struct wined3d_device *device,
     if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    switch (type)
-    {
-        case WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM0:
-            object->stream_idx = 0;
-            break;
-        case WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM1:
-            object->stream_idx = 1;
-            break;
-        case WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM2:
-            object->stream_idx = 2;
-            break;
-        case WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM3:
-            object->stream_idx = 3;
-            break;
-        default:
-            HeapFree(GetProcessHeap(), 0, object);
-            return WINED3DERR_NOTAVAILABLE;
-    }
-
     wined3d_query_init(&object->query, device, type, &object->statistics,
             sizeof(object->statistics), &so_statistics_query_ops, parent, parent_ops);
+    object->stream_idx = stream_idx;
+
+    TRACE("Created query %p.\n", object);
+    *query = &object->query;
+
+    return WINED3D_OK;
+}
+
+static void wined3d_pipeline_query_ops_destroy(struct wined3d_query *query)
+{
+    struct wined3d_pipeline_statistics_query *pq = wined3d_pipeline_statistics_query_from_query(query);
+    if (pq->context)
+        context_free_pipeline_statistics_query(pq);
+    HeapFree(GetProcessHeap(), 0, pq);
+}
+
+static const struct wined3d_query_ops pipeline_query_ops =
+{
+    wined3d_pipeline_query_ops_poll,
+    wined3d_pipeline_query_ops_issue,
+    wined3d_pipeline_query_ops_destroy,
+};
+
+static HRESULT wined3d_pipeline_query_create(struct wined3d_device *device,
+        enum wined3d_query_type type, void *parent, const struct wined3d_parent_ops *parent_ops,
+        struct wined3d_query **query)
+{
+    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    struct wined3d_pipeline_statistics_query *object;
+
+    TRACE("device %p, type %#x, parent %p, parent_ops %p, query %p.\n",
+            device, type, parent, parent_ops, query);
+
+    if (!gl_info->supported[ARB_PIPELINE_STATISTICS_QUERY])
+    {
+        WARN("OpenGL implementation does not support pipeline statistics queries.\n");
+        return WINED3DERR_NOTAVAILABLE;
+    }
+
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    wined3d_query_init(&object->query, device, type, &object->statistics,
+            sizeof(object->statistics), &pipeline_query_ops, parent, parent_ops);
 
     TRACE("Created query %p.\n", object);
     *query = &object->query;
@@ -1007,6 +1169,9 @@ HRESULT CDECL wined3d_query_create(struct wined3d_device *device, enum wined3d_q
         case WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM2:
         case WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM3:
             return wined3d_so_statistics_query_create(device, type, parent, parent_ops, query);
+
+        case WINED3D_QUERY_TYPE_PIPELINE_STATISTICS:
+            return wined3d_pipeline_query_create(device, type, parent, parent_ops, query);
 
         default:
             FIXME("Unhandled query type %#x.\n", type);

@@ -40,7 +40,7 @@ msgstr "下列软件可以自动卸载。 按'修改/删除'可卸载选定程�
 msgid "&Support Information"
 msgstr "技术支持信息(&S)"
 
-#: appwiz.rc:68 regedit.rc:45 regedit.rc:135
+#: appwiz.rc:68 regedit.rc:133 regedit.rc:231
 msgid "&Modify..."
 msgstr "修改(&M)..."
 
@@ -62,8 +62,8 @@ msgstr "技术支持信息"
 #: shell32.rc:322 shell32.rc:341 shlwapi.rc:44 user32.rc:83 user32.rc:98
 #: wininet.rc:51 wininet.rc:71 winspool.rc:42 net.rc:47 notepad.rc:117
 #: oleview.rc:161 oleview.rc:174 progman.rc:106 progman.rc:124 progman.rc:142
-#: progman.rc:158 progman.rc:180 progman.rc:199 progman.rc:216 regedit.rc:293
-#: regedit.rc:304 regedit.rc:317 regedit.rc:333 regedit.rc:346 regedit.rc:359
+#: progman.rc:158 progman.rc:180 progman.rc:199 progman.rc:216 regedit.rc:295
+#: regedit.rc:306 regedit.rc:319 regedit.rc:335 regedit.rc:348 regedit.rc:361
 #: taskmgr.rc:442 taskmgr.rc:517 winecfg.rc:214 winecfg.rc:224
 #: wineconsole.rc:135 winefile.rc:128 winefile.rc:151 winefile.rc:181
 #: winemine.rc:71 winemine.rc:81 winemine.rc:95 wordpad.rc:215 wordpad.rc:226
@@ -142,8 +142,8 @@ msgstr "安装(&I)"
 #: shell32.rc:342 shlwapi.rc:45 user32.rc:84 user32.rc:99 wininet.rc:52
 #: wininet.rc:72 winspool.rc:43 notepad.rc:118 oleview.rc:162 oleview.rc:175
 #: progman.rc:107 progman.rc:125 progman.rc:143 progman.rc:159 progman.rc:181
-#: progman.rc:200 progman.rc:217 regedit.rc:294 regedit.rc:305 regedit.rc:318
-#: regedit.rc:334 regedit.rc:347 regedit.rc:360 taskmgr.rc:443 taskmgr.rc:518
+#: progman.rc:200 progman.rc:217 regedit.rc:296 regedit.rc:307 regedit.rc:320
+#: regedit.rc:336 regedit.rc:349 regedit.rc:362 taskmgr.rc:443 taskmgr.rc:518
 #: wineboot.rc:34 winecfg.rc:215 winecfg.rc:225 wineconsole.rc:136
 #: winefile.rc:129 winefile.rc:152 winefile.rc:182 winemine.rc:96
 #: wordpad.rc:216 wordpad.rc:227 wordpad.rc:245 wordpad.rc:258
@@ -192,7 +192,7 @@ msgstr "不能运行卸载程序 '%s'。您想把这个卸载条目从注册表�
 msgid "Not specified"
 msgstr "未指定"
 
-#: appwiz.rc:38 shell32.rc:144 shell32.rc:241 regedit.rc:149 winefile.rc:107
+#: appwiz.rc:38 shell32.rc:144 shell32.rc:241 regedit.rc:147 winefile.rc:107
 msgid "Name"
 msgstr "名称"
 
@@ -337,7 +337,7 @@ msgstr "重置(&e)"
 #: comdlg32.rc:502 ieframe.rc:58 msacm32.rc:52 oledlg.rc:96 shell32.rc:128
 #: clock.rc:44 notepad.rc:60 notepad.rc:119 oleview.rc:72 progman.rc:55
 #: progman.rc:108 progman.rc:126 progman.rc:144 progman.rc:160 progman.rc:184
-#: progman.rc:202 progman.rc:219 regedit.rc:79 taskmgr.rc:87 winefile.rc:82
+#: progman.rc:202 progman.rc:219 regedit.rc:77 taskmgr.rc:87 winefile.rc:82
 #: winemine.rc:51 winhlp32.rc:57 wordpad.rc:102
 msgid "&Help"
 msgstr "帮助(&H)"
@@ -387,7 +387,7 @@ msgstr "否(&N)"
 msgid "&Retry"
 msgstr "重试(&R)"
 
-#: comctl32.rc:31 cryptui.rc:230 regedit.rc:283 taskmgr.rc:434 winedbg.rc:60
+#: comctl32.rc:31 cryptui.rc:230 regedit.rc:285 taskmgr.rc:434 winedbg.rc:60
 #: winedbg.rc:75 wordpad.rc:180
 msgid "Close"
 msgstr "关闭"
@@ -446,7 +446,7 @@ msgstr "打印机："
 msgid "Print range"
 msgstr "打印范围"
 
-#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:265
+#: comdlg32.rc:207 comdlg32.rc:384 regedit.rc:267
 msgid "&All"
 msgstr "全部(&A)"
 
@@ -616,7 +616,7 @@ msgstr "添加到自定义颜色(&A)"
 msgid "&Define Custom Colors >>"
 msgstr "定义自定义颜色(&D) >>"
 
-#: comdlg32.rc:316 regedit.rc:272 regedit.rc:282
+#: comdlg32.rc:316 regedit.rc:274 regedit.rc:284
 msgid "Find"
 msgstr "查找"
 
@@ -2251,7 +2251,7 @@ msgstr "预期用途："
 msgid "&Import..."
 msgstr "导入(&I)..."
 
-#: cryptui.rc:345 regedit.rc:93 regedit.rc:114
+#: cryptui.rc:345 regedit.rc:91 regedit.rc:112
 msgid "&Export..."
 msgstr "导出(&E)..."
 
@@ -2264,7 +2264,7 @@ msgid "Certificate intended purposes"
 msgstr "证书的预期用途"
 
 #: cryptui.rc:350 ieframe.rc:45 shell32.rc:43 shell32.rc:120 oleview.rc:59
-#: oleview.rc:61 oleview.rc:85 regedit.rc:66 taskmgr.rc:52 winefile.rc:48
+#: oleview.rc:61 oleview.rc:85 regedit.rc:64 taskmgr.rc:52 winefile.rc:48
 #: wordpad.rc:69
 msgid "&View"
 msgstr "视图(&V)"
@@ -3194,7 +3194,7 @@ msgstr "Cinepak 视频编解码器"
 msgid "&File"
 msgstr "文件(&F)"
 
-#: ieframe.rc:30 regedit.rc:47 regedit.rc:99 regedit.rc:121
+#: ieframe.rc:30 regedit.rc:45 regedit.rc:97 regedit.rc:119
 msgid "&New"
 msgstr "新建(&N)"
 
@@ -3234,11 +3234,11 @@ msgstr "标准栏(&S)"
 msgid "&Address bar"
 msgstr "地址栏(&A)"
 
-#: ieframe.rc:53 regedit.rc:74
+#: ieframe.rc:53 regedit.rc:72
 msgid "&Favorites"
 msgstr "收藏夹(&F)"
 
-#: ieframe.rc:55 regedit.rc:76
+#: ieframe.rc:55 regedit.rc:74
 msgid "&Add to Favorites..."
 msgstr "添加到收藏夹(&A)..."
 
@@ -7474,7 +7474,7 @@ msgstr ""
 msgid "Inserts the contents of the clipboard into your document."
 msgstr "将剪贴板的内容插入到你的文件。"
 
-#: oledlg.rc:48 regedit.rc:427
+#: oledlg.rc:48 regedit.rc:429
 msgid "Unknown Type"
 msgstr "不明类型"
 
@@ -7933,7 +7933,7 @@ msgstr "剪切(&U)"
 msgid "Create &Link"
 msgstr "创建快捷方式(&L)"
 
-#: shell32.rc:106 regedit.rc:139
+#: shell32.rc:106
 msgid "&Rename"
 msgstr "重命名(&R)"
 
@@ -8005,7 +8005,7 @@ msgstr "浏览(&B)..."
 msgid "Size"
 msgstr "大小"
 
-#: shell32.rc:139 regedit.rc:150
+#: shell32.rc:139 regedit.rc:148
 msgid "Type"
 msgstr "类型"
 
@@ -8046,7 +8046,7 @@ msgctxt "display name"
 msgid "Desktop"
 msgstr "桌面"
 
-#: shell32.rc:157 regedit.rc:235
+#: shell32.rc:157 regedit.rc:237
 msgid "My Computer"
 msgstr "我的电脑"
 
@@ -10611,7 +10611,7 @@ msgstr "复制(&C)\tCtrl+C"
 msgid "&Paste\tCtrl+V"
 msgstr "粘贴(&P)\tCtrl+V"
 
-#: notepad.rc:47 progman.rc:37 regedit.rc:58 regedit.rc:111 regedit.rc:138
+#: notepad.rc:47 progman.rc:37 regedit.rc:56 regedit.rc:109 regedit.rc:136
 #: winefile.rc:32
 msgid "&Delete\tDel"
 msgstr "删除(&D)\tDel"
@@ -10640,7 +10640,7 @@ msgstr "搜索下一个(&S)\tF3"
 msgid "&Replace...\tCtrl+H"
 msgstr "替换(&R)...\tCtrl+H"
 
-#: notepad.rc:61 progman.rc:56 regedit.rc:81 winefile.rc:83
+#: notepad.rc:61 progman.rc:56 regedit.rc:79 winefile.rc:83
 msgid "&Contents\tF1"
 msgstr "帮助内容(&C)\tF1"
 
@@ -10686,7 +10686,7 @@ msgctxt "accelerator Copy"
 msgid "C"
 msgstr "C"
 
-#: notepad.rc:134 regedit.rc:369 wordpad.rc:287
+#: notepad.rc:134 regedit.rc:371 wordpad.rc:287
 msgctxt "accelerator Find"
 msgid "F"
 msgstr "F"
@@ -10706,7 +10706,7 @@ msgctxt "accelerator Open"
 msgid "O"
 msgstr "O"
 
-#: notepad.rc:138 regedit.rc:370 wordpad.rc:300
+#: notepad.rc:138 regedit.rc:372 wordpad.rc:300
 msgctxt "accelerator Print"
 msgid "P"
 msgstr "P"
@@ -10877,7 +10877,7 @@ msgstr "工具栏(&T)"
 msgid "&Status Bar"
 msgstr "状态栏(&S)"
 
-#: oleview.rc:70 regedit.rc:72 winefile.rc:79
+#: oleview.rc:70 regedit.rc:70 winefile.rc:79
 msgid "&Refresh\tF5"
 msgstr "刷新(&R)\tF5"
 
@@ -11427,7 +11427,7 @@ msgstr "注册表值 '%1' 已经存在。您想要覆盖它吗?"
 msgid "The registry operation was cancelled\n"
 msgstr "注册表操作已经取消\n"
 
-#: reg.rc:53 regedit.rc:236
+#: reg.rc:53 regedit.rc:238
 msgid "(Default)"
 msgstr "(默认)"
 
@@ -11479,7 +11479,7 @@ msgstr "输入“REG /?”以获取帮助。\n"
 msgid "Type \"REG %1 /?\" for help.\n"
 msgstr "输入“REG %1 /?”以获取帮助。\n"
 
-#: reg.rc:65 regedit.rc:237
+#: reg.rc:65 regedit.rc:239
 msgid "(value not set)"
 msgstr "(没有设值)"
 
@@ -11495,183 +11495,189 @@ msgstr "导入注册表文件(&I)..."
 msgid "&Export Registry File..."
 msgstr "导出注册表文件(&E)..."
 
-#: regedit.rc:49 regedit.rc:101 regedit.rc:123
+#: regedit.rc:47 regedit.rc:99 regedit.rc:121
 msgid "&Key"
 msgstr "键(&K)"
 
-#: regedit.rc:51 regedit.rc:103 regedit.rc:125
+#: regedit.rc:49 regedit.rc:101 regedit.rc:123
 msgid "&String Value"
 msgstr "字符串值(&S)"
 
-#: regedit.rc:52 regedit.rc:104 regedit.rc:126
+#: regedit.rc:50 regedit.rc:102 regedit.rc:124
 msgid "&Binary Value"
 msgstr "二进制值(&B)"
 
-#: regedit.rc:53 regedit.rc:105 regedit.rc:127
+#: regedit.rc:51 regedit.rc:103 regedit.rc:125
 msgid "&DWORD Value"
 msgstr "整数值(&D)"
 
-#: regedit.rc:54 regedit.rc:106 regedit.rc:128
+#: regedit.rc:52 regedit.rc:104 regedit.rc:126
 msgid "&Multi-String Value"
 msgstr "多字符串值(&M)"
 
-#: regedit.rc:55 regedit.rc:107 regedit.rc:129
+#: regedit.rc:53 regedit.rc:105 regedit.rc:127
 msgid "&Expandable String Value"
 msgstr "可展开的字符串值(&E)"
 
-#: regedit.rc:59 regedit.rc:112
+#: regedit.rc:57 regedit.rc:110 regedit.rc:137
 msgid "&Rename\tF2"
 msgstr "改名(&R)\tF2"
 
-#: regedit.rc:61 regedit.rc:116
+#: regedit.rc:59 regedit.rc:114
 msgid "&Copy Key Name"
 msgstr "复制键名(&C)"
 
-#: regedit.rc:63 regedit.rc:109 wordpad.rc:53
+#: regedit.rc:61 regedit.rc:107 wordpad.rc:53
 msgid "&Find...\tCtrl+F"
 msgstr "查找(&F)...\tCtrl+F"
 
-#: regedit.rc:64
+#: regedit.rc:62
 msgid "Find Ne&xt\tF3"
 msgstr "查找下一个(&X)\tF3"
 
-#: regedit.rc:68
+#: regedit.rc:66
 msgid "Status &Bar"
 msgstr "状态栏(&B)"
 
-#: regedit.rc:70 winefile.rc:49
+#: regedit.rc:68 winefile.rc:49
 msgid "Sp&lit"
 msgstr "调整分隔线(&L)"
 
-#: regedit.rc:77
+#: regedit.rc:75
 msgid "&Remove Favorite..."
 msgstr "删除收藏(&R)..."
 
-#: regedit.rc:82
+#: regedit.rc:80
 msgid "&About Registry Editor"
 msgstr "关于注册表编辑器(&A)"
 
-#: regedit.rc:91 regedit.rc:98 regedit.rc:229
+#: regedit.rc:89 regedit.rc:96 regedit.rc:229
 #, fuzzy
 #| msgctxt "object state"
 #| msgid "expanded"
 msgid "Expand"
 msgstr "已展开"
 
-#: regedit.rc:136
-msgid "Modify Binary Data..."
+#: regedit.rc:134 regedit.rc:232
+#, fuzzy
+#| msgid "Modify Binary Data..."
+msgid "Modify &Binary Data..."
 msgstr "修改二进制数据..."
 
-#: regedit.rc:264
+#: regedit.rc:266
 msgid "Export registry"
 msgstr "导出注册表"
 
-#: regedit.rc:266
+#: regedit.rc:268
 msgid "S&elected branch:"
 msgstr "指定分支(&E)："
 
-#: regedit.rc:275
+#: regedit.rc:277
 msgid "Find:"
 msgstr "查找："
 
-#: regedit.rc:277
+#: regedit.rc:279
 msgid "Find in:"
 msgstr "查找范围："
 
-#: regedit.rc:278
+#: regedit.rc:280
 msgid "Keys"
 msgstr "键"
 
-#: regedit.rc:279
+#: regedit.rc:281
 msgid "Value names"
 msgstr "值名称"
 
-#: regedit.rc:280
+#: regedit.rc:282
 msgid "Value content"
 msgstr "值内容"
 
-#: regedit.rc:281
+#: regedit.rc:283
 msgid "Whole string only"
 msgstr "整词匹配"
 
-#: regedit.rc:288
+#: regedit.rc:290
 msgid "Add Favorite"
 msgstr "添加收藏"
 
-#: regedit.rc:291 regedit.rc:302
+#: regedit.rc:293 regedit.rc:304
 msgid "Name:"
 msgstr "名称："
 
-#: regedit.rc:299
+#: regedit.rc:301
 msgid "Remove Favorite"
 msgstr "删除收藏"
 
-#: regedit.rc:310
+#: regedit.rc:312
 msgid "Edit String"
 msgstr "编辑字符串"
 
-#: regedit.rc:313 regedit.rc:326 regedit.rc:342 regedit.rc:355
+#: regedit.rc:315 regedit.rc:328 regedit.rc:344 regedit.rc:357
 msgid "Value name:"
 msgstr "值名称："
 
-#: regedit.rc:315 regedit.rc:328 regedit.rc:344 regedit.rc:357
+#: regedit.rc:317 regedit.rc:330 regedit.rc:346 regedit.rc:359
 msgid "Value data:"
 msgstr "值数据："
 
-#: regedit.rc:323
+#: regedit.rc:325
 msgid "Edit DWORD"
 msgstr "编辑整数"
 
-#: regedit.rc:330
+#: regedit.rc:332
 msgid "Base"
 msgstr "进制"
 
-#: regedit.rc:331
+#: regedit.rc:333
 msgid "Hexadecimal"
 msgstr "十六进制"
 
-#: regedit.rc:332
+#: regedit.rc:334
 msgid "Decimal"
 msgstr "十进制"
 
-#: regedit.rc:339
+#: regedit.rc:341
 msgid "Edit Binary"
 msgstr "编辑二进制"
 
-#: regedit.rc:352
+#: regedit.rc:354
 msgid "Edit Multi-String"
 msgstr "编辑多个字符串"
 
-#: regedit.rc:161
+#: regedit.rc:159
 msgid "Contains commands for working with the whole registry"
 msgstr "操作整个注册表的命令"
 
-#: regedit.rc:162
+#: regedit.rc:160
 msgid "Contains commands for editing values or keys"
 msgstr "编辑键和值的命令"
 
-#: regedit.rc:163
+#: regedit.rc:161
 msgid "Contains commands for customizing the registry window"
 msgstr "操作窗口显示的命令"
 
-#: regedit.rc:164
+#: regedit.rc:162
 msgid "Contains commands for accessing frequently used keys"
 msgstr "用于记录常用键的全部命令"
 
-#: regedit.rc:165
+#: regedit.rc:163
+#, fuzzy
+#| msgid ""
+#| "Contains commands for displaying help and information about registry "
+#| "editor"
 msgid ""
-"Contains commands for displaying help and information about registry editor"
+"Contains commands for displaying Help and information about Registry Editor"
 msgstr "注册表编辑器的帮助及关于信息"
 
-#: regedit.rc:166
+#: regedit.rc:164
 msgid "Contains commands for creating new keys or values"
 msgstr "创建新键或值的命令"
 
-#: regedit.rc:151
+#: regedit.rc:149
 msgid "Data"
 msgstr "数据"
 
-#: regedit.rc:156
+#: regedit.rc:154
 msgid "Registry Editor"
 msgstr "注册表编辑器"
 
@@ -11691,27 +11697,27 @@ msgstr "注册表文件 (*.reg)"
 msgid "Win9x/NT4 Registry files (REGEDIT4)"
 msgstr "Win9x/NT4 注册表文件 (REGEDIT4)"
 
-#: regedit.rc:238
+#: regedit.rc:240
 msgid "(cannot display value)"
 msgstr "(不能显示值)"
 
-#: regedit.rc:239
+#: regedit.rc:241
 msgid "(unknown %d)"
 msgstr "(未知 %d)"
 
-#: regedit.rc:244
+#: regedit.rc:246
 msgid "Unable to modify the selected registry value."
 msgstr "无法修改所选注册表值。"
 
-#: regedit.rc:245
+#: regedit.rc:247
 msgid "Unable to create a new registry key."
 msgstr "无法创建新注册表键。"
 
-#: regedit.rc:246
+#: regedit.rc:248
 msgid "Unable to create a new registry value."
 msgstr "无法创建新注册表值。"
 
-#: regedit.rc:247
+#: regedit.rc:249
 msgid ""
 "Unable to rename the key '%1'.\n"
 "The specified key name already exists."
@@ -11719,7 +11725,7 @@ msgstr ""
 "无法重命名键 '%1'。\n"
 "该键名已存在。"
 
-#: regedit.rc:248
+#: regedit.rc:250
 msgid ""
 "Unable to rename the value '%1'.\n"
 "The specified value name already exists."
@@ -11727,28 +11733,28 @@ msgstr ""
 "无法重命名值 '%1'。\n"
 "该值名已存在。"
 
-#: regedit.rc:249
+#: regedit.rc:251
 msgid "Unable to delete the selected registry key."
 msgstr "无法删除所选注册表键。"
 
-#: regedit.rc:250
+#: regedit.rc:252
 msgid "Unable to rename the selected registry key."
 msgstr "无法重命名所选注册表键。"
 
-#: regedit.rc:251
+#: regedit.rc:253
 msgid "Unable to rename the selected registry value."
 msgstr "无法重命名所选注册表值。"
 
-#: regedit.rc:252
+#: regedit.rc:254
 msgid ""
 "The keys and values contained in %1 were successfully added to the registry."
 msgstr "%1 所包含的键和值已被成功添加到注册表中。"
 
-#: regedit.rc:253
+#: regedit.rc:255
 msgid "Unable to import %1. The specified file is not a valid registry file."
 msgstr "无法导入 %1。该文件不是一个有效的注册表文件。"
 
-#: regedit.rc:405
+#: regedit.rc:407
 msgid ""
 "Usage:\n"
 "  regedit [options] [filename] [reg_key]\n"
@@ -11803,99 +11809,101 @@ msgstr ""
 "  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n"
 "  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
 
-#: regedit.rc:406
+#: regedit.rc:408
 msgid "regedit: Invalid or unrecognized switch [%1]\n"
 msgstr "regedit：无效或无法识别的开关 [%1]\n"
 
-#: regedit.rc:407
+#: regedit.rc:409
 msgid "Type \"regedit /?\" for help.\n"
 msgstr "输入 \"regedit /?\" 来获得帮助。\n"
 
-#: regedit.rc:408
+#: regedit.rc:410
 msgid "regedit: No filename was specified.\n"
 msgstr "regedit: 没有指定文件名。\n"
 
-#: regedit.rc:409
+#: regedit.rc:411
 msgid "regedit: No registry key was specified for removal.\n"
 msgstr "regedit：未指定任何要移除的注册表键。\n"
 
-#: regedit.rc:410
+#: regedit.rc:412
 msgid "regedit: The file '%1' was not found.\n"
 msgstr "regedit: 找不到文件 '%1'。\n"
 
-#: regedit.rc:411
+#: regedit.rc:413
 msgid "regedit: Unable to open the file '%1'.\n"
 msgstr "regedit: 无法打开文件 '%1'。\n"
 
-#: regedit.rc:412
+#: regedit.rc:414
 msgid "regedit: Unhandled action.\n"
 msgstr "regedit: 无法处理的操作。\n"
 
-#: regedit.rc:413
+#: regedit.rc:415
 msgid "regedit: Out of memory! (%1!S!, line %2!u!)\n"
 msgstr "regedit: 内存不足! (%1!S!, 行 %2!u!)\n"
 
-#: regedit.rc:414
+#: regedit.rc:416
 msgid "regedit: Invalid hexadecimal value.\n"
 msgstr "regedit: 无效的十六进制值。\n"
 
-#: regedit.rc:415
+#: regedit.rc:417
 msgid ""
 "regedit: Unable to convert hexadecimal data. An invalid value was "
 "encountered at '%1'.\n"
 msgstr "regedit: 无法转换十六进制数据。在 \"%1\" 处发现无效值。\n"
 
-#: regedit.rc:416
+#: regedit.rc:418
 msgid "regedit: Unrecognized escape sequence [\\%1!c!]\n"
 msgstr "regedit: 无法识别的转义序列 [\\%1!c!]\n"
 
-#: regedit.rc:417
+#: regedit.rc:419
 msgid "regedit: Unsupported registry data type [%1]\n"
 msgstr "regedit: 不受支持的注册表数据类型 [%1]\n"
 
-#: regedit.rc:418
+#: regedit.rc:420
 msgid "regedit: Unexpected end of line in '%1'.\n"
 msgstr "regedit: '%1' 中存在未预期的行尾。\n"
 
-#: regedit.rc:419
+#: regedit.rc:421
 msgid "regedit: The line '%1' was not recognized.\n"
 msgstr "regedit: 行 '%1' 无法被识别。\n"
 
-#: regedit.rc:420
+#: regedit.rc:422
 msgid "regedit: Unable to add the registry value '%1' to '%2'.\n"
 msgstr "regedit: 无法向 '%2' 添加注册表值 '%1'。\n"
 
-#: regedit.rc:421
+#: regedit.rc:423
 msgid "regedit: Unable to open the registry key '%1'.\n"
 msgstr "regedit: 无法打开注册表键 '%1'。\n"
 
-#: regedit.rc:422
+#: regedit.rc:424
 msgid "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
 msgstr "regedit: 在 '%2' 遇到不受支持的注册表数据类型 [%1]。\n"
 
-#: regedit.rc:423
+#: regedit.rc:425
 msgid "regedit: The registry value '%1' will be exported as binary data.\n"
 msgstr "regedit: 注册表值 \"%1\" 将会被导出为二进制数据。\n"
 
-#: regedit.rc:424
+#: regedit.rc:426
 msgid "regedit: Incorrect registry class specification in '%1'.\n"
 msgstr "regedit：“%1”中包含无效的注册表类规范。\n"
 
-#: regedit.rc:425
+#: regedit.rc:427
 msgid ""
 "regedit: Unable to export '%1'. The specified registry key was not found.\n"
 msgstr "regedit: 无法导出 '%1'。未找到指定的注册表键。\n"
 
-#: regedit.rc:426
+#: regedit.rc:428
 msgid "regedit: Unable to delete the registry class '%1'.\n"
 msgstr "regedit：无法删除注册表类“%1”。\n"
 
-#: regedit.rc:428
+#: regedit.rc:430
 msgid "regedit: The line contains invalid syntax.\n"
 msgstr "regedit: 该行包含无效字符。\n"
 
 #: regedit.rc:187
-msgid "Quits the registry editor"
+#, fuzzy
+#| msgid "Quits the registry editor"
+msgid "Quits the Registry Editor"
 msgstr "退出注册表编辑器"
 
 #: regedit.rc:188
@@ -11911,7 +11919,9 @@ msgid "Shows or hides the status bar"
 msgstr "显示或隐藏状态栏"
 
 #: regedit.rc:191
-msgid "Change position of split between two panes"
+#, fuzzy
+#| msgid "Change position of split between two panes"
+msgid "Changes the position of the split between two panes"
 msgstr "改变两个窗格之间的分隔线位置"
 
 #: regedit.rc:192
@@ -11938,25 +11948,27 @@ msgstr "在键、值或数据中找字符串"
 msgid "Finds next occurrence of text specified in previous search"
 msgstr "查找下一个刚找过的字符串"
 
-#: regedit.rc:171
+#: regedit.rc:169
 msgid "Modifies the value's data"
 msgstr "修改值的数据"
 
-#: regedit.rc:172
+#: regedit.rc:171
 msgid "Adds a new key"
 msgstr "添加新键"
 
-#: regedit.rc:173
+#: regedit.rc:172
 msgid "Adds a new string value"
 msgstr "添加新字符串值"
 
-#: regedit.rc:174
+#: regedit.rc:173
 msgid "Adds a new binary value"
 msgstr "添加新二进制值"
 
-#: regedit.rc:175
-msgid "Adds a new double word value"
-msgstr "添加新整数值"
+#: regedit.rc:174
+#, fuzzy
+#| msgid "Adds a new binary value"
+msgid "Adds a new 32-bit value"
+msgstr "添加新二进制值"
 
 #: regedit.rc:177
 msgid "Imports a text file into the registry"
@@ -11969,6 +11981,12 @@ msgstr "将注册表导出为文本文件"
 #: regedit.rc:180
 msgid "Prints all or part of the registry"
 msgstr "打印注册表的全部或部分"
+
+#: regedit.rc:181
+#, fuzzy
+#| msgid "Registry Editor"
+msgid "Opens Registry Editor Help"
+msgstr "注册表编辑器"
 
 #: regedit.rc:182
 msgid "Displays program information, version number and copyright"
@@ -12010,13 +12028,27 @@ msgstr "新值 #%d"
 msgid "Unable to query the registry key '%1'."
 msgstr "无法打开注册表键 '%1'。"
 
-#: regedit.rc:176
+#: regedit.rc:170
+#, fuzzy
+#| msgid "Modifies the value's data"
+msgid "Modifies the value's data in binary form"
+msgstr "修改值的数据"
+
+#: regedit.rc:175
 msgid "Adds a new multi-string value"
 msgstr "添加新多字符串值"
 
 #: regedit.rc:198
-msgid "Exports selected branch of the registry to a text file"
+#, fuzzy
+#| msgid "Exports selected branch of the registry to a text file"
+msgid "Exports the selected branch of the registry to a text file"
 msgstr "把选定的注册表分支导出为文本文件"
+
+#: regedit.rc:176
+#, fuzzy
+#| msgid "Adds a new string value"
+msgid "Adds a new expandable string value"
+msgstr "添加新字符串值"
 
 #: regedit.rc:211
 msgid "Confirm Key Delete"

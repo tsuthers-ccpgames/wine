@@ -33,6 +33,49 @@ struct figure
     unsigned int span_count;
 };
 
+struct geometry_sink
+{
+    ID2D1SimplifiedGeometrySink ID2D1SimplifiedGeometrySink_iface;
+
+    struct geometry_figure
+    {
+        D2D1_FIGURE_BEGIN begin;
+        D2D1_FIGURE_END end;
+        D2D1_POINT_2F start_point;
+        struct geometry_segment
+        {
+            enum
+            {
+                SEGMENT_BEZIER,
+                SEGMENT_LINE,
+            } type;
+            union
+            {
+                D2D1_BEZIER_SEGMENT bezier;
+                D2D1_POINT_2F line;
+            } u;
+            DWORD flags;
+        } *segments;
+        unsigned int segments_size;
+        unsigned int segment_count;
+    } *figures;
+    unsigned int figures_size;
+    unsigned int figure_count;
+
+    D2D1_FILL_MODE fill_mode;
+    DWORD segment_flags;
+    BOOL closed;
+};
+
+struct expected_geometry_figure
+{
+    D2D1_FIGURE_BEGIN begin;
+    D2D1_FIGURE_END end;
+    D2D1_POINT_2F start_point;
+    unsigned int segment_count;
+    const struct geometry_segment *segments;
+};
+
 static void set_point(D2D1_POINT_2F *point, float x, float y)
 {
     point->x = x;
@@ -167,6 +210,28 @@ static BOOL compare_float(float f, float g, unsigned int ulps)
         return FALSE;
 
     return TRUE;
+}
+
+static BOOL compare_point(const D2D1_POINT_2F *point, float x, float y, unsigned int ulps)
+{
+    return compare_float(point->x, x, ulps)
+            && compare_float(point->y, y, ulps);
+}
+
+static BOOL compare_rect(const D2D1_RECT_F *rect, float left, float top, float right, float bottom, unsigned int ulps)
+{
+    return compare_float(rect->left, left, ulps)
+            && compare_float(rect->top, top, ulps)
+            && compare_float(rect->right, right, ulps)
+            && compare_float(rect->bottom, bottom, ulps);
+}
+
+static BOOL compare_bezier_segment(const D2D1_BEZIER_SEGMENT *b, float x1, float y1,
+        float x2, float y2, float x3, float y3, unsigned int ulps)
+{
+    return compare_point(&b->point1, x1, y1, ulps)
+            && compare_point(&b->point2, x2, y2, ulps)
+            && compare_point(&b->point3, x3, y3, ulps);
 }
 
 static BOOL compare_sha1(void *data, unsigned int pitch, unsigned int bpp,
@@ -605,6 +670,246 @@ static ID2D1RenderTarget *create_render_target(IDXGISurface *surface)
     desc.minLevel = D2D1_FEATURE_LEVEL_DEFAULT;
 
     return create_render_target_desc(surface, &desc);
+}
+
+static inline struct geometry_sink *impl_from_ID2D1SimplifiedGeometrySink(ID2D1SimplifiedGeometrySink *iface)
+{
+    return CONTAINING_RECORD(iface, struct geometry_sink, ID2D1SimplifiedGeometrySink_iface);
+}
+
+static HRESULT STDMETHODCALLTYPE geometry_sink_QueryInterface(ID2D1SimplifiedGeometrySink *iface,
+        REFIID iid, void **out)
+{
+    if (IsEqualGUID(iid, &IID_ID2D1SimplifiedGeometrySink)
+            || IsEqualGUID(iid, &IID_IUnknown))
+    {
+        *out = iface;
+        return S_OK;
+    }
+
+    *out = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG STDMETHODCALLTYPE geometry_sink_AddRef(ID2D1SimplifiedGeometrySink *iface)
+{
+    return 0;
+}
+
+static ULONG STDMETHODCALLTYPE geometry_sink_Release(ID2D1SimplifiedGeometrySink *iface)
+{
+    return 0;
+}
+
+static void STDMETHODCALLTYPE geometry_sink_SetFillMode(ID2D1SimplifiedGeometrySink *iface, D2D1_FILL_MODE mode)
+{
+    struct geometry_sink *sink = impl_from_ID2D1SimplifiedGeometrySink(iface);
+
+    sink->fill_mode = mode;
+}
+
+static void STDMETHODCALLTYPE geometry_sink_SetSegmentFlags(ID2D1SimplifiedGeometrySink *iface,
+        D2D1_PATH_SEGMENT flags)
+{
+    struct geometry_sink *sink = impl_from_ID2D1SimplifiedGeometrySink(iface);
+
+    sink->segment_flags = flags;
+}
+
+static void STDMETHODCALLTYPE geometry_sink_BeginFigure(ID2D1SimplifiedGeometrySink *iface,
+        D2D1_POINT_2F start_point, D2D1_FIGURE_BEGIN figure_begin)
+{
+    struct geometry_sink *sink = impl_from_ID2D1SimplifiedGeometrySink(iface);
+    struct geometry_figure *figure;
+
+    if (sink->figure_count == sink->figures_size)
+    {
+        sink->figures_size *= 2;
+        sink->figures = HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sink->figures,
+                sink->figures_size * sizeof(*sink->figures));
+    }
+    figure = &sink->figures[sink->figure_count++];
+
+    figure->begin = figure_begin;
+    figure->start_point = start_point;
+    figure->segments_size = 4;
+    figure->segments = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+            figure->segments_size * sizeof(*figure->segments));
+}
+
+static struct geometry_segment *geometry_figure_add_segment(struct geometry_figure *figure)
+{
+    if (figure->segment_count == figure->segments_size)
+    {
+        figure->segments_size *= 2;
+        figure->segments = HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, figure->segments,
+                figure->segments_size * sizeof(*figure->segments));
+    }
+    return &figure->segments[figure->segment_count++];
+}
+
+static void STDMETHODCALLTYPE geometry_sink_AddLines(ID2D1SimplifiedGeometrySink *iface,
+        const D2D1_POINT_2F *points, UINT32 count)
+{
+    struct geometry_sink *sink = impl_from_ID2D1SimplifiedGeometrySink(iface);
+    struct geometry_figure *figure = &sink->figures[sink->figure_count - 1];
+    struct geometry_segment *segment;
+    unsigned int i;
+
+    for (i = 0; i < count; ++i)
+    {
+        segment = geometry_figure_add_segment(figure);
+        segment->type = SEGMENT_LINE;
+        segment->u.line = points[i];
+        segment->flags = sink->segment_flags;
+    }
+}
+
+static void STDMETHODCALLTYPE geometry_sink_AddBeziers(ID2D1SimplifiedGeometrySink *iface,
+        const D2D1_BEZIER_SEGMENT *beziers, UINT32 count)
+{
+    struct geometry_sink *sink = impl_from_ID2D1SimplifiedGeometrySink(iface);
+    struct geometry_figure *figure = &sink->figures[sink->figure_count - 1];
+    struct geometry_segment *segment;
+    unsigned int i;
+
+    for (i = 0; i < count; ++i)
+    {
+        segment = geometry_figure_add_segment(figure);
+        segment->type = SEGMENT_BEZIER;
+        segment->u.bezier = beziers[i];
+        segment->flags = sink->segment_flags;
+    }
+}
+
+static void STDMETHODCALLTYPE geometry_sink_EndFigure(ID2D1SimplifiedGeometrySink *iface,
+        D2D1_FIGURE_END figure_end)
+{
+    struct geometry_sink *sink = impl_from_ID2D1SimplifiedGeometrySink(iface);
+    struct geometry_figure *figure = &sink->figures[sink->figure_count - 1];
+
+    figure->end = figure_end;
+}
+
+static HRESULT STDMETHODCALLTYPE geometry_sink_Close(ID2D1SimplifiedGeometrySink *iface)
+{
+    struct geometry_sink *sink = impl_from_ID2D1SimplifiedGeometrySink(iface);
+
+    sink->closed = TRUE;
+
+    return S_OK;
+}
+
+static const struct ID2D1SimplifiedGeometrySinkVtbl geometry_sink_vtbl =
+{
+    geometry_sink_QueryInterface,
+    geometry_sink_AddRef,
+    geometry_sink_Release,
+    geometry_sink_SetFillMode,
+    geometry_sink_SetSegmentFlags,
+    geometry_sink_BeginFigure,
+    geometry_sink_AddLines,
+    geometry_sink_AddBeziers,
+    geometry_sink_EndFigure,
+    geometry_sink_Close,
+};
+
+static void geometry_sink_init(struct geometry_sink *sink)
+{
+    memset(sink, 0, sizeof(*sink));
+    sink->ID2D1SimplifiedGeometrySink_iface.lpVtbl = &geometry_sink_vtbl;
+    sink->figures_size = 4;
+    sink->figures = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+            sink->figures_size * sizeof(*sink->figures));
+}
+
+static void geometry_sink_cleanup(struct geometry_sink *sink)
+{
+    unsigned int i;
+
+    for (i = 0; i < sink->figure_count; ++i)
+    {
+        HeapFree(GetProcessHeap(), 0, sink->figures[i].segments);
+    }
+    HeapFree(GetProcessHeap(), 0, sink->figures);
+}
+
+#define geometry_sink_check(a, b, c, d, e) geometry_sink_check_(__LINE__, a, b, c, d, e)
+static void geometry_sink_check_(unsigned int line, const struct geometry_sink *sink, D2D1_FILL_MODE fill_mode,
+        unsigned int figure_count, const struct expected_geometry_figure *expected_figures, unsigned int ulps)
+{
+    const struct geometry_segment *segment, *expected_segment;
+    const struct expected_geometry_figure *expected_figure;
+    const struct geometry_figure *figure;
+    unsigned int i, j;
+    BOOL match;
+
+    ok_(__FILE__, line)(sink->fill_mode == fill_mode,
+            "Got unexpected fill mode %#x.\n", sink->fill_mode);
+    ok_(__FILE__, line)(sink->figure_count == figure_count,
+            "Got unexpected figure count %u, expected %u.\n", sink->figure_count, figure_count);
+    ok_(__FILE__, line)(!sink->closed, "Sink is closed.\n");
+
+    for (i = 0; i < figure_count; ++i)
+    {
+        expected_figure = &expected_figures[i];
+        figure = &sink->figures[i];
+
+        ok_(__FILE__, line)(figure->begin == expected_figure->begin,
+                "Got unexpected figure %u begin %#x, expected %#x.\n",
+                i, figure->begin, expected_figure->begin);
+        ok_(__FILE__, line)(figure->end == expected_figure->end,
+                "Got unexpected figure %u end %#x, expected %#x.\n",
+                i, figure->end, expected_figure->end);
+        match = compare_point(&figure->start_point,
+                expected_figure->start_point.x, expected_figure->start_point.y, ulps);
+        ok_(__FILE__, line)(match, "Got unexpected figure %u start point {%.8e, %.8e}, expected {%.8e, %.8e}.\n",
+                i, figure->start_point.x, figure->start_point.y,
+                expected_figure->start_point.x, expected_figure->start_point.y);
+        ok_(__FILE__, line)(figure->segment_count == expected_figure->segment_count,
+                "Got unexpected figure %u segment count %u, expected %u.\n",
+                i, figure->segment_count, expected_figure->segment_count);
+
+        for (j = 0; j < figure->segment_count; ++j)
+        {
+            expected_segment = &expected_figure->segments[j];
+            segment = &figure->segments[j];
+            ok_(__FILE__, line)(segment->type == expected_segment->type,
+                    "Got unexpected figure %u, segment %u type %#x, expected %#x.\n",
+                    i, j, segment->type, expected_segment->type);
+            ok_(__FILE__, line)(segment->flags == expected_segment->flags,
+                    "Got unexpected figure %u, segment %u flags %#x, expected %#x.\n",
+                    i, j, segment->flags, expected_segment->flags);
+            switch (segment->type)
+            {
+                case SEGMENT_LINE:
+                    match = compare_point(&segment->u.line,
+                            expected_segment->u.line.x, expected_segment->u.line.y, ulps);
+                    ok_(__FILE__, line)(match, "Got unexpected figure %u segment %u {%.8e, %.8e}, "
+                            "expected {%.8e, %.8e}.\n",
+                            i, j, segment->u.line.x, segment->u.line.y,
+                            expected_segment->u.line.x, expected_segment->u.line.y);
+                    break;
+
+                case SEGMENT_BEZIER:
+                    match = compare_bezier_segment(&segment->u.bezier,
+                            expected_segment->u.bezier.point1.x, expected_segment->u.bezier.point1.y,
+                            expected_segment->u.bezier.point2.x, expected_segment->u.bezier.point2.y,
+                            expected_segment->u.bezier.point3.x, expected_segment->u.bezier.point3.y,
+                            ulps);
+                    ok_(__FILE__, line)(match, "Got unexpected figure %u segment %u "
+                            "{%.8e, %.8e, %.8e, %.8e, %.8e, %.8e}, "
+                            "expected {%.8e, %.8e, %.8e, %.8e, %.8e, %.8e}.\n",
+                            i, j, segment->u.bezier.point1.x, segment->u.bezier.point1.y,
+                            segment->u.bezier.point2.x, segment->u.bezier.point2.y,
+                            segment->u.bezier.point3.x, segment->u.bezier.point3.y,
+                            expected_segment->u.bezier.point1.x, expected_segment->u.bezier.point1.y,
+                            expected_segment->u.bezier.point2.x, expected_segment->u.bezier.point2.y,
+                            expected_segment->u.bezier.point3.x, expected_segment->u.bezier.point3.y);
+                    break;
+            }
+        }
+    }
 }
 
 static void test_clip(void)
@@ -1350,6 +1655,7 @@ static void test_path_geometry(void)
     ID2D1TransformedGeometry *transformed_geometry;
     D2D1_MATRIX_3X2_F matrix, tmp_matrix;
     ID2D1GeometrySink *sink, *tmp_sink;
+    struct geometry_sink simplify_sink;
     D2D1_POINT_2F point = {0.0f, 0.0f};
     ID2D1SolidColorBrush *brush;
     ID2D1PathGeometry *geometry;
@@ -1365,6 +1671,320 @@ static void test_path_geometry(void)
     UINT32 count;
     HWND window;
     HRESULT hr;
+
+    static const struct geometry_segment expected_segments[] =
+    {
+        /* Figure 0. */
+        {SEGMENT_LINE,   {{{ 55.0f,  20.0f}}}},
+        {SEGMENT_LINE,   {{{ 55.0f, 220.0f}}}},
+        {SEGMENT_LINE,   {{{ 25.0f, 220.0f}}}},
+        {SEGMENT_LINE,   {{{ 25.0f, 100.0f}}}},
+        {SEGMENT_LINE,   {{{ 75.0f, 100.0f}}}},
+        {SEGMENT_LINE,   {{{ 75.0f, 300.0f}}}},
+        {SEGMENT_LINE,   {{{  5.0f, 300.0f}}}},
+        {SEGMENT_LINE,   {{{  5.0f,  60.0f}}}},
+        {SEGMENT_LINE,   {{{ 45.0f,  60.0f}}}},
+        {SEGMENT_LINE,   {{{ 45.0f, 180.0f}}}},
+        {SEGMENT_LINE,   {{{ 35.0f, 180.0f}}}},
+        {SEGMENT_LINE,   {{{ 35.0f, 140.0f}}}},
+        {SEGMENT_LINE,   {{{ 65.0f, 140.0f}}}},
+        {SEGMENT_LINE,   {{{ 65.0f, 260.0f}}}},
+        {SEGMENT_LINE,   {{{ 15.0f, 260.0f}}}},
+        /* Figure 1. */
+        {SEGMENT_LINE,   {{{155.0f, 160.0f}}}},
+        {SEGMENT_LINE,   {{{ 85.0f, 160.0f}}}},
+        {SEGMENT_LINE,   {{{ 85.0f, 300.0f}}}},
+        {SEGMENT_LINE,   {{{120.0f, 300.0f}}}},
+        {SEGMENT_LINE,   {{{120.0f,  20.0f}}}},
+        {SEGMENT_LINE,   {{{155.0f,  20.0f}}}},
+        {SEGMENT_LINE,   {{{155.0f, 160.0f}}}},
+        {SEGMENT_LINE,   {{{ 85.0f, 160.0f}}}},
+        {SEGMENT_LINE,   {{{ 85.0f,  20.0f}}}},
+        {SEGMENT_LINE,   {{{120.0f,  20.0f}}}},
+        {SEGMENT_LINE,   {{{120.0f, 300.0f}}}},
+        /* Figure 2. */
+        {SEGMENT_LINE,   {{{165.0f, 300.0f}}}},
+        {SEGMENT_LINE,   {{{235.0f, 300.0f}}}},
+        {SEGMENT_LINE,   {{{235.0f,  20.0f}}}},
+        /* Figure 3. */
+        {SEGMENT_LINE,   {{{225.0f, 260.0f}}}},
+        {SEGMENT_LINE,   {{{175.0f, 260.0f}}}},
+        {SEGMENT_LINE,   {{{175.0f,  60.0f}}}},
+        /* Figure 4. */
+        {SEGMENT_LINE,   {{{185.0f, 220.0f}}}},
+        {SEGMENT_LINE,   {{{185.0f, 100.0f}}}},
+        {SEGMENT_LINE,   {{{215.0f, 100.0f}}}},
+        /* Figure 5. */
+        {SEGMENT_LINE,   {{{205.0f, 180.0f}}}},
+        {SEGMENT_LINE,   {{{205.0f, 140.0f}}}},
+        {SEGMENT_LINE,   {{{195.0f, 140.0f}}}},
+        /* Figure 6. */
+        {SEGMENT_LINE,   {{{135.0f, 620.0f}}}},
+        {SEGMENT_LINE,   {{{135.0f, 420.0f}}}},
+        {SEGMENT_LINE,   {{{105.0f, 420.0f}}}},
+        {SEGMENT_LINE,   {{{105.0f, 540.0f}}}},
+        {SEGMENT_LINE,   {{{155.0f, 540.0f}}}},
+        {SEGMENT_LINE,   {{{155.0f, 340.0f}}}},
+        {SEGMENT_LINE,   {{{ 85.0f, 340.0f}}}},
+        {SEGMENT_LINE,   {{{ 85.0f, 580.0f}}}},
+        {SEGMENT_LINE,   {{{125.0f, 580.0f}}}},
+        {SEGMENT_LINE,   {{{125.0f, 460.0f}}}},
+        {SEGMENT_LINE,   {{{115.0f, 460.0f}}}},
+        {SEGMENT_LINE,   {{{115.0f, 500.0f}}}},
+        {SEGMENT_LINE,   {{{145.0f, 500.0f}}}},
+        {SEGMENT_LINE,   {{{145.0f, 380.0f}}}},
+        {SEGMENT_LINE,   {{{ 95.0f, 380.0f}}}},
+        /* Figure 7. */
+        {SEGMENT_LINE,   {{{235.0f, 480.0f}}}},
+        {SEGMENT_LINE,   {{{165.0f, 480.0f}}}},
+        {SEGMENT_LINE,   {{{165.0f, 340.0f}}}},
+        {SEGMENT_LINE,   {{{200.0f, 340.0f}}}},
+        {SEGMENT_LINE,   {{{200.0f, 620.0f}}}},
+        {SEGMENT_LINE,   {{{235.0f, 620.0f}}}},
+        {SEGMENT_LINE,   {{{235.0f, 480.0f}}}},
+        {SEGMENT_LINE,   {{{165.0f, 480.0f}}}},
+        {SEGMENT_LINE,   {{{165.0f, 620.0f}}}},
+        {SEGMENT_LINE,   {{{200.0f, 620.0f}}}},
+        {SEGMENT_LINE,   {{{200.0f, 340.0f}}}},
+        /* Figure 8. */
+        {SEGMENT_LINE,   {{{245.0f, 340.0f}}}},
+        {SEGMENT_LINE,   {{{315.0f, 340.0f}}}},
+        {SEGMENT_LINE,   {{{315.0f, 620.0f}}}},
+        /* Figure 9. */
+        {SEGMENT_LINE,   {{{305.0f, 380.0f}}}},
+        {SEGMENT_LINE,   {{{255.0f, 380.0f}}}},
+        {SEGMENT_LINE,   {{{255.0f, 580.0f}}}},
+        /* Figure 10. */
+        {SEGMENT_LINE,   {{{265.0f, 420.0f}}}},
+        {SEGMENT_LINE,   {{{265.0f, 540.0f}}}},
+        {SEGMENT_LINE,   {{{295.0f, 540.0f}}}},
+        /* Figure 11. */
+        {SEGMENT_LINE,   {{{285.0f, 460.0f}}}},
+        {SEGMENT_LINE,   {{{285.0f, 500.0f}}}},
+        {SEGMENT_LINE,   {{{275.0f, 500.0f}}}},
+        /* Figure 12. */
+        {SEGMENT_BEZIER, {{{2.83333340e+01f, 1.60000000e+02f},
+                           {4.00000000e+01f, 1.13333336e+02f},
+                           {4.00000000e+01f, 2.00000000e+01f}}}},
+        {SEGMENT_BEZIER, {{{4.00000000e+01f, 1.13333336e+02f},
+                           {5.16666641e+01f, 1.60000000e+02f},
+                           {7.50000000e+01f, 1.60000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{5.16666641e+01f, 1.60000000e+02f},
+                           {4.00000000e+01f, 2.06666656e+02f},
+                           {4.00000000e+01f, 3.00000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{4.00000000e+01f, 2.06666656e+02f},
+                           {2.83333340e+01f, 1.60000000e+02f},
+                           {5.00000000e+00f, 1.60000000e+02f}}}},
+        /* Figure 13. */
+        {SEGMENT_BEZIER, {{{2.00000000e+01f, 1.06666664e+02f},
+                           {2.66666660e+01f, 8.00000000e+01f},
+                           {4.00000000e+01f, 8.00000000e+01f}}}},
+        {SEGMENT_BEZIER, {{{5.33333321e+01f, 8.00000000e+01f},
+                           {6.00000000e+01f, 1.06666664e+02f},
+                           {6.00000000e+01f, 1.60000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{6.00000000e+01f, 2.13333328e+02f},
+                           {5.33333321e+01f, 2.40000000e+02f},
+                           {4.00000000e+01f, 2.40000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{2.66666660e+01f, 2.40000000e+02f},
+                           {2.00000000e+01f, 2.13333328e+02f},
+                           {2.00000000e+01f, 1.60000000e+02f}}}},
+        /* Figure 14. */
+        {SEGMENT_BEZIER, {{{2.83333340e+01f, 6.12000000e+02f},
+                           {4.00000000e+01f, 6.58666687e+02f},
+                           {4.00000000e+01f, 7.52000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{4.00000000e+01f, 6.58666687e+02f},
+                           {5.16666641e+01f, 6.12000000e+02f},
+                           {7.50000000e+01f, 6.12000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{5.16666641e+01f, 6.12000000e+02f},
+                           {4.00000000e+01f, 5.65333313e+02f},
+                           {4.00000000e+01f, 4.72000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{4.00000000e+01f, 5.65333313e+02f},
+                           {2.83333340e+01f, 6.12000000e+02f},
+                           {5.00000000e+00f, 6.12000000e+02f}}}},
+        /* Figure 15. */
+        {SEGMENT_BEZIER, {{{2.00000000e+01f, 6.65333313e+02f},
+                           {2.66666660e+01f, 6.92000000e+02f},
+                           {4.00000000e+01f, 6.92000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{5.33333321e+01f, 6.92000000e+02f},
+                           {6.00000000e+01f, 6.65333313e+02f},
+                           {6.00000000e+01f, 6.12000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{6.00000000e+01f, 5.58666687e+02f},
+                           {5.33333321e+01f, 5.32000000e+02f},
+                           {4.00000000e+01f, 5.32000000e+02f}}}},
+        {SEGMENT_BEZIER, {{{2.66666660e+01f, 5.32000000e+02f},
+                           {2.00000000e+01f, 5.58666687e+02f},
+                           {2.00000000e+01f, 6.12000000e+02f}}}},
+        /* Figure 16. */
+        {SEGMENT_BEZIER, {{{1.91750427e+02f, 1.27275856e+02f},
+                           {2.08249573e+02f, 1.27275856e+02f},
+                           {2.24748734e+02f, 6.12792168e+01f}}}},
+        {SEGMENT_BEZIER, {{{2.08249573e+02f, 1.27275856e+02f},
+                           {2.08249573e+02f, 1.93272476e+02f},
+                           {2.24748734e+02f, 2.59269104e+02f}}}},
+        {SEGMENT_BEZIER, {{{2.08249573e+02f, 1.93272476e+02f},
+                           {1.91750427e+02f, 1.93272476e+02f},
+                           {1.75251266e+02f, 2.59269104e+02f}}}},
+        {SEGMENT_BEZIER, {{{1.91750427e+02f, 1.93272476e+02f},
+                           {1.91750427e+02f, 1.27275856e+02f},
+                           {1.75251266e+02f, 6.12792168e+01f}}}},
+        /* Figure 17. */
+        {SEGMENT_BEZIER, {{{1.95285950e+02f, 6.59932632e+01f},
+                           {2.04714050e+02f, 6.59932632e+01f},
+                           {2.14142136e+02f, 1.03705627e+02f}}}},
+        {SEGMENT_BEZIER, {{{2.23570221e+02f, 1.41417984e+02f},
+                           {2.23570221e+02f, 1.79130356e+02f},
+                           {2.14142136e+02f, 2.16842712e+02f}}}},
+        {SEGMENT_BEZIER, {{{2.04714050e+02f, 2.54555069e+02f},
+                           {1.95285950e+02f, 2.54555069e+02f},
+                           {1.85857864e+02f, 2.16842712e+02f}}}},
+        {SEGMENT_BEZIER, {{{1.76429779e+02f, 1.79130356e+02f},
+                           {1.76429779e+02f, 1.41417984e+02f},
+                           {1.85857864e+02f, 1.03705627e+02f}}}},
+        /* Figure 18. */
+        {SEGMENT_BEZIER, {{{1.11847351e+02f, 4.46888092e+02f},
+                           {1.11847351e+02f, 5.12884705e+02f},
+                           {9.53481979e+01f, 5.78881348e+02f}}}},
+        {SEGMENT_BEZIER, {{{1.11847351e+02f, 5.12884705e+02f},
+                           {1.28346512e+02f, 5.12884705e+02f},
+                           {1.44845673e+02f, 5.78881348e+02f}}}},
+        {SEGMENT_BEZIER, {{{1.28346512e+02f, 5.12884705e+02f},
+                           {1.28346512e+02f, 4.46888092e+02f},
+                           {1.44845673e+02f, 3.80891479e+02f}}}},
+        {SEGMENT_BEZIER, {{{1.28346512e+02f, 4.46888092e+02f},
+                           {1.11847351e+02f, 4.46888092e+02f},
+                           {9.53481979e+01f, 3.80891479e+02f}}}},
+        /* Figure 19. */
+        {SEGMENT_BEZIER, {{{9.65267105e+01f, 4.61030243e+02f},
+                           {9.65267105e+01f, 4.98742584e+02f},
+                           {1.05954803e+02f, 5.36454956e+02f}}}},
+        {SEGMENT_BEZIER, {{{1.15382889e+02f, 5.74167297e+02f},
+                           {1.24810982e+02f, 5.74167297e+02f},
+                           {1.34239075e+02f, 5.36454956e+02f}}}},
+        {SEGMENT_BEZIER, {{{1.43667160e+02f, 4.98742584e+02f},
+                           {1.43667160e+02f, 4.61030243e+02f},
+                           {1.34239075e+02f, 4.23317871e+02f}}}},
+        {SEGMENT_BEZIER, {{{1.24810982e+02f, 3.85605499e+02f},
+                           {1.15382889e+02f, 3.85605499e+02f},
+                           {1.05954803e+02f, 4.23317871e+02f}}}},
+        /* Figure 20. */
+        {SEGMENT_LINE,   {{{ 40.0f,  20.0f}}}},
+        {SEGMENT_LINE,   {{{ 75.0f, 160.0f}}}},
+        {SEGMENT_LINE,   {{{ 40.0f, 300.0f}}}},
+        {SEGMENT_LINE,   {{{  5.0f, 160.0f}}}},
+        /* Figure 21. */
+        {SEGMENT_LINE,   {{{ 40.0f,  80.0f}}}},
+        {SEGMENT_LINE,   {{{ 60.0f, 160.0f}}}},
+        {SEGMENT_LINE,   {{{ 40.0f, 240.0f}}}},
+        {SEGMENT_LINE,   {{{ 20.0f, 160.0f}}}},
+        /* Figure 22. */
+        {SEGMENT_LINE,   {{{ 40.0f, 752.0f}}}},
+        {SEGMENT_LINE,   {{{ 75.0f, 612.0f}}}},
+        {SEGMENT_LINE,   {{{ 40.0f, 472.0f}}}},
+        {SEGMENT_LINE,   {{{  5.0f, 612.0f}}}},
+        /* Figure 23. */
+        {SEGMENT_LINE,   {{{ 40.0f, 692.0f}}}},
+        {SEGMENT_LINE,   {{{ 60.0f, 612.0f}}}},
+        {SEGMENT_LINE,   {{{ 40.0f, 532.0f}}}},
+        {SEGMENT_LINE,   {{{ 20.0f, 612.0f}}}},
+        /* Figure 24. */
+        {SEGMENT_LINE,   {{{2.03125019e+01f, 1.51250000e+02f}}}},
+        {SEGMENT_LINE,   {{{3.12500019e+01f, 1.25000008e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{3.78125000e+01f, 8.12500076e+01f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{4.00000000e+01f, 2.00000000e+01f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{4.21875000e+01f, 8.12500076e+01f}}}},
+        {SEGMENT_LINE,   {{{4.87500000e+01f, 1.25000008e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.96875000e+01f, 1.51250000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{7.50000000e+01f, 1.60000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.96875000e+01f, 1.68750000e+02f}}}},
+        {SEGMENT_LINE,   {{{4.87500000e+01f, 1.95000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{4.21875000e+01f, 2.38750000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{4.00000000e+01f, 3.00000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{3.78125000e+01f, 2.38750000e+02f}}}},
+        {SEGMENT_LINE,   {{{3.12500019e+01f, 1.95000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{2.03125019e+01f, 1.68750000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.00000000e+00f, 1.60000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        /* Figure 25. */
+        {SEGMENT_LINE,   {{{2.50000000e+01f, 1.00000000e+02f}}}},
+        {SEGMENT_LINE,   {{{4.00000000e+01f, 8.00000000e+01f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.50000000e+01f, 1.00000000e+02f}}}},
+        {SEGMENT_LINE,   {{{6.00000000e+01f, 1.60000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.50000000e+01f, 2.20000000e+02f}}}},
+        {SEGMENT_LINE,   {{{4.00000000e+01f, 2.40000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{2.50000000e+01f, 2.20000000e+02f}}}},
+        {SEGMENT_LINE,   {{{2.00000000e+01f, 1.60000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        /* Figure 26. */
+        {SEGMENT_LINE,   {{{2.03125019e+01f, 6.20750000e+02f}}}},
+        {SEGMENT_LINE,   {{{3.12500019e+01f, 6.47000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{3.78125000e+01f, 6.90750000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{4.00000000e+01f, 7.52000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{4.21875000e+01f, 6.90750000e+02f}}}},
+        {SEGMENT_LINE,   {{{4.87500000e+01f, 6.47000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.96875000e+01f, 6.20750000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{7.50000000e+01f, 6.12000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.96875000e+01f, 6.03250000e+02f}}}},
+        {SEGMENT_LINE,   {{{4.87500000e+01f, 5.77000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{4.21875000e+01f, 5.33250000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{4.00000000e+01f, 4.72000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{3.78125000e+01f, 5.33250000e+02f}}}},
+        {SEGMENT_LINE,   {{{3.12500019e+01f, 5.77000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{2.03125019e+01f, 6.03250000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.00000000e+00f, 6.12000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        /* Figure 27. */
+        {SEGMENT_LINE,   {{{2.50000000e+01f, 6.72000000e+02f}}}},
+        {SEGMENT_LINE,   {{{4.00000000e+01f, 6.92000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.50000000e+01f, 6.72000000e+02f}}}},
+        {SEGMENT_LINE,   {{{6.00000000e+01f, 6.12000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{5.50000000e+01f, 5.52000000e+02f}}}},
+        {SEGMENT_LINE,   {{{4.00000000e+01f, 5.32000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        {SEGMENT_LINE,   {{{2.50000000e+01f, 5.52000000e+02f}}}},
+        {SEGMENT_LINE,   {{{2.00000000e+01f, 6.12000000e+02f}}}, D2D1_PATH_SEGMENT_FORCE_ROUND_LINE_JOIN},
+        /* Figure 28. */
+        {SEGMENT_LINE,   {{{ 75.0f, 300.0f}}}},
+        {SEGMENT_LINE,   {{{  5.0f, 300.0f}}}},
+    };
+    static const struct expected_geometry_figure expected_figures[] =
+    {
+        /* 0 */
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, { 15.0f,  20.0f}, 15, &expected_segments[0]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {155.0f, 300.0f}, 11, &expected_segments[15]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {165.0f,  20.0f},  3, &expected_segments[26]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {225.0f,  60.0f},  3, &expected_segments[29]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {215.0f, 220.0f},  3, &expected_segments[32]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {195.0f, 180.0f},  3, &expected_segments[35]},
+        /* 6 */
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, { 95.0f, 620.0f}, 15, &expected_segments[38]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {235.0f, 340.0f}, 11, &expected_segments[53]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {245.0f, 620.0f},  3, &expected_segments[64]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {305.0f, 580.0f},  3, &expected_segments[67]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {295.0f, 420.0f},  3, &expected_segments[70]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {275.0f, 460.0f},  3, &expected_segments[73]},
+        /* 12 */
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {  5.0f, 160.0f},  4, &expected_segments[76]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, { 20.0f, 160.0f},  4, &expected_segments[80]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {  5.0f, 612.0f},  4, &expected_segments[84]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, { 20.0f, 612.0f},  4, &expected_segments[88]},
+        /* 16 */
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED,
+                {1.75251266e+02f, 6.12792168e+01f}, 4, &expected_segments[92]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED,
+                {1.85857864e+02f, 1.03705627e+02f}, 4, &expected_segments[96]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED,
+                {9.53481979e+01f, 3.80891479e+02f}, 4, &expected_segments[100]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED,
+                {1.05954803e+02f, 4.23317871e+02f}, 4, &expected_segments[104]},
+        /* 20 */
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {  5.0f, 160.0f},  4, &expected_segments[108]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, { 20.0f, 160.0f},  4, &expected_segments[112]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {  5.0f, 612.0f},  4, &expected_segments[116]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, { 20.0f, 612.0f},  4, &expected_segments[120]},
+        /* 24 */
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {  5.0f, 160.0f}, 16, &expected_segments[124]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, { 20.0f, 160.0f},  8, &expected_segments[140]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {  5.0f, 612.0f}, 16, &expected_segments[148]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, { 20.0f, 612.0f},  8, &expected_segments[164]},
+        /* 28 */
+        {D2D1_FIGURE_BEGIN_HOLLOW, D2D1_FIGURE_END_OPEN,   { 40.0f,  20.0f},  2, &expected_segments[172]},
+    };
 
     if (!(device = create_device()))
     {
@@ -1557,21 +2177,47 @@ static void test_path_geometry(void)
     ID2D1GeometrySink_SetFillMode(sink, D2D1_FILL_MODE_WINDING);
     ID2D1GeometrySink_Release(sink);
 
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 0.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_ALTERNATE, 6, &expected_figures[0], 0);
+    geometry_sink_cleanup(&simplify_sink);
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES,
+            NULL, 0.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_ALTERNATE, 6, &expected_figures[0], 0);
+    geometry_sink_cleanup(&simplify_sink);
+
     set_matrix_identity(&matrix);
     translate_matrix(&matrix, 80.0f, 640.0f);
     scale_matrix(&matrix, 1.0f, -1.0f);
     hr = ID2D1Factory_CreateTransformedGeometry(factory, (ID2D1Geometry *)geometry, &matrix, &transformed_geometry);
     ok(SUCCEEDED(hr), "Failed to create transformed geometry, hr %#x.\n", hr);
 
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1TransformedGeometry_Simplify(transformed_geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 0.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_ALTERNATE, 6, &expected_figures[6], 0);
+    geometry_sink_cleanup(&simplify_sink);
+
     ID2D1TransformedGeometry_GetSourceGeometry(transformed_geometry, &tmp_geometry);
     ok(tmp_geometry == (ID2D1Geometry *)geometry,
             "Got unexpected source geometry %p, expected %p.\n", tmp_geometry, geometry);
-    ID2D1Geometry_Release(tmp_geometry);
     ID2D1TransformedGeometry_GetTransform(transformed_geometry, &tmp_matrix);
     ok(!memcmp(&tmp_matrix, &matrix, sizeof(matrix)),
             "Got unexpected matrix {%.8e, %.8e, %.8e, %.8e, %.8e, %.8e}.\n",
             tmp_matrix._11, tmp_matrix._12, tmp_matrix._21,
             tmp_matrix._22, tmp_matrix._31, tmp_matrix._32);
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1Geometry_Simplify(tmp_geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            &tmp_matrix, 0.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_ALTERNATE, 6, &expected_figures[6], 0);
+    geometry_sink_cleanup(&simplify_sink);
+    ID2D1Geometry_Release(tmp_geometry);
 
     ID2D1RenderTarget_BeginDraw(rt);
     set_color(&color, 0.396f, 0.180f, 0.537f, 1.0f);
@@ -1624,6 +2270,13 @@ static void test_path_geometry(void)
     ok(count == 44, "Got unexpected segment count %u.\n", count);
     ID2D1GeometrySink_Release(sink);
 
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 0.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_WINDING, 6, &expected_figures[0], 0);
+    geometry_sink_cleanup(&simplify_sink);
+
     set_matrix_identity(&matrix);
     translate_matrix(&matrix, 320.0f, 320.0f);
     scale_matrix(&matrix, -1.0f, 1.0f);
@@ -1656,6 +2309,25 @@ static void test_path_geometry(void)
     ok(count == 20, "Got unexpected segment count %u.\n", count);
     ID2D1GeometrySink_Release(sink);
 
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES,
+            NULL, 0.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_ALTERNATE, 4, &expected_figures[12], 1);
+    geometry_sink_cleanup(&simplify_sink);
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 100.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_ALTERNATE, 4, &expected_figures[20], 1);
+    geometry_sink_cleanup(&simplify_sink);
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 10.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_ALTERNATE, 4, &expected_figures[24], 1);
+    geometry_sink_cleanup(&simplify_sink);
+
     set_matrix_identity(&matrix);
     scale_matrix(&matrix, 0.5f, 2.0f);
     translate_matrix(&matrix, 400.0f, -33.0f);
@@ -1663,6 +2335,13 @@ static void test_path_geometry(void)
     scale_matrix(&matrix, 2.0f, 0.5f);
     hr = ID2D1Factory_CreateTransformedGeometry(factory, (ID2D1Geometry *)geometry, &matrix, &transformed_geometry);
     ok(SUCCEEDED(hr), "Failed to create transformed geometry, hr %#x.\n", hr);
+
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1TransformedGeometry_Simplify(transformed_geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES,
+            NULL, 0.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_ALTERNATE, 4, &expected_figures[16], 4);
+    geometry_sink_cleanup(&simplify_sink);
 
     ID2D1RenderTarget_BeginDraw(rt);
     ID2D1RenderTarget_Clear(rt, &color);
@@ -1732,6 +2411,25 @@ static void test_path_geometry(void)
     ok(SUCCEEDED(hr), "Failed to get segment count, hr %#x.\n", hr);
     ok(count == 20, "Got unexpected segment count %u.\n", count);
     ID2D1GeometrySink_Release(sink);
+
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES,
+            NULL, 0.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_WINDING, 4, &expected_figures[12], 1);
+    geometry_sink_cleanup(&simplify_sink);
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 100.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_WINDING, 4, &expected_figures[20], 1);
+    geometry_sink_cleanup(&simplify_sink);
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 10.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_WINDING, 4, &expected_figures[24], 1);
+    geometry_sink_cleanup(&simplify_sink);
 
     set_matrix_identity(&matrix);
     scale_matrix(&matrix, 0.5f, 2.0f);
@@ -1818,6 +2516,31 @@ static void test_path_geometry(void)
     ok(match, "Surface does not match.\n");
     ID2D1PathGeometry_Release(geometry);
 
+    hr = ID2D1Factory_CreatePathGeometry(factory, &geometry);
+    ok(SUCCEEDED(hr), "Failed to create path geometry, hr %#x.\n", hr);
+    hr = ID2D1PathGeometry_Open(geometry, &sink);
+    ok(SUCCEEDED(hr), "Failed to open geometry sink, hr %#x.\n", hr);
+    set_point(&point, 40.0f,   20.0f);
+    ID2D1GeometrySink_BeginFigure(sink, point, D2D1_FIGURE_BEGIN_HOLLOW);
+    line_to(sink, 75.0f,  300.0f);
+    line_to(sink,  5.0f,  300.0f);
+    ID2D1GeometrySink_EndFigure(sink, D2D1_FIGURE_END_OPEN);
+    hr = ID2D1GeometrySink_Close(sink);
+    ok(SUCCEEDED(hr), "Failed to close geometry sink, hr %#x.\n", hr);
+    ID2D1GeometrySink_Release(sink);
+    hr = ID2D1PathGeometry_GetSegmentCount(geometry, &count);
+    ok(SUCCEEDED(hr), "Failed to get segment count, hr %#x.\n", hr);
+    ok(count == 2, "Got unexpected segment count %u.\n", count);
+
+    geometry_sink_init(&simplify_sink);
+    hr = ID2D1PathGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 0.0f, &simplify_sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&simplify_sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[28], 1);
+    geometry_sink_cleanup(&simplify_sink);
+
+    ID2D1PathGeometry_Release(geometry);
+
     ID2D1SolidColorBrush_Release(brush);
     ID2D1RenderTarget_Release(rt);
     refcount = ID2D1Factory_Release(factory);
@@ -1830,12 +2553,64 @@ static void test_path_geometry(void)
 
 static void test_rectangle_geometry(void)
 {
+    ID2D1TransformedGeometry *transformed_geometry;
     ID2D1RectangleGeometry *geometry;
+    struct geometry_sink sink;
+    D2D1_MATRIX_3X2_F matrix;
     D2D1_RECT_F rect, rect2;
     ID2D1Factory *factory;
     D2D1_POINT_2F point;
     BOOL contains;
     HRESULT hr;
+    BOOL match;
+
+    static const struct geometry_segment expected_segments[] =
+    {
+        /* Figure 0. */
+        {SEGMENT_LINE, {{{10.0f,  0.0f}}}},
+        {SEGMENT_LINE, {{{10.0f, 20.0f}}}},
+        {SEGMENT_LINE, {{{ 0.0f, 20.0f}}}},
+        /* Figure 1. */
+        {SEGMENT_LINE, {{{4.42705116e+01f, 1.82442951e+01f}}}},
+        {SEGMENT_LINE, {{{7.95376282e+01f, 5.06049728e+01f}}}},
+        {SEGMENT_LINE, {{{5.52671127e+01f, 6.23606796e+01f}}}},
+        /* Figure 2. */
+        {SEGMENT_LINE, {{{25.0f, 15.0f}}}},
+        {SEGMENT_LINE, {{{25.0f, 55.0f}}}},
+        {SEGMENT_LINE, {{{25.0f, 55.0f}}}},
+        /* Figure 3. */
+        {SEGMENT_LINE, {{{35.0f, 45.0f}}}},
+        {SEGMENT_LINE, {{{35.0f, 45.0f}}}},
+        {SEGMENT_LINE, {{{30.0f, 45.0f}}}},
+        /* Figure 4. */
+        {SEGMENT_LINE, {{{ 1.07179585e+01f, 2.23205078e+02f}}}},
+        {SEGMENT_LINE, {{{-5.85640755e+01f, 2.73205078e+02f}}}},
+        {SEGMENT_LINE, {{{-7.85640717e+01f, 2.29903809e+02f}}}},
+        /* Figure 5. */
+        {SEGMENT_LINE, {{{40.0f, 20.0f}}}},
+        {SEGMENT_LINE, {{{40.0f, 40.0f}}}},
+        {SEGMENT_LINE, {{{30.0f, 40.0f}}}},
+        /* Figure 6. */
+        {SEGMENT_LINE, {{{ 2.14359169e+01f, 0.0f}}}},
+        {SEGMENT_LINE, {{{-1.17128151e+02f, 0.0f}}}},
+        {SEGMENT_LINE, {{{-1.57128143e+02f, 0.0f}}}},
+        /* Figure 7. */
+        {SEGMENT_LINE, {{{0.0f, 1.11602539e+02f}}}},
+        {SEGMENT_LINE, {{{0.0f, 1.36602539e+02f}}}},
+        {SEGMENT_LINE, {{{0.0f, 1.14951904e+02f}}}},
+    };
+    static const struct expected_geometry_figure expected_figures[] =
+    {
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, { 0.0f,  0.0f}, 3, &expected_segments[0]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {20.0f, 30.0f}, 3, &expected_segments[3]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {25.0f, 15.0f}, 3, &expected_segments[6]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {30.0f, 45.0f}, 3, &expected_segments[9]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {-9.28203964e+00f, 1.79903809e+02f},
+                3, &expected_segments[12]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {30.0f, 20.0f}, 3, &expected_segments[15]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {-1.85640793e+01f, 0.0f}, 3, &expected_segments[18]},
+        {D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, {0.0f, 8.99519043e+01f}, 3, &expected_segments[21]},
+    };
 
     hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &IID_ID2D1Factory, NULL, (void **)&factory);
     ok(SUCCEEDED(hr), "Failed to create factory, hr %#x.\n", hr);
@@ -1844,7 +2619,8 @@ static void test_rectangle_geometry(void)
     hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
     ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
     ID2D1RectangleGeometry_GetRect(geometry, &rect2);
-    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
+    match = compare_rect(&rect2, 0.0f, 0.0f, 0.0f, 0.0f, 0);
+    ok(match, "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
             rect2.left, rect2.top, rect2.right, rect2.bottom);
     ID2D1RectangleGeometry_Release(geometry);
 
@@ -1852,7 +2628,8 @@ static void test_rectangle_geometry(void)
     hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
     ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
     ID2D1RectangleGeometry_GetRect(geometry, &rect2);
-    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
+    match = compare_rect(&rect2, 50.0f, 0.0f, 40.0f, 100.0f, 0);
+    ok(match, "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
             rect2.left, rect2.top, rect2.right, rect2.bottom);
     ID2D1RectangleGeometry_Release(geometry);
 
@@ -1860,7 +2637,8 @@ static void test_rectangle_geometry(void)
     hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
     ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
     ID2D1RectangleGeometry_GetRect(geometry, &rect2);
-    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
+    match = compare_rect(&rect2, 0.0f, 100.0f, 40.0f, 50.0f, 0);
+    ok(match, "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
             rect2.left, rect2.top, rect2.right, rect2.bottom);
     ID2D1RectangleGeometry_Release(geometry);
 
@@ -1868,7 +2646,8 @@ static void test_rectangle_geometry(void)
     hr = ID2D1Factory_CreateRectangleGeometry(factory, &rect, &geometry);
     ok(SUCCEEDED(hr), "Failed to create geometry, hr %#x.\n", hr);
     ID2D1RectangleGeometry_GetRect(geometry, &rect2);
-    ok(!memcmp(&rect, &rect2, sizeof(rect)), "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
+    match = compare_rect(&rect2, 50.0f, 100.0f, 40.0f, 50.0f, 0);
+    ok(match, "Got unexpected rectangle {%.8e, %.8e, %.8e, %.8e}.\n",
             rect2.left, rect2.top, rect2.right, rect2.bottom);
     ID2D1RectangleGeometry_Release(geometry);
 
@@ -1915,8 +2694,141 @@ static void test_rectangle_geometry(void)
     ok(SUCCEEDED(hr), "FillContainsPoint() failed, hr %#x.\n", hr);
     ok(!!contains, "Got wrong hit test result %d.\n", contains);
 
-    ID2D1RectangleGeometry_Release(geometry);
+    /* Test GetBounds() and Simplify(). */
+    hr = ID2D1RectangleGeometry_GetBounds(geometry, NULL, &rect);
+    ok(SUCCEEDED(hr), "Failed to get bounds.\n");
+    match = compare_rect(&rect, 0.0f, 0.0f, 10.0f, 20.0f, 0);
+    ok(match, "Got unexpected bounds {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect.left, rect.top, rect.right, rect.bottom);
+    geometry_sink_init(&sink);
+    hr = ID2D1RectangleGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES,
+            NULL, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[0], 0);
+    geometry_sink_cleanup(&sink);
+    geometry_sink_init(&sink);
+    hr = ID2D1RectangleGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[0], 0);
+    geometry_sink_cleanup(&sink);
 
+    set_matrix_identity(&matrix);
+    translate_matrix(&matrix, 20.0f, 30.0f);
+    scale_matrix(&matrix, 3.0f, 2.0f);
+    rotate_matrix(&matrix, M_PI / -5.0f);
+    hr = ID2D1RectangleGeometry_GetBounds(geometry, &matrix, &rect);
+    ok(SUCCEEDED(hr), "Failed to get bounds.\n");
+    match = compare_rect(&rect, 2.00000000e+01f, 1.82442951e+01f, 7.95376282e+01f, 6.23606796e+01f, 0);
+    ok(match, "Got unexpected bounds {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect.left, rect.top, rect.right, rect.bottom);
+    geometry_sink_init(&sink);
+    hr = ID2D1RectangleGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES,
+            &matrix, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[1], 1);
+    geometry_sink_cleanup(&sink);
+
+    set_matrix_identity(&matrix);
+    translate_matrix(&matrix, 25.0f, 15.0f);
+    scale_matrix(&matrix, 0.0f, 2.0f);
+    hr = ID2D1RectangleGeometry_GetBounds(geometry, &matrix, &rect);
+    ok(SUCCEEDED(hr), "Failed to get bounds.\n");
+    match = compare_rect(&rect, 25.0f, 15.0f, 25.0f, 55.0f, 0);
+    ok(match, "Got unexpected bounds {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect.left, rect.top, rect.right, rect.bottom);
+    geometry_sink_init(&sink);
+    hr = ID2D1RectangleGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            &matrix, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[2], 0);
+    geometry_sink_cleanup(&sink);
+
+    set_matrix_identity(&matrix);
+    translate_matrix(&matrix, 30.0f, 45.0f);
+    scale_matrix(&matrix, 0.5f, 0.0f);
+    hr = ID2D1RectangleGeometry_GetBounds(geometry, &matrix, &rect);
+    ok(SUCCEEDED(hr), "Failed to get bounds.\n");
+    match = compare_rect(&rect, 30.0f, 45.0f, 35.0f, 45.0f, 0);
+    ok(match, "Got unexpected bounds {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect.left, rect.top, rect.right, rect.bottom);
+    geometry_sink_init(&sink);
+    hr = ID2D1RectangleGeometry_Simplify(geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            &matrix, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[3], 0);
+    geometry_sink_cleanup(&sink);
+
+    set_matrix_identity(&matrix);
+    scale_matrix(&matrix, 4.0f, 5.0f);
+    rotate_matrix(&matrix, M_PI / 3.0f);
+    translate_matrix(&matrix, 30.0f, 20.0f);
+    hr = ID2D1Factory_CreateTransformedGeometry(factory, (ID2D1Geometry *)geometry, &matrix, &transformed_geometry);
+    ok(SUCCEEDED(hr), "Failed to create transformed geometry, hr %#x.\n", hr);
+
+    ID2D1TransformedGeometry_GetBounds(transformed_geometry, NULL, &rect);
+    ok(SUCCEEDED(hr), "Failed to get bounds.\n");
+    match = compare_rect(&rect, -7.85640717e+01f, 1.79903809e+02f, 1.07179594e+01f, 2.73205078e+02f, 1);
+    ok(match, "Got unexpected bounds {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect.left, rect.top, rect.right, rect.bottom);
+    geometry_sink_init(&sink);
+    hr = ID2D1TransformedGeometry_Simplify(transformed_geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES,
+            NULL, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[4], 1);
+    geometry_sink_cleanup(&sink);
+    geometry_sink_init(&sink);
+    hr = ID2D1TransformedGeometry_Simplify(transformed_geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            NULL, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[4], 1);
+    geometry_sink_cleanup(&sink);
+
+    set_matrix_identity(&matrix);
+    rotate_matrix(&matrix, M_PI / -3.0f);
+    scale_matrix(&matrix, 0.25f, 0.2f);
+    ID2D1TransformedGeometry_GetBounds(transformed_geometry, &matrix, &rect);
+    ok(SUCCEEDED(hr), "Failed to get bounds.\n");
+    match = compare_rect(&rect, 30.0f, 20.0f, 40.0f, 40.0f, 2);
+    ok(match, "Got unexpected bounds {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect.left, rect.top, rect.right, rect.bottom);
+    geometry_sink_init(&sink);
+    hr = ID2D1TransformedGeometry_Simplify(transformed_geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES,
+            &matrix, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[5], 4);
+    geometry_sink_cleanup(&sink);
+
+    set_matrix_identity(&matrix);
+    scale_matrix(&matrix, 2.0f, 0.0f);
+    ID2D1TransformedGeometry_GetBounds(transformed_geometry, &matrix, &rect);
+    ok(SUCCEEDED(hr), "Failed to get bounds.\n");
+    match = compare_rect(&rect, -1.57128143e+02f, 0.00000000e+00f, 2.14359188e+01f, 0.00000000e+00f, 1);
+    ok(match, "Got unexpected bounds {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect.left, rect.top, rect.right, rect.bottom);
+    geometry_sink_init(&sink);
+    hr = ID2D1TransformedGeometry_Simplify(transformed_geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES,
+            &matrix, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[6], 1);
+    geometry_sink_cleanup(&sink);
+
+    set_matrix_identity(&matrix);
+    scale_matrix(&matrix, 0.0f, 0.5f);
+    ID2D1TransformedGeometry_GetBounds(transformed_geometry, &matrix, &rect);
+    ok(SUCCEEDED(hr), "Failed to get bounds.\n");
+    match = compare_rect(&rect, 0.00000000e+00f, 8.99519043e+01f, 0.00000000e+00, 1.36602539e+02f, 1);
+    ok(match, "Got unexpected bounds {%.8e, %.8e, %.8e, %.8e}.\n",
+            rect.left, rect.top, rect.right, rect.bottom);
+    geometry_sink_init(&sink);
+    hr = ID2D1TransformedGeometry_Simplify(transformed_geometry, D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES,
+            &matrix, 0.0f, &sink.ID2D1SimplifiedGeometrySink_iface);
+    ok(SUCCEEDED(hr), "Failed to simplify geometry, hr %#x.\n", hr);
+    geometry_sink_check(&sink, D2D1_FILL_MODE_ALTERNATE, 1, &expected_figures[7], 1);
+    geometry_sink_cleanup(&sink);
+
+    ID2D1TransformedGeometry_Release(transformed_geometry);
+    ID2D1RectangleGeometry_Release(geometry);
     ID2D1Factory_Release(factory);
 }
 
@@ -4528,6 +5440,62 @@ todo_wine
     ID2D1Factory_Release(factory);
 }
 
+static void test_layer(void)
+{
+    ID2D1Factory *factory, *layer_factory;
+    IDXGISwapChain *swapchain;
+    ID2D1RenderTarget *rt;
+    ID3D10Device1 *device;
+    IDXGISurface *surface;
+    ID2D1Layer *layer;
+    D2D1_SIZE_F size;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+
+    if (!(device = create_device()))
+    {
+        skip("Failed to create device, skipping tests.\n");
+        return;
+    }
+    window = create_window();
+    swapchain = create_swapchain(device, window, TRUE);
+    hr = IDXGISwapChain_GetBuffer(swapchain, 0, &IID_IDXGISurface, (void **)&surface);
+    ok(SUCCEEDED(hr), "Failed to get buffer, hr %#x.\n", hr);
+    rt = create_render_target(surface);
+    ok(!!rt, "Failed to create render target.\n");
+    ID2D1RenderTarget_GetFactory(rt, &factory);
+
+    ID2D1RenderTarget_SetDpi(rt, 192.0f, 48.0f);
+    ID2D1RenderTarget_SetAntialiasMode(rt, D2D1_ANTIALIAS_MODE_ALIASED);
+
+    hr = ID2D1RenderTarget_CreateLayer(rt, NULL, &layer);
+    ok(SUCCEEDED(hr), "Failed to create layer, hr %#x.\n", hr);
+    ID2D1Layer_GetFactory(layer, &layer_factory);
+    ok(layer_factory == factory, "Got unexpected layer factory %p, expected %p.\n", layer_factory, factory);
+    ID2D1Factory_Release(layer_factory);
+    size = ID2D1Layer_GetSize(layer);
+    ok(size.width == 0.0f, "Got unexpected width %.8e.\n", size.width);
+    ok(size.height == 0.0f, "Got unexpected height %.8e.\n", size.height);
+    ID2D1Layer_Release(layer);
+
+    set_size_f(&size, 800.0f, 600.0f);
+    hr = ID2D1RenderTarget_CreateLayer(rt, &size, &layer);
+    ok(SUCCEEDED(hr), "Failed to create layer, hr %#x.\n", hr);
+    size = ID2D1Layer_GetSize(layer);
+    ok(size.width == 800.0f, "Got unexpected width %.8e.\n", size.width);
+    ok(size.height == 600.0f, "Got unexpected height %.8e.\n", size.height);
+    ID2D1Layer_Release(layer);
+
+    ID2D1RenderTarget_Release(rt);
+    refcount = ID2D1Factory_Release(factory);
+    ok(!refcount, "Factory has %u references left.\n", refcount);
+    IDXGISurface_Release(surface);
+    IDXGISwapChain_Release(swapchain);
+    ID3D10Device1_Release(device);
+    DestroyWindow(window);
+}
+
 START_TEST(d2d1)
 {
     test_clip();
@@ -4552,4 +5520,5 @@ START_TEST(d2d1)
     test_gradient();
     test_draw_geometry();
     test_gdi_interop();
+    test_layer();
 }
