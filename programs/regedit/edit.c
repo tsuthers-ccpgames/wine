@@ -378,6 +378,7 @@ BOOL ModifyValue(HWND hwnd, HKEY hKeyRoot, LPCWSTR keyPath, LPCWSTR valueName)
     {
         int index = SendMessageW(g_pChildWnd->hListWnd, LVM_GETNEXTITEM, -1,
                                  MAKELPARAM(LVNI_FOCUSED | LVNI_SELECTED, 0));
+        HeapFree(GetProcessHeap(), 0, stringValueData);
         stringValueData = read_value(hwnd, hKey, valueName, &type, &len);
         format_value_data(g_pChildWnd->hListWnd, index, type, stringValueData, len);
     }
@@ -482,7 +483,8 @@ BOOL CreateValue(HWND hwnd, HKEY hKeyRoot, LPCWSTR keyPath, DWORD valueType, LPW
     }
 
     /* Add the new item to the listview */
-    index = AddEntryToList(g_pChildWnd->hListWnd, valueName, valueType, (BYTE *)&valueDword, sizeof(DWORD));
+    index = AddEntryToList(g_pChildWnd->hListWnd, valueName, valueType,
+                           (BYTE *)&valueDword, sizeof(DWORD), -1);
     item.state = LVIS_FOCUSED | LVIS_SELECTED;
     item.stateMask = LVIS_FOCUSED | LVIS_SELECTED;
     SendMessageW(g_pChildWnd->hListWnd, LVM_SETITEMSTATE, index, (LPARAM)&item);

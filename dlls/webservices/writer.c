@@ -80,6 +80,7 @@ struct writer
     struct node                 *current;
     WS_XML_STRING               *current_ns;
     WS_XML_WRITER_ENCODING_TYPE  output_enc;
+    WS_CHARSET                   output_charset;
     WS_XML_WRITER_OUTPUT_TYPE    output_type;
     struct xmlbuf               *output_buf;
     WS_HEAP                     *output_heap;
@@ -154,18 +155,19 @@ static HRESULT init_writer( struct writer *writer )
 {
     struct node *node;
 
-    writer->write_pos    = 0;
-    writer->write_bufptr = NULL;
+    writer->write_pos      = 0;
+    writer->write_bufptr   = NULL;
     destroy_nodes( writer->root );
-    writer->root         = writer->current = NULL;
+    writer->root           = writer->current = NULL;
     free_xml_string( writer->current_ns );
-    writer->current_ns   = NULL;
+    writer->current_ns     = NULL;
 
     if (!(node = alloc_node( WS_XML_NODE_TYPE_EOF ))) return E_OUTOFMEMORY;
     write_insert_eof( writer, node );
-    writer->state        = WRITER_STATE_INITIAL;
-    writer->output_enc   = WS_XML_WRITER_ENCODING_TYPE_TEXT;
-    writer->dict         = NULL;
+    writer->state          = WRITER_STATE_INITIAL;
+    writer->output_enc     = WS_XML_WRITER_ENCODING_TYPE_TEXT;
+    writer->output_charset = WS_CHARSET_UTF8;
+    writer->dict           = NULL;
     return S_OK;
 }
 
@@ -376,14 +378,16 @@ HRESULT WINAPI WsSetOutput( WS_XML_WRITER *handle, const WS_XML_WRITER_ENCODING 
             hr = E_NOTIMPL;
             goto done;
         }
-        writer->output_enc = WS_XML_WRITER_ENCODING_TYPE_TEXT;
+        writer->output_enc     = WS_XML_WRITER_ENCODING_TYPE_TEXT;
+        writer->output_charset = WS_CHARSET_UTF8;
         break;
     }
     case WS_XML_WRITER_ENCODING_TYPE_BINARY:
     {
         WS_XML_WRITER_BINARY_ENCODING *bin = (WS_XML_WRITER_BINARY_ENCODING *)encoding;
-        writer->output_enc = WS_XML_WRITER_ENCODING_TYPE_BINARY;
-        writer->dict       = bin->staticDictionary;
+        writer->output_enc     = WS_XML_WRITER_ENCODING_TYPE_BINARY;
+        writer->output_charset = 0;
+        writer->dict           = bin->staticDictionary;
         break;
     }
     default:
@@ -397,9 +401,12 @@ HRESULT WINAPI WsSetOutput( WS_XML_WRITER *handle, const WS_XML_WRITER_ENCODING 
     case WS_XML_WRITER_OUTPUT_TYPE_BUFFER:
     {
         struct xmlbuf *xmlbuf;
-
-        if (!(xmlbuf = alloc_xmlbuf( writer->output_heap ))) hr = WS_E_QUOTA_EXCEEDED;
-        else set_output_buffer( writer, xmlbuf );
+        if (!(xmlbuf = alloc_xmlbuf( writer->output_heap, writer->output_enc, writer->output_charset )))
+        {
+            hr = WS_E_QUOTA_EXCEEDED;
+            goto done;
+        }
+        set_output_buffer( writer, xmlbuf );
         break;
     }
     default:
@@ -450,6 +457,8 @@ HRESULT WINAPI WsSetOutputToBuffer( WS_XML_WRITER *handle, WS_XML_BUFFER *buffer
     }
 
     if ((hr = init_writer( writer )) != S_OK) goto done;
+    writer->output_enc     = xmlbuf->encoding;
+    writer->output_charset = xmlbuf->charset;
     set_output_buffer( writer, xmlbuf );
 
     if (!(node = alloc_node( WS_XML_NODE_TYPE_BOF ))) hr = E_OUTOFMEMORY;
@@ -1577,7 +1586,7 @@ HRESULT WINAPI WsWriteStartElement( WS_XML_WRITER *handle, const WS_XML_STRING *
     return hr;
 }
 
-static ULONG format_bool( const BOOL *ptr, unsigned char *buf )
+ULONG format_bool( const BOOL *ptr, unsigned char *buf )
 {
     static const unsigned char bool_true[] = {'t','r','u','e'}, bool_false[] = {'f','a','l','s','e'};
     if (*ptr)
@@ -1589,22 +1598,22 @@ static ULONG format_bool( const BOOL *ptr, unsigned char *buf )
     return sizeof(bool_false);
 }
 
-static ULONG format_int8( const INT8 *ptr, unsigned char *buf )
+ULONG format_int8( const INT8 *ptr, unsigned char *buf )
 {
     return wsprintfA( (char *)buf, "%d", *ptr );
 }
 
-static ULONG format_int16( const INT16 *ptr, unsigned char *buf )
+ULONG format_int16( const INT16 *ptr, unsigned char *buf )
 {
     return wsprintfA( (char *)buf, "%d", *ptr );
 }
 
-static ULONG format_int32( const INT32 *ptr, unsigned char *buf )
+ULONG format_int32( const INT32 *ptr, unsigned char *buf )
 {
     return wsprintfA( (char *)buf, "%d", *ptr );
 }
 
-static ULONG format_int64( const INT64 *ptr, unsigned char *buf )
+ULONG format_int64( const INT64 *ptr, unsigned char *buf )
 {
     return wsprintfA( (char *)buf, "%I64d", *ptr );
 }
@@ -1624,12 +1633,12 @@ static ULONG format_uint32( const UINT32 *ptr, unsigned char *buf )
     return wsprintfA( (char *)buf, "%u", *ptr );
 }
 
-static ULONG format_uint64( const UINT64 *ptr, unsigned char *buf )
+ULONG format_uint64( const UINT64 *ptr, unsigned char *buf )
 {
     return wsprintfA( (char *)buf, "%I64u", *ptr );
 }
 
-static ULONG format_double( const double *ptr, unsigned char *buf )
+ULONG format_double( const double *ptr, unsigned char *buf )
 {
 #ifdef HAVE_POWL
     static const long double precision = 0.0000000000000001;
@@ -1726,7 +1735,7 @@ static inline int year_size( int year )
 }
 
 #define TZ_OFFSET 8
-static ULONG format_datetime( const WS_DATETIME *ptr, unsigned char *buf )
+ULONG format_datetime( const WS_DATETIME *ptr, unsigned char *buf )
 {
     static const char fmt[] = "%04u-%02u-%02uT%02u:%02u:%02u";
     int day, hour, min, sec, sec_frac, month = 0, year = 1, tz_hour;
@@ -1782,7 +1791,7 @@ static ULONG format_datetime( const WS_DATETIME *ptr, unsigned char *buf )
     return len;
 }
 
-static ULONG format_guid( const GUID *ptr, unsigned char *buf )
+ULONG format_guid( const GUID *ptr, unsigned char *buf )
 {
     static const char fmt[] = "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x";
     return sprintf( (char *)buf, fmt, ptr->Data1, ptr->Data2, ptr->Data3,
@@ -1790,7 +1799,7 @@ static ULONG format_guid( const GUID *ptr, unsigned char *buf )
                     ptr->Data4[4], ptr->Data4[5], ptr->Data4[6], ptr->Data4[7] );
 }
 
-static ULONG format_urn( const GUID *ptr, unsigned char *buf )
+ULONG format_urn( const GUID *ptr, unsigned char *buf )
 {
     static const char fmt[] = "urn:uuid:%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x";
     return sprintf( (char *)buf, fmt, ptr->Data1, ptr->Data2, ptr->Data3,
@@ -3245,6 +3254,13 @@ HRESULT WINAPI WsWriteXmlBuffer( WS_XML_WRITER *handle, WS_XML_BUFFER *buffer, W
     {
         LeaveCriticalSection( &writer->cs );
         return E_INVALIDARG;
+    }
+
+    if (xmlbuf->encoding != writer->output_enc || xmlbuf->charset != writer->output_charset)
+    {
+        FIXME( "no support for different encoding and/or charset\n" );
+        hr = E_NOTIMPL;
+        goto done;
     }
 
     if ((hr = write_flush( writer )) != S_OK) goto done;

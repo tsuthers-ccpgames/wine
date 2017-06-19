@@ -31,6 +31,16 @@ static inline float __port_infinity(void)
 #define INFINITY __port_infinity()
 #endif /* INFINITY */
 
+#ifndef NAN
+static float get_nan(void)
+{
+    DWORD nan = 0x7fc00000;
+
+    return *(float *)&nan;
+}
+#define NAN get_nan()
+#endif
+
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(*arr))
 
 /* helper functions */
@@ -4340,6 +4350,8 @@ static void test_effect_preshader_compare_pbool_consts_(unsigned int line, IDire
     {
         for (i = 0; i < ARRAY_SIZE(test_effect_preshader_bconsts); ++i)
         {
+            /* The negation on both sides is actually needed, sometimes you
+             * get 0xffffffff instead of 1 on native. */
             ok_(__FILE__, line)(!bdata[i] == !test_effect_preshader_bconsts[i],
                     "Pixel shader boolean constants do not match, expected %#x, got %#x, i %u.\n",
                     test_effect_preshader_bconsts[i], bdata[i], i);
@@ -4352,6 +4364,8 @@ static void test_effect_preshader_compare_pbool_consts_(unsigned int line, IDire
             if (const_updated_mask[i / TEST_EFFECT_BITMASK_BLOCK_SIZE]
                     & (1u << (i % TEST_EFFECT_BITMASK_BLOCK_SIZE)))
             {
+                /* The negation on both sides is actually needed, sometimes
+                 * you get 0xffffffff instead of 1 on native. */
                 ok_(__FILE__, line)(!bdata[i] == !test_effect_preshader_bconsts[i],
                         "Pixel shader boolean constants do not match, expected %#x, got %#x, i %u, parameter %s.\n",
                         test_effect_preshader_bconsts[i], bdata[i], i, updated_param);
@@ -4751,7 +4765,7 @@ static const DWORD test_effect_preshader_ops_blob[] =
 static void test_effect_preshader_ops(IDirect3DDevice9 *device)
 {
     static D3DLIGHT9 light;
-    static const struct
+    const struct
     {
         const char *mnem;
         unsigned int expected_result[4];

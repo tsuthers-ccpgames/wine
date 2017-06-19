@@ -154,13 +154,10 @@ static void r_verify_reg_wsz(unsigned line, HKEY key, const char *value_name, co
 static void r_verify_reg_nonexist(unsigned line, HKEY key, const char *value_name)
 {
     LONG lr;
-    DWORD fnd_type, fnd_len;
-    char fnd_value[32];
 
-    fnd_len = sizeof(fnd_value);
-    lr = RegQueryValueExA(key, value_name, NULL, &fnd_type, (BYTE*)fnd_value, &fnd_len);
-    lok(lr == ERROR_FILE_NOT_FOUND, "Reg value shouldn't exist: %s\n",
-            value_name);
+    lr = RegQueryValueExA(key, value_name, NULL, NULL, NULL, NULL);
+    lok(lr == ERROR_FILE_NOT_FOUND, "registry value '%s' shouldn't exist; got %d, expected 2\n",
+       (value_name && *value_name) ? value_name : "(Default)", lr);
 }
 
 #define verify_key_exist(k,s) verify_key_exist_(__LINE__,k,s)
@@ -267,8 +264,10 @@ static void test_basic_import(void)
 
     exec_import_str("REGEDIT4\n\n"
                     "[HKEY_CURRENT_USER\\" KEY_BASE "]\n"
-                    "\"Empty string\"=\"\"\n\n");
+                    "\"Empty string\"=\"\"\n"
+                    "\"\"=\"Default registry value\"\n\n");
     verify_reg(hkey, "Empty string", REG_SZ, "", 1, 0);
+    verify_reg(hkey, NULL, REG_SZ, "Default registry value", 23, 0);
 
     exec_import_str("REGEDIT4\n\n"
                     "[HKEY_CURRENT_USER\\" KEY_BASE "]\n"
@@ -444,6 +443,28 @@ static void test_basic_import(void)
     ok(lr == ERROR_SUCCESS, "got %d, expected 0\n", lr);
     lr = RegDeleteKeyA(HKEY_CURRENT_USER, KEY_BASE "\\Subkey/2");
     ok(lr == ERROR_SUCCESS, "got %d, expected 0\n", lr);
+
+    /* Test the accepted range of the hex-based data types */
+    exec_import_str("REGEDIT4\n\n"
+                    "[HKEY_CURRENT_USER\\" KEY_BASE "]\n"
+                    "\"Wine13a\"=hex(0):56,61,6c,75,65,00\n"
+                    "\"Wine13b\"=hex(10):56,61,6c,75,65,00\n"
+                    "\"Wine13c\"=hex(100):56,61,6c,75,65,00\n"
+                    "\"Wine13d\"=hex(1000):56,61,6c,75,65,00\n"
+                    "\"Wine13e\"=hex(7fff):56,61,6c,75,65,00\n"
+                    "\"Wine13f\"=hex(ffff):56,61,6c,75,65,00\n"
+                    "\"Wine13g\"=hex(7fffffff):56,61,6c,75,65,00\n"
+                    "\"Wine13h\"=hex(ffffffff):56,61,6c,75,65,00\n"
+                    "\"Wine13i\"=hex(100000000):56,61,6c,75,65,00\n\n");
+    verify_reg(hkey, "Wine13a", REG_NONE, "Value", 6, 0);
+    todo_wine verify_reg(hkey, "Wine13b", 0x10, "Value", 6, 0);
+    todo_wine verify_reg(hkey, "Wine13c", 0x100, "Value", 6, 0);
+    todo_wine verify_reg(hkey, "Wine13d", 0x1000, "Value", 6, 0);
+    todo_wine verify_reg(hkey, "Wine13e", 0x7fff, "Value", 6, 0);
+    todo_wine verify_reg(hkey, "Wine13f", 0xffff, "Value", 6, 0);
+    todo_wine verify_reg(hkey, "Wine13g", 0x7fffffff, "Value", 6, 0);
+    todo_wine verify_reg(hkey, "Wine13h", 0xffffffff, "Value", 6, 0);
+    verify_reg_nonexist(hkey, "Wine13i");
 
     RegCloseKey(hkey);
 
@@ -798,36 +819,36 @@ static void test_invalid_import_31(void)
     /* Test character validity at the start of the line */
     exec_import_str("REGEDIT\r\n"
                     " HKEY_CLASSES_ROOT\\" KEY_BASE " = Value1a\r\n");
-    todo_wine verify_reg_nonexist(hkey, "");
+    verify_reg_nonexist(hkey, "");
 
     exec_import_str("REGEDIT\r\n"
                     "  HKEY_CLASSES_ROOT\\" KEY_BASE " = Value1b\r\n");
-    todo_wine verify_reg_nonexist(hkey, "");
+    verify_reg_nonexist(hkey, "");
 
     exec_import_str("REGEDIT\r\n"
                     "\tHKEY_CLASSES_ROOT\\" KEY_BASE " = Value1c\r\n");
-    todo_wine verify_reg_nonexist(hkey, "");
+    verify_reg_nonexist(hkey, "");
 
     exec_import_str("REGEDIT\r\n"
                     ";HKEY_CLASSES_ROOT\\" KEY_BASE " = Value2a\r\n");
-    todo_wine verify_reg_nonexist(hkey, "");
+    verify_reg_nonexist(hkey, "");
 
     exec_import_str("REGEDIT\r\n"
                     "#HKEY_CLASSES_ROOT\\" KEY_BASE " = Value2b\r\n");
-    todo_wine verify_reg_nonexist(hkey, "");
+    verify_reg_nonexist(hkey, "");
 
     /* Test case sensitivity */
     exec_import_str("REGEDIT\r\n"
                     "hkey_classes_root\\" KEY_BASE " = Value3a\r\n");
-    todo_wine verify_reg_nonexist(hkey, "");
+    verify_reg_nonexist(hkey, "");
 
     exec_import_str("REGEDIT\r\n"
                     "hKEY_CLASSES_ROOT\\" KEY_BASE " = Value3b\r\n");
-    todo_wine verify_reg_nonexist(hkey, "");
+    verify_reg_nonexist(hkey, "");
 
     exec_import_str("REGEDIT\r\n"
                     "Hkey_Classes_Root\\" KEY_BASE " = Value3c\r\n");
-    todo_wine verify_reg_nonexist(hkey, "");
+    verify_reg_nonexist(hkey, "");
 
     RegCloseKey(hkey);
 
@@ -1206,6 +1227,19 @@ static void test_key_creation_and_deletion(void)
     verify_key_nonexist(hkey, "Subkey2a");
     verify_key_nonexist(hkey, "Subkey2b");
 
+    /* Test case sensitivity when creating and deleting registry keys. */
+    exec_import_str("REGEDIT4\n\n"
+                    "[hkey_CURRENT_user\\" KEY_BASE "\\Subkey3a]\n\n"
+                    "[HkEy_CuRrEnT_uSeR\\" KEY_BASE "\\SuBkEy3b]\n\n");
+    verify_key_exist(hkey, "Subkey3a");
+    verify_key_exist(hkey, "Subkey3b");
+
+    exec_import_str("REGEDIT4\n\n"
+                    "[-HKEY_current_USER\\" KEY_BASE "\\sUBKEY3A]\n\n"
+                    "[-hKeY_cUrReNt_UsEr\\" KEY_BASE "\\sUbKeY3B]\n\n");
+    verify_key_nonexist(hkey, "Subkey3a");
+    verify_key_nonexist(hkey, "Subkey3b");
+
     lr = RegCloseKey(hkey);
     ok(lr == ERROR_SUCCESS, "RegCloseKey failed: got %d, expected 0\n", lr);
 
@@ -1255,7 +1289,7 @@ static void test_value_deletion(void)
     verify_reg_nonexist(hkey, "Wine46b");
     verify_reg_nonexist(hkey, "Wine46c");
     verify_reg(hkey, "Wine46d", REG_MULTI_SZ, "Line concatenation\0", 20, 0);
-    todo_wine verify_reg_nonexist(hkey, "Wine46e");
+    verify_reg_nonexist(hkey, "Wine46e");
     verify_reg(hkey, "Wine46f", REG_NONE, "V\0a\0l\0u\0e\0\0", 12, 0);
 
     lr = RegCloseKey(hkey);

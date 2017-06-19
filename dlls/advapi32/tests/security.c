@@ -229,6 +229,7 @@ static void init(void)
     pGetAce = (void *)GetProcAddress(hmod, "GetAce");
     pGetWindowsAccountDomainSid = (void *)GetProcAddress(hmod, "GetWindowsAccountDomainSid");
     pGetSidIdentifierAuthority = (void *)GetProcAddress(hmod, "GetSidIdentifierAuthority");
+    pDuplicateTokenEx = (void *)GetProcAddress(hmod, "DuplicateTokenEx");
 
     myARGC = winetest_get_mainargs( &myARGV );
 }
@@ -3012,7 +3013,6 @@ static void test_impersonation_level(void)
     HKEY hkey;
     DWORD error;
 
-    pDuplicateTokenEx = (void *)GetProcAddress(hmod, "DuplicateTokenEx");
     if( !pDuplicateTokenEx ) {
         win_skip("DuplicateTokenEx is not available\n");
         return;
@@ -5858,7 +5858,8 @@ static void test_process_access(void)
         case GENERIC_WRITE:
             ok(access == map[i].mapped ||
                access == (map[i].mapped | PROCESS_TERMINATE) /* before Vista */ ||
-               access == (map[i].mapped | PROCESS_SET_LIMITED_INFORMATION) /* win8 */,
+               access == (map[i].mapped | PROCESS_SET_LIMITED_INFORMATION) /* win8 */ ||
+               access == (map[i].mapped | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_LIMITED_INFORMATION) /* Win10 Anniversary Update */,
                "%d: expected %#x, got %#x\n", i, map[i].mapped, access);
             break;
         case GENERIC_EXECUTE:
@@ -6080,7 +6081,7 @@ static void test_default_dacl_owner_sid(void)
 
 static void test_AdjustTokenPrivileges(void)
 {
-    TOKEN_PRIVILEGES tp, prev;
+    TOKEN_PRIVILEGES tp;
     HANDLE token;
     DWORD len;
     LUID luid;
@@ -6108,7 +6109,8 @@ static void test_AdjustTokenPrivileges(void)
     tp.PrivilegeCount = 1;
     tp.Privileges[0].Luid = luid;
     tp.Privileges[0].Attributes = 0;
-    AdjustTokenPrivileges(token, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), &prev, NULL);
+    ret = AdjustTokenPrivileges(token, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL);
+    ok(ret, "got %d\n", ret);
 
     CloseHandle(token);
 }
@@ -6162,11 +6164,21 @@ static void test_AddMandatoryAce(void)
 {
     static SID low_level = {SID_REVISION, 1, {SECURITY_MANDATORY_LABEL_AUTHORITY},
                             {SECURITY_MANDATORY_LOW_RID}};
+    static SID medium_level = {SID_REVISION, 1, {SECURITY_MANDATORY_LABEL_AUTHORITY},
+                               {SECURITY_MANDATORY_MEDIUM_RID}};
+    static SID_IDENTIFIER_AUTHORITY sia_world = {SECURITY_WORLD_SID_AUTHORITY};
+    char buffer_sd[SECURITY_DESCRIPTOR_MIN_LENGTH];
+    SECURITY_DESCRIPTOR *sd2, *sd = (SECURITY_DESCRIPTOR *)&buffer_sd;
+    BOOL defaulted, present, ret, found, found2;
+    ACL_SIZE_INFORMATION acl_size_info;
     SYSTEM_MANDATORY_LABEL_ACE *ace;
     char buffer_acl[256];
-    ACL *pAcl = (ACL *)&buffer_acl;
-    BOOL ret, found;
-    DWORD index;
+    ACL *acl = (ACL *)&buffer_acl;
+    SECURITY_ATTRIBUTES sa;
+    DWORD index, size;
+    HANDLE handle;
+    SID *everyone;
+    ACL *sacl;
 
     if (!pAddMandatoryAce)
     {
@@ -6174,21 +6186,49 @@ static void test_AddMandatoryAce(void)
         return;
     }
 
-    ret = InitializeAcl(pAcl, 256, ACL_REVISION);
+    ret = InitializeSecurityDescriptor(sd, SECURITY_DESCRIPTOR_REVISION);
+    ok(ret, "InitializeSecurityDescriptor failed with error %u\n", GetLastError());
+
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = sd;
+    sa.bInheritHandle = FALSE;
+
+    handle = CreateEventA(&sa, TRUE, TRUE, "test_event");
+    ok(handle != NULL, "CreateEventA failed with error %u\n", GetLastError());
+
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, NULL, 0, &size);
+    ok(!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+       "Unexpected GetKernelObjectSecurity return value %u, error %u\n", ret, GetLastError());
+
+    sd2 = HeapAlloc(GetProcessHeap(), 0, size);
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd2, size, &size);
+    ok(ret, "GetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    sacl = (void *)0xdeadbeef;
+    present = TRUE;
+    ret = GetSecurityDescriptorSacl(sd2, &present, &sacl, &defaulted);
+    ok(ret, "GetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+    ok(!present, "SACL is present\n");
+    ok(sacl == (void *)0xdeadbeef, "SACL is set\n");
+
+    HeapFree(GetProcessHeap(), 0, sd2);
+    CloseHandle(handle);
+
+    ret = InitializeAcl(acl, 256, ACL_REVISION);
     ok(ret, "InitializeAcl failed with %u\n", GetLastError());
 
     SetLastError(0xdeadbeef);
-    ret = pAddMandatoryAce(pAcl, ACL_REVISION, 0, 0x1234, &low_level);
+    ret = pAddMandatoryAce(acl, ACL_REVISION, 0, 0x1234, &low_level);
     ok(!ret, "AddMandatoryAce succeeded\n");
     ok(GetLastError() == ERROR_INVALID_PARAMETER,
        "Expected ERROR_INVALID_PARAMETER got %u\n", GetLastError());
 
-    ret = pAddMandatoryAce(pAcl, ACL_REVISION, 0, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, &low_level);
+    ret = pAddMandatoryAce(acl, ACL_REVISION, 0, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, &low_level);
     ok(ret, "AddMandatoryAce failed with %u\n", GetLastError());
 
     index = 0;
     found = FALSE;
-    while (pGetAce( pAcl, index++, (void **)&ace ))
+    while (pGetAce(acl, index++, (void **)&ace))
     {
         if (ace->Header.AceType != SYSTEM_MANDATORY_LABEL_ACE_TYPE) continue;
         ok(ace->Header.AceFlags == 0, "Expected flags 0, got %x\n", ace->Header.AceFlags);
@@ -6198,6 +6238,187 @@ static void test_AddMandatoryAce(void)
         found = TRUE;
     }
     ok(found, "Could not find mandatory label ace\n");
+
+    ret = SetSecurityDescriptorSacl(sd, TRUE, acl, FALSE);
+    ok(ret, "SetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+
+    handle = CreateEventA(&sa, TRUE, TRUE, "test_event");
+    ok(handle != NULL, "CreateEventA failed with error %u\n", GetLastError());
+
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, NULL, 0, &size);
+    ok(!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+       "Unexpected GetKernelObjectSecurity return value %u, error %u\n", ret, GetLastError());
+
+    sd2 = HeapAlloc(GetProcessHeap(), 0, size);
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd2, size, &size);
+    ok(ret, "GetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    sacl = (void *)0xdeadbeef;
+    present = FALSE;
+    defaulted = TRUE;
+    ret = GetSecurityDescriptorSacl(sd2, &present, &sacl, &defaulted);
+    ok(ret, "GetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+    ok(present, "SACL not present\n");
+    ok(sacl != (void *)0xdeadbeef, "SACL not set\n");
+    ok(!defaulted, "SACL defaulted\n");
+    ret = pGetAclInformation(sacl, &acl_size_info, sizeof(acl_size_info), AclSizeInformation);
+    ok(ret, "GetAclInformation failed with error %u\n", GetLastError());
+    ok(acl_size_info.AceCount == 1, "SACL contains an unexpected ACE count %u\n", acl_size_info.AceCount);
+
+    ret = pGetAce(sacl, 0, (void **)&ace);
+    ok(ret, "GetAce failed with error %u\n", GetLastError());
+    ok (ace->Header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE, "Unexpected ACE type %#x\n", ace->Header.AceType);
+    ok(!ace->Header.AceFlags, "Unexpected ACE flags %#x\n", ace->Header.AceFlags);
+    ok(ace->Mask == SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, "Unexpected ACE mask %#x\n", ace->Mask);
+    ok(EqualSid(&ace->SidStart, &low_level), "Expected low integrity level\n");
+
+    HeapFree(GetProcessHeap(), 0, sd2);
+
+    ret = pAddMandatoryAce(acl, ACL_REVISION, 0, SYSTEM_MANDATORY_LABEL_NO_EXECUTE_UP, &medium_level);
+    ok(ret, "AddMandatoryAce failed with error %u\n", GetLastError());
+
+    ret = SetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd);
+    ok(ret, "SetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, NULL, 0, &size);
+    ok(!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+       "Unexpected GetKernelObjectSecurity return value %u, error %u\n", ret, GetLastError());
+
+    sd2 = HeapAlloc(GetProcessHeap(), 0, size);
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd2, size, &size);
+    ok(ret, "GetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    sacl = (void *)0xdeadbeef;
+    present = FALSE;
+    defaulted = TRUE;
+    ret = GetSecurityDescriptorSacl(sd2, &present, &sacl, &defaulted);
+    ok(ret, "GetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+    ok(present, "SACL not present\n");
+    ok(sacl != (void *)0xdeadbeef, "SACL not set\n");
+    ok(sacl->AceCount == 2, "Expected 2 ACEs, got %d\n", sacl->AceCount);
+    ok(!defaulted, "SACL defaulted\n");
+
+    index = 0;
+    found = found2 = FALSE;
+    while (pGetAce(sacl, index++, (void **)&ace))
+    {
+        if (ace->Header.AceType == SYSTEM_MANDATORY_LABEL_ACE_TYPE)
+        {
+            if (EqualSid(&ace->SidStart, &low_level))
+            {
+                found = TRUE;
+                ok(!ace->Header.AceFlags, "Expected 0 as flags, got %#x\n", ace->Header.AceFlags);
+                ok(ace->Mask == SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
+                   "Expected SYSTEM_MANDATORY_LABEL_NO_WRITE_UP as mask, got %#x\n", ace->Mask);
+            }
+            if (EqualSid(&ace->SidStart, &medium_level))
+            {
+                found2 = TRUE;
+                ok(!ace->Header.AceFlags, "Expected 0 as flags, got %#x\n", ace->Header.AceFlags);
+                ok(ace->Mask == SYSTEM_MANDATORY_LABEL_NO_EXECUTE_UP,
+                   "Expected SYSTEM_MANDATORY_LABEL_NO_EXECUTE_UP as mask, got %#x\n", ace->Mask);
+            }
+        }
+    }
+    ok(found, "Could not find low mandatory label\n");
+    ok(found2, "Could not find medium mandatory label\n");
+
+    HeapFree(GetProcessHeap(), 0, sd2);
+
+    ret = SetSecurityDescriptorSacl(sd, FALSE, NULL, FALSE);
+    ok(ret, "SetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+
+    ret = SetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd);
+    ok(ret, "SetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, NULL, 0, &size);
+    ok(!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+       "Unexpected GetKernelObjectSecurity return value %d, error %u\n", ret, GetLastError());
+
+    sd2 = HeapAlloc(GetProcessHeap(), 0, size);
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd2, size, &size);
+    ok(ret, "GetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    sacl = (void *)0xdeadbeef;
+    present = FALSE;
+    defaulted = TRUE;
+    ret = GetSecurityDescriptorSacl(sd2, &present, &sacl, &defaulted);
+    ok(ret, "GetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+    ok(present, "SACL not present\n");
+    ok(sacl && sacl != (void *)0xdeadbeef, "SACL not set\n");
+    ok(!defaulted, "SACL defaulted\n");
+    ok(!sacl->AceCount, "SACL contains an unexpected ACE count %u\n", sacl->AceCount);
+
+    HeapFree(GetProcessHeap(), 0, sd2);
+
+    ret = InitializeAcl(acl, 256, ACL_REVISION);
+    ok(ret, "InitializeAcl failed with error %u\n", GetLastError());
+
+    ret = pAddMandatoryAce(acl, ACL_REVISION3, 0, SYSTEM_MANDATORY_LABEL_NO_EXECUTE_UP, &medium_level);
+    ok(ret, "AddMandatoryAce failed with error %u\n", GetLastError());
+
+    ret = SetSecurityDescriptorSacl(sd, TRUE, acl, FALSE);
+    ok(ret, "SetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+
+    ret = SetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd);
+    ok(ret, "SetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, NULL, 0, &size);
+    ok(!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+       "Unexpected GetKernelObjectSecurity return value %d, error %u\n", ret, GetLastError());
+
+    sd2 = HeapAlloc(GetProcessHeap(), 0, size);
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd2, size, &size);
+    ok(ret, "GetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    sacl = (void *)0xdeadbeef;
+    present = FALSE;
+    defaulted = TRUE;
+    ret = GetSecurityDescriptorSacl(sd2, &present, &sacl, &defaulted);
+    ok(ret, "GetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+    ok(present, "SACL not present\n");
+    ok(sacl != (void *)0xdeadbeef, "SACL not set\n");
+    ok(sacl->AclRevision == ACL_REVISION3, "Expected revision 3, got %d\n", sacl->AclRevision);
+    ok(!defaulted, "SACL defaulted\n");
+
+    HeapFree(GetProcessHeap(), 0, sd2);
+
+    ret = InitializeAcl(acl, 256, ACL_REVISION);
+    ok(ret, "InitializeAcl failed with error %u\n", GetLastError());
+
+    ret = AllocateAndInitializeSid(&sia_world, 1, SECURITY_WORLD_RID, 0, 0, 0, 0, 0, 0, 0, (void **)&everyone);
+    ok(ret, "AllocateAndInitializeSid failed with error %u\n", GetLastError());
+
+    ret = AddAccessAllowedAce(acl, ACL_REVISION, KEY_READ, everyone);
+    ok(ret, "AddAccessAllowedAce failed with error %u\n", GetLastError());
+
+    ret = SetSecurityDescriptorSacl(sd, TRUE, acl, FALSE);
+    ok(ret, "SetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+
+    ret = SetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd);
+    ok(ret, "SetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, NULL, 0, &size);
+    ok(!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+       "Unexpected GetKernelObjectSecurity return value %d, error %u\n", ret, GetLastError());
+
+    sd2 = HeapAlloc(GetProcessHeap(), 0, size);
+    ret = GetKernelObjectSecurity(handle, LABEL_SECURITY_INFORMATION, sd2, size, &size);
+    ok(ret, "GetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    sacl = (void *)0xdeadbeef;
+    present = FALSE;
+    defaulted = TRUE;
+    ret = GetSecurityDescriptorSacl(sd2, &present, &sacl, &defaulted);
+    ok(ret, "GetSecurityDescriptorSacl failed with error %u\n", GetLastError());
+    ok(present, "SACL not present\n");
+    ok(sacl && sacl != (void *)0xdeadbeef, "SACL not set\n");
+    ok(!defaulted, "SACL defaulted\n");
+    ok(!sacl->AceCount, "SACL contains an unexpected ACE count %u\n", sacl->AceCount);
+
+    FreeSid(everyone);
+    HeapFree(GetProcessHeap(), 0, sd2);
+    CloseHandle(handle);
 }
 
 static void test_system_security_access(void)
@@ -6495,6 +6716,85 @@ static void test_maximum_allowed(void)
     CloseHandle(handle);
 }
 
+static void test_token_security_descriptor(void)
+{
+    char buffer_sd[SECURITY_DESCRIPTOR_MIN_LENGTH];
+    SECURITY_DESCRIPTOR *sd = (SECURITY_DESCRIPTOR *)&buffer_sd, *sd2;
+    char buffer_acl[256];
+    ACL *acl = (ACL *)&buffer_acl, *acl2;
+    BOOL defaulted, present, ret;
+    ACCESS_ALLOWED_ACE *ace;
+    SECURITY_ATTRIBUTES sa;
+    HANDLE token, token2;
+    DWORD size;
+    PSID psid;
+
+    if (!pDuplicateTokenEx || !pConvertStringSidToSidA || !pAddAccessAllowedAceEx || !pGetAce
+        || !pSetEntriesInAclW)
+    {
+        win_skip("Some functions not available\n");
+        return;
+    }
+
+    /* Test whether we can create tokens with security descriptors */
+    ret = OpenProcessToken(GetCurrentProcess(), MAXIMUM_ALLOWED, &token);
+    ok(ret, "OpenProcessToken failed with error %u\n", GetLastError());
+
+    ret = InitializeSecurityDescriptor(sd, SECURITY_DESCRIPTOR_REVISION);
+    ok(ret, "InitializeSecurityDescriptor failed with error %u\n", GetLastError());
+
+    ret = InitializeAcl(acl, 256, ACL_REVISION);
+    ok(ret, "InitializeAcl failed with error %u\n", GetLastError());
+
+    ret = pConvertStringSidToSidA("S-1-5-6", &psid);
+    ok(ret, "ConvertStringSidToSidA failed with error %u\n", GetLastError());
+
+    ret = pAddAccessAllowedAceEx(acl, ACL_REVISION, NO_PROPAGATE_INHERIT_ACE, GENERIC_ALL, psid);
+    ok(ret, "AddAccessAllowedAceEx failed with error %u\n", GetLastError());
+
+    ret = SetSecurityDescriptorDacl(sd, TRUE, acl, FALSE);
+    ok(ret, "SetSecurityDescriptorDacl failed with error %u\n", GetLastError());
+
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.lpSecurityDescriptor = sd;
+    sa.bInheritHandle = FALSE;
+
+    ret = pDuplicateTokenEx(token, MAXIMUM_ALLOWED, &sa, SecurityImpersonation, TokenImpersonation, &token2);
+    ok(ret, "DuplicateTokenEx failed with error %u\n", GetLastError());
+
+    ret = GetKernelObjectSecurity(token2, DACL_SECURITY_INFORMATION, NULL, 0, &size);
+    ok(!ret && GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+       "Unexpected GetKernelObjectSecurity return value %d, error %u\n", ret, GetLastError());
+
+    sd2 = HeapAlloc(GetProcessHeap(), 0, size);
+    ret = GetKernelObjectSecurity(token2, DACL_SECURITY_INFORMATION, sd2, size, &size);
+    ok(ret, "GetKernelObjectSecurity failed with error %u\n", GetLastError());
+
+    acl2 = (void *)0xdeadbeef;
+    present = FALSE;
+    defaulted = TRUE;
+    ret = GetSecurityDescriptorDacl(sd2, &present, &acl2, &defaulted);
+    ok(ret, "GetSecurityDescriptorDacl failed with error %u\n", GetLastError());
+    ok(present, "acl2 not present\n");
+    ok(acl2 != (void *)0xdeadbeef, "acl2 not set\n");
+    ok(acl2->AceCount == 1, "Expected 1 ACE, got %d\n", acl2->AceCount);
+    ok(!defaulted, "acl2 defaulted\n");
+
+    ret = pGetAce(acl2, 0, (void **)&ace);
+    ok(ret, "GetAce failed with error %u\n", GetLastError());
+    ok(ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE, "Unexpected ACE type %#x\n", ace->Header.AceType);
+    ok(EqualSid(&ace->SidStart, psid), "Expected access allowed ACE\n");
+    ok(ace->Header.AceFlags == NO_PROPAGATE_INHERIT_ACE,
+       "Expected NO_PROPAGATE_INHERIT_ACE as flags, got %x\n", ace->Header.AceFlags);
+
+    HeapFree(GetProcessHeap(), 0, sd2);
+
+    LocalFree(psid);
+
+    CloseHandle(token2);
+    CloseHandle(token);
+}
+
 START_TEST(security)
 {
     init();
@@ -6544,4 +6844,5 @@ START_TEST(security)
     test_GetSidIdentifierAuthority();
     test_pseudo_tokens();
     test_maximum_allowed();
+    test_token_security_descriptor();
 }

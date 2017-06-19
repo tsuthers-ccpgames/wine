@@ -39,6 +39,7 @@ struct HTMLInputElement {
 
     IHTMLInputElement IHTMLInputElement_iface;
     IHTMLInputTextElement IHTMLInputTextElement_iface;
+    IHTMLInputTextElement2 IHTMLInputTextElement2_iface;
 
     nsIDOMHTMLInputElement *nsinput;
 };
@@ -1206,6 +1207,160 @@ static const IHTMLInputTextElementVtbl HTMLInputTextElementVtbl = {
     HTMLInputTextElement_createTextRange
 };
 
+static inline HTMLInputElement *impl_from_IHTMLInputTextElement2(IHTMLInputTextElement2 *iface)
+{
+    return CONTAINING_RECORD(iface, HTMLInputElement, IHTMLInputTextElement2_iface);
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_QueryInterface(IHTMLInputTextElement2 *iface, REFIID riid, void **ppv)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    return IHTMLDOMNode_QueryInterface(&This->element.node.IHTMLDOMNode_iface, riid, ppv);
+}
+
+static ULONG WINAPI HTMLInputTextElement2_AddRef(IHTMLInputTextElement2 *iface)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    return IHTMLDOMNode_AddRef(&This->element.node.IHTMLDOMNode_iface);
+}
+
+static ULONG WINAPI HTMLInputTextElement2_Release(IHTMLInputTextElement2 *iface)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    return IHTMLDOMNode_Release(&This->element.node.IHTMLDOMNode_iface);
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_GetTypeInfoCount(IHTMLInputTextElement2 *iface, UINT *pctinfo)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    return IDispatchEx_GetTypeInfoCount(&This->element.node.event_target.dispex.IDispatchEx_iface, pctinfo);
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_GetTypeInfo(IHTMLInputTextElement2 *iface, UINT iTInfo,
+        LCID lcid, ITypeInfo **ppTInfo)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    return IDispatchEx_GetTypeInfo(&This->element.node.event_target.dispex.IDispatchEx_iface, iTInfo, lcid, ppTInfo);
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_GetIDsOfNames(IHTMLInputTextElement2 *iface, REFIID riid,
+        LPOLESTR *rgszNames, UINT cNames, LCID lcid, DISPID *rgDispId)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    return IDispatchEx_GetIDsOfNames(&This->element.node.event_target.dispex.IDispatchEx_iface, riid, rgszNames,
+            cNames, lcid, rgDispId);
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_Invoke(IHTMLInputTextElement2 *iface, DISPID dispIdMember,
+                            REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS *pDispParams,
+                            VARIANT *pVarResult, EXCEPINFO *pExcepInfo, UINT *puArgErr)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    return IDispatchEx_Invoke(&This->element.node.event_target.dispex.IDispatchEx_iface, dispIdMember, riid,
+            lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_put_selectionStart(IHTMLInputTextElement2 *iface, LONG v)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    nsresult nsres;
+
+    TRACE("(%p)->(%d)\n", This, v);
+
+    nsres = nsIDOMHTMLInputElement_SetSelectionStart(This->nsinput, v);
+    if(NS_FAILED(nsres)) {
+        ERR("SetSelectionStart failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+    return S_OK;
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_get_selectionStart(IHTMLInputTextElement2 *iface, LONG *p)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    INT32 selection_start;
+    nsresult nsres;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    nsres = nsIDOMHTMLInputElement_GetSelectionStart(This->nsinput, &selection_start);
+    if(NS_FAILED(nsres)) {
+        ERR("GetSelectionStart failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    *p = selection_start;
+    return S_OK;
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_put_selectionEnd(IHTMLInputTextElement2 *iface, LONG v)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    nsresult nsres;
+
+    TRACE("(%p)->(%d)\n", This, v);
+
+    nsres = nsIDOMHTMLInputElement_SetSelectionEnd(This->nsinput, v);
+    if(NS_FAILED(nsres)) {
+        ERR("SetSelectionEnd failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+    return S_OK;
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_get_selectionEnd(IHTMLInputTextElement2 *iface, LONG *p)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    INT32 selection_end;
+    nsresult nsres;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    nsres = nsIDOMHTMLInputElement_GetSelectionEnd(This->nsinput, &selection_end);
+    if(NS_FAILED(nsres)) {
+        ERR("GetSelectionEnd failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    *p = selection_end;
+    return S_OK;
+}
+
+static HRESULT WINAPI HTMLInputTextElement2_setSelectionRange(IHTMLInputTextElement2 *iface, LONG start, LONG end)
+{
+    HTMLInputElement *This = impl_from_IHTMLInputTextElement2(iface);
+    nsAString none_str;
+    nsresult nsres;
+
+    static const WCHAR noneW[] = {'n','o','n','e',0};
+
+    TRACE("(%p)->(%d %d)\n", This, start, end);
+
+    nsAString_InitDepend(&none_str, noneW);
+    nsres = nsIDOMHTMLInputElement_SetSelectionRange(This->nsinput, start, end, &none_str);
+    nsAString_Finish(&none_str);
+    if(NS_FAILED(nsres)) {
+        ERR("SetSelectionRange failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+    return S_OK;
+}
+
+static const IHTMLInputTextElement2Vtbl HTMLInputTextElement2Vtbl = {
+    HTMLInputTextElement2_QueryInterface,
+    HTMLInputTextElement2_AddRef,
+    HTMLInputTextElement2_Release,
+    HTMLInputTextElement2_GetTypeInfoCount,
+    HTMLInputTextElement2_GetTypeInfo,
+    HTMLInputTextElement2_GetIDsOfNames,
+    HTMLInputTextElement2_Invoke,
+    HTMLInputTextElement2_put_selectionStart,
+    HTMLInputTextElement2_get_selectionStart,
+    HTMLInputTextElement2_put_selectionEnd,
+    HTMLInputTextElement2_get_selectionEnd,
+    HTMLInputTextElement2_setSelectionRange
+};
+
 static inline HTMLInputElement *impl_from_HTMLDOMNode(HTMLDOMNode *iface)
 {
     return CONTAINING_RECORD(iface, HTMLInputElement, element.node);
@@ -1229,6 +1384,9 @@ static HRESULT HTMLInputElement_QI(HTMLDOMNode *iface, REFIID riid, void **ppv)
     }else if(IsEqualGUID(&IID_IHTMLInputTextElement, riid)) {
         TRACE("(%p)->(IID_IHTMLInputTextElement %p)\n", This, ppv);
         *ppv = &This->IHTMLInputTextElement_iface;
+    }else if(IsEqualGUID(&IID_IHTMLInputTextElement2, riid)) {
+        TRACE("(%p)->(IID_IHTMLInputTextElement2 %p)\n", This, ppv);
+        *ppv = &This->IHTMLInputTextElement2_iface;
     }
 
     if(*ppv) {
@@ -1341,6 +1499,7 @@ static const NodeImplVtbl HTMLInputElementImplVtbl = {
 static const tid_t HTMLInputElement_iface_tids[] = {
     HTMLELEMENT_TIDS,
     IHTMLInputElement_tid,
+    IHTMLInputTextElement2_tid,
     0
 };
 static dispex_static_data_t HTMLInputElement_dispex = {
@@ -1361,6 +1520,7 @@ HRESULT HTMLInputElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem
 
     ret->IHTMLInputElement_iface.lpVtbl = &HTMLInputElementVtbl;
     ret->IHTMLInputTextElement_iface.lpVtbl = &HTMLInputTextElementVtbl;
+    ret->IHTMLInputTextElement2_iface.lpVtbl = &HTMLInputTextElement2Vtbl;
     ret->element.node.vtbl = &HTMLInputElementImplVtbl;
 
     HTMLElement_Init(&ret->element, doc, nselem, &HTMLInputElement_dispex);

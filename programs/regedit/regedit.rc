@@ -195,6 +195,7 @@ BEGIN
     ID_EDIT_FIND            "Finds a text string in a key, value or data"
     ID_EDIT_FINDNEXT        "Finds next occurrence of text specified in previous search"
     ID_EDIT_EXPORT          "Exports the selected branch of the registry to a text file"
+    ID_TREE_EXPAND_COLLAPSE "Expands or collapses the selected node"
 END
 
 STRINGTABLE
@@ -415,7 +416,7 @@ STRINGTABLE
     STRING_INVALID_HEX, "regedit: Invalid hexadecimal value.\n"
     STRING_CSV_HEX_ERROR, "regedit: Unable to convert hexadecimal data. An invalid value was encountered at '%1'.\n"
     STRING_ESCAPE_SEQUENCE, "regedit: Unrecognized escape sequence [\\%1!c!]\n"
-    STRING_UNKNOWN_DATA_FORMAT, "regedit: Unsupported registry data type [%1]\n"
+    STRING_UNKNOWN_DATA_FORMAT, "regedit: Unsupported registry data type [0x%1!x!]\n"
     STRING_UNEXPECTED_EOL, "regedit: Unexpected end of line in '%1'.\n"
     STRING_UNRECOGNIZED_LINE, "regedit: The line '%1' was not recognized.\n"
     STRING_SETVALUE_FAILED, "regedit: Unable to add the registry value '%1' to '%2'.\n"
