@@ -188,16 +188,6 @@ static const char vcomp_manifest[] =
 
 #undef ARCH
 
-static const char *debugstr_longlong(ULONGLONG ll)
-{
-    static char str[17];
-    if (sizeof(ll) > sizeof(unsigned long) && ll >> 32)
-        sprintf(str, "%lx%08lx", (unsigned long)(ll >> 32), (unsigned long)ll);
-    else
-        sprintf(str, "%lx", (unsigned long)ll);
-    return str;
-}
-
 static void create_vcomp_manifest(void)
 {
     char temp_path[MAX_PATH];
@@ -549,13 +539,21 @@ static void CDECL fork_ptr_cb(LONG *a, LONG *b, LONG *c, LONG *d, LONG *e)
     InterlockedIncrement(e);
 }
 
-static void CDECL fork_uintptr_cb(UINT_PTR a, UINT_PTR b, UINT_PTR c, UINT_PTR d, UINT_PTR e)
+static void CDECL fork_uintptr_cb(UINT_PTR a, UINT_PTR b, UINT_PTR c, UINT_PTR d,
+                                  UINT_PTR e, UINT_PTR f, UINT_PTR g, UINT_PTR h,
+                                  UINT_PTR i, UINT_PTR j, UINT_PTR k)
 {
     ok(a == 1, "expected a == 1, got %p\n", (void *)a);
     ok(b == MAXUINT_PTR - 2, "expected b == MAXUINT_PTR - 2, got %p\n", (void *)b);
     ok(c == 3, "expected c == 3, got %p\n", (void *)c);
     ok(d == MAXUINT_PTR - 4, "expected d == MAXUINT_PTR - 4, got %p\n", (void *)d);
     ok(e == 5, "expected e == 5, got %p\n", (void *)e);
+    ok(f == 6, "expected f == 6, got %p\n", (void *)f);
+    ok(g == 7, "expected g == 7, got %p\n", (void *)g);
+    ok(h == 8, "expected h == 8, got %p\n", (void *)h);
+    ok(i == 9, "expected i == 9, got %p\n", (void *)i);
+    ok(j == 10, "expected j == 10, got %p\n", (void *)j);
+    ok(k == 11, "expected k == 11, got %p\n", (void *)k);
 }
 
 #ifdef __i386__
@@ -591,8 +589,10 @@ static void test_vcomp_fork(void)
     ok(d == 7, "expected d == 7, got %d\n", d);
     ok(e == 8, "expected e == 8, got %d\n", e);
 
-    p_vcomp_fork(TRUE, 5, fork_uintptr_cb, (UINT_PTR)1, (UINT_PTR)(MAXUINT_PTR - 2),
-        (UINT_PTR)3, (UINT_PTR)(MAXUINT_PTR - 4), (UINT_PTR)5);
+    p_vcomp_fork(TRUE, 11, fork_uintptr_cb, (UINT_PTR)1, (UINT_PTR)(MAXUINT_PTR - 2),
+        (UINT_PTR)3, (UINT_PTR)(MAXUINT_PTR - 4), (UINT_PTR)5,
+        (UINT_PTR)6, (UINT_PTR)7, (UINT_PTR)8, (UINT_PTR)9,
+        (UINT_PTR)10, (UINT_PTR)11);
 
 #ifdef __i386__
     {
@@ -1875,27 +1875,27 @@ static void test_atomic_integer64(void)
     {
         LONG64 val = tests1[i].v1;
         tests1[i].func(&val, tests1[i].v2);
-        ok(val == tests1[i].expected, "test %d: unexpectedly got %s\n", i, debugstr_longlong(val));
+        ok(val == tests1[i].expected, "test %d: unexpectedly got %s\n", i, wine_dbgstr_longlong(val));
     }
     for (i = 0; i < sizeof(tests2)/sizeof(tests2[0]); i++)
     {
         LONG64 val = tests2[i].v1;
         tests2[i].func(&val, tests2[i].v2);
         todo_wine_if(tests2[i].todo)
-        ok(val == tests2[i].expected, "test %d: unexpectedly got %s\n", i, debugstr_longlong(val));
+        ok(val == tests2[i].expected, "test %d: unexpectedly got %s\n", i, wine_dbgstr_longlong(val));
     }
     for (i = 0; i < sizeof(tests3)/sizeof(tests3[0]); i++)
     {
         ULONG64 val = tests3[i].v1;
         tests3[i].func(&val, tests3[i].v2);
-        ok(val == tests3[i].expected, "test %d: unexpectedly got %s\n", i, debugstr_longlong(val));
+        ok(val == tests3[i].expected, "test %d: unexpectedly got %s\n", i, wine_dbgstr_longlong(val));
     }
     for (i = 0; i < sizeof(tests4)/sizeof(tests4[0]); i++)
     {
         ULONG64 val = tests4[i].v1;
         tests4[i].func(&val, tests4[i].v2);
         todo_wine_if(tests4[i].todo)
-        ok(val == tests4[i].expected, "test %d: unexpectedly got %s\n", i, debugstr_longlong(val));
+        ok(val == tests4[i].expected, "test %d: unexpectedly got %s\n", i, wine_dbgstr_longlong(val));
     }
 }
 
@@ -2152,13 +2152,13 @@ static void test_reduction_integer64(void)
     {
         LONG64 val = tests[i].v1;
         p_vcomp_reduction_i8(tests[i].flags, &val, tests[i].v2);
-        ok(val == tests[i].expected, "test %d: unexpectedly got %s\n", i, debugstr_longlong(val));
+        ok(val == tests[i].expected, "test %d: unexpectedly got %s\n", i, wine_dbgstr_longlong(val));
     }
     for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
     {
         ULONG64 val = tests[i].v1;
         p_vcomp_reduction_u8(tests[i].flags, &val, tests[i].v2);
-        ok(val == tests[i].expected, "test %d: unexpectedly got %s\n", i, debugstr_longlong(val));
+        ok(val == tests[i].expected, "test %d: unexpectedly got %s\n", i, wine_dbgstr_longlong(val));
     }
 }
 

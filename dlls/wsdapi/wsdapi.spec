@@ -24,7 +24,7 @@
 @ stub WSDCreateMetadataAgent
 @ stub WSDCreateOutboundAttachment
 @ stdcall WSDCreateUdpAddress(ptr)
-@ stub WSDCreateUdpMessageParameters
+@ stdcall WSDCreateUdpMessageParameters(ptr)
 @ stub WSDCreateUdpTransport
 @ stdcall WSDDetachLinkedMemory(ptr)
 @ stdcall WSDFreeLinkedMemory(ptr)
@@ -42,4 +42,4 @@
 @ stdcall WSDXMLCleanupElement(ptr)
 @ stdcall WSDXMLCreateContext(ptr)
 @ stub WSDXMLGetNameFromBuiltinNamespace
-@ stub WSDXMLGetValueFromAny
+@ stdcall WSDXMLGetValueFromAny(wstr wstr ptr wstr)

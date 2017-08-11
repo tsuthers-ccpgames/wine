@@ -59,6 +59,43 @@ function test_input_selection() {
     next_test();
 }
 
+function test_textContent() {
+    var text = document.createTextNode("test");
+    ok(text.textContent === "test", "text.textContent = " + text.textContent);
+
+    var div = document.createElement("div");
+    document.body.appendChild(div);
+    div.innerHTML = "abc<script>/* */</script><div>text</div>";
+    ok(div.textContent === "abc/* */text", "div.textContent = " + div.textContent);
+
+    div.textContent = "test";
+    ok(div.textContent === "test", "div.textContent = " + div.textContent);
+    ok(div.childNodes.length === 1, "div.childNodes.length = " + div.childNodes.length);
+    ok(div.firstChild.textContent === "test", "div.firstChild.textContent = " + div.firstChild.textContent);
+
+    div.textContent = "";
+    ok(div.textContent === "", "div.textContent = " + div.textContent);
+    ok(div.childNodes.length === 0, "div.childNodes.length = " + div.childNodes.length);
+
+    next_test();
+}
+
+function test_ElementTraversal() {
+    var div = document.createElement("div");
+    div.innerHTML = "abc<b>bold</b><script>/* */<script><div>text</div>def";
+    ok(div.firstElementChild.outerHTML === "<b>bold</b>",
+            "div.firstElementChild.outerHTML = " + div.firstElementChild.outerHTML);
+
+    div.innerHTML = "abc";
+    ok(div.firstElementChild === null, "div.firstElementChild = " + div.firstElementChild);
+
+    ok(!("firstElementChild" in document), "firstElementChild found in document");
+
+    next_test();
+}
+
 var tests = [
-    test_input_selection
+    test_input_selection,
+    test_textContent,
+    test_ElementTraversal
 ];

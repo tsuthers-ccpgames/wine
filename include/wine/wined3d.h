@@ -2209,6 +2209,8 @@ HRESULT __cdecl wined3d_device_copy_sub_resource_region(struct wined3d_device *d
         struct wined3d_resource *dst_resource, unsigned int dst_sub_resource_idx, unsigned int dst_x,
         unsigned int dst_y, unsigned int dst_z, struct wined3d_resource *src_resource,
         unsigned int src_sub_resource_idx, const struct wined3d_box *src_box);
+void __cdecl wined3d_device_copy_uav_counter(struct wined3d_device *device,
+        struct wined3d_buffer *dst_buffer, unsigned int offset, struct wined3d_unordered_access_view *uav);
 HRESULT __cdecl wined3d_device_create(struct wined3d *wined3d, UINT adapter_idx,
         enum wined3d_device_type device_type, HWND focus_window, DWORD behaviour_flags, BYTE surface_alignment,
         struct wined3d_device_parent *device_parent, struct wined3d_device **device);
@@ -2347,7 +2349,7 @@ void __cdecl wined3d_device_set_cs_resource_view(struct wined3d_device *device,
 void __cdecl wined3d_device_set_cs_sampler(struct wined3d_device *device,
         unsigned int idx, struct wined3d_sampler *sampler);
 void __cdecl wined3d_device_set_cs_uav(struct wined3d_device *device, unsigned int idx,
-        struct wined3d_unordered_access_view *uav);
+        struct wined3d_unordered_access_view *uav, unsigned int initial_count);
 void __cdecl wined3d_device_set_cursor_position(struct wined3d_device *device,
         int x_screen_space, int y_screen_space, DWORD flags);
 HRESULT __cdecl wined3d_device_set_cursor_properties(struct wined3d_device *device,
@@ -2418,7 +2420,7 @@ void __cdecl wined3d_device_set_texture_stage_state(struct wined3d_device *devic
 void __cdecl wined3d_device_set_transform(struct wined3d_device *device,
         enum wined3d_transform_state state, const struct wined3d_matrix *matrix);
 void __cdecl wined3d_device_set_unordered_access_view(struct wined3d_device *device,
-        unsigned int idx, struct wined3d_unordered_access_view *uav);
+        unsigned int idx, struct wined3d_unordered_access_view *uav, unsigned int initial_count);
 void __cdecl wined3d_device_set_vertex_declaration(struct wined3d_device *device,
         struct wined3d_vertex_declaration *declaration);
 void __cdecl wined3d_device_set_vertex_shader(struct wined3d_device *device, struct wined3d_shader *shader);

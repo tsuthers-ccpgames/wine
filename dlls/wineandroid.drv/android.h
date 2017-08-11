@@ -49,15 +49,24 @@ DECL_FUNCPTR( ANativeWindow_release );
 
 
 /**************************************************************************
+ * OpenGL driver
+ */
+
+extern void update_gl_drawable( HWND hwnd ) DECLSPEC_HIDDEN;
+extern void destroy_gl_drawable( HWND hwnd ) DECLSPEC_HIDDEN;
+extern struct opengl_funcs *get_wgl_driver( UINT version ) DECLSPEC_HIDDEN;
+
+
+/**************************************************************************
  * Android pseudo-device
  */
 
 extern void start_android_device(void) DECLSPEC_HIDDEN;
-extern void register_native_window( HWND hwnd, struct ANativeWindow *win ) DECLSPEC_HIDDEN;
-extern struct ANativeWindow *create_ioctl_window( HWND hwnd ) DECLSPEC_HIDDEN;
+extern void register_native_window( HWND hwnd, struct ANativeWindow *win, BOOL client ) DECLSPEC_HIDDEN;
+extern struct ANativeWindow *create_ioctl_window( HWND hwnd, BOOL opengl ) DECLSPEC_HIDDEN;
 extern struct ANativeWindow *grab_ioctl_window( struct ANativeWindow *window ) DECLSPEC_HIDDEN;
 extern void release_ioctl_window( struct ANativeWindow *window ) DECLSPEC_HIDDEN;
-extern void destroy_ioctl_window( HWND hwnd ) DECLSPEC_HIDDEN;
+extern void destroy_ioctl_window( HWND hwnd, BOOL opengl ) DECLSPEC_HIDDEN;
 extern int ioctl_window_pos_changed( HWND hwnd, const RECT *window_rect, const RECT *client_rect,
                                      const RECT *visible_rect, UINT style, UINT flags,
                                      HWND after, HWND owner ) DECLSPEC_HIDDEN;
@@ -87,7 +96,8 @@ extern void update_keyboard_lock_state( WORD vkey, UINT state ) DECLSPEC_HIDDEN;
 /* JNI entry points */
 extern void desktop_changed( JNIEnv *env, jobject obj, jint width, jint height ) DECLSPEC_HIDDEN;
 extern void config_changed( JNIEnv *env, jobject obj, jint dpi ) DECLSPEC_HIDDEN;
-extern void surface_changed( JNIEnv *env, jobject obj, jint win, jobject surface ) DECLSPEC_HIDDEN;
+extern void surface_changed( JNIEnv *env, jobject obj, jint win, jobject surface,
+                             jboolean client ) DECLSPEC_HIDDEN;
 extern jboolean motion_event( JNIEnv *env, jobject obj, jint win, jint action,
                               jint x, jint y, jint state, jint vscroll ) DECLSPEC_HIDDEN;
 extern jboolean keyboard_event( JNIEnv *env, jobject obj, jint win, jint action,
@@ -121,6 +131,7 @@ union event_data
         enum event_type type;
         HWND            hwnd;
         ANativeWindow  *window;
+        BOOL            client;
         unsigned int    width;
         unsigned int    height;
     } surface;

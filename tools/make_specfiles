@@ -124,10 +124,12 @@ my @dll_groups =
   "api-ms-win-security-audit-l1-1-1",
   "api-ms-win-security-base-l1-2-0",
   "api-ms-win-security-base-private-l1-1-1",
+  "api-ms-win-security-credentials-l1-1-0",
   "api-ms-win-security-lsalookup-l1-1-0",
   "api-ms-win-security-lsalookup-l1-1-1",
   "api-ms-win-security-lsalookup-l2-1-1",
   "api-ms-win-security-lsapolicy-l1-1-0",
+  "api-ms-win-security-provider-l1-1-0",
   "api-ms-win-security-sddl-l1-1-0",
   "api-ms-win-security-systemfunctions-l1-1-0",
   "api-ms-win-service-core-l1-1-0",
@@ -141,6 +143,14 @@ my @dll_groups =
  [
   "authz",
   "ext-ms-win-authz-context-l1-1-0",
+ ],
+ [
+  "credui",
+  "ext-ms-win-security-credui-l1-1-0",
+ ],
+ [
+  "cryptui",
+  "ext-ms-win-security-cryptui-l1-1-0",
  ],
  [
   "netapi32",
@@ -159,6 +169,10 @@ my @dll_groups =
  [
   "ntdsapi",
   "api-ms-win-security-activedirectoryclient-l1-1-0",
+ ],
+ [
+  "rasapi32",
+  "ext-ms-win-ras-rasapi32-l1-1-0",
  ],
  [
   "kernel32",
@@ -220,6 +234,7 @@ my @dll_groups =
   "api-ms-win-core-processenvironment-l1-1-0",
   "api-ms-win-core-processenvironment-l1-2-0",
   "api-ms-win-core-psapi-l1-1-0",
+  "api-ms-win-core-psapi-ansi-l1-1-0",
   "api-ms-win-core-psapi-obsolete-l1-1-0",
   "api-ms-win-core-threadpool-l1-1-0",
   "api-ms-win-core-threadpool-l1-2-0",
@@ -239,6 +254,7 @@ my @dll_groups =
   "api-ms-win-core-errorhandling-l1-1-2",
   "api-ms-win-core-util-l1-1-0",
   "ext-ms-win-kernel32-package-current-l1-1-0",
+  "ext-ms-win-kernel32-package-l1-1-1",
  ],
  [
   "kernel32",
@@ -306,6 +322,7 @@ my @dll_groups =
   "ext-ms-win-ntuser-private-l1-1-1",
   "ext-ms-win-ntuser-rectangle-ext-l1-1-0",
   "ext-ms-win-ntuser-uicontext-ext-l1-1-0",
+  "ext-ms-win-ntuser-windowclass-l1-1-1",
   "ext-ms-win-ntuser-window-l1-1-1",
   "ext-ms-win-rtcore-ntuser-dc-access-l1-1-0",
   "ext-ms-win-rtcore-ntuser-dpi-l1-1-0",
@@ -322,6 +339,7 @@ my @dll_groups =
   "winmm",
   "api-ms-win-mm-misc-l1-1-1",
   "api-ms-win-mm-mme-l1-1-0",
+  "api-ms-win-mm-time-l1-1-0",
  ],
  [
   "msvcrt",
@@ -330,6 +348,8 @@ my @dll_groups =
   "api-ms-win-core-apiquery-l1-1-0",
   "api-ms-win-core-rtlsupport-l1-1-0",
   "api-ms-win-core-rtlsupport-l1-2-0",
+  "api-ms-win-core-crt-l1-1-0",
+  "api-ms-win-core-crt-l2-1-0",
  ],
  [
   "gdi32",

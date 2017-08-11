@@ -1578,8 +1578,8 @@
 @ cdecl -arch=win64 ?_Put@?$num_put@GV?$ostreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@GU?$char_traits@G@std@@@2@V32@PEBG_K@Z(ptr ptr ptr ptr long) num_put_wchar__Put
 @ cdecl -arch=win32 ?_Put@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@ABA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@PB_WI@Z(ptr ptr long ptr wstr long) num_put_wchar__Put
 @ cdecl -arch=win64 ?_Put@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@PEB_W_K@Z(ptr ptr ptr wstr long) num_put_wchar__Put
-@ stub -arch=win32 ?_Raise_handler@std@@3P6AXABVexception@stdext@@@ZA
-@ stub -arch=win64 ?_Raise_handler@std@@3P6AXAEBVexception@stdext@@@ZEA
+@ extern -arch=win32 ?_Raise_handler@std@@3P6AXABVexception@stdext@@@ZA _Raise_handler
+@ extern -arch=win64 ?_Raise_handler@std@@3P6AXAEBVexception@stdext@@@ZEA _Raise_handler
 @ cdecl ?_Random_device@std@@YAIXZ() _Random_device
 @ cdecl -arch=win32 ?_Release_chore@details@Concurrency@@YAXPAU_Threadpool_chore@12@@Z(ptr) _Release_chore
 @ cdecl -arch=win64 ?_Release_chore@details@Concurrency@@YAXPEAU_Threadpool_chore@12@@Z(ptr) _Release_chore
@@ -3634,8 +3634,8 @@
 @ cdecl _Cnd_wait(ptr ptr)
 @ stub _Copy_file
 @ stub _Cosh
-@ stub _Current_get
-@ stub _Current_set
+@ cdecl _Current_get(ptr)
+@ cdecl _Current_set(wstr) tr2_sys__Current_set_wchar
 @ extern _Denorm _Denorm
 @ cdecl _Dtest(ptr) _Dtest
 @ stub _Equivalent
@@ -3648,7 +3648,7 @@
 @ extern _FNan _FNan
 @ stub _FSinh
 @ extern _FSnan _FSnan
-@ stub _File_size
+@ cdecl _File_size(wstr)
 @ cdecl -ret64 _Getcoll() _Getcoll
 @ cdecl _Getctype(ptr) _Getctype
 @ cdecl _Getcvt(ptr) _Getcvt
@@ -3669,7 +3669,7 @@
 @ stub _Last_write_time
 @ stub _Link
 @ cdecl _Lock_shared_ptr_spin_lock()
-@ stub _Lstat
+@ cdecl _Lstat(wstr ptr)
 @ cdecl _Make_dir(wstr) tr2_sys__Make_dir_wchar
 @ cdecl _Mbrtowc(ptr ptr long ptr ptr) _Mbrtowc
 @ stub _Mtx_clear_owner
@@ -3699,7 +3699,7 @@
 @ stub _Set_last_write_time
 @ stub _Sinh
 @ extern _Snan _Snan
-@ stub _Stat
+@ cdecl _Stat(wstr ptr)
 @ stub _Statvfs
 @ cdecl _Stod(ptr ptr long) _Stod
 @ cdecl _Stodx(ptr ptr long ptr) _Stodx
@@ -3731,7 +3731,7 @@
 @ cdecl _Thrd_sleep(ptr) _Thrd_sleep
 @ cdecl _Thrd_start(ptr ptr ptr) _Thrd_start
 @ cdecl _Thrd_yield() _Thrd_yield
-@ stub _To_byte
+@ cdecl _To_byte(wstr ptr) _To_byte
 @ cdecl _To_wide(str ptr)
 @ cdecl _Tolower(long ptr) _Tolower
 @ cdecl _Toupper(long ptr) _Toupper

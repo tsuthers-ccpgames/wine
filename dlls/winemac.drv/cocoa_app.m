@@ -1007,12 +1007,14 @@ static NSString* WineLocalizedString(unsigned int stringID)
     {
         NSDictionary* frame = [cursorFrames objectAtIndex:cursorFrame];
         CGImageRef cgimage = (CGImageRef)[frame objectForKey:@"image"];
-        NSImage* image = [[NSImage alloc] initWithCGImage:cgimage size:NSZeroSize];
+        CGSize size = CGSizeMake(CGImageGetWidth(cgimage), CGImageGetHeight(cgimage));
+        NSImage* image = [[NSImage alloc] initWithCGImage:cgimage size:NSSizeFromCGSize(cgsize_mac_from_win(size))];
         CFDictionaryRef hotSpotDict = (CFDictionaryRef)[frame objectForKey:@"hotSpot"];
         CGPoint hotSpot;
 
         if (!CGPointMakeWithDictionaryRepresentation(hotSpotDict, &hotSpot))
             hotSpot = CGPointZero;
+        hotSpot = cgpoint_mac_from_win(hotSpot);
         self.cursor = [[[NSCursor alloc] initWithImage:image hotSpot:NSPointFromCGPoint(hotSpot)] autorelease];
         [image release];
         [self unhideCursor];
@@ -1566,6 +1568,18 @@ static NSString* WineLocalizedString(unsigned int stringID)
         else
             [windowsBeingDragged removeObject:window];
         [self updateCursorClippingState];
+    }
+
+    - (void) windowWillOrderOut:(WineWindow*)window
+    {
+        if ([windowsBeingDragged containsObject:window])
+        {
+            [self window:window isBeingDragged:NO];
+
+            macdrv_event* event = macdrv_create_event(WINDOW_DRAG_END, window);
+            [window.queue postEvent:event];
+            macdrv_release_event(event);
+        }
     }
 
     - (void) handleMouseMove:(NSEvent*)anEvent

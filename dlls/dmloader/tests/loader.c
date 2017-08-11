@@ -47,8 +47,9 @@ static void test_directory(void)
 {
     IDirectMusicLoader8 *loader = NULL;
     HRESULT hr;
-    WCHAR con[] = {'c', 'o', 'n'};
+    WCHAR con[] = {'c', 'o', 'n', 0};
     WCHAR path[MAX_PATH];
+    WCHAR empty[] = {0};
     WCHAR invalid_path[] = {'/', 'i', 'n', 'v', 'a', 'l', 'i', 'd', ' ', 'p', 'a', 't', 'h', 0};
 
     hr = CoCreateInstance(&CLSID_DirectMusicLoader, NULL, CLSCTX_INPROC, &IID_IDirectMusicLoader8,
@@ -60,13 +61,20 @@ static void test_directory(void)
     ok(hr == S_FALSE, "ScanDirectory for \"con\" files failed with %#x\n", hr);
 
     /* SetSearchDirectory with invalid path */
+    hr = IDirectMusicLoader_SetSearchDirectory(loader, &GUID_DirectMusicAllTypes, NULL, 0);
+    ok(hr == E_POINTER, "SetSearchDirectory failed with %#x\n", hr);
     hr = IDirectMusicLoader_SetSearchDirectory(loader, &GUID_DirectMusicAllTypes, invalid_path, 0);
     ok(hr == DMUS_E_LOADER_BADPATH, "SetSearchDirectory failed with %#x\n", hr);
+
+    /* SetSearchDirectory with the current directory */
+    GetCurrentDirectoryW(ARRAY_SIZE(path), path);
+    hr = IDirectMusicLoader_SetSearchDirectory(loader, &GUID_DirectMusicAllTypes, path, 0);
+    ok(hr == S_OK, "SetSearchDirectory failed with %#x\n", hr);
 
     /* Two consecutive SetSearchDirectory with the same path */
     GetTempPathW(ARRAY_SIZE(path), path);
     hr = IDirectMusicLoader_SetSearchDirectory(loader, &GUID_DirectMusicAllTypes, path, 0);
-    todo_wine ok(hr == S_OK, "SetSearchDirectory failed with %#x\n", hr);
+    ok(hr == S_OK, "SetSearchDirectory failed with %#x\n", hr);
     hr = IDirectMusicLoader_SetSearchDirectory(loader, &GUID_DirectMusicAllTypes, path, 0);
     ok(hr == S_FALSE, "Second SetSearchDirectory failed with %#x\n", hr);
     hr = IDirectMusicLoader_SetSearchDirectory(loader, &CLSID_DirectSoundWave, path, 0);
@@ -74,9 +82,67 @@ static void test_directory(void)
     hr = IDirectMusicLoader_SetSearchDirectory(loader, &CLSID_DirectSoundWave, path, 0);
     ok(hr == S_FALSE, "Second SetSearchDirectory failed with %#x\n", hr);
 
+    /* Invalid GUIDs */
+    if (0)
+        IDirectMusicLoader_SetSearchDirectory(loader, NULL, path, 0); /* Crashes on Windows */
+    hr = IDirectMusicLoader_SetSearchDirectory(loader, &IID_IDirectMusicLoader8, path, 0);
+    ok(hr == S_OK, "SetSearchDirectory failed with %#x\n", hr);
+    hr = IDirectMusicLoader_ScanDirectory(loader, &GUID_DirectMusicAllTypes, con, NULL);
+    ok(hr == REGDB_E_CLASSNOTREG, "ScanDirectory failed, received %#x\n", hr);
+
     /* NULL extension is not an error */
     hr = IDirectMusicLoader_ScanDirectory(loader, &CLSID_DirectSoundWave, NULL, NULL);
     ok(hr == S_FALSE, "ScanDirectory for \"wav\" files failed, received %#x\n", hr);
+
+    IDirectMusicLoader_Release(loader);
+
+    /* An empty path is a valid path */
+    hr = CoCreateInstance(&CLSID_DirectMusicLoader, NULL, CLSCTX_INPROC, &IID_IDirectMusicLoader8,
+            (void**)&loader);
+    ok(hr == S_OK, "Couldn't create Loader %#x\n", hr);
+    hr = IDirectMusicLoader_SetSearchDirectory(loader, &GUID_DirectMusicAllTypes, empty, 0);
+    ok(hr == S_OK, "SetSearchDirectory failed with %#x\n", hr);
+    hr = IDirectMusicLoader_SetSearchDirectory(loader, &GUID_DirectMusicAllTypes, empty, 0);
+    ok(hr == S_FALSE, "SetSearchDirectory failed with %#x\n", hr);
+    hr = IDirectMusicLoader_ScanDirectory(loader, &CLSID_DirectMusicContainer, con, NULL);
+    ok(hr == S_FALSE, "ScanDirectory for \"con\" files failed with %#x\n", hr);
+    IDirectMusicLoader_Release(loader);
+}
+
+static void test_caching(void)
+{
+    IDirectMusicLoader8 *loader = NULL;
+    HRESULT hr;
+
+    hr = CoCreateInstance(&CLSID_DirectMusicLoader, NULL, CLSCTX_INPROC, &IID_IDirectMusicLoader8,
+            (void**)&loader);
+    ok(hr == S_OK, "Couldn't create Loader %#x\n", hr);
+
+    /* Invalid GUID */
+    if (0) /* Crashes on Windows */
+        IDirectMusicLoader_EnableCache(loader, NULL, TRUE);
+    hr = IDirectMusicLoader_EnableCache(loader, &IID_IDirectMusicLoader8, TRUE);
+    ok(hr == S_FALSE, "EnableCache failed with %#x\n", hr);
+
+    /* Caching is enabled by default */
+    hr = IDirectMusicLoader_EnableCache(loader, &CLSID_DirectMusicContainer, TRUE);
+    ok(hr == S_FALSE, "EnableCache failed with %#x\n", hr);
+    hr = IDirectMusicLoader_EnableCache(loader, &GUID_DirectMusicAllTypes, TRUE);
+    ok(hr == S_FALSE, "EnableCache failed with %#x\n", hr);
+
+    /* Disabling/enabling the cache for all types */
+    hr = IDirectMusicLoader_EnableCache(loader, &GUID_DirectMusicAllTypes, FALSE);
+    ok(hr == S_OK, "EnableCache failed with %#x\n", hr);
+    hr = IDirectMusicLoader_EnableCache(loader, &CLSID_DirectMusicContainer, FALSE);
+    ok(hr == S_FALSE, "EnableCache failed with %#x\n", hr);
+    hr = IDirectMusicLoader_EnableCache(loader, &GUID_DirectMusicAllTypes, TRUE);
+    ok(hr == S_OK, "EnableCache failed with %#x\n", hr);
+    hr = IDirectMusicLoader_EnableCache(loader, &CLSID_DirectMusicContainer, FALSE);
+    ok(hr == S_OK, "EnableCache failed with %#x\n", hr);
+    hr = IDirectMusicLoader_EnableCache(loader, &GUID_DirectMusicAllTypes, TRUE);
+    ok(hr == S_FALSE, "EnableCache failed with %#x\n", hr);
+    hr = IDirectMusicLoader_EnableCache(loader, &CLSID_DirectMusicContainer, TRUE);
+    ok(hr == S_FALSE, "EnableCache failed with %#x\n", hr);
 
     IDirectMusicLoader_Release(loader);
 }
@@ -336,6 +402,7 @@ START_TEST(loader)
         return;
     }
     test_directory();
+    test_caching();
     test_release_object();
     test_simple_playing();
     test_COM();

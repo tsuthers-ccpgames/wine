@@ -390,6 +390,8 @@ typedef struct tagMSIPACKAGE
     struct list cabinet_streams;
     LPWSTR ActionFormat;
     LPWSTR LastAction;
+    LPWSTR LastActionTemplate;
+    UINT   LastActionResult;
     UINT   action_progress_increment;
     HANDLE log_file;
     IAssemblyCache *cache_net[CLR_VERSION_MAX];
@@ -412,7 +414,6 @@ typedef struct tagMSIPACKAGE
     BOOL delete_on_close;
 
     INSTALLUILEVEL ui_level;
-    UINT CurrentInstallState;
     msi_dialog *dialog;
     LPWSTR next_dialog;
     float center_x;
@@ -800,7 +801,8 @@ extern void msi_free_patchinfo( MSIPATCHINFO *patch ) DECLSPEC_HIDDEN;
 
 /* action internals */
 extern UINT MSI_InstallPackage( MSIPACKAGE *, LPCWSTR, LPCWSTR ) DECLSPEC_HIDDEN;
-extern UINT ACTION_DialogBox( MSIPACKAGE*, LPCWSTR) DECLSPEC_HIDDEN;
+extern INT ACTION_ShowDialog( MSIPACKAGE*, LPCWSTR) DECLSPEC_HIDDEN;
+extern INT ACTION_DialogBox( MSIPACKAGE*, LPCWSTR) DECLSPEC_HIDDEN;
 extern UINT ACTION_ForceReboot(MSIPACKAGE *package) DECLSPEC_HIDDEN;
 extern UINT MSI_Sequence( MSIPACKAGE *package, LPCWSTR szTable ) DECLSPEC_HIDDEN;
 extern UINT MSI_SetFeatureStates( MSIPACKAGE *package ) DECLSPEC_HIDDEN;
@@ -837,6 +839,7 @@ extern BOOL MSI_RecordsAreEqual( MSIRECORD *, MSIRECORD * ) DECLSPEC_HIDDEN;
 extern BOOL MSI_RecordsAreFieldsEqual(MSIRECORD *a, MSIRECORD *b, UINT field) DECLSPEC_HIDDEN;
 extern UINT msi_record_set_string(MSIRECORD *, UINT, const WCHAR *, int) DECLSPEC_HIDDEN;
 extern const WCHAR *msi_record_get_string(const MSIRECORD *, UINT, int *) DECLSPEC_HIDDEN;
+extern void dump_record(MSIRECORD *) DECLSPEC_HIDDEN;
 
 /* stream internals */
 extern void enum_stream_names( IStorage *stg ) DECLSPEC_HIDDEN;
@@ -869,6 +872,7 @@ extern UINT MSI_SetInstallLevel( MSIPACKAGE *package, int iInstallLevel ) DECLSP
 extern MSIPACKAGE *MSI_CreatePackage( MSIDATABASE *, LPCWSTR ) DECLSPEC_HIDDEN;
 extern UINT MSI_OpenPackageW( LPCWSTR szPackage, MSIPACKAGE **pPackage ) DECLSPEC_HIDDEN;
 extern UINT MSI_SetTargetPathW( MSIPACKAGE *, LPCWSTR, LPCWSTR ) DECLSPEC_HIDDEN;
+extern INT MSI_ProcessMessageVerbatim( MSIPACKAGE *, INSTALLMESSAGE, MSIRECORD * ) DECLSPEC_HIDDEN;
 extern INT MSI_ProcessMessage( MSIPACKAGE *, INSTALLMESSAGE, MSIRECORD * ) DECLSPEC_HIDDEN;
 extern MSICONDITION MSI_EvaluateConditionW( MSIPACKAGE *, LPCWSTR ) DECLSPEC_HIDDEN;
 extern UINT MSI_GetComponentStateW( MSIPACKAGE *, LPCWSTR, INSTALLSTATE *, INSTALLSTATE * ) DECLSPEC_HIDDEN;
@@ -947,7 +951,6 @@ extern LONG msi_reg_set_subkey_val( HKEY hkey, LPCWSTR path, LPCWSTR name, LPCWS
 extern void msi_dialog_check_messages( HANDLE ) DECLSPEC_HIDDEN;
 extern void msi_dialog_destroy( msi_dialog* ) DECLSPEC_HIDDEN;
 extern void msi_dialog_unregister_class( void ) DECLSPEC_HIDDEN;
-extern UINT msi_spawn_error_dialog( MSIPACKAGE*, LPWSTR, LPWSTR ) DECLSPEC_HIDDEN;
 
 /* summary information */
 extern UINT msi_get_suminfo( IStorage *stg, UINT uiUpdateCount, MSISUMMARYINFO **si ) DECLSPEC_HIDDEN;
@@ -972,7 +975,9 @@ extern INSTALLUI_HANDLERA gUIHandlerA DECLSPEC_HIDDEN;
 extern INSTALLUI_HANDLERW gUIHandlerW DECLSPEC_HIDDEN;
 extern INSTALLUI_HANDLER_RECORD gUIHandlerRecord DECLSPEC_HIDDEN;
 extern DWORD gUIFilter DECLSPEC_HIDDEN;
+extern DWORD gUIFilterRecord DECLSPEC_HIDDEN;
 extern LPVOID gUIContext DECLSPEC_HIDDEN;
+extern LPVOID gUIContextRecord DECLSPEC_HIDDEN;
 extern WCHAR *gszLogFile DECLSPEC_HIDDEN;
 extern HINSTANCE msi_hInstance DECLSPEC_HIDDEN;
 
@@ -1032,7 +1037,6 @@ extern WCHAR *msi_create_component_advertise_string(MSIPACKAGE *, MSICOMPONENT *
 extern void ACTION_UpdateComponentStates(MSIPACKAGE *package, MSIFEATURE *feature) DECLSPEC_HIDDEN;
 extern UINT msi_register_unique_action(MSIPACKAGE *, const WCHAR *) DECLSPEC_HIDDEN;
 extern BOOL msi_action_is_unique(const MSIPACKAGE *, const WCHAR *) DECLSPEC_HIDDEN;
-extern WCHAR *msi_build_error_string(MSIPACKAGE *, UINT, DWORD, ...) DECLSPEC_HIDDEN;
 extern UINT msi_set_last_used_source(LPCWSTR product, LPCWSTR usersid,
                         MSIINSTALLCONTEXT context, DWORD options, LPCWSTR value) DECLSPEC_HIDDEN;
 extern UINT msi_create_empty_local_file(LPWSTR path, LPCWSTR suffix) DECLSPEC_HIDDEN;
@@ -1048,6 +1052,7 @@ extern WCHAR *msi_get_assembly_path(MSIPACKAGE *, const WCHAR *) DECLSPEC_HIDDEN
 extern WCHAR *msi_font_version_from_file(const WCHAR *) DECLSPEC_HIDDEN;
 extern WCHAR **msi_split_string(const WCHAR *, WCHAR) DECLSPEC_HIDDEN;
 extern UINT msi_set_original_database_property(MSIDATABASE *, const WCHAR *) DECLSPEC_HIDDEN;
+extern WCHAR *msi_get_error_message(MSIDATABASE *, int) DECLSPEC_HIDDEN;
 
 /* media */
 
@@ -1097,7 +1102,6 @@ extern DWORD call_script(MSIHANDLE hPackage, INT type, LPCWSTR script, LPCWSTR f
 
 /* User interface messages from the actions */
 extern void msi_ui_progress(MSIPACKAGE *, int, int, int, int) DECLSPEC_HIDDEN;
-extern void msi_ui_actiondata(MSIPACKAGE *, const WCHAR *, MSIRECORD *) DECLSPEC_HIDDEN;
 
 /* common strings */
 static const WCHAR szSourceDir[] = {'S','o','u','r','c','e','D','i','r',0};

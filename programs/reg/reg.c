@@ -17,9 +17,10 @@
  */
 
 #include <windows.h>
+#include <errno.h>
+#include <stdlib.h>
 #include <wine/unicode.h>
 #include <wine/debug.h>
-#include <errno.h>
 #include "reg.h"
 
 #define ARRAY_SIZE(A) (sizeof(A)/sizeof(*A))
@@ -78,6 +79,40 @@ type_rels[] =
     {REG_MULTI_SZ, type_multi_sz},
 };
 
+static void *heap_xalloc(size_t size)
+{
+    void *buf = HeapAlloc(GetProcessHeap(), 0, size);
+    if (!buf)
+    {
+        ERR("Out of memory!\n");
+        exit(1);
+    }
+    return buf;
+}
+
+static void *heap_xrealloc(void *buf, size_t size)
+{
+    void *new_buf;
+
+    if (buf)
+        new_buf = HeapReAlloc(GetProcessHeap(), 0, buf, size);
+    else
+        new_buf = HeapAlloc(GetProcessHeap(), 0, size);
+
+    if (!new_buf)
+    {
+        ERR("Out of memory!\n");
+        exit(1);
+    }
+
+    return new_buf;
+}
+
+static BOOL heap_free(void *buf)
+{
+    return HeapFree(GetProcessHeap(), 0, buf);
+}
+
 static void output_writeconsole(const WCHAR *str, DWORD wlen)
 {
     DWORD count, ret;
@@ -93,12 +128,11 @@ static void output_writeconsole(const WCHAR *str, DWORD wlen)
          * one in that case.
          */
         len = WideCharToMultiByte(GetConsoleOutputCP(), 0, str, wlen, NULL, 0, NULL, NULL);
-        msgA = HeapAlloc(GetProcessHeap(), 0, len * sizeof(char));
-        if (!msgA) return;
+        msgA = heap_xalloc(len);
 
         WideCharToMultiByte(GetConsoleOutputCP(), 0, str, wlen, msgA, len, NULL, NULL);
         WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), msgA, len, &count, FALSE);
-        HeapFree(GetProcessHeap(), 0, msgA);
+        heap_free(msgA);
     }
 }
 
@@ -240,7 +274,7 @@ static LPBYTE get_regdata(const WCHAR *data, DWORD reg_type, WCHAR separator, DW
         case REG_EXPAND_SZ:
         {
             *reg_count = (lstrlenW(data) + 1) * sizeof(WCHAR);
-            out_data = HeapAlloc(GetProcessHeap(),0,*reg_count);
+            out_data = heap_xalloc(*reg_count);
             lstrcpyW((LPWSTR)out_data,data);
             break;
         }
@@ -256,7 +290,7 @@ static LPBYTE get_regdata(const WCHAR *data, DWORD reg_type, WCHAR separator, DW
                 break;
             }
             *reg_count = sizeof(DWORD);
-            out_data = HeapAlloc(GetProcessHeap(),0,*reg_count);
+            out_data = heap_xalloc(*reg_count);
             ((LPDWORD)out_data)[0] = val;
             break;
         }
@@ -265,7 +299,7 @@ static LPBYTE get_regdata(const WCHAR *data, DWORD reg_type, WCHAR separator, DW
             BYTE hex0, hex1;
             int i = 0, destByteIndex = 0, datalen = lstrlenW(data);
             *reg_count = ((datalen + datalen % 2) / 2) * sizeof(BYTE);
-            out_data = HeapAlloc(GetProcessHeap(), 0, *reg_count);
+            out_data = heap_xalloc(*reg_count);
             if(datalen % 2)
             {
                 hex1 = hexchar_to_byte(data[i++]);
@@ -284,7 +318,7 @@ static LPBYTE get_regdata(const WCHAR *data, DWORD reg_type, WCHAR separator, DW
             break;
             no_hex_data:
             /* cleanup, print error */
-            HeapFree(GetProcessHeap(), 0, out_data);
+            heap_free(out_data);
             output_message(STRING_MISSING_HEXDATA);
             out_data = NULL;
             break;
@@ -292,7 +326,7 @@ static LPBYTE get_regdata(const WCHAR *data, DWORD reg_type, WCHAR separator, DW
         case REG_MULTI_SZ:
         {
             int i, destindex, len = strlenW(data);
-            WCHAR *buffer = HeapAlloc(GetProcessHeap(), 0, (len + 2) * sizeof(WCHAR));
+            WCHAR *buffer = heap_xalloc((len + 2) * sizeof(WCHAR));
 
             for (i = 0, destindex = 0; i < len; i++, destindex++)
             {
@@ -308,7 +342,7 @@ static LPBYTE get_regdata(const WCHAR *data, DWORD reg_type, WCHAR separator, DW
 
                 if (destindex && !buffer[destindex - 1] && (!buffer[destindex] || destindex == 1))
                 {
-                    HeapFree(GetProcessHeap(), 0, buffer);
+                    heap_free(buffer);
                     output_message(STRING_INVALID_STRING);
                     return NULL;
                 }
@@ -396,7 +430,7 @@ static int reg_add(HKEY root, WCHAR *path, WCHAR *value_name, BOOL value_empty,
         }
 
         RegSetValueExW(key, value_name, 0, reg_type, reg_data, reg_count);
-        HeapFree(GetProcessHeap(),0,reg_data);
+        heap_free(reg_data);
     }
 
     RegCloseKey(key);
@@ -448,40 +482,35 @@ static int reg_delete(HKEY root, WCHAR *path, WCHAR *key_name, WCHAR *value_name
 
     if (value_all)
     {
-        LPWSTR szValue;
-        DWORD maxValue;
-        DWORD count;
+        DWORD max_value_len = 256, value_len;
+        WCHAR *value_name;
         LONG rc;
 
-        rc = RegQueryInfoKeyW(key, NULL, NULL, NULL, NULL, NULL, NULL,
-                              NULL, &maxValue, NULL, NULL, NULL);
-        if (rc != ERROR_SUCCESS)
-        {
-            RegCloseKey(key);
-            output_message(STRING_GENERAL_FAILURE);
-            return 1;
-        }
-        maxValue++;
-        szValue = HeapAlloc(GetProcessHeap(),0,maxValue*sizeof(WCHAR));
+        value_name = heap_xalloc(max_value_len * sizeof(WCHAR));
 
         while (1)
         {
-            count = maxValue;
-            rc = RegEnumValueW(key, 0, szValue, &count, NULL, NULL, NULL, NULL);
+            value_len = max_value_len;
+            rc = RegEnumValueW(key, 0, value_name, &value_len, NULL, NULL, NULL, NULL);
             if (rc == ERROR_SUCCESS)
             {
-                rc = RegDeleteValueW(key, szValue);
+                rc = RegDeleteValueW(key, value_name);
                 if (rc != ERROR_SUCCESS)
                 {
-                    HeapFree(GetProcessHeap(), 0, szValue);
+                    heap_free(value_name);
                     RegCloseKey(key);
                     output_message(STRING_VALUEALL_FAILED, key_name);
                     return 1;
                 }
             }
+            else if (rc == ERROR_MORE_DATA)
+            {
+                max_value_len *= 2;
+                value_name = heap_xrealloc(value_name, max_value_len * sizeof(WCHAR));
+            }
             else break;
         }
-        HeapFree(GetProcessHeap(), 0, szValue);
+        heap_free(value_name);
     }
     else if (value_name || value_empty)
     {
@@ -507,7 +536,7 @@ static WCHAR *reg_data_to_wchar(DWORD type, const BYTE *src, DWORD size_bytes)
     {
         case REG_SZ:
         case REG_EXPAND_SZ:
-            buffer = HeapAlloc(GetProcessHeap(), 0, size_bytes);
+            buffer = heap_xalloc(size_bytes);
             strcpyW(buffer, (WCHAR *)src);
             break;
         case REG_NONE:
@@ -516,7 +545,7 @@ static WCHAR *reg_data_to_wchar(DWORD type, const BYTE *src, DWORD size_bytes)
             WCHAR *ptr;
             WCHAR fmt[] = {'%','0','2','X',0};
 
-            buffer = HeapAlloc(GetProcessHeap(), 0, (size_bytes * 2 + 1) * sizeof(WCHAR));
+            buffer = heap_xalloc((size_bytes * 2 + 1) * sizeof(WCHAR));
             ptr = buffer;
             for (i = 0; i < size_bytes; i++)
                 ptr += sprintfW(ptr, fmt, src[i]);
@@ -529,7 +558,7 @@ static WCHAR *reg_data_to_wchar(DWORD type, const BYTE *src, DWORD size_bytes)
             const int zero_x_dword = 10;
             WCHAR fmt[] = {'0','x','%','x',0};
 
-            buffer = HeapAlloc(GetProcessHeap(), 0, (zero_x_dword + 1) * sizeof(WCHAR));
+            buffer = heap_xalloc((zero_x_dword + 1) * sizeof(WCHAR));
             sprintfW(buffer, fmt, *(DWORD *)src);
             break;
         }
@@ -542,13 +571,13 @@ static WCHAR *reg_data_to_wchar(DWORD type, const BYTE *src, DWORD size_bytes)
 
             if (size_bytes <= two_wchars)
             {
-                buffer = HeapAlloc(GetProcessHeap(), 0, sizeof(WCHAR));
+                buffer = heap_xalloc(sizeof(WCHAR));
                 *buffer = 0;
                 return buffer;
             }
 
             tmp_size = size_bytes - two_wchars; /* exclude both null terminators */
-            buffer = HeapAlloc(GetProcessHeap(), 0, tmp_size * 2 + sizeof(WCHAR));
+            buffer = heap_xalloc(tmp_size * 2 + sizeof(WCHAR));
             len = tmp_size / sizeof(WCHAR);
 
             for (i = 0, destindex = 0; i < len; i++, destindex++)
@@ -600,7 +629,7 @@ static void output_value(const WCHAR *value_name, DWORD type, BYTE *data, DWORD 
     {
         reg_data = reg_data_to_wchar(type, data, data_size);
         output_string(fmt, reg_data);
-        HeapFree(GetProcessHeap(), 0, reg_data);
+        heap_free(reg_data);
     }
     else
     {
@@ -615,23 +644,21 @@ static WCHAR *build_subkey_path(WCHAR *path, DWORD path_len, WCHAR *subkey_name,
     WCHAR *subkey_path;
     WCHAR fmt[] = {'%','s','\\','%','s',0};
 
-    subkey_path = HeapAlloc(GetProcessHeap(), 0, (path_len + subkey_len + 2) * sizeof(WCHAR));
-    if (!subkey_path)
-    {
-        ERR("Failed to allocate memory for subkey_path\n");
-        return NULL;
-    }
+    subkey_path = heap_xalloc((path_len + subkey_len + 2) * sizeof(WCHAR));
     sprintfW(subkey_path, fmt, path, subkey_name);
+
     return subkey_path;
 }
 
 static unsigned int num_values_found = 0;
 
+#define MAX_SUBKEY_LEN   257
+
 static int query_value(HKEY key, WCHAR *value_name, WCHAR *path, BOOL recurse)
 {
     LONG rc;
-    DWORD num_subkeys, max_subkey_len, subkey_len;
-    DWORD max_data_bytes, data_size;
+    DWORD max_data_bytes = 2048, data_size;
+    DWORD subkey_len;
     DWORD type, path_len, i;
     BYTE *data;
     WCHAR fmt[] = {'%','1','\n',0};
@@ -639,23 +666,20 @@ static int query_value(HKEY key, WCHAR *value_name, WCHAR *path, BOOL recurse)
     WCHAR *subkey_name, *subkey_path;
     HKEY subkey;
 
-    rc = RegQueryInfoKeyW(key, NULL, NULL, NULL, &num_subkeys, &max_subkey_len,
-                          NULL, NULL, NULL, &max_data_bytes, NULL, NULL);
-    if (rc)
+    data = heap_xalloc(max_data_bytes);
+
+    for (;;)
     {
-        ERR("RegQueryInfoKey failed: %d\n", rc);
-        return 1;
+        data_size = max_data_bytes;
+        rc = RegQueryValueExW(key, value_name, NULL, &type, data, &data_size);
+        if (rc == ERROR_MORE_DATA)
+        {
+            max_data_bytes = data_size;
+            data = heap_xrealloc(data, max_data_bytes);
+        }
+        else break;
     }
 
-    data = HeapAlloc(GetProcessHeap(), 0, max_data_bytes);
-    if (!data)
-    {
-        ERR("Failed to allocate memory for data\n");
-        return 1;
-    }
-
-    data_size = max_data_bytes;
-    rc = RegQueryValueExW(key, value_name, NULL, &type, data, &data_size);
     if (rc == ERROR_SUCCESS)
     {
         output_string(fmt, path);
@@ -664,7 +688,7 @@ static int query_value(HKEY key, WCHAR *value_name, WCHAR *path, BOOL recurse)
         num_values_found++;
     }
 
-    HeapFree(GetProcessHeap(), 0, data);
+    heap_free(data);
 
     if (!recurse)
     {
@@ -681,19 +705,14 @@ static int query_value(HKEY key, WCHAR *value_name, WCHAR *path, BOOL recurse)
         return 0;
     }
 
-    max_subkey_len++;
-    subkey_name = HeapAlloc(GetProcessHeap(), 0, max_subkey_len * sizeof(WCHAR));
-    if (!subkey_name)
-    {
-        ERR("Failed to allocate memory for subkey_name\n");
-        return 1;
-    }
+    subkey_name = heap_xalloc(MAX_SUBKEY_LEN * sizeof(WCHAR));
 
     path_len = strlenW(path);
 
-    for (i = 0; i < num_subkeys; i++)
+    i = 0;
+    for (;;)
     {
-        subkey_len = max_subkey_len;
+        subkey_len = MAX_SUBKEY_LEN;
         rc = RegEnumKeyExW(key, i, subkey_name, &subkey_len, NULL, NULL, NULL, NULL);
         if (rc == ERROR_SUCCESS)
         {
@@ -703,20 +722,22 @@ static int query_value(HKEY key, WCHAR *value_name, WCHAR *path, BOOL recurse)
                 query_value(subkey, value_name, subkey_path, recurse);
                 RegCloseKey(subkey);
             }
-            HeapFree(GetProcessHeap(), 0, subkey_path);
+            heap_free(subkey_path);
+            i++;
         }
+        else break;
     }
 
-    HeapFree(GetProcessHeap(), 0, subkey_name);
+    heap_free(subkey_name);
     return 0;
 }
 
 static int query_all(HKEY key, WCHAR *path, BOOL recurse)
 {
     LONG rc;
-    DWORD num_subkeys, max_subkey_len, subkey_len;
-    DWORD num_values, max_value_len, value_len;
-    DWORD max_data_bytes, data_size;
+    DWORD max_value_len = 256, value_len;
+    DWORD max_data_bytes = 2048, data_size;
+    DWORD subkey_len;
     DWORD i, type, path_len;
     WCHAR fmt[] = {'%','1','\n',0};
     WCHAR fmt_path[] = {'%','1','\\','%','2','\n',0};
@@ -725,60 +746,52 @@ static int query_all(HKEY key, WCHAR *path, BOOL recurse)
     BYTE *data;
     HKEY subkey;
 
-    rc = RegQueryInfoKeyW(key, NULL, NULL, NULL, &num_subkeys, &max_subkey_len, NULL,
-                          &num_values, &max_value_len, &max_data_bytes, NULL, NULL);
-    if (rc)
-    {
-        ERR("RegQueryInfoKey failed: %d\n", rc);
-        return 1;
-    }
-
     output_string(fmt, path);
 
-    max_value_len++;
-    value_name = HeapAlloc(GetProcessHeap(), 0, max_value_len * sizeof(WCHAR));
-    if (!value_name)
-    {
-        ERR("Failed to allocate memory for value_name\n");
-        return 1;
-    }
+    value_name = heap_xalloc(max_value_len * sizeof(WCHAR));
+    data = heap_xalloc(max_data_bytes);
 
-    data = HeapAlloc(GetProcessHeap(), 0, max_data_bytes);
-    if (!data)
-    {
-        HeapFree(GetProcessHeap(), 0, value_name);
-        ERR("Failed to allocate memory for data\n");
-        return 1;
-    }
-
-    for (i = 0; i < num_values; i++)
+    i = 0;
+    for (;;)
     {
         value_len = max_value_len;
         data_size = max_data_bytes;
         rc = RegEnumValueW(key, i, value_name, &value_len, NULL, &type, data, &data_size);
         if (rc == ERROR_SUCCESS)
+        {
             output_value(value_name, type, data, data_size);
+            i++;
+        }
+        else if (rc == ERROR_MORE_DATA)
+        {
+            if (data_size > max_data_bytes)
+            {
+                max_data_bytes = data_size;
+                data = heap_xrealloc(data, max_data_bytes);
+            }
+            else
+            {
+                max_value_len *= 2;
+                value_name = heap_xrealloc(value_name, max_value_len * sizeof(WCHAR));
+            }
+        }
+        else break;
     }
 
-    HeapFree(GetProcessHeap(), 0, data);
-    HeapFree(GetProcessHeap(), 0, value_name);
+    heap_free(data);
+    heap_free(value_name);
 
-    if (num_values || recurse)
+    if (i || recurse)
         output_string(newlineW);
 
-    max_subkey_len++;
-    subkey_name = HeapAlloc(GetProcessHeap(), 0, max_subkey_len * sizeof(WCHAR));
-    if (!subkey_name)
-    {
-        ERR("Failed to allocate memory for subkey_name\n");
-        return 1;
-    }
+    subkey_name = heap_xalloc(MAX_SUBKEY_LEN * sizeof(WCHAR));
 
     path_len = strlenW(path);
 
-    for (i = 0; i < num_subkeys; i++)
+    i = 0;
+    for (;;)
     {
-        subkey_len = max_subkey_len;
+        subkey_len = MAX_SUBKEY_LEN;
         rc = RegEnumKeyExW(key, i, subkey_name, &subkey_len, NULL, NULL, NULL, NULL);
         if (rc == ERROR_SUCCESS)
         {
@@ -790,15 +803,17 @@ static int query_all(HKEY key, WCHAR *path, BOOL recurse)
                     query_all(subkey, subkey_path, recurse);
                     RegCloseKey(subkey);
                 }
-                HeapFree(GetProcessHeap(), 0, subkey_path);
+                heap_free(subkey_path);
             }
             else output_string(fmt_path, path, subkey_name);
+            i++;
         }
+        else break;
     }
 
-    HeapFree(GetProcessHeap(), 0, subkey_name);
+    heap_free(subkey_name);
 
-    if (num_subkeys && !recurse)
+    if (i && !recurse)
         output_string(newlineW);
 
     return 0;
@@ -849,13 +864,13 @@ static WCHAR *get_long_key(HKEY root, WCHAR *path)
 
     if (!path)
     {
-        long_key = HeapAlloc(GetProcessHeap(), 0, (len + 1) * sizeof(WCHAR));
+        long_key = heap_xalloc((len + 1) * sizeof(WCHAR));
         strcpyW(long_key, root_rels[i].long_name);
         return long_key;
     }
 
     len += strlenW(path) + 1; /* add one for the backslash */
-    long_key = HeapAlloc(GetProcessHeap(), 0, (len + 1) * sizeof(WCHAR));
+    long_key = heap_xalloc((len + 1) * sizeof(WCHAR));
     sprintfW(long_key, fmt, root_rels[i].long_name, path);
     return long_key;
 }

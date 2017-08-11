@@ -1573,6 +1573,7 @@ void CDECL macdrv_DestroyWindow(HWND hwnd)
     if (!(data = get_win_data(hwnd))) return;
 
     if (hwnd == GetCapture()) macdrv_SetCapture(0, 0);
+    if (data->drag_event) SetEvent(data->drag_event);
 
     destroy_cocoa_window(data);
     destroy_cocoa_view(data);
@@ -1836,7 +1837,7 @@ BOOL CDECL macdrv_UpdateLayeredWindow(HWND hwnd, const UPDATELAYEREDWINDOWINFO *
     char buffer[FIELD_OFFSET(BITMAPINFO, bmiColors[256])];
     BITMAPINFO *bmi = (BITMAPINFO *)buffer;
     void *src_bits, *dst_bits;
-    RECT rect;
+    RECT rect, src_rect;
     HDC hdc = 0;
     HBITMAP dib;
     BOOL ret = FALSE;
@@ -1898,11 +1899,13 @@ BOOL CDECL macdrv_UpdateLayeredWindow(HWND hwnd, const UPDATELAYEREDWINDOWINFO *
         surface->funcs->unlock(surface);
         PatBlt(hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, BLACKNESS);
     }
+    src_rect = rect;
+    if (info->pptSrc) OffsetRect( &src_rect, info->pptSrc->x, info->pptSrc->y );
+    DPtoLP( info->hdcSrc, (POINT *)&src_rect, 2 );
+
     if (!(ret = GdiAlphaBlend(hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-                              info->hdcSrc,
-                              rect.left + (info->pptSrc ? info->pptSrc->x : 0),
-                              rect.top + (info->pptSrc ? info->pptSrc->y : 0),
-                              rect.right - rect.left, rect.bottom - rect.top,
+                              info->hdcSrc, src_rect.left, src_rect.top,
+                              src_rect.right - src_rect.left, src_rect.bottom - src_rect.top,
                               blend)))
         goto done;
 
@@ -2268,7 +2271,7 @@ void macdrv_window_frame_changed(HWND hwnd, const macdrv_event *event)
         TRACE("%p resizing from (%dx%d) to (%dx%d)\n", hwnd, data->window_rect.right - data->window_rect.left,
               data->window_rect.bottom - data->window_rect.top, width, height);
 
-    being_dragged = data->being_dragged;
+    being_dragged = data->drag_event != NULL;
     release_win_data(data);
 
     if (event->window_frame_changed.fullscreen)
@@ -2515,6 +2518,8 @@ void macdrv_window_drag_begin(HWND hwnd, const macdrv_event *event)
 {
     DWORD style = GetWindowLongW(hwnd, GWL_STYLE);
     struct macdrv_win_data *data;
+    HANDLE drag_event = NULL;
+    BOOL loop = TRUE;
     MSG msg;
 
     TRACE("win %p\n", hwnd);
@@ -2523,9 +2528,12 @@ void macdrv_window_drag_begin(HWND hwnd, const macdrv_event *event)
     if (!(style & WS_VISIBLE)) return;
 
     if (!(data = get_win_data(hwnd))) return;
-    if (data->being_dragged) goto done;
+    if (data->drag_event) goto done;
 
-    data->being_dragged = TRUE;
+    drag_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+    if (!drag_event) goto done;
+
+    data->drag_event = drag_event;
     release_win_data(data);
 
     if (!event->window_drag_begin.no_activate && can_activate_window(hwnd) && GetForegroundWindow() != hwnd)
@@ -2544,13 +2552,22 @@ void macdrv_window_drag_begin(HWND hwnd, const macdrv_event *event)
     SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
     ReleaseCapture();
 
-    while (GetMessageW(&msg, 0, 0, 0))
+    while (loop)
     {
-        if (msg.message == WM_EXITSIZEMOVE)
+        while (!PeekMessageW(&msg, 0, 0, 0, PM_REMOVE))
         {
-            SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
-            break;
+            DWORD result = MsgWaitForMultipleObjectsEx(1, &drag_event, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+            if (result == WAIT_OBJECT_0)
+            {
+                loop = FALSE;
+                break;
+            }
         }
+        if (!loop)
+            break;
+
+        if (msg.message == WM_QUIT)
+            break;
 
         if (!CallMsgFilterW(&msg, MSGF_SIZE) && msg.message != WM_KEYDOWN &&
             msg.message != WM_MOUSEMOVE && msg.message != WM_LBUTTONDOWN && msg.message != WM_LBUTTONUP)
@@ -2560,13 +2577,16 @@ void macdrv_window_drag_begin(HWND hwnd, const macdrv_event *event)
         }
     }
 
+    SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+
     TRACE("done\n");
 
     if ((data = get_win_data(hwnd)))
-        data->being_dragged = FALSE;
+        data->drag_event = NULL;
 
 done:
     release_win_data(data);
+    if (drag_event) CloseHandle(drag_event);
 }
 
 
@@ -2578,20 +2598,13 @@ done:
 void macdrv_window_drag_end(HWND hwnd)
 {
     struct macdrv_win_data *data;
-    BOOL being_dragged;
 
     TRACE("win %p\n", hwnd);
 
     if (!(data = get_win_data(hwnd))) return;
-    being_dragged = data->being_dragged;
+    if (data->drag_event)
+        SetEvent(data->drag_event);
     release_win_data(data);
-
-    if (being_dragged)
-    {
-        /* Post this rather than sending it, so that the message loop in
-           macdrv_window_drag_begin() will see it. */
-        PostMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
-    }
 }
 
 

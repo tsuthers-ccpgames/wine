@@ -68,8 +68,6 @@ static inline int needs_relay( const ORDDEF *odp )
     }
     /* skip norelay and forward entry points */
     if (odp->flags & (FLAG_NORELAY|FLAG_FORWARD)) return 0;
-    /* skip register entry points on x86_64 */
-    if (target_cpu == CPU_x86_64 && (odp->flags & FLAG_REGISTER)) return 0;
     return 1;
 }
 
@@ -179,10 +177,7 @@ static void output_relay_debug( DLLSPEC *spec )
                 output( "\tpushl %%eax\n" );
                 flags |= 2;
             }
-            if (odp->flags & FLAG_REGISTER)
-                output( "\tpushl %%eax\n" );
-            else
-                output( "\tpushl %%esp\n" );
+            output( "\tpushl %%esp\n" );
             output_cfi( ".cfi_adjust_cfa_offset 4" );
 
             if (odp->flags & FLAG_RET64) flags |= 1;
@@ -199,19 +194,12 @@ static void output_relay_debug( DLLSPEC *spec )
             output( "\tpushl %%eax\n" );
             output_cfi( ".cfi_adjust_cfa_offset 4" );
 
-            if (odp->flags & FLAG_REGISTER)
-            {
-                output( "\tcall *8(%%eax)\n" );
-            }
+            output( "\tcall *4(%%eax)\n" );
+            output_cfi( ".cfi_adjust_cfa_offset -12" );
+            if (odp->type == TYPE_STDCALL || odp->type == TYPE_THISCALL)
+                output( "\tret $%u\n", args * get_ptr_size() );
             else
-            {
-                output( "\tcall *4(%%eax)\n" );
-                output_cfi( ".cfi_adjust_cfa_offset -12" );
-                if (odp->type == TYPE_STDCALL || odp->type == TYPE_THISCALL)
-                    output( "\tret $%u\n", args * get_ptr_size() );
-                else
-                    output( "\tret\n" );
-            }
+                output( "\tret\n" );
             break;
 
         case CPU_ARM:
@@ -269,14 +257,14 @@ static void output_relay_debug( DLLSPEC *spec )
             output( "\tmov w1, #%u\n", (flags << 24) );
             if (args) output( "\tadd w1, w1, #%u\n", (args << 16) );
             if (i - spec->base) output( "\tadd w1, w1, #%u\n", i - spec->base );
-            output( "\tldr x0, 1f\n");
+            output( "\tadrp x0, .L__wine_spec_relay_descr\n");
+            output( "\tadd x0, x0, #:lo12:.L__wine_spec_relay_descr\n");
             output( "\tldr x3, [x0, #8]\n");
             output( "\tblr x3\n");
             output( "\tadd SP, SP, #16\n" );
             output( "\tldp x29, x30, [SP], #16\n" );
             if (args) output( "\tadd SP, SP, #%u\n", 8 * ((min(args, 8) + 1) & 0xe) );
             output( "\tret\n");
-            output( "\t1: .quad .L__wine_spec_relay_descr\n");
             break;
 
         case CPU_x86_64:
@@ -663,7 +651,6 @@ void BuildSpec32File( DLLSPEC *spec )
     output_stubs( spec );
     output_exports( spec );
     output_imports( spec );
-    if (is_undefined( "__wine_call_from_regs" )) output_asm_relays();
     if (needs_get_pc_thunk) output_get_pc_thunk();
     output_resources( spec );
     output_gnu_stack_note();

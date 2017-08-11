@@ -173,6 +173,7 @@ void WINAPI WS(freeaddrinfo)(LPADDRINFO);
 #define     FreeAddrInfoA WS(freeaddrinfo)
 void WINAPI FreeAddrInfoW(PADDRINFOW);
 #define     FreeAddrInfo WINELIB_NAME_AW(FreeAddrInfo)
+void WINAPI FreeAddrInfoExW(ADDRINFOEXW*);
 int WINAPI  WS(getaddrinfo)(const char*,const char*,const struct WS(addrinfo)*,struct WS(addrinfo)**);
 #define     GetAddrInfoA WS(getaddrinfo)
 int WINAPI  GetAddrInfoW(PCWSTR,PCWSTR,const ADDRINFOW*,PADDRINFOW*);
@@ -182,6 +183,7 @@ int WINAPI  GetAddrInfoExA(const char*,const char*,DWORD,GUID*,const ADDRINFOEXA
 int WINAPI  GetAddrInfoExW(const WCHAR*,const WCHAR*,DWORD,GUID*, const ADDRINFOEXW*,ADDRINFOEXW**,struct timeval*,
                            OVERLAPPED*,LPLOOKUPSERVICE_COMPLETION_ROUTINE,HANDLE*);
 #define     GetAddrInfoEx WINELIB_NAME_AW(GetAddrInfoExW)
+int WINAPI  GetAddrInfoExOverlappedResult(OVERLAPPED*);
 int WINAPI  GetAddrInfoExCancel(HANDLE*);
 int WINAPI  WS(getnameinfo)(const SOCKADDR*,WS(socklen_t),PCHAR,DWORD,PCHAR,DWORD,INT);
 #define     GetNameInfoA WS(getnameinfo)

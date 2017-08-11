@@ -4122,6 +4122,8 @@ static void shader_glsl_bitwise_op(const struct wined3d_shader_instruction *ins)
     struct wined3d_shader_dst_param dst;
     struct glsl_src_param src[4];
     const char *instruction;
+    BOOL tmp_dst = FALSE;
+    char mask_char[6];
     unsigned int i, j;
     DWORD write_mask;
 
@@ -4135,12 +4137,21 @@ static void shader_glsl_bitwise_op(const struct wined3d_shader_instruction *ins)
             return;
     }
 
+    for (i = 0; i < ins->src_count; ++i)
+    {
+        if (ins->dst[0].reg.idx[0].offset == ins->src[i].reg.idx[0].offset
+                && ins->dst[0].reg.type == ins->src[i].reg.type)
+            tmp_dst = TRUE;
+    }
+
     dst = ins->dst[0];
     for (i = 0; i < 4; ++i)
     {
         dst.write_mask = ins->dst[0].write_mask & (WINED3DSP_WRITEMASK_0 << i);
-        if (!(write_mask = shader_glsl_append_dst_ext(ins->ctx->buffer, ins,
-                &dst, dst.reg.data_type)))
+        if (tmp_dst && (write_mask = shader_glsl_get_write_mask(&dst, mask_char)))
+            shader_addline(buffer, "tmp0%s = %sBitsToFloat(", mask_char,
+                    dst.reg.data_type == WINED3D_DATA_INT ? "int" : "uint");
+        else if (!(write_mask = shader_glsl_append_dst_ext(buffer, ins, &dst, dst.reg.data_type)))
             continue;
 
         for (j = 0; j < ins->src_count; ++j)
@@ -4149,6 +4160,13 @@ static void shader_glsl_bitwise_op(const struct wined3d_shader_instruction *ins)
         for (j = 0; j < ins->src_count - 2; ++j)
             shader_addline(buffer, "%s, ", src[ins->src_count - j - 1].param_str);
         shader_addline(buffer, "%s & 0x1f, %s & 0x1f));\n", src[1].param_str, src[0].param_str);
+    }
+
+    if (tmp_dst)
+    {
+        shader_glsl_append_dst_ext(buffer, ins, &ins->dst[0], WINED3D_DATA_FLOAT);
+        shader_glsl_get_write_mask(&ins->dst[0], mask_char);
+        shader_addline(buffer, "tmp0%s);\n", mask_char);
     }
 }
 
@@ -4350,6 +4368,58 @@ static void shader_glsl_compare(const struct wined3d_shader_instruction *ins)
                 FIXME("Can't handle opcode %s.\n", debug_d3dshaderinstructionhandler(ins->handler_idx));
         }
 
+    }
+}
+
+static void shader_glsl_swapc(const struct wined3d_shader_instruction *ins)
+{
+    struct wined3d_string_buffer *buffer = ins->ctx->buffer;
+    struct wined3d_shader_dst_param dst[2];
+    struct glsl_src_param src[3];
+    unsigned int i, j, k;
+    char mask_char[6];
+    DWORD write_mask;
+    BOOL tmp_dst[2];
+
+    for (i = 0; i < ins->dst_count; ++i)
+    {
+        tmp_dst[i] = FALSE;
+        for (j = 0; j < ins->src_count; ++j)
+        {
+            if (ins->dst[i].reg.idx[0].offset == ins->src[j].reg.idx[0].offset
+                    && ins->dst[i].reg.type == ins->src[j].reg.type)
+                tmp_dst[i] = TRUE;
+        }
+    }
+
+    dst[0] = ins->dst[0];
+    dst[1] = ins->dst[1];
+    for (i = 0; i < 4; ++i)
+    {
+        for (j = 0; j < ARRAY_SIZE(dst); ++j)
+        {
+            dst[j].write_mask = ins->dst[j].write_mask & (WINED3DSP_WRITEMASK_0 << i);
+            if (tmp_dst[j] && (write_mask = shader_glsl_get_write_mask(&dst[j], mask_char)))
+                shader_addline(buffer, "tmp%u%s = (", j, mask_char);
+            else if (!(write_mask = shader_glsl_append_dst_ext(buffer, ins, &dst[j], dst[j].reg.data_type)))
+                continue;
+
+            for (k = 0; k < ARRAY_SIZE(src); ++k)
+                shader_glsl_add_src_param(ins, &ins->src[k], write_mask, &src[k]);
+
+            shader_addline(buffer, "%sbool(%s) ? %s : %s);\n", !j ? "!" : "",
+                    src[0].param_str, src[1].param_str, src[2].param_str);
+        }
+    }
+
+    for (i = 0; i < ARRAY_SIZE(tmp_dst); ++i)
+    {
+        if (tmp_dst[i])
+        {
+            shader_glsl_get_write_mask(&ins->dst[i], mask_char);
+            shader_glsl_append_dst_ext(buffer, ins, &ins->dst[i], ins->dst[i].reg.data_type);
+            shader_addline(buffer, "tmp%u%s);\n", i, mask_char);
+        }
     }
 }
 
@@ -5499,6 +5569,14 @@ static void shader_glsl_ld_raw_structured(const struct wined3d_shader_instructio
     shader_addline(address, "%s / 4", offset.param_str);
 
     dst = ins->dst[0];
+    if (shader_glsl_get_write_mask_size(dst.write_mask) > 1)
+    {
+        /* The instruction is split into multiple lines. The first lines may
+         * overwrite source parameters of the following lines. */
+        shader_addline(buffer, "tmp0.x = intBitsToFloat(%s);\n", address->buffer);
+        string_buffer_sprintf(address, "floatBitsToInt(tmp0.x)");
+    }
+
     for (i = 0; i < 4; ++i)
     {
         dst.write_mask = ins->dst[0].write_mask & (WINED3DSP_WRITEMASK_0 << i);
@@ -7314,6 +7392,9 @@ static GLuint shader_glsl_generate_pshader(const struct wined3d_context *context
 
     if (shader->limits->constant_float + extra_constants_needed >= gl_info->limits.glsl_ps_float_constants)
         FIXME("Insufficient uniforms to run this shader.\n");
+
+    if (shader->u.ps.force_early_depth_stencil)
+        shader_addline(buffer, "layout(early_fragment_tests) in;\n");
 
     shader_addline(buffer, "void main()\n{\n");
 
@@ -10805,7 +10886,7 @@ static const SHADER_HANDLER shader_glsl_instruction_handler_table[WINED3DSIH_TAB
     /* WINED3DSIH_STORE_STRUCTURED                 */ shader_glsl_store_raw_structured,
     /* WINED3DSIH_STORE_UAV_TYPED                  */ shader_glsl_store_uav,
     /* WINED3DSIH_SUB                              */ shader_glsl_binop,
-    /* WINED3DSIH_SWAPC                            */ NULL,
+    /* WINED3DSIH_SWAPC                            */ shader_glsl_swapc,
     /* WINED3DSIH_SWITCH                           */ shader_glsl_switch,
     /* WINED3DSIH_SYNC                             */ shader_glsl_sync,
     /* WINED3DSIH_TEX                              */ shader_glsl_tex,

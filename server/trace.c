@@ -3146,6 +3146,7 @@ static void dump_set_window_pos_reply( const struct set_window_pos_reply *req )
     fprintf( stderr, " new_style=%08x", req->new_style );
     fprintf( stderr, ", new_ex_style=%08x", req->new_ex_style );
     fprintf( stderr, ", surface_win=%08x", req->surface_win );
+    fprintf( stderr, ", needs_update=%d", req->needs_update );
 }
 
 static void dump_get_window_rectangles_request( const struct get_window_rectangles_request *req )
@@ -5429,6 +5430,7 @@ static const struct
     { "PRIVILEGE_NOT_HELD",          STATUS_PRIVILEGE_NOT_HELD },
     { "PROCESS_IN_JOB",              STATUS_PROCESS_IN_JOB },
     { "PROCESS_IS_TERMINATING",      STATUS_PROCESS_IS_TERMINATING },
+    { "PROCESS_NOT_IN_JOB",          STATUS_PROCESS_NOT_IN_JOB },
     { "SECTION_TOO_BIG",             STATUS_SECTION_TOO_BIG },
     { "SEMAPHORE_LIMIT_EXCEEDED",    STATUS_SEMAPHORE_LIMIT_EXCEEDED },
     { "SHARING_VIOLATION",           STATUS_SHARING_VIOLATION },

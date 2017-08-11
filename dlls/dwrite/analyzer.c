@@ -189,7 +189,8 @@ static const struct dwritescript_properties dwritescripts_properties[Script_Last
 
 const char *debugstr_sa_script(UINT16 script)
 {
-    return script < Script_LastId ? debugstr_an((char*)&dwritescripts_properties[script].props.isoScriptCode, 4): "not defined";
+    return script < Script_LastId ? debugstr_an((char*)&dwritescripts_properties[script].props.isoScriptCode, 4):
+            "undefined";
 }
 
 /* system font falback configuration */
@@ -197,13 +198,13 @@ static const WCHAR meiryoW[] = {'M','e','i','r','y','o',0};
 
 struct fallback_mapping {
     DWRITE_UNICODE_RANGE range;
-    const WCHAR *family;
+    const WCHAR *families[5];
 };
 
 static const struct fallback_mapping fontfallback_neutral_data[] = {
-    { { 0x3000, 0x30ff }, meiryoW }, /* CJK Symbols and Punctuation, Hiragana, Katakana */
-    { { 0x31f0, 0x31ff }, meiryoW }, /* Katakana Phonetic Extensions */
-    { { 0x4e00, 0x9fff }, meiryoW }, /* CJK Unified Ideographs */
+    { { 0x3000, 0x30ff }, { meiryoW } }, /* CJK Symbols and Punctuation, Hiragana, Katakana */
+    { { 0x31f0, 0x31ff }, { meiryoW } }, /* Katakana Phonetic Extensions */
+    { { 0x4e00, 0x9fff }, { meiryoW } }, /* CJK Unified Ideographs */
 };
 
 struct dwrite_fontfallback {
@@ -1096,11 +1097,27 @@ static DWRITE_NUMBER_SUBSTITUTION_METHOD get_number_substitutes(IDWriteNumberSub
     return method;
 }
 
+static void analyzer_dump_user_features(DWRITE_TYPOGRAPHIC_FEATURES const **features,
+        UINT32 const *feature_range_lengths, UINT32 feature_ranges)
+{
+    UINT32 i, j, start;
+
+    if (!TRACE_ON(dwrite) || !features)
+        return;
+
+    for (i = 0, start = 0; i < feature_ranges; i++, start += feature_range_lengths[i]) {
+        TRACE("feature range [%u,%u)\n", start, start + feature_range_lengths[i]);
+        for (j = 0; j < features[i]->featureCount; j++)
+            TRACE("feature %s, parameter %u\n", debugstr_an((char *)&features[i]->features[j].nameTag, 4),
+                    features[i]->features[j].parameter);
+    }
+}
+
 static HRESULT WINAPI dwritetextanalyzer_GetGlyphs(IDWriteTextAnalyzer2 *iface,
     WCHAR const* text, UINT32 length, IDWriteFontFace* fontface, BOOL is_sideways,
     BOOL is_rtl, DWRITE_SCRIPT_ANALYSIS const* analysis, WCHAR const* locale,
     IDWriteNumberSubstitution* substitution, DWRITE_TYPOGRAPHIC_FEATURES const** features,
-    UINT32 const* feature_range_len, UINT32 feature_ranges, UINT32 max_glyph_count,
+    UINT32 const* feature_range_lengths, UINT32 feature_ranges, UINT32 max_glyph_count,
     UINT16* clustermap, DWRITE_SHAPING_TEXT_PROPERTIES* text_props, UINT16* glyph_indices,
     DWRITE_SHAPING_GLYPH_PROPERTIES* glyph_props, UINT32* actual_glyph_count)
 {
@@ -1118,8 +1135,10 @@ static HRESULT WINAPI dwritetextanalyzer_GetGlyphs(IDWriteTextAnalyzer2 *iface,
 
     TRACE("(%s:%u %p %d %d %s %s %p %p %p %u %u %p %p %p %p %p)\n", debugstr_wn(text, length),
         length, fontface, is_sideways, is_rtl, debugstr_sa_script(analysis->script), debugstr_w(locale), substitution,
-        features, feature_range_len, feature_ranges, max_glyph_count, clustermap, text_props, glyph_indices,
+        features, feature_range_lengths, feature_ranges, max_glyph_count, clustermap, text_props, glyph_indices,
         glyph_props, actual_glyph_count);
+
+    analyzer_dump_user_features(features, feature_range_lengths, feature_ranges);
 
     script = analysis->script > Script_LastId ? Script_Unknown : analysis->script;
 
@@ -1252,7 +1271,7 @@ static HRESULT WINAPI dwritetextanalyzer_GetGlyphPlacements(IDWriteTextAnalyzer2
     UINT32 text_len, UINT16 const* glyphs, DWRITE_SHAPING_GLYPH_PROPERTIES const* glyph_props,
     UINT32 glyph_count, IDWriteFontFace *fontface, FLOAT emSize, BOOL is_sideways, BOOL is_rtl,
     DWRITE_SCRIPT_ANALYSIS const* analysis, WCHAR const* locale, DWRITE_TYPOGRAPHIC_FEATURES const** features,
-    UINT32 const* feature_range_len, UINT32 feature_ranges, FLOAT *advances, DWRITE_GLYPH_OFFSET *offsets)
+    UINT32 const* feature_range_lengths, UINT32 feature_ranges, FLOAT *advances, DWRITE_GLYPH_OFFSET *offsets)
 {
     DWRITE_FONT_METRICS metrics;
     IDWriteFontFace1 *fontface1;
@@ -1261,8 +1280,10 @@ static HRESULT WINAPI dwritetextanalyzer_GetGlyphPlacements(IDWriteTextAnalyzer2
 
     TRACE("(%s %p %p %u %p %p %u %p %.2f %d %d %s %s %p %p %u %p %p)\n", debugstr_wn(text, text_len),
         clustermap, props, text_len, glyphs, glyph_props, glyph_count, fontface, emSize, is_sideways,
-        is_rtl, debugstr_sa_script(analysis->script), debugstr_w(locale), features, feature_range_len,
+        is_rtl, debugstr_sa_script(analysis->script), debugstr_w(locale), features, feature_range_lengths,
         feature_ranges, advances, offsets);
+
+    analyzer_dump_user_features(features, feature_range_lengths, feature_ranges);
 
     if (glyph_count == 0)
         return S_OK;
@@ -1312,6 +1333,8 @@ static HRESULT WINAPI dwritetextanalyzer_GetGdiCompatibleGlyphPlacements(IDWrite
         clustermap, props, text_len, glyphs, glyph_props, glyph_count, fontface, emSize, ppdip,
         transform, use_gdi_natural, is_sideways, is_rtl, debugstr_sa_script(analysis->script), debugstr_w(locale),
         features, feature_range_lengths, feature_ranges, advances, offsets);
+
+    analyzer_dump_user_features(features, feature_range_lengths, feature_ranges);
 
     if (glyph_count == 0)
         return S_OK;
@@ -2004,28 +2027,41 @@ static HRESULT fallback_map_characters(IDWriteFont *font, const WCHAR *text, UIN
 }
 
 static HRESULT fallback_get_fallback_font(struct dwrite_fontfallback *fallback, const WCHAR *text, UINT32 length,
-    DWRITE_FONT_WEIGHT weight, DWRITE_FONT_STYLE style, DWRITE_FONT_STRETCH stretch, UINT32 *mapped_length, IDWriteFont **mapped_font)
+        DWRITE_FONT_WEIGHT weight, DWRITE_FONT_STYLE style, DWRITE_FONT_STRETCH stretch, UINT32 *mapped_length,
+        IDWriteFont **mapped_font)
 {
     const struct fallback_mapping *mapping;
+    UINT32 i = 0;
     HRESULT hr;
+
+    *mapped_font = NULL;
 
     mapping = find_fallback_mapping(fallback, text[0]);
     if (!mapping) {
-        WARN("no mapping for 0x%x\n", text[0]);
+        WARN("No mapping range for %#x.\n", text[0]);
         return E_FAIL;
     }
 
-    /* now let's see what fallback can handle */
-    hr = create_matching_font((IDWriteFontCollection*)fallback->systemcollection, mapping->family, weight, style, stretch, mapped_font);
-    if (FAILED(hr)) {
-        WARN("failed to create fallback font %s for range [0x%x,0x%x], 0x%08x\n", debugstr_w(mapping->family),
-            mapping->range.first, mapping->range.last, hr);
-        return hr;
+    /* Now let's see what fallback can handle. Pick first font that could be created. */
+    while (mapping->families[i]) {
+        hr = create_matching_font((IDWriteFontCollection *)fallback->systemcollection, mapping->families[i],
+                weight, style, stretch, mapped_font);
+        if (hr == S_OK) {
+            TRACE("Created fallback font for range [%#x, %#x], using family %s.\n", mapping->range.first,
+                    mapping->range.last, debugstr_w(mapping->families[i]));
+            break;
+        }
+        i++;
+    }
+
+    if (!*mapped_font) {
+        WARN("Failed to create fallback font for range [%#x, %#x].\n", mapping->range.first, mapping->range.last);
+        return E_FAIL;
     }
 
     hr = fallback_map_characters(*mapped_font, text, length, mapped_length);
     if (FAILED(hr))
-        WARN("mapping with fallback font %s failed, 0x%08x\n", debugstr_w(mapping->family), hr);
+        WARN("Mapping with fallback family %s failed, hr %#x.\n", debugstr_w(mapping->families[i]), hr);
 
     if (!*mapped_length) {
         IDWriteFont_Release(*mapped_font);

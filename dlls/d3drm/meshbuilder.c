@@ -26,29 +26,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3drm);
 
-struct mesh_group
-{
-    unsigned nb_vertices;
-    D3DRMVERTEX* vertices;
-    unsigned nb_faces;
-    unsigned vertex_per_face;
-    DWORD face_data_size;
-    unsigned* face_data;
-    D3DCOLOR color;
-    IDirect3DRMMaterial2* material;
-    IDirect3DRMTexture3* texture;
-};
-
-struct d3drm_mesh
-{
-    struct d3drm_object obj;
-    IDirect3DRMMesh IDirect3DRMMesh_iface;
-    LONG ref;
-    DWORD groups_capacity;
-    DWORD nb_groups;
-    struct mesh_group *groups;
-};
-
 struct coords_2d
 {
     D3DVALUE u;
@@ -283,7 +260,7 @@ char templates[] = {
 "}"
 };
 
-static BOOL d3drm_array_reserve(void **elements, SIZE_T *capacity, SIZE_T element_count, SIZE_T element_size)
+BOOL d3drm_array_reserve(void **elements, SIZE_T *capacity, SIZE_T element_count, SIZE_T element_size)
 {
     SIZE_T new_capacity, max_capacity;
     void *new_elements;
@@ -330,12 +307,16 @@ static inline struct d3drm_mesh_builder *impl_from_IDirect3DRMMeshBuilder3(IDire
     return CONTAINING_RECORD(iface, struct d3drm_mesh_builder, IDirect3DRMMeshBuilder3_iface);
 }
 
+static inline struct d3drm_wrap *impl_from_IDirect3DRMWrap(IDirect3DRMWrap *iface)
+{
+    return CONTAINING_RECORD(iface, struct d3drm_wrap, IDirect3DRMWrap_iface);
+}
+
 static void clean_mesh_builder_data(struct d3drm_mesh_builder *mesh_builder)
 {
     DWORD i;
 
-    HeapFree(GetProcessHeap(), 0, mesh_builder->name);
-    mesh_builder->name = NULL;
+    IDirect3DRMMeshBuilder3_SetName(&mesh_builder->IDirect3DRMMeshBuilder3_iface, NULL);
     HeapFree(GetProcessHeap(), 0, mesh_builder->vertices);
     mesh_builder->vertices = NULL;
     mesh_builder->nb_vertices = 0;
@@ -454,18 +435,42 @@ static HRESULT WINAPI d3drm_mesh_builder2_DeleteDestroyCallback(IDirect3DRMMeshB
     return IDirect3DRMMeshBuilder3_DeleteDestroyCallback(&mesh_builder->IDirect3DRMMeshBuilder3_iface, cb, ctx);
 }
 
+static HRESULT WINAPI d3drm_mesh_builder3_SetAppData(IDirect3DRMMeshBuilder3 *iface, DWORD data)
+{
+    struct d3drm_mesh_builder *mesh_builder = impl_from_IDirect3DRMMeshBuilder3(iface);
+
+    TRACE("iface %p, data %#x.\n", iface, data);
+
+    mesh_builder->obj.appdata = data;
+
+    return D3DRM_OK;
+}
+
 static HRESULT WINAPI d3drm_mesh_builder2_SetAppData(IDirect3DRMMeshBuilder2 *iface, DWORD data)
 {
-    FIXME("iface %p, data %#x stub!\n", iface, data);
+    struct d3drm_mesh_builder *mesh_builder = impl_from_IDirect3DRMMeshBuilder2(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, data %#x.\n", iface, data);
+
+    return d3drm_mesh_builder3_SetAppData(&mesh_builder->IDirect3DRMMeshBuilder3_iface, data);
+}
+
+static DWORD WINAPI d3drm_mesh_builder3_GetAppData(IDirect3DRMMeshBuilder3 *iface)
+{
+    struct d3drm_mesh_builder *mesh_builder = impl_from_IDirect3DRMMeshBuilder3(iface);
+
+    TRACE("iface %p.\n", iface);
+
+    return mesh_builder->obj.appdata;
 }
 
 static DWORD WINAPI d3drm_mesh_builder2_GetAppData(IDirect3DRMMeshBuilder2 *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d3drm_mesh_builder *mesh_builder = impl_from_IDirect3DRMMeshBuilder2(iface);
 
-    return 0;
+    TRACE("iface %p.\n", iface);
+
+    return d3drm_mesh_builder3_GetAppData(&mesh_builder->IDirect3DRMMeshBuilder3_iface);
 }
 
 static HRESULT WINAPI d3drm_mesh_builder2_SetName(IDirect3DRMMeshBuilder2 *iface, const char *name)
@@ -990,37 +995,13 @@ static HRESULT WINAPI d3drm_mesh_builder3_DeleteDestroyCallback(IDirect3DRMMeshB
     return d3drm_object_delete_destroy_callback(&mesh_builder->obj, cb, ctx);
 }
 
-static HRESULT WINAPI d3drm_mesh_builder3_SetAppData(IDirect3DRMMeshBuilder3 *iface, DWORD data)
-{
-    FIXME("iface %p, data %#x stub!\n", iface, data);
-
-    return E_NOTIMPL;
-}
-
-static DWORD WINAPI d3drm_mesh_builder3_GetAppData(IDirect3DRMMeshBuilder3 *iface)
-{
-    FIXME("iface %p stub!\n", iface);
-
-    return 0;
-}
-
 static HRESULT WINAPI d3drm_mesh_builder3_SetName(IDirect3DRMMeshBuilder3 *iface, const char *name)
 {
     struct d3drm_mesh_builder *mesh_builder = impl_from_IDirect3DRMMeshBuilder3(iface);
-    char *string = NULL;
 
     TRACE("iface %p, name %s.\n", iface, debugstr_a(name));
 
-    if (name)
-    {
-        string = HeapAlloc(GetProcessHeap(), 0, strlen(name) + 1);
-        if (!string) return E_OUTOFMEMORY;
-        strcpy(string, name);
-    }
-    HeapFree(GetProcessHeap(), 0, mesh_builder->name);
-    mesh_builder->name = string;
-
-    return D3DRM_OK;
+    return d3drm_object_set_name(&mesh_builder->obj, name);
 }
 
 static HRESULT WINAPI d3drm_mesh_builder3_GetName(IDirect3DRMMeshBuilder3 *iface,
@@ -1030,22 +1011,7 @@ static HRESULT WINAPI d3drm_mesh_builder3_GetName(IDirect3DRMMeshBuilder3 *iface
 
     TRACE("iface %p, size %p, name %p.\n", iface, size, name);
 
-    if (!size)
-        return E_POINTER;
-
-    if (!mesh_builder->name)
-    {
-        *size = 0;
-        return D3DRM_OK;
-    }
-
-    if (*size < (strlen(mesh_builder->name) + 1))
-        return E_INVALIDARG;
-
-    strcpy(name, mesh_builder->name);
-    *size = strlen(mesh_builder->name) + 1;
-
-    return D3DRM_OK;
+    return d3drm_object_get_name(&mesh_builder->obj, size, name);
 }
 
 static HRESULT WINAPI d3drm_mesh_builder3_GetClassName(IDirect3DRMMeshBuilder3 *iface,
@@ -1084,16 +1050,18 @@ HRESULT load_mesh_data(IDirect3DRMMeshBuilder3 *iface, IDirectXFileData *pData,
         return hr;
     if (size)
     {
-        mesh_builder->name = HeapAlloc(GetProcessHeap(), 0, size);
-        if (!mesh_builder->name)
+        char *name = HeapAlloc(GetProcessHeap(), 0, size);
+        if (!name)
             return E_OUTOFMEMORY;
 
-        hr = IDirectXFileData_GetName(pData, mesh_builder->name, &size);
+        if (SUCCEEDED(hr = IDirectXFileData_GetName(pData, name, &size)))
+            IDirect3DRMMeshBuilder3_SetName(iface, name);
+        HeapFree(GetProcessHeap(), 0, name);
         if (hr != DXFILE_OK)
             return hr;
     }
 
-    TRACE("Mesh name is %s\n", debugstr_a(mesh_builder->name));
+    TRACE("Mesh name is %s\n", debugstr_a(mesh_builder->obj.name));
 
     mesh_builder->nb_normals = 0;
 
@@ -1232,6 +1200,7 @@ HRESULT load_mesh_data(IDirect3DRMMeshBuilder3 *iface, IDirectXFileData *pData,
                 IDirectXFileData *data;
                 IDirectXFileDataReference *reference;
                 IDirectXFileObject *material_child;
+                struct d3drm_material *object;
 
                 hr = IDirectXFileObject_QueryInterface(child, &IID_IDirectXFileData, (void **)&data);
                 if (FAILED(hr))
@@ -1251,12 +1220,13 @@ HRESULT load_mesh_data(IDirect3DRMMeshBuilder3 *iface, IDirectXFileData *pData,
                     IDirectXFileObject_Release(child);
                 }
 
-                hr = Direct3DRMMaterial_create(&mesh_builder->materials[i].material);
+                hr = d3drm_material_create(&object, mesh_builder->d3drm);
                 if (FAILED(hr))
                 {
                     IDirectXFileData_Release(data);
                     goto end;
                 }
+                mesh_builder->materials[i].material = &object->IDirect3DRMMaterial2_iface;
 
                 hr = IDirectXFileData_GetData(data, NULL, &size, (void**)&ptr);
                 if (hr != DXFILE_OK)
@@ -1989,7 +1959,7 @@ static HRESULT WINAPI d3drm_mesh_builder3_CreateMesh(IDirect3DRMMeshBuilder3 *if
     if (!mesh)
         return E_POINTER;
 
-    hr = Direct3DRMMesh_create(mesh);
+    hr = IDirect3DRM_CreateMesh(mesh_builder->d3drm, mesh);
     if (FAILED(hr))
         return hr;
 
@@ -2434,6 +2404,8 @@ static ULONG WINAPI d3drm_mesh_Release(IDirect3DRMMesh *iface)
     {
         DWORD i;
 
+        d3drm_object_cleanup((IDirect3DRMObject *)iface, &mesh->obj);
+        IDirect3DRM_Release(mesh->d3drm);
         for (i = 0; i < mesh->nb_groups; ++i)
         {
             HeapFree(GetProcessHeap(), 0, mesh->groups[i].vertices);
@@ -2461,45 +2433,59 @@ static HRESULT WINAPI d3drm_mesh_Clone(IDirect3DRMMesh *iface,
 static HRESULT WINAPI d3drm_mesh_AddDestroyCallback(IDirect3DRMMesh *iface,
         D3DRMOBJECTCALLBACK cb, void *ctx)
 {
-    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
+    struct d3drm_mesh *mesh = impl_from_IDirect3DRMMesh(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_object_add_destroy_callback(&mesh->obj, cb, ctx);
 }
 
 static HRESULT WINAPI d3drm_mesh_DeleteDestroyCallback(IDirect3DRMMesh *iface,
         D3DRMOBJECTCALLBACK cb, void *ctx)
 {
-    FIXME("iface %p, cb %p, ctx %p stub!\n", iface, cb, ctx);
+    struct d3drm_mesh *mesh = impl_from_IDirect3DRMMesh(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_object_delete_destroy_callback(&mesh->obj, cb, ctx);
 }
 
 static HRESULT WINAPI d3drm_mesh_SetAppData(IDirect3DRMMesh *iface, DWORD data)
 {
-    FIXME("iface %p, data %#x stub!\n", iface, data);
+    struct d3drm_mesh *mesh = impl_from_IDirect3DRMMesh(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, data %#x.\n", iface, data);
+
+    mesh->obj.appdata = data;
+
+    return D3DRM_OK;
 }
 
 static DWORD WINAPI d3drm_mesh_GetAppData(IDirect3DRMMesh *iface)
 {
-    FIXME("iface %p stub!\n", iface);
+    struct d3drm_mesh *mesh = impl_from_IDirect3DRMMesh(iface);
 
-    return 0;
+    TRACE("iface %p.\n", iface);
+
+    return mesh->obj.appdata;
 }
 
 static HRESULT WINAPI d3drm_mesh_SetName(IDirect3DRMMesh *iface, const char *name)
 {
-    FIXME("iface %p, name %s stub!\n", iface, debugstr_a(name));
+    struct d3drm_mesh *mesh = impl_from_IDirect3DRMMesh(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, name %s.\n", iface, debugstr_a(name));
+
+    return d3drm_object_set_name(&mesh->obj, name);
 }
 
 static HRESULT WINAPI d3drm_mesh_GetName(IDirect3DRMMesh *iface, DWORD *size, char *name)
 {
-    FIXME("iface %p, size %p, name %p stub!\n", iface, size, name);
+    struct d3drm_mesh *mesh = impl_from_IDirect3DRMMesh(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, size %p, name %p.\n", iface, size, name);
+
+    return d3drm_object_get_name(&mesh->obj, size, name);
 }
 
 static HRESULT WINAPI d3drm_mesh_GetClassName(IDirect3DRMMesh *iface, DWORD *size, char *name)
@@ -2546,28 +2532,8 @@ static HRESULT WINAPI d3drm_mesh_AddGroup(IDirect3DRMMesh *iface, unsigned verte
     if (!face_data || !id)
         return E_POINTER;
 
-    if ((mesh->nb_groups + 1) > mesh->groups_capacity)
-    {
-        struct mesh_group *groups;
-        ULONG new_capacity;
-
-        if (!mesh->groups_capacity)
-        {
-            new_capacity = 16;
-            groups = HeapAlloc(GetProcessHeap(), 0, new_capacity * sizeof(*groups));
-        }
-        else
-        {
-            new_capacity = mesh->groups_capacity * 2;
-            groups = HeapReAlloc(GetProcessHeap(), 0, mesh->groups, new_capacity * sizeof(*groups));
-        }
-
-        if (!groups)
-            return E_OUTOFMEMORY;
-
-        mesh->groups_capacity = new_capacity;
-        mesh->groups = groups;
-    }
+    if (!d3drm_array_reserve((void **)&mesh->groups, &mesh->groups_size, mesh->nb_groups + 1, sizeof(*mesh->groups)))
+        return E_OUTOFMEMORY;
 
     group = mesh->groups + mesh->nb_groups;
 
@@ -2876,22 +2842,208 @@ static const struct IDirect3DRMMeshVtbl d3drm_mesh_vtbl =
     d3drm_mesh_GetGroupTexture,
 };
 
-HRESULT Direct3DRMMesh_create(IDirect3DRMMesh **mesh)
+HRESULT d3drm_mesh_create(struct d3drm_mesh **mesh, IDirect3DRM *d3drm)
 {
     static const char classname[] = "Mesh";
     struct d3drm_mesh *object;
 
-    TRACE("mesh %p.\n", mesh);
+    TRACE("mesh %p, d3drm %p.\n", mesh, d3drm);
 
     if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
     object->IDirect3DRMMesh_iface.lpVtbl = &d3drm_mesh_vtbl;
     object->ref = 1;
+    object->d3drm = d3drm;
+    IDirect3DRM_AddRef(object->d3drm);
 
     d3drm_object_init(&object->obj, classname);
 
-    *mesh = &object->IDirect3DRMMesh_iface;
+    *mesh = object;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI d3drm_wrap_QueryInterface(IDirect3DRMWrap *iface, REFIID riid, void **out)
+{
+    TRACE("iface %p, riid %s, out %p.\n", iface, debugstr_guid(riid), out);
+
+    if (IsEqualGUID(riid, &IID_IDirect3DRMWrap)
+            || IsEqualGUID(riid, &IID_IDirect3DRMObject)
+            || IsEqualGUID(riid, &IID_IUnknown))
+    {
+        IDirect3DRMWrap_AddRef(iface);
+        *out = iface;
+        return S_OK;
+    }
+
+    WARN("%s not implemented.\n", debugstr_guid(riid));
+
+    *out = NULL;
+    return CLASS_E_CLASSNOTAVAILABLE;
+}
+
+static ULONG WINAPI d3drm_wrap_AddRef(IDirect3DRMWrap *iface)
+{
+    struct d3drm_wrap *wrap = impl_from_IDirect3DRMWrap(iface);
+    ULONG refcount = InterlockedIncrement(&wrap->ref);
+
+    TRACE("%p increasing refcount to %u.\n", iface, refcount);
+
+    return refcount;
+}
+
+static ULONG WINAPI d3drm_wrap_Release(IDirect3DRMWrap *iface)
+{
+    struct d3drm_wrap *wrap = impl_from_IDirect3DRMWrap(iface);
+    ULONG refcount = InterlockedDecrement(&wrap->ref);
+
+    TRACE("%p decreasing refcount to %u.\n", iface, refcount);
+
+    if (!refcount)
+    {
+        d3drm_object_cleanup((IDirect3DRMObject *)iface, &wrap->obj);
+        HeapFree(GetProcessHeap(), 0, wrap);
+    }
+
+    return refcount;
+}
+
+static HRESULT WINAPI d3drm_wrap_Clone(IDirect3DRMWrap *iface,
+        IUnknown *outer, REFIID iid, void **out)
+{
+    FIXME("iface %p, outer %p, iid %s, out %p stub!\n", iface, outer, debugstr_guid(iid), out);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI d3drm_wrap_AddDestroyCallback(IDirect3DRMWrap *iface,
+        D3DRMOBJECTCALLBACK cb, void *ctx)
+{
+    struct d3drm_wrap *wrap = impl_from_IDirect3DRMWrap(iface);
+
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_object_add_destroy_callback(&wrap->obj, cb, ctx);
+}
+
+static HRESULT WINAPI d3drm_wrap_DeleteDestroyCallback(IDirect3DRMWrap *iface,
+        D3DRMOBJECTCALLBACK cb, void *ctx)
+{
+    struct d3drm_wrap *wrap = impl_from_IDirect3DRMWrap(iface);
+
+    TRACE("iface %p, cb %p, ctx %p.\n", iface, cb, ctx);
+
+    return d3drm_object_delete_destroy_callback(&wrap->obj, cb, ctx);
+}
+
+static HRESULT WINAPI d3drm_wrap_SetAppData(IDirect3DRMWrap *iface, DWORD data)
+{
+    struct d3drm_wrap *wrap = impl_from_IDirect3DRMWrap(iface);
+
+    TRACE("iface %p, data %#x.\n", iface, data);
+
+    wrap->obj.appdata = data;
+
+    return D3DRM_OK;
+}
+
+static DWORD WINAPI d3drm_wrap_GetAppData(IDirect3DRMWrap *iface)
+{
+    struct d3drm_wrap *wrap = impl_from_IDirect3DRMWrap(iface);
+
+    TRACE("iface %p.\n", iface);
+
+    return wrap->obj.appdata;
+}
+
+static HRESULT WINAPI d3drm_wrap_SetName(IDirect3DRMWrap *iface, const char *name)
+{
+    struct d3drm_wrap *wrap = impl_from_IDirect3DRMWrap(iface);
+
+    TRACE("iface %p, name %s.\n", iface, debugstr_a(name));
+
+    return d3drm_object_set_name(&wrap->obj, name);
+}
+
+static HRESULT WINAPI d3drm_wrap_GetName(IDirect3DRMWrap *iface, DWORD *size, char *name)
+{
+    struct d3drm_wrap *wrap = impl_from_IDirect3DRMWrap(iface);
+
+    TRACE("iface %p, size %p, name %p.\n", iface, size, name);
+
+    return d3drm_object_get_name(&wrap->obj, size, name);
+}
+
+static HRESULT WINAPI d3drm_wrap_GetClassName(IDirect3DRMWrap *iface, DWORD *size, char *name)
+{
+    struct d3drm_wrap *wrap = impl_from_IDirect3DRMWrap(iface);
+
+    TRACE("iface %p, size %p, name %p.\n", iface, size, name);
+
+    return d3drm_object_get_class_name(&wrap->obj, size, name);
+}
+
+static HRESULT WINAPI d3drm_wrap_Init(IDirect3DRMWrap *iface, D3DRMWRAPTYPE type, IDirect3DRMFrame *reference,
+       D3DVALUE ox, D3DVALUE oy, D3DVALUE oz, D3DVALUE dx, D3DVALUE dy, D3DVALUE dz, D3DVALUE ux,
+       D3DVALUE uy, D3DVALUE uz, D3DVALUE ou, D3DVALUE ov, D3DVALUE su, D3DVALUE sv)
+{
+    FIXME("iface %p, type %d, reference frame %p, ox %.8e, oy %.8e, oz %.8e, dx %.8e, dy %.8e, dz %.8e, ux %.8e, "
+            "uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e.\n", iface, type, reference, ox, oy, oz, dx, dy, dz,
+            ux, uy, uz, ou, ov, su, sv);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI d3drm_wrap_Apply(IDirect3DRMWrap *iface, IDirect3DRMObject *object)
+{
+    FIXME("iface %p, object %p.\n", iface, object);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI d3drm_wrap_ApplyRelative(IDirect3DRMWrap *iface, IDirect3DRMFrame *frame,
+       IDirect3DRMObject *object)
+{
+    FIXME("iface %p, frame %p, object %p.\n", iface, frame, object);
+
+    return E_NOTIMPL;
+}
+
+static const struct IDirect3DRMWrapVtbl d3drm_wrap_vtbl =
+{
+    d3drm_wrap_QueryInterface,
+    d3drm_wrap_AddRef,
+    d3drm_wrap_Release,
+    d3drm_wrap_Clone,
+    d3drm_wrap_AddDestroyCallback,
+    d3drm_wrap_DeleteDestroyCallback,
+    d3drm_wrap_SetAppData,
+    d3drm_wrap_GetAppData,
+    d3drm_wrap_SetName,
+    d3drm_wrap_GetName,
+    d3drm_wrap_GetClassName,
+    d3drm_wrap_Init,
+    d3drm_wrap_Apply,
+    d3drm_wrap_ApplyRelative,
+};
+
+HRESULT d3drm_wrap_create(struct d3drm_wrap **wrap, IDirect3DRM *d3drm)
+{
+    static const char classname[] = "";
+    struct d3drm_wrap *object;
+
+    TRACE("wrap %p, d3drm %p.\n", wrap, d3drm);
+
+    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+        return E_OUTOFMEMORY;
+
+    object->IDirect3DRMWrap_iface.lpVtbl = &d3drm_wrap_vtbl;
+    object->ref = 1;
+
+    d3drm_object_init(&object->obj, classname);
+
+    *wrap = object;
 
     return S_OK;
 }

@@ -79,6 +79,8 @@ static void GetSetTransportAddress_udp_tests(void)
     IWSDUdpAddress *udpAddress = NULL;
     const WCHAR ipv4Address[] = {'1','0','.','2','0','.','3','0','.','4','0',0};
     const WCHAR ipv6Address[] = {'a','a','b','b',':','c','d',':',':','a','b','c',0};
+    const WCHAR ipv4AddressWithPort[] = {'1','0','.','2','0','.','3','0','.','4','0',':','1','2','4',0};
+    const WCHAR ipv6AddressWithPort[] = {'[','a','a','b','b',':','c','d',':',':','a','b','c',':','5','6','7',']',':','1','2','4',0};
     const WCHAR invalidAddress[] = {'n','o','t','/','v','a','l','i','d',0};
     LPCWSTR returnedAddress = NULL;
     WSADATA wsaData;
@@ -93,37 +95,50 @@ static void GetSetTransportAddress_udp_tests(void)
     ok(udpAddress != NULL, "WSDCreateUdpAddress(NULL, &udpAddress) failed: udpAddress == NULL\n");
 
     rc = IWSDUdpAddress_GetTransportAddress(udpAddress, &returnedAddress);
-    todo_wine ok(rc == S_OK, "GetTransportAddress returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "GetTransportAddress returned unexpected result: %08x\n", rc);
     ok(returnedAddress == NULL, "GetTransportAddress returned unexpected address: %08x\n", rc);
 
     /* Try setting a null address */
     rc = IWSDUdpAddress_SetTransportAddress(udpAddress, NULL);
-    todo_wine ok(rc == E_INVALIDARG, "SetTransportAddress(NULL) returned unexpected result: %08x\n", rc);
+    ok(rc == E_INVALIDARG, "SetTransportAddress(NULL) returned unexpected result: %08x\n", rc);
 
     /* Try setting an invalid address */
     rc = IWSDUdpAddress_SetTransportAddress(udpAddress, invalidAddress);
-    todo_wine ok(rc == HRESULT_FROM_WIN32(WSAHOST_NOT_FOUND), "SetTransportAddress(invalidAddress) returned unexpected result: %08x\n", rc);
+    ok(rc == HRESULT_FROM_WIN32(WSAHOST_NOT_FOUND), "SetTransportAddress(invalidAddress) returned unexpected result: %08x\n", rc);
 
     /* Try setting an IPv4 address */
     rc = IWSDUdpAddress_SetTransportAddress(udpAddress, ipv4Address);
-    todo_wine ok(rc == S_OK, "SetTransportAddress(ipv4Address) failed: %08x\n", rc);
+    ok(rc == S_OK, "SetTransportAddress(ipv4Address) failed: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetTransportAddress(udpAddress, NULL);
-    todo_wine ok(rc == E_POINTER, "GetTransportAddress(NULL) returned unexpected result: %08x\n", rc);
+    ok(rc == E_POINTER, "GetTransportAddress(NULL) returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetTransportAddress(udpAddress, &returnedAddress);
-    todo_wine ok(rc == S_OK, "GetTransportAddress returned unexpected result: %08x\n", rc);
-    todo_wine ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: '%s'\n", wine_dbgstr_w(returnedAddress));
-    todo_wine ok(lstrcmpW(returnedAddress, ipv4Address) == 0, "Returned address != ipv4Address (%s)\n", wine_dbgstr_w(returnedAddress));
+    ok(rc == S_OK, "GetTransportAddress returned unexpected result: %08x\n", rc);
+    ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: '%s'\n", wine_dbgstr_w(returnedAddress));
+    ok(lstrcmpW(returnedAddress, ipv4Address) == 0, "Returned address != ipv4Address (%s)\n", wine_dbgstr_w(returnedAddress));
+
+    /* Try setting an IPv4 address with a port number */
+    rc = IWSDUdpAddress_SetTransportAddress(udpAddress, ipv4AddressWithPort);
+    ok(rc == HRESULT_FROM_WIN32(WSAHOST_NOT_FOUND), "SetTransportAddress(ipv4Address) failed: %08x\n", rc);
 
     /* Try setting an IPv6 address */
     rc = IWSDUdpAddress_SetTransportAddress(udpAddress, ipv6Address);
-    todo_wine ok(rc == S_OK, "SetTransportAddress(ipv6Address) failed: %08x\n", rc);
+    ok(rc == S_OK, "SetTransportAddress(ipv6Address) failed: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetTransportAddress(udpAddress, &returnedAddress);
-    todo_wine ok(rc == S_OK, "GetTransportAddress returned unexpected result: %08x\n", rc);
-    todo_wine ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: '%s'\n", wine_dbgstr_w(returnedAddress));
-    todo_wine ok(lstrcmpW(returnedAddress, ipv6Address) == 0, "Returned address != ipv6Address (%s)\n", wine_dbgstr_w(returnedAddress));
+    ok(rc == S_OK, "GetTransportAddress returned unexpected result: %08x\n", rc);
+    ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: '%s'\n", wine_dbgstr_w(returnedAddress));
+    ok(lstrcmpW(returnedAddress, ipv6Address) == 0, "Returned address != ipv6Address (%s)\n", wine_dbgstr_w(returnedAddress));
+
+    /* Try setting an IPv6 address with a port number */
+    rc = IWSDUdpAddress_SetTransportAddress(udpAddress, ipv6AddressWithPort);
+    ok(rc == S_OK, "SetTransportAddress(ipv6AddressWithPort) failed: %08x\n", rc);
+
+    rc = IWSDUdpAddress_GetTransportAddress(udpAddress, &returnedAddress);
+    ok(rc == S_OK, "GetTransportAddress returned unexpected result: %08x\n", rc);
+    ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: '%s'\n", wine_dbgstr_w(returnedAddress));
+    todo_wine ok(lstrcmpW(returnedAddress, ipv6AddressWithPort) == 0, "Returned address != ipv6AddressWithPort (%s)\n", wine_dbgstr_w(returnedAddress));
 
     /* Release the object */
     ret = IWSDUdpAddress_Release(udpAddress);
@@ -149,32 +164,32 @@ static void GetSetPort_udp_tests(void)
     /* No test for GetPort(NULL) as this causes an access violation exception on Windows */
 
     rc = IWSDUdpAddress_GetPort(udpAddress, &actualPort);
-    todo_wine ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
     ok(actualPort == 0, "GetPort returned unexpected port: %d\n", actualPort);
 
     /* Try setting a zero port */
     rc = IWSDUdpAddress_SetPort(udpAddress, 0);
-    todo_wine ok(rc == S_OK, "SetPort returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "SetPort returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetPort(udpAddress, &actualPort);
-    todo_wine ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
     ok(actualPort == 0, "GetPort returned unexpected port: %d\n", actualPort);
 
     /* Set a real port */
     rc = IWSDUdpAddress_SetPort(udpAddress, expectedPort1);
-    todo_wine ok(rc == S_OK, "SetPort returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "SetPort returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetPort(udpAddress, &actualPort);
-    todo_wine ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
-    todo_wine ok(actualPort == expectedPort1, "GetPort returned unexpected port: %d\n", actualPort);
+    ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
+    ok(actualPort == expectedPort1, "GetPort returned unexpected port: %d\n", actualPort);
 
     /* Now set a different port */
     rc = IWSDUdpAddress_SetPort(udpAddress, expectedPort2);
-    todo_wine ok(rc == S_OK, "SetPort returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "SetPort returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetPort(udpAddress, &actualPort);
-    todo_wine ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
-    todo_wine ok(actualPort == expectedPort2, "GetPort returned unexpected port: %d\n", actualPort);
+    ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
+    ok(actualPort == expectedPort2, "GetPort returned unexpected port: %d\n", actualPort);
 
     /* Release the object */
     ret = IWSDUdpAddress_Release(udpAddress);
@@ -195,26 +210,26 @@ static void GetSetMessageType_udp_tests(void)
     ok(udpAddress != NULL, "WSDCreateUdpAddress(NULL, &udpAddress) failed: udpAddress == NULL\n");
 
     rc = IWSDUdpAddress_GetMessageType(udpAddress, NULL);
-    todo_wine ok(rc == E_POINTER, "GetMessageType returned unexpected result: %08x\n", rc);
+    ok(rc == E_POINTER, "GetMessageType returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetMessageType(udpAddress, &actualMessageType);
-    todo_wine ok(rc == S_OK, "GetMessageType returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "GetMessageType returned unexpected result: %08x\n", rc);
     ok(actualMessageType == 0, "GetMessageType returned unexpected message type: %d\n", actualMessageType);
 
     /* Try setting a message type */
     rc = IWSDUdpAddress_SetMessageType(udpAddress, expectedMessageType1);
-    todo_wine ok(rc == S_OK, "SetMessageType returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "SetMessageType returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetMessageType(udpAddress, &actualMessageType);
-    todo_wine ok(rc == S_OK, "GetMessageType returned unexpected result: %08x\n", rc);
-    todo_wine ok(actualMessageType == expectedMessageType1, "GetMessageType returned unexpected message type: %d\n", actualMessageType);
+    ok(rc == S_OK, "GetMessageType returned unexpected result: %08x\n", rc);
+    ok(actualMessageType == expectedMessageType1, "GetMessageType returned unexpected message type: %d\n", actualMessageType);
 
     /* Set another one */
     rc = IWSDUdpAddress_SetMessageType(udpAddress, expectedMessageType2);
-    todo_wine ok(rc == S_OK, "SetMessageType returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "SetMessageType returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetMessageType(udpAddress, &actualMessageType);
-    todo_wine ok(rc == S_OK, "GetMessageType returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "GetMessageType returned unexpected result: %08x\n", rc);
     ok(actualMessageType == expectedMessageType2, "GetMessageType returned unexpected message type: %d\n", actualMessageType);
 
     /* Release the object */
@@ -239,11 +254,14 @@ static void GetSetSockaddr_udp_tests(void)
     const char *ipv4Address = "1.2.3.4";
     const short ipv4Port = 1234;
     const WCHAR expectedIpv4TransportAddr[] = {'1','.','2','.','3','.','4',':','1','2','3','4',0};
+    const WCHAR expectedIpv4TransportAddrNoPort[] = {'1','.','2','.','3','.','4',0};
 
     const char *ipv6Address = "2a00:1234:5678:dead:beef::aaaa";
     const short ipv6Port = 2345;
     const WCHAR expectedIpv6TransportAddr[] = {'[','2','a','0','0',':','1','2','3','4',':','5','6','7','8',':','d','e','a','d',':',
         'b','e','e','f',':',':','a','a','a','a',']',':','2','3','4','5',0};
+    const WCHAR expectedIpv6TransportAddrNoPort[] = {'2','a','0','0',':','1','2','3','4',':','5','6','7','8',':','d','e','a','d',':',
+        'b','e','e','f',':',':','a','a','a','a',0};
 
     ZeroMemory(&storage1, sizeof(SOCKADDR_STORAGE));
     ZeroMemory(&storage2, sizeof(SOCKADDR_STORAGE));
@@ -257,27 +275,27 @@ static void GetSetSockaddr_udp_tests(void)
     ok(udpAddress != NULL, "WSDCreateUdpAddress(NULL, &udpAddress) failed: udpAddress == NULL\n");
 
     rc = IWSDUdpAddress_GetSockaddr(udpAddress, NULL);
-    todo_wine ok(rc == E_POINTER, "GetSockaddr returned unexpected result: %08x\n", rc);
+    ok(rc == E_POINTER, "GetSockaddr returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetSockaddr(udpAddress, &returnedStorage);
-    todo_wine ok(rc == E_FAIL, "GetSockaddr returned unexpected result: %08x\n", rc);
+    ok(rc == E_FAIL, "GetSockaddr returned unexpected result: %08x\n", rc);
 
     /* Try setting a transport address */
     rc = IWSDUdpAddress_SetTransportAddress(udpAddress, expectedIpv6TransportAddr);
-    todo_wine ok(rc == S_OK, "SetTransportAddress failed: %08x\n", rc);
+    ok(rc == S_OK, "SetTransportAddress failed: %08x\n", rc);
 
     /* A socket address should be returned */
     rc = IWSDUdpAddress_GetSockaddr(udpAddress, &returnedStorage);
-    todo_wine ok(rc == S_OK, "GetSockaddr returned unexpected result: %08x\n", rc);
-    todo_wine ok(returnedStorage.ss_family == AF_INET6, "returnedStorage.ss_family != AF_INET6 (%d)\n", returnedStorage.ss_family);
+    ok(rc == S_OK, "GetSockaddr returned unexpected result: %08x\n", rc);
+    ok(returnedStorage.ss_family == AF_INET6, "returnedStorage.ss_family != AF_INET6 (%d)\n", returnedStorage.ss_family);
 
     sockAddr6Ptr = (struct sockaddr_in6 *) &returnedStorage;
 
     /* Windows however doesn't set the port number */
     ok(sockAddr6Ptr->sin6_port == 0, "returnedStorage.sin6_port != 0 (%d)\n", sockAddr6Ptr->sin6_port);
 
-    todo_wine ok(inet_ntop(returnedStorage.ss_family, &sockAddr6Ptr->sin6_addr, addressBuffer, MAX_PATH) != NULL, "inet_ntop failed (%d)\n", WSAGetLastError());
-    todo_wine ok(strcmp(addressBuffer, ipv6Address) == 0, "returnedStorage.sin6_addr != '%s' ('%s')\n", ipv6Address, addressBuffer);
+    ok(inet_ntop(returnedStorage.ss_family, &sockAddr6Ptr->sin6_addr, addressBuffer, MAX_PATH) != NULL, "inet_ntop failed (%d)\n", WSAGetLastError());
+    ok(strcmp(addressBuffer, ipv6Address) == 0, "returnedStorage.sin6_addr != '%s' ('%s')\n", ipv6Address, addressBuffer);
 
     /* Release the object and create a new one */
     ret = IWSDUdpAddress_Release(udpAddress);
@@ -296,24 +314,36 @@ static void GetSetSockaddr_udp_tests(void)
     ok(ret == 1, "inet_pton(ipv4) failed: %d\n", WSAGetLastError());
 
     rc = IWSDUdpAddress_SetSockaddr(udpAddress, &storage1);
-    todo_wine ok(rc == S_OK, "SetSockaddr returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "SetSockaddr returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetSockaddr(udpAddress, &returnedStorage);
-    todo_wine ok(rc == S_OK, "GetSockaddr returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "GetSockaddr returned unexpected result: %08x\n", rc);
 
-    todo_wine ok(returnedStorage.ss_family == storage1.ss_family, "returnedStorage.ss_family != storage1.ss_family (%d)\n", returnedStorage.ss_family);
-    todo_wine ok(memcmp(&returnedStorage, &storage1, sizeof(struct sockaddr_in)) == 0, "returnedStorage != storage1\n");
+    ok(returnedStorage.ss_family == storage1.ss_family, "returnedStorage.ss_family != storage1.ss_family (%d)\n", returnedStorage.ss_family);
+    ok(memcmp(&returnedStorage, &storage1, sizeof(struct sockaddr_in)) == 0, "returnedStorage != storage1\n");
 
     /* Check that GetTransportAddress returns the address set via the socket */
     rc = IWSDUdpAddress_GetTransportAddress(udpAddress, &returnedAddress);
-    todo_wine ok(rc == S_OK, "GetTransportAddress failed: %08x\n", rc);
-    todo_wine ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: %p\n", returnedAddress);
-    todo_wine ok(lstrcmpW(returnedAddress, expectedIpv4TransportAddr) == 0, "GetTransportAddress returned unexpected address: %s\n", wine_dbgstr_w(returnedAddress));
+    ok(rc == S_OK, "GetTransportAddress failed: %08x\n", rc);
+    ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: %p\n", returnedAddress);
+    ok(lstrcmpW(returnedAddress, expectedIpv4TransportAddr) == 0, "GetTransportAddress returned unexpected address: %s\n", wine_dbgstr_w(returnedAddress));
 
     /* Check that GetPort doesn't return the port set via the socket */
     rc = IWSDUdpAddress_GetPort(udpAddress, &port);
-    todo_wine ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
     ok(port == 0, "GetPort returned unexpected port: %d\n", port);
+
+    /* Try setting an IPv4 address without a port */
+    sockAddrPtr->sin_port = 0;
+
+    rc = IWSDUdpAddress_SetSockaddr(udpAddress, &storage1);
+    ok(rc == S_OK, "SetSockaddr returned unexpected result: %08x\n", rc);
+
+    /* Check that GetTransportAddress returns the address set via the socket */
+    rc = IWSDUdpAddress_GetTransportAddress(udpAddress, &returnedAddress);
+    ok(rc == S_OK, "GetTransportAddress failed: %08x\n", rc);
+    ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: %p\n", returnedAddress);
+    ok(lstrcmpW(returnedAddress, expectedIpv4TransportAddrNoPort) == 0, "GetTransportAddress returned unexpected address: %s\n", wine_dbgstr_w(returnedAddress));
 
     /* Try setting an IPv6 address */
     sockAddr6Ptr = (struct sockaddr_in6 *) &storage2;
@@ -324,24 +354,39 @@ static void GetSetSockaddr_udp_tests(void)
     ok(ret == 1, "inet_pton(ipv6) failed: %d\n", WSAGetLastError());
 
     rc = IWSDUdpAddress_SetSockaddr(udpAddress, &storage2);
-    todo_wine ok(rc == S_OK, "SetSockaddr returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "SetSockaddr returned unexpected result: %08x\n", rc);
 
     rc = IWSDUdpAddress_GetSockaddr(udpAddress, &returnedStorage);
-    todo_wine ok(rc == S_OK, "GetSockaddr returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "GetSockaddr returned unexpected result: %08x\n", rc);
 
-    todo_wine ok(returnedStorage.ss_family == storage2.ss_family, "returnedStorage.ss_family != storage2.ss_family (%d)\n", returnedStorage.ss_family);
-    todo_wine ok(memcmp(&returnedStorage, &storage2, sizeof(struct sockaddr_in6)) == 0, "returnedStorage != storage2\n");
+    ok(returnedStorage.ss_family == storage2.ss_family, "returnedStorage.ss_family != storage2.ss_family (%d)\n", returnedStorage.ss_family);
+    ok(memcmp(&returnedStorage, &storage2, sizeof(struct sockaddr_in6)) == 0, "returnedStorage != storage2\n");
 
     /* Check that GetTransportAddress returns the address set via the socket */
     rc = IWSDUdpAddress_GetTransportAddress(udpAddress, &returnedAddress);
-    todo_wine ok(rc == S_OK, "GetTransportAddress failed: %08x\n", rc);
-    todo_wine ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: %p\n", returnedAddress);
-    todo_wine ok(lstrcmpW(returnedAddress, expectedIpv6TransportAddr) == 0, "GetTransportAddress returned unexpected address: %s\n", wine_dbgstr_w(returnedAddress));
+    ok(rc == S_OK, "GetTransportAddress failed: %08x\n", rc);
+    ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: %p\n", returnedAddress);
+    ok(lstrcmpW(returnedAddress, expectedIpv6TransportAddr) == 0, "GetTransportAddress returned unexpected address: %s\n", wine_dbgstr_w(returnedAddress));
 
     /* Check that GetPort doesn't return the port set via the socket */
     rc = IWSDUdpAddress_GetPort(udpAddress, &port);
-    todo_wine ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
+    ok(rc == S_OK, "GetPort returned unexpected result: %08x\n", rc);
     ok(port == 0, "GetPort returned unexpected port: %d\n", port);
+
+    /* Try setting an IPv6 address without a port */
+    sockAddr6Ptr->sin6_port = 0;
+
+    rc = IWSDUdpAddress_SetSockaddr(udpAddress, &storage2);
+    ok(rc == S_OK, "SetSockaddr returned unexpected result: %08x\n", rc);
+
+    /* Check that GetTransportAddress returns the address set via the socket */
+    rc = IWSDUdpAddress_GetTransportAddress(udpAddress, &returnedAddress);
+    ok(rc == S_OK, "GetTransportAddress failed: %08x\n", rc);
+    ok(returnedAddress != NULL, "GetTransportAddress returned unexpected address: %p\n", returnedAddress);
+    ok(lstrcmpW(returnedAddress, expectedIpv6TransportAddrNoPort) == 0, "GetTransportAddress returned unexpected address: %s\n", wine_dbgstr_w(returnedAddress));
+
+    rc = IWSDUdpAddress_SetSockaddr(udpAddress, &storage2);
+    ok(rc == S_OK, "SetSockaddr returned unexpected result: %08x\n", rc);
 
     /* Release the object */
     ret = IWSDUdpAddress_Release(udpAddress);

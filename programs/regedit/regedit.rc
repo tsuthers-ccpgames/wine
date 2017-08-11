@@ -209,7 +209,7 @@ BEGIN
     IDS_DELETE_VALUE_TEXT   "Are you sure you want to delete the registry value '%1'?"
     IDS_DELETE_VALUE_TEXT_MULTIPLE "Are you sure you want to delete these values?"
     IDS_DELETE_KEY_TITLE    "Confirm Key Delete"
-    IDS_DELETE_KEY_TEXT     "Are you sure you want to delete the registry key '%1' and all of its subkeys?"
+    IDS_DELETE_KEY_TEXT     "Are you sure you want to delete this registry key and all of its subkeys?"
     IDS_NEWKEY              "New Key #%d"
     IDS_NEWVALUE            "New Value #%d"
     IDS_NOTFOUND            "Search complete. The string '%1' was not found."
@@ -404,7 +404,7 @@ STRINGTABLE
 \Usage examples:\n\
 \  regedit \"import.reg\"\n\
 \  regedit /E \"export.reg\" \"HKEY_CURRENT_USER\\Console\"\n\
-\  regedit /D \"HKEY_LOCAL_MACHINE\\Error\\Path\"\n"
+\  regedit /D \"HKEY_LOCAL_MACHINE\\Key\\Path\"\n"
     STRING_INVALID_SWITCH, "regedit: Invalid or unrecognized switch [%1]\n"
     STRING_HELP, "Type \"regedit /?\" for help.\n"
     STRING_NO_FILENAME, "regedit: No filename was specified.\n"
@@ -421,11 +421,11 @@ STRINGTABLE
     STRING_UNRECOGNIZED_LINE, "regedit: The line '%1' was not recognized.\n"
     STRING_SETVALUE_FAILED, "regedit: Unable to add the registry value '%1' to '%2'.\n"
     STRING_OPEN_KEY_FAILED, "regedit: Unable to open the registry key '%1'.\n"
-    STRING_UNSUPPORTED_TYPE, "regedit: Unsupported registry data type [%1] encountered in '%2'.\n"
+    STRING_UNSUPPORTED_TYPE, "regedit: Unsupported registry data type [0x%1!x!] encountered in '%2'.\n"
     STRING_EXPORT_AS_BINARY, "regedit: The registry value '%1' will be exported as binary data.\n"
-    STRING_INCORRECT_REG_CLASS, "regedit: Incorrect registry class specification in '%1'.\n"
+    STRING_INVALID_SYSTEM_KEY, "regedit: Invalid system key [%1]\n"
     STRING_REG_KEY_NOT_FOUND, "regedit: Unable to export '%1'. The specified registry key was not found.\n"
-    STRING_DELETE_REG_CLASS_FAILED, "regedit: Unable to delete the registry class '%1'.\n"
+    STRING_DELETE_FAILED, "regedit: Unable to delete the registry key '%1'.\n"
     STRING_UNKNOWN_TYPE, "Unknown Type"
     STRING_INVALID_LINE_SYNTAX, "regedit: The line contains invalid syntax.\n"
 }

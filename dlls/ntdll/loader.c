@@ -201,7 +201,7 @@ static inline BOOL call_dll_entry_point( DLLENTRYPROC proc, void *module,
 #endif /* __i386__ */
 
 
-#if defined(__i386__) || defined(__x86_64__) || defined(__arm__)
+#if defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__aarch64__)
 /*************************************************************************
  *		stub_entry_point
  *
@@ -237,14 +237,24 @@ struct stub
 struct stub
 {
     BYTE ldr_r0[4];        /* ldr r0, $dll */
-    BYTE mov_pc_pc1[4];    /* mov pc,pc */
-    const char *dll;
     BYTE ldr_r1[4];        /* ldr r1, $name */
-    BYTE mov_pc_pc2[4];    /* mov pc,pc */
-    const char *name;
     BYTE mov_r2_lr[4];     /* mov r2, lr */
-    BYTE ldr_pc_pc[4];     /* ldr pc, [pc, #-4] */
+    BYTE ldr_pc_pc[4];     /* ldr pc, [pc, #4] */
+    const char *dll;
+    const char *name;
     const void* entry;
+};
+#elif defined(__aarch64__)
+struct stub
+{
+    BYTE ldr_x0[4];        /* ldr x0, $dll */
+    BYTE ldr_x1[4];        /* ldr x1, $name */
+    BYTE mov_x2_lr[4];     /* mov x2, lr */
+    BYTE ldr_x16[4];       /* ldr x16, $entry */
+    BYTE br_x16[4];        /* br x16 */
+    const char *dll;
+    const char *name;
+    const void *entry;
 };
 #else
 struct stub
@@ -291,32 +301,48 @@ static ULONG_PTR allocate_stub( const char *dll, const char *name )
     stub->call      = 0xe8;  /* call stub_entry_point */
     stub->entry     = (BYTE *)stub_entry_point - (BYTE *)(&stub->entry + 1);
 #elif defined(__arm__)
-    stub->ldr_r0[0]     = 0x00;   /* ldr r0, $dll */
+    stub->ldr_r0[0]     = 0x08;   /* ldr r0, [pc, #8] ($dll) */
     stub->ldr_r0[1]     = 0x00;
     stub->ldr_r0[2]     = 0x9f;
     stub->ldr_r0[3]     = 0xe5;
-    stub->mov_pc_pc1[0] = 0x0f;   /* mov pc,pc */
-    stub->mov_pc_pc1[1] = 0xf0;
-    stub->mov_pc_pc1[2] = 0xa0;
-    stub->mov_pc_pc1[3] = 0xe1;
-    stub->dll           = dll;
-    stub->ldr_r1[0]     = 0x00;   /* ldr r1, $name */
+    stub->ldr_r1[0]     = 0x08;   /* ldr r1, [pc, #8] ($name) */
     stub->ldr_r1[1]     = 0x10;
     stub->ldr_r1[2]     = 0x9f;
     stub->ldr_r1[3]     = 0xe5;
-    stub->mov_pc_pc2[0] = 0x0f;   /* mov pc,pc */
-    stub->mov_pc_pc2[1] = 0xf0;
-    stub->mov_pc_pc2[2] = 0xa0;
-    stub->mov_pc_pc2[3] = 0xe1;
-    stub->name          = name;
     stub->mov_r2_lr[0]  = 0x0e;   /* mov r2, lr */
     stub->mov_r2_lr[1]  = 0x20;
     stub->mov_r2_lr[2]  = 0xa0;
     stub->mov_r2_lr[3]  = 0xe1;
-    stub->ldr_pc_pc[0]  = 0x04;   /* ldr pc, [pc, #-4] */
+    stub->ldr_pc_pc[0]  = 0x04;   /* ldr pc, [pc, #4] */
     stub->ldr_pc_pc[1]  = 0xf0;
-    stub->ldr_pc_pc[2]  = 0x1f;
+    stub->ldr_pc_pc[2]  = 0x9f;
     stub->ldr_pc_pc[3]  = 0xe5;
+    stub->dll           = dll;
+    stub->name          = name;
+    stub->entry         = stub_entry_point;
+#elif defined(__aarch64__)
+    stub->ldr_x0[0]     = 0xa0; /* ldr x0, #20 ($dll) */
+    stub->ldr_x0[1]     = 0x00;
+    stub->ldr_x0[2]     = 0x00;
+    stub->ldr_x0[3]     = 0x58;
+    stub->ldr_x1[0]     = 0xc1; /* ldr x1, #24 ($name) */
+    stub->ldr_x1[1]     = 0x00;
+    stub->ldr_x1[2]     = 0x00;
+    stub->ldr_x1[3]     = 0x58;
+    stub->mov_x2_lr[0]  = 0xe2; /* mov x2, lr */
+    stub->mov_x2_lr[1]  = 0x03;
+    stub->mov_x2_lr[2]  = 0x1e;
+    stub->mov_x2_lr[3]  = 0xaa;
+    stub->ldr_x16[0]    = 0xd0; /* ldr x16, #24 ($entry) */
+    stub->ldr_x16[1]    = 0x00;
+    stub->ldr_x16[2]    = 0x00;
+    stub->ldr_x16[3]    = 0x58;
+    stub->br_x16[0]     = 0x00; /* br x16 */
+    stub->br_x16[1]     = 0x02;
+    stub->br_x16[2]     = 0x1f;
+    stub->br_x16[3]     = 0xd6;
+    stub->dll           = dll;
+    stub->name          = name;
     stub->entry         = stub_entry_point;
 #else
     stub->movq_rdi[0]     = 0x48;  /* movq $dll,%rdi */
@@ -2476,7 +2502,7 @@ IMAGE_BASE_RELOCATION * WINAPI LdrProcessRelocationBlock( void *page, UINT count
         case IMAGE_REL_BASED_HIGHLOW:
             *(int *)((char *)page + offset) += delta;
             break;
-#ifdef __x86_64__
+#ifdef _WIN64
         case IMAGE_REL_BASED_DIR64:
             *(INT_PTR *)((char *)page + offset) += delta;
             break;

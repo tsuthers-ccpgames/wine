@@ -98,7 +98,8 @@ static const MAT2 identity = { {0,1},{0,0},{0,0},{0,1} };
 static inline struct opengl_funcs *get_dc_funcs( HDC hdc )
 {
     struct opengl_funcs *funcs = __wine_get_wgl_driver( hdc, WINE_WGL_DRIVER_VERSION );
-    if (funcs == (void *)-1) funcs = &null_opengl_funcs;
+    if (!funcs) SetLastError( ERROR_INVALID_HANDLE );
+    else if (funcs == (void *)-1) funcs = &null_opengl_funcs;
     return funcs;
 }
 
@@ -517,6 +518,8 @@ INT WINAPI wglChoosePixelFormat(HDC hdc, const PIXELFORMATDESCRIPTOR* ppfd)
 
             if (bestDBuffer != -1 && (format.dwFlags & PFD_DOUBLEBUFFER) != bestDBuffer) continue;
         }
+        else if (!best_format)
+            goto found;
 
         /* Stereo, see the comments above. */
         if (!(ppfd->dwFlags & PFD_STEREO_DONTCARE))
@@ -527,6 +530,8 @@ INT WINAPI wglChoosePixelFormat(HDC hdc, const PIXELFORMATDESCRIPTOR* ppfd)
 
             if (bestStereo != -1 && (format.dwFlags & PFD_STEREO) != bestStereo) continue;
         }
+        else if (!best_format)
+            goto found;
 
         /* Below we will do a number of checks to select the 'best' pixelformat.
          * We assume the precedence cColorBits > cAlphaBits > cDepthBits > cStencilBits -> cAuxBuffers.
@@ -615,7 +620,11 @@ INT WINAPI wglChoosePixelFormat(HDC hdc, const PIXELFORMATDESCRIPTOR* ppfd)
 INT WINAPI wglGetPixelFormat(HDC hdc)
 {
     struct opengl_funcs *funcs = get_dc_funcs( hdc );
-    if (!funcs) return 0;
+    if (!funcs)
+    {
+        SetLastError( ERROR_INVALID_PIXEL_FORMAT );
+        return 0;
+    }
     return funcs->wgl.p_wglGetPixelFormat( hdc );
 }
 

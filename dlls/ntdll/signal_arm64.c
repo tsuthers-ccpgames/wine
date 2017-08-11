@@ -231,7 +231,7 @@ __ASM_STDCALL_FUNC( RtlCaptureContext, 8,
  *
  * Set the new CPU context.
  */
-void set_cpu_context( const CONTEXT *context )
+static void set_cpu_context( const CONTEXT *context )
 {
     FIXME( "Not implemented on ARM64\n" );
 }
@@ -241,7 +241,7 @@ void set_cpu_context( const CONTEXT *context )
  *
  * Copy a register context according to the flags.
  */
-void copy_context( CONTEXT *to, const CONTEXT *from, DWORD flags )
+static void copy_context( CONTEXT *to, const CONTEXT *from, DWORD flags )
 {
     flags &= ~CONTEXT_ARM64;  /* get rid of CPU id */
     if (flags & CONTEXT_CONTROL)
@@ -331,6 +331,48 @@ NTSTATUS context_from_server( CONTEXT *to, const context_t *from )
 }
 
 /***********************************************************************
+ *              NtSetContextThread  (NTDLL.@)
+ *              ZwSetContextThread  (NTDLL.@)
+ */
+NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
+{
+    NTSTATUS ret;
+    BOOL self;
+
+    ret = set_thread_context( handle, context, &self );
+    if (self && ret == STATUS_SUCCESS) set_cpu_context( context );
+    return ret;
+}
+
+
+/***********************************************************************
+ *              NtGetContextThread  (NTDLL.@)
+ *              ZwGetContextThread  (NTDLL.@)
+ */
+NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
+{
+    NTSTATUS ret;
+    DWORD needed_flags = context->ContextFlags;
+    BOOL self = (handle == GetCurrentThread());
+
+    if (!self)
+    {
+        if ((ret = get_thread_context( handle, context, &self ))) return ret;
+        needed_flags &= ~context->ContextFlags;
+    }
+
+    if (self && needed_flags)
+    {
+        CONTEXT ctx;
+        RtlCaptureContext( &ctx );
+        copy_context( context, &ctx, ctx.ContextFlags & needed_flags );
+        context->ContextFlags |= ctx.ContextFlags & needed_flags;
+    }
+    return STATUS_SUCCESS;
+}
+
+
+/***********************************************************************
  *           setup_exception_record
  *
  * Setup the exception record and context on the thread stack.
@@ -344,8 +386,8 @@ static EXCEPTION_RECORD *setup_exception( ucontext_t *sigcontext, raise_func fun
     } *stack;
     DWORD exception_code = 0;
 
-    stack = (struct stack_layout *)(SP_sig(sigcontext) & ~15);
-    stack--;  /* push the stack_layout structure */
+    /* push the stack_layout structure */
+    stack = (struct stack_layout *)((SP_sig(sigcontext) - sizeof(*stack)) & ~15);
 
     stack->rec.ExceptionRecord  = NULL;
     stack->rec.ExceptionCode    = exception_code;

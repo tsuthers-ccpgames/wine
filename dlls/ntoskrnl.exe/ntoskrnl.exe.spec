@@ -343,7 +343,7 @@
 @ stdcall IoCreateDriver(ptr ptr)
 @ stdcall IoCreateFile(ptr long ptr ptr ptr long long long long ptr long long ptr long)
 @ stub IoCreateFileSpecifyDeviceObjectHint
-@ stub IoCreateNotificationEvent
+@ stdcall IoCreateNotificationEvent(ptr ptr)
 @ stub IoCreateStreamFileObject
 @ stub IoCreateStreamFileObjectEx
 @ stub IoCreateStreamFileObjectLite
@@ -510,6 +510,7 @@
 @ stdcall Ke386SetIoAccessMap(long ptr)
 @ stub KeAcquireInterruptSpinLock
 @ stub KeAcquireSpinLockAtDpcLevel
+@ stdcall -arch=x86_64 KeAcquireSpinLockRaiseToDpc(ptr)
 @ stub KeAddSystemServiceTable
 @ stub KeAreApcsDisabled
 @ stub KeAttachProcess
@@ -591,6 +592,7 @@
 @ stub KeReleaseMutant
 @ stdcall KeReleaseMutex(ptr long)
 @ stdcall KeReleaseSemaphore(ptr long long long)
+@ stdcall KeReleaseSpinLock(ptr long)
 @ stub KeReleaseSpinLockFromDpcLevel
 @ stub KeRemoveByKeyDeviceQueue
 @ stub KeRemoveByKeyDeviceQueueIfBusy
@@ -1132,7 +1134,7 @@
 @ stdcall RtlQueryAtomInAtomTable(ptr long ptr ptr ptr ptr) ntdll.RtlQueryAtomInAtomTable
 @ stdcall RtlQueryRegistryValues(long ptr ptr ptr ptr) ntdll.RtlQueryRegistryValues
 @ stdcall RtlQueryTimeZoneInformation(ptr) ntdll.RtlQueryTimeZoneInformation
-@ stdcall -register RtlRaiseException(ptr) ntdll.RtlRaiseException
+@ stdcall -norelay RtlRaiseException(ptr) ntdll.RtlRaiseException
 @ stdcall RtlRandom(ptr) ntdll.RtlRandom
 @ stub RtlRandomEx
 @ stub RtlRealPredecessor
@@ -1183,7 +1185,7 @@
 @ stdcall RtlUnicodeToMultiByteSize(ptr ptr long) ntdll.RtlUnicodeToMultiByteSize
 @ stdcall RtlUnicodeToOemN(ptr long ptr ptr long) ntdll.RtlUnicodeToOemN
 @ stub RtlUnlockBootStatusData
-@ stdcall -register RtlUnwind(ptr ptr ptr ptr) ntdll.RtlUnwind
+@ stdcall -norelay RtlUnwind(ptr ptr ptr ptr) ntdll.RtlUnwind
 @ stdcall -arch=x86_64 RtlUnwindEx(ptr ptr ptr ptr ptr ptr) ntdll.RtlUnwindEx
 @ stdcall RtlUpcaseUnicodeChar(long) ntdll.RtlUpcaseUnicodeChar
 @ stdcall RtlUpcaseUnicodeString(ptr ptr long) ntdll.RtlUpcaseUnicodeString

@@ -394,6 +394,7 @@ AC_CHECK_HEADERS(\
 	CoreAudio/CoreAudio.h \
 	CoreServices/CoreServices.h \
 	DiskArbitration/DiskArbitration.h \
+	EGL/egl.h \
 	IOKit/IOKitLib.h \
 	IOKit/hid/IOHIDLib.h \
 	OpenAL/al.h \
@@ -422,8 +423,6 @@ AC_CHECK_HEADERS(\
 	inet/mib2.h \
 	io.h \
 	kstat.h \
-	lber.h \
-	ldap.h \
 	libproc.h \
 	link.h \
 	linux/cdrom.h \
@@ -869,6 +868,9 @@ case $host_os in
     AC_SUBST(LIBWINE_INSTALL_LIB,"libwine.so")
     AC_SUBST(LIBWINE_LDFLAGS,["-shared -Wl,-soname,libwine.so"])
 
+    WINE_CHECK_SONAME(EGL,eglGetProcAddress)
+    WINE_CHECK_SONAME(GLESv2,glFlush)
+
     if test "x$exec_prefix" = xNONE
     then
       case $host_cpu in
@@ -979,6 +981,7 @@ then
                            done],
                           [AC_MSG_RESULT([no])])
         CC="$ac_save_CC"
+        AC_SUBST(CROSSCFLAGS,${CROSSCFLAGS:-$CFLAGS})
     fi
 fi
 
@@ -1761,7 +1764,7 @@ then
 fi
 
 dnl **** Check for any sound system ****
-if test "x$enable_winealsa_drv$enable_winecoreaudio_drv$enable_winepulse_drv$enable_wineoss_drv" = xnononono -a \
+if test "x$enable_winealsa_drv$enable_winecoreaudio_drv$enable_winepulse_drv$enable_wineoss_drv$enable_wineandroid_drv" = xnonononono -a \
         "x$with_alsa$with_coreaudio$with_oss$with_pulse" != xnononono
 then
     WINE_WARNING([No sound system was found. Windows applications will be silent.])
@@ -2047,6 +2050,7 @@ AC_CHECK_FUNCS(\
 	futimesat \
 	getattrlist \
 	getauxval \
+	getifaddrs \
 	getopt_long_only \
 	getpwuid \
 	gettimeofday \
@@ -2141,27 +2145,36 @@ AC_SEARCH_LIBS(clock_gettime, rt,
 LIBS=$ac_save_LIBS
 
 dnl **** Check for OpenLDAP ***
-AC_SUBST(LDAP_LIBS,"")
-if test "$ac_cv_header_ldap_h" = "yes" -a "$ac_cv_header_lber_h" = "yes"
+if test "x$with_ldap" != "xno"
 then
-    AC_CHECK_TYPE(LDAPSortKey,
-        [AC_CHECK_LIB(ldap_r, ldap_initialize,
-            [AC_CHECK_LIB(lber, ber_init,
-                [AC_DEFINE(HAVE_LDAP, 1, [Define if you have the OpenLDAP development environment])
-                 LDAP_LIBS="-lldap_r -llber"],,
-                 [$PTHREAD_LIBS])],,
-                 [$PTHREAD_LIBS])],,
-        [#include <ldap.h>])
-    WINE_CHECK_LIB_FUNCS(\
-	ldap_count_references \
-	ldap_first_reference \
-	ldap_next_reference \
-	ldap_parse_reference \
-	ldap_parse_sort_control \
-	ldap_parse_sortresponse_control \
-	ldap_parse_vlv_control \
-	ldap_parse_vlvresponse_control,
-        [$LDAP_LIBS $PTHREAD_LIBS])
+    dnl Actually there's no pkg-config support for ldap, but this way we can still override the flags
+    WINE_PACKAGE_FLAGS(LDAP,[openldap],[-lldap_r -llber],,,
+        [AC_CHECK_HEADERS([ldap.h lber.h])
+        if test "$ac_cv_header_ldap_h" = "yes" -a "$ac_cv_header_lber_h" = "yes"
+        then
+            AC_CHECK_TYPE(LDAPSortKey,
+                [AC_CHECK_LIB(ldap_r, ldap_initialize,
+                    [AC_CHECK_LIB(lber, ber_init,
+                        [AC_DEFINE(HAVE_LDAP, 1, [Define if you have the OpenLDAP development environment])],
+                        [LDAP_LIBS=""],
+                        [$PTHREAD_LIBS $LDAP_LIBS])],
+                    [LDAP_LIBS=""],
+                    [$PTHREAD_LIBS $LDAP_LIBS])],
+                [LDAP_LIBS=""],
+                [#include <ldap.h>])
+            WINE_CHECK_LIB_FUNCS(\
+                ldap_count_references \
+                ldap_first_reference \
+                ldap_next_reference \
+                ldap_parse_reference \
+                ldap_parse_sort_control \
+                ldap_parse_sortresponse_control \
+                ldap_parse_vlv_control \
+                ldap_parse_vlvresponse_control,
+                [$LDAP_LIBS $PTHREAD_LIBS])
+        else
+            LDAP_LIBS=""
+        fi])
 fi
 WINE_NOTICE_WITH(ldap,[test "x$LDAP_LIBS" = "x"],
                  [libldap (OpenLDAP) ${notice_platform}development files not found, LDAP won't be supported.])
@@ -2241,6 +2254,9 @@ AC_CHECK_MEMBERS([struct ff_effect.direction],,,
 AC_CACHE_CHECK([for if_nameindex],wine_cv_have_if_nameindex,
                AC_LINK_IFELSE([AC_LANG_PROGRAM([[#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
+#endif
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
 #endif
 #ifdef HAVE_NET_IF_H
 # include <net/if.h>
@@ -2588,20 +2604,30 @@ then
 fi
 
 AC_CHECK_FUNCS(\
+	acosh \
+	acoshf \
 	asinh \
 	asinhf \
+	atanh \
+	atanhf \
 	cbrt \
 	cbrtf \
 	erf \
+	erfc \
+	erfcf \
 	erff \
 	exp2 \
 	exp2f \
+	expm1 \
+	expm1f \
 	lgamma \
 	lgammaf \
 	llrint \
 	llrintf \
 	llround \
 	llroundf \
+	log1p \
+	log1pf \
 	log2 \
 	log2f \
 	lrint \
@@ -2720,6 +2746,8 @@ WINE_CONFIG_DLL(api-ms-win-core-com-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-com-private-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-console-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-console-l2-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-crt-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-crt-l2-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-datetime-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-datetime-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-debug-l1-1-0)
@@ -2777,6 +2805,7 @@ WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-2)
 WINE_CONFIG_DLL(api-ms-win-core-profile-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-psapi-ansi-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-psapi-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-psapi-obsolete-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-quirks-l1-1-0)
@@ -2854,6 +2883,7 @@ WINE_CONFIG_DLL(api-ms-win-eventing-provider-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-eventlog-legacy-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-mm-misc-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-mm-mme-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-mm-time-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-ntuser-dc-access-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-power-base-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-power-setting-l1-1-0)
@@ -2863,11 +2893,13 @@ WINE_CONFIG_DLL(api-ms-win-security-audit-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-security-base-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-security-base-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-security-base-private-l1-1-1)
+WINE_CONFIG_DLL(api-ms-win-security-credentials-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-security-grouppolicy-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-security-lsalookup-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-security-lsalookup-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-security-lsalookup-l2-1-1)
 WINE_CONFIG_DLL(api-ms-win-security-lsapolicy-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-security-provider-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-security-sddl-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-security-systemfunctions-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-service-core-l1-1-0)
@@ -3062,6 +3094,7 @@ WINE_CONFIG_DLL(dpwsockx)
 WINE_CONFIG_DLL(drmclien)
 WINE_CONFIG_DLL(dsound,,[clean,implib])
 WINE_CONFIG_TEST(dlls/dsound/tests)
+WINE_CONFIG_DLL(dsquery)
 WINE_CONFIG_DLL(dssenh)
 WINE_CONFIG_TEST(dlls/dssenh/tests)
 WINE_CONFIG_DLL(dswave,,[clean])
@@ -3089,16 +3122,21 @@ WINE_CONFIG_DLL(ext-ms-win-gdi-devcaps-l1-1-0)
 WINE_CONFIG_DLL(ext-ms-win-gdi-draw-l1-1-1)
 WINE_CONFIG_DLL(ext-ms-win-gdi-render-l1-1-0)
 WINE_CONFIG_DLL(ext-ms-win-kernel32-package-current-l1-1-0)
+WINE_CONFIG_DLL(ext-ms-win-kernel32-package-l1-1-1)
 WINE_CONFIG_DLL(ext-ms-win-ntuser-message-l1-1-1)
 WINE_CONFIG_DLL(ext-ms-win-ntuser-private-l1-1-1)
 WINE_CONFIG_DLL(ext-ms-win-ntuser-rectangle-ext-l1-1-0)
 WINE_CONFIG_DLL(ext-ms-win-ntuser-uicontext-ext-l1-1-0)
 WINE_CONFIG_DLL(ext-ms-win-ntuser-window-l1-1-1)
+WINE_CONFIG_DLL(ext-ms-win-ntuser-windowclass-l1-1-1)
+WINE_CONFIG_DLL(ext-ms-win-ras-rasapi32-l1-1-0)
 WINE_CONFIG_DLL(ext-ms-win-rtcore-gdi-object-l1-1-0)
 WINE_CONFIG_DLL(ext-ms-win-rtcore-gdi-rgn-l1-1-0)
 WINE_CONFIG_DLL(ext-ms-win-rtcore-ntuser-dc-access-l1-1-0)
 WINE_CONFIG_DLL(ext-ms-win-rtcore-ntuser-dpi-l1-1-0)
 WINE_CONFIG_DLL(ext-ms-win-rtcore-ntuser-sysparams-l1-1-0)
+WINE_CONFIG_DLL(ext-ms-win-security-credui-l1-1-0)
+WINE_CONFIG_DLL(ext-ms-win-security-cryptui-l1-1-0)
 WINE_CONFIG_DLL(faultrep,,[implib])
 WINE_CONFIG_TEST(dlls/faultrep/tests)
 WINE_CONFIG_DLL(fltlib)
@@ -3463,6 +3501,7 @@ WINE_CONFIG_DLL(typelib.dll16,enable_win16)
 WINE_CONFIG_DLL(ucrtbase,,[implib])
 WINE_CONFIG_TEST(dlls/ucrtbase/tests)
 WINE_CONFIG_DLL(uiautomationcore)
+WINE_CONFIG_DLL(uiribbon,,[clean])
 WINE_CONFIG_DLL(unicows,,[implib])
 WINE_CONFIG_DLL(updspapi)
 WINE_CONFIG_DLL(url,,[implib])
@@ -3672,6 +3711,7 @@ WINE_CONFIG_PROGRAM(notepad,,[clean,install,installbin,manpage])
 WINE_CONFIG_PROGRAM(oleview,,[clean,install])
 WINE_CONFIG_PROGRAM(ping,,[install])
 WINE_CONFIG_PROGRAM(plugplay,,[install])
+WINE_CONFIG_PROGRAM(powershell,,[install])
 WINE_CONFIG_PROGRAM(presentationfontcache,,[install])
 WINE_CONFIG_PROGRAM(progman,,[clean,install])
 WINE_CONFIG_PROGRAM(reg,,[clean,install])

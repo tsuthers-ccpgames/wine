@@ -37,7 +37,7 @@
 #define expectf_(expected, got, precision) ok(fabs((expected) - (got)) < (precision), "Expected %f, got %f\n", (expected), (got))
 #define expectf(expected, got) expectf_((expected), (got), 0.001)
 
-#define expect_magic(value) ok(*(value) == RGNDATA_MAGIC || *(value) == RGNDATA_MAGIC2, "Expected a known magic value, got %8x\n", *(value))
+#define expect_magic(value) ok(broken(*(value) == RGNDATA_MAGIC) || *(value) == RGNDATA_MAGIC2, "Expected a known magic value, got %8x\n", *(value))
 #define expect_dword(value, expected) expect((expected), *(value))
 #define expect_float(value, expected) expectf((expected), *(FLOAT *)(value))
 
@@ -2262,6 +2262,13 @@ START_TEST(region)
 {
     struct GdiplusStartupInput gdiplusStartupInput;
     ULONG_PTR gdiplusToken;
+    HMODULE hmsvcrt;
+    int (CDECL * _controlfp_s)(unsigned int *cur, unsigned int newval, unsigned int mask);
+
+    /* Enable all FP exceptions except _EM_INEXACT, which gdi32 can trigger */
+    hmsvcrt = LoadLibraryA("msvcrt");
+    _controlfp_s = (void*)GetProcAddress(hmsvcrt, "_controlfp_s");
+    if (_controlfp_s) _controlfp_s(0, 0, 0x0008001e);
 
     gdiplusStartupInput.GdiplusVersion              = 1;
     gdiplusStartupInput.DebugEventCallback          = NULL;

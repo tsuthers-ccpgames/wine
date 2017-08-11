@@ -803,38 +803,6 @@ static void set_style_hints( struct x11drv_win_data *data, DWORD style, DWORD ex
 
 
 /***********************************************************************
- *              get_process_name
- *
- * get the name of the current process for setting class hints
- */
-static char *get_process_name(void)
-{
-    static char *name;
-
-    if (!name)
-    {
-        WCHAR module[MAX_PATH];
-        DWORD len = GetModuleFileNameW( 0, module, MAX_PATH );
-        if (len && len < MAX_PATH)
-        {
-            char *ptr;
-            WCHAR *p, *appname = module;
-
-            if ((p = strrchrW( appname, '/' ))) appname = p + 1;
-            if ((p = strrchrW( appname, '\\' ))) appname = p + 1;
-            len = WideCharToMultiByte( CP_UNIXCP, 0, appname, -1, NULL, 0, NULL, NULL );
-            if ((ptr = HeapAlloc( GetProcessHeap(), 0, len )))
-            {
-                WideCharToMultiByte( CP_UNIXCP, 0, appname, -1, ptr, len, NULL, NULL );
-                name = ptr;
-            }
-        }
-    }
-    return name;
-}
-
-
-/***********************************************************************
  *              set_initial_wm_hints
  *
  * Set the window manager hints that don't change over the lifetime of a window.
@@ -845,7 +813,6 @@ static void set_initial_wm_hints( Display *display, Window window )
     Atom protocols[3];
     Atom dndVersion = WINE_XDND_VERSION;
     XClassHint *class_hints;
-    char *process_name = get_process_name();
 
     /* wm protocols */
     i = 0;
@@ -2583,7 +2550,7 @@ BOOL CDECL X11DRV_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO 
     char buffer[FIELD_OFFSET( BITMAPINFO, bmiColors[256] )];
     BITMAPINFO *bmi = (BITMAPINFO *)buffer;
     void *src_bits, *dst_bits;
-    RECT rect;
+    RECT rect, src_rect;
     HDC hdc = 0;
     HBITMAP dib;
     BOOL ret = FALSE;
@@ -2631,11 +2598,13 @@ BOOL CDECL X11DRV_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO 
         memcpy( src_bits, dst_bits, bmi->bmiHeader.biSizeImage );
         PatBlt( hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, BLACKNESS );
     }
+    src_rect = rect;
+    if (info->pptSrc) OffsetRect( &src_rect, info->pptSrc->x, info->pptSrc->y );
+    DPtoLP( info->hdcSrc, (POINT *)&src_rect, 2 );
+
     ret = GdiAlphaBlend( hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-                         info->hdcSrc,
-                         rect.left + (info->pptSrc ? info->pptSrc->x : 0),
-                         rect.top + (info->pptSrc ? info->pptSrc->y : 0),
-                         rect.right - rect.left, rect.bottom - rect.top,
+                         info->hdcSrc, src_rect.left, src_rect.top,
+                         src_rect.right - src_rect.left, src_rect.bottom - src_rect.top,
                          (info->dwFlags & ULW_ALPHA) ? *info->pblend : blend );
     if (ret)
     {

@@ -212,7 +212,7 @@ static CRITICAL_SECTION connection_pool_cs;
 static CRITICAL_SECTION_DEBUG connection_pool_debug =
 {
     0, 0, &connection_pool_cs,
-    { &critsect_debug.ProcessLocksList, &critsect_debug.ProcessLocksList },
+    { &connection_pool_debug.ProcessLocksList, &connection_pool_debug.ProcessLocksList },
       0, 0, { (DWORD_PTR)(__FILE__ ": connection_pool_cs") }
 };
 static CRITICAL_SECTION connection_pool_cs = { &connection_pool_debug, -1, 0, 0, 0, 0 };
@@ -3994,7 +3994,7 @@ static WCHAR *get_redirect_url(http_request_t *request)
     }
 
     urlComponents.dwSchemeLength = 1;
-    b = InternetCrackUrlW(redirect_url, url_length, 0, &urlComponents);
+    b = InternetCrackUrlW(redirect_url, url_length / sizeof(WCHAR), 0, &urlComponents);
     if(b && urlComponents.dwSchemeLength &&
        urlComponents.nScheme != INTERNET_SCHEME_HTTP && urlComponents.nScheme != INTERNET_SCHEME_HTTPS) {
         TRACE("redirect to non-http URL\n");
@@ -4039,27 +4039,36 @@ static WCHAR *get_redirect_url(http_request_t *request)
 /***********************************************************************
  *           HTTP_HandleRedirect (internal)
  */
-static DWORD HTTP_HandleRedirect(http_request_t *request, LPCWSTR lpszUrl)
+static DWORD HTTP_HandleRedirect(http_request_t *request, WCHAR *url)
 {
+    URL_COMPONENTSW urlComponents = { sizeof(urlComponents) };
     http_session_t *session = request->session;
-    WCHAR *path;
+    size_t url_len = strlenW(url);
 
-    if(lpszUrl[0]=='/')
+    if(url[0] == '/')
     {
         /* if it's an absolute path, keep the same session info */
-        path = heap_strdupW(lpszUrl);
+        urlComponents.lpszUrlPath = url;
+        urlComponents.dwUrlPathLength = url_len;
     }
     else
     {
-        URL_COMPONENTSW urlComponents = { sizeof(urlComponents) };
-        BOOL custom_port = FALSE;
-        substr_t host;
-
         urlComponents.dwHostNameLength = 1;
         urlComponents.dwUserNameLength = 1;
         urlComponents.dwUrlPathLength = 1;
-        if(!InternetCrackUrlW(lpszUrl, strlenW(lpszUrl), 0, &urlComponents))
+        if(!InternetCrackUrlW(url, url_len, 0, &urlComponents))
             return INTERNET_GetLastError();
+
+        if(!urlComponents.dwHostNameLength)
+            return ERROR_INTERNET_INVALID_URL;
+    }
+
+    INTERNET_SendCallback(&request->hdr, request->hdr.dwContext, INTERNET_STATUS_REDIRECT,
+                          url, (url_len + 1) * sizeof(WCHAR));
+
+    if(urlComponents.dwHostNameLength) {
+        BOOL custom_port = FALSE;
+        substr_t host;
 
         if(urlComponents.nScheme == INTERNET_SCHEME_HTTP) {
             if(request->hdr.dwFlags & INTERNET_FLAG_SECURE) {
@@ -4106,17 +4115,18 @@ static DWORD HTTP_HandleRedirect(http_request_t *request, LPCWSTR lpszUrl)
             HTTP_ProcessHeader(request, hostW, request->server->host_port, HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE | HTTP_ADDHDR_FLAG_REQ);
         else
             HTTP_ProcessHeader(request, hostW, request->server->name, HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE | HTTP_ADDHDR_FLAG_REQ);
-
-        path = heap_strndupW(urlComponents.lpszUrlPath, urlComponents.dwUrlPathLength);
     }
+
     heap_free(request->path);
     request->path = NULL;
-    if (*path)
+    if(urlComponents.dwUrlPathLength)
     {
         DWORD needed = 1;
         HRESULT rc;
         WCHAR dummy = 0;
+        WCHAR *path;
 
+        path = heap_strndupW(urlComponents.lpszUrlPath, urlComponents.dwUrlPathLength);
         rc = UrlEscapeW(path, &dummy, &needed, URL_ESCAPE_SPACES_ONLY);
         if (rc != E_POINTER)
             ERR("Unable to escape string!(%s) (%d)\n",debugstr_w(path),rc);
@@ -4128,9 +4138,8 @@ static DWORD HTTP_HandleRedirect(http_request_t *request, LPCWSTR lpszUrl)
             ERR("Unable to escape string!(%s) (%d)\n",debugstr_w(path),rc);
             strcpyW(request->path, path);
         }
+        heap_free(path);
     }
-
-    heap_free(path);
 
     /* Remove custom content-type/length headers on redirects.  */
     remove_header(request, szContent_Type, TRUE);
@@ -5040,8 +5049,6 @@ static DWORD HTTP_HttpSendRequestW(http_request_t *request, LPCWSTR lpszHeaders,
                         request->verb = heap_strdupW(szGET);
                     }
                     http_release_netconn(request, drain_content(request, FALSE));
-                    INTERNET_SendCallback(&request->hdr, request->hdr.dwContext, INTERNET_STATUS_REDIRECT,
-                                          new_url, (strlenW(new_url) + 1) * sizeof(WCHAR));
                     res = HTTP_HandleRedirect(request, new_url);
                     heap_free(new_url);
                     if (res == ERROR_SUCCESS) {
@@ -5238,8 +5245,6 @@ static DWORD HTTP_HttpEndRequestW(http_request_t *request, DWORD dwFlags, DWORD_
                 request->verb = heap_strdupW(szGET);
             }
             http_release_netconn(request, drain_content(request, FALSE));
-            INTERNET_SendCallback(&request->hdr, request->hdr.dwContext, INTERNET_STATUS_REDIRECT,
-                                  new_url, (strlenW(new_url) + 1) * sizeof(WCHAR));
             res = HTTP_HandleRedirect(request, new_url);
             heap_free(new_url);
             if (res == ERROR_SUCCESS)

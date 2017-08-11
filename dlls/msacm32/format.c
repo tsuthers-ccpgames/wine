@@ -57,11 +57,22 @@ static BOOL CALLBACK MSACM_FillFormatTagsCB(HACMDRIVERID hadid,
 
     switch (affd->mode) {
     case WINE_ACMFF_TAG:
-	if (SendDlgItemMessageW(affd->hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG,
-                                CB_FINDSTRINGEXACT, -1,
-                                (LPARAM)paftd->szFormatTag) == CB_ERR)
-	    SendDlgItemMessageW(affd->hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG,
-                                CB_ADDSTRING, 0, (LPARAM)paftd->szFormatTag);
+        if (paftd->cStandardFormats > 0)
+        {
+            if (SendDlgItemMessageW(affd->hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG,
+                                    CB_FINDSTRINGEXACT, -1,
+                                    (LPARAM)paftd->szFormatTag) == CB_ERR)
+            {
+                int index = SendDlgItemMessageW(affd->hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG,
+                                    CB_ADDSTRING, 0, (LPARAM)paftd->szFormatTag);
+                if (((affd->afc->fdwStyle & ACMFORMATCHOOSE_STYLEF_INITTOWFXSTRUCT) &&
+		     (paftd->dwFormatTag == affd->afc->pwfx->wFormatTag)) ||
+		    (!(affd->afc->fdwStyle & ACMFORMATCHOOSE_STYLEF_INITTOWFXSTRUCT) &&
+		     (paftd->dwFormatTag == WAVE_FORMAT_PCM)))
+                    SendDlgItemMessageW(affd->hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG,
+                                        CB_SETCURSEL, index, 0);
+            }
+        }
 	break;
     case WINE_ACMFF_FORMAT:
 	if (strcmpW(affd->szFormatTag, paftd->szFormatTag) == 0) {
@@ -84,7 +95,7 @@ static BOOL CALLBACK MSACM_FillFormatTagsCB(HACMDRIVERID hadid,
 
 		for (i = 0; i < paftd->cStandardFormats; i++) {
                     static const WCHAR fmtW[] = {'%','d',' ','K','o','/','s','\0'};
-                    int j;
+                    int j, index;
 
 		    afd.dwFormatIndex = i;
 		    afd.fdwSupport = 0;
@@ -96,14 +107,17 @@ static BOOL CALLBACK MSACM_FillFormatTagsCB(HACMDRIVERID hadid,
                            buffer[j] = ' ';
                        wsprintfW(buffer + ACMFORMATTAGDETAILS_FORMATTAG_CHARS,
                                  fmtW, (afd.pwfx->nAvgBytesPerSec + 512) / 1024);
-                       SendDlgItemMessageW(affd->hWnd,
+                       index = SendDlgItemMessageW(affd->hWnd,
                                            IDD_ACMFORMATCHOOSE_CMB_FORMAT,
                                            CB_ADDSTRING, 0, (LPARAM)buffer);
+                       if ((affd->afc->fdwStyle & ACMFORMATCHOOSE_STYLEF_INITTOWFXSTRUCT) &&
+                           affd->afc->cbwfx >= paftd->cbFormatSize &&
+                           !memcmp(afd.pwfx, affd->afc->pwfx, paftd->cbFormatSize))
+                           SendDlgItemMessageW(affd->hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMAT,
+                                               CB_SETCURSEL, index, 0);
 		    }
 		}
 		acmDriverClose(had, 0);
-		SendDlgItemMessageW(affd->hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMAT,
-				    CB_SETCURSEL, 0, 0);
 		HeapFree(MSACM_hHeap, 0, afd.pwfx);
 	    }
 	}
@@ -135,7 +149,7 @@ static BOOL CALLBACK MSACM_FillFormatTagsCB(HACMDRIVERID hadid,
     return TRUE;
 }
 
-static BOOL MSACM_FillFormatTags(HWND hWnd)
+static BOOL MSACM_FillFormatTags(HWND hWnd, PACMFORMATCHOOSEW afc)
 {
     ACMFORMATTAGDETAILSW	aftd;
     struct MSACM_FillFormatData	affd;
@@ -145,13 +159,15 @@ static BOOL MSACM_FillFormatTags(HWND hWnd)
 
     affd.hWnd = hWnd;
     affd.mode = WINE_ACMFF_TAG;
+    affd.afc = afc;
 
     acmFormatTagEnumW(NULL, &aftd, MSACM_FillFormatTagsCB, (DWORD_PTR)&affd, 0);
-    SendDlgItemMessageW(hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG, CB_SETCURSEL, 0, 0);
+    if (SendDlgItemMessageW(hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG, CB_GETCURSEL, 0, 0) == CB_ERR)
+        SendDlgItemMessageW(hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG, CB_SETCURSEL, 0, 0);
     return TRUE;
 }
 
-static BOOL MSACM_FillFormat(HWND hWnd)
+static BOOL MSACM_FillFormat(HWND hWnd, PACMFORMATCHOOSEW afc)
 {
     ACMFORMATTAGDETAILSW	aftd;
     struct MSACM_FillFormatData	affd;
@@ -163,6 +179,7 @@ static BOOL MSACM_FillFormat(HWND hWnd)
 
     affd.hWnd = hWnd;
     affd.mode = WINE_ACMFF_FORMAT;
+    affd.afc = afc;
     SendDlgItemMessageW(hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG,
 			CB_GETLBTEXT,
 			SendDlgItemMessageW(hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMATTAG,
@@ -170,7 +187,8 @@ static BOOL MSACM_FillFormat(HWND hWnd)
                         (LPARAM)affd.szFormatTag);
 
     acmFormatTagEnumW(NULL, &aftd, MSACM_FillFormatTagsCB, (DWORD_PTR)&affd, 0);
-    SendDlgItemMessageW(hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMAT, CB_SETCURSEL, 0, 0);
+    if (SendDlgItemMessageW(hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMAT, CB_GETCURSEL, 0, 0) == CB_ERR)
+        SendDlgItemMessageW(hWnd, IDD_ACMFORMATCHOOSE_CMB_FORMAT, CB_SETCURSEL, 0, 0);
     return TRUE;
 }
 
@@ -209,10 +227,11 @@ static INT_PTR CALLBACK FormatChooseDlgProc(HWND hWnd, UINT msg,
     case WM_INITDIALOG:
 	afc = (PACMFORMATCHOOSEW)lParam;
 	SetPropW(hWnd, fmt_prop, (HANDLE)afc);
-	MSACM_FillFormatTags(hWnd);
-	MSACM_FillFormat(hWnd);
+	MSACM_FillFormatTags(hWnd, afc);
+	MSACM_FillFormat(hWnd, afc);
 	if ((afc->fdwStyle & ~(ACMFORMATCHOOSE_STYLEF_CONTEXTHELP|
 			       ACMFORMATCHOOSE_STYLEF_SHOWHELP|
+                               ACMFORMATCHOOSE_STYLEF_INITTOWFXSTRUCT|
                                ACMFORMATCHOOSE_STYLEF_ENABLETEMPLATEHANDLE|
                                ACMFORMATCHOOSE_STYLEF_ENABLETEMPLATE)) != 0)
             FIXME("Unsupported style %08x\n", afc->fdwStyle);
@@ -231,7 +250,7 @@ static INT_PTR CALLBACK FormatChooseDlgProc(HWND hWnd, UINT msg,
 	case IDD_ACMFORMATCHOOSE_CMB_FORMATTAG:
 	    switch (HIWORD(wParam)) {
 	    case CBN_SELCHANGE:
-		MSACM_FillFormat(hWnd);
+		MSACM_FillFormat(hWnd, afc);
 		break;
 	    default:
 		TRACE("Dropped dlgNotif (fmtTag): 0x%08x 0x%08lx\n",
@@ -284,6 +303,9 @@ MMRESULT WINAPI acmFormatChooseA(PACMFORMATCHOOSEA pafmtc)
     LPWSTR              name = NULL;
     LPWSTR              templ = NULL;
     DWORD               sz;
+
+    if (pafmtc->cbStruct < sizeof(ACMFORMATCHOOSEA))
+        return MMSYSERR_INVALPARAM;
 
     afcw.cbStruct  = sizeof(afcw);
     afcw.fdwStyle  = pafmtc->fdwStyle;
@@ -356,6 +378,12 @@ done:
  */
 MMRESULT WINAPI acmFormatChooseW(PACMFORMATCHOOSEW pafmtc)
 {
+    if (pafmtc->cbStruct < sizeof(ACMFORMATCHOOSEW))
+        return MMSYSERR_INVALPARAM;
+
+    if (!pafmtc->pwfx)
+        return MMSYSERR_INVALPARAM;
+
     if (pafmtc->fdwStyle & ACMFORMATCHOOSE_STYLEF_ENABLETEMPLATEHANDLE)
         return DialogBoxIndirectParamW(MSACM_hInstance32, (LPCDLGTEMPLATEW)pafmtc->hInstance,
                                        pafmtc->hwndOwner, FormatChooseDlgProc, (LPARAM)pafmtc);

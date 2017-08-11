@@ -24,18 +24,13 @@
 #define REG_FORMAT_5 1
 #define REG_FORMAT_4 2
 
-#define NOT_ENOUGH_MEMORY          1
-
-#define CHECK_ENOUGH_MEMORY(p) \
-if (!(p)) \
-{ \
-    output_message(STRING_OUT_OF_MEMORY, __FILE__, __LINE__); \
-    exit(NOT_ENOUGH_MEMORY); \
-}
-
 void __cdecl output_message(unsigned int id, ...);
+void __cdecl error_exit(unsigned int id, ...);
 
-BOOL export_registry_key(WCHAR *file_name, WCHAR *reg_key_name, DWORD format);
-BOOL import_registry_file(FILE *in);
+char *GetMultiByteString(const WCHAR *strW);
+void *heap_xalloc(size_t size);
+void *heap_xrealloc(void *buf, size_t size);
+BOOL heap_free(void *buf);
+BOOL import_registry_file(FILE *reg_file);
 void delete_registry_key(WCHAR *reg_key_name);
-CHAR* GetMultiByteString(const WCHAR* strW);
+BOOL export_registry_key(WCHAR *file_name, WCHAR *path, DWORD format);

@@ -35,35 +35,46 @@ void ws_free( WS_HEAP *, void *, SIZE_T ) DECLSPEC_HIDDEN;
 struct xmlbuf *alloc_xmlbuf( WS_HEAP *, WS_XML_WRITER_ENCODING_TYPE, WS_CHARSET ) DECLSPEC_HIDDEN;
 void free_xmlbuf( struct xmlbuf * ) DECLSPEC_HIDDEN;
 
-WS_XML_DICTIONARY dict_builtin DECLSPEC_HIDDEN;
-const WS_XML_DICTIONARY dict_builtin_static DECLSPEC_HIDDEN;
+struct dictionary
+{
+    WS_XML_DICTIONARY  dict;
+    ULONG             *sorted;
+    ULONG              size;
+};
+struct dictionary dict_builtin DECLSPEC_HIDDEN;
+const struct dictionary dict_builtin_static DECLSPEC_HIDDEN;
 
-ULONG format_bool( const BOOL *, unsigned char * ) DECLSPEC_HIDDEN;
-ULONG format_int8( const INT8 *, unsigned char * ) DECLSPEC_HIDDEN;
-ULONG format_int16( const INT16 *, unsigned char * ) DECLSPEC_HIDDEN;
-ULONG format_int32( const INT32 *, unsigned char * ) DECLSPEC_HIDDEN;
-ULONG format_int64( const INT64 *, unsigned char * ) DECLSPEC_HIDDEN;
-ULONG format_uint64( const UINT64 *, unsigned char * ) DECLSPEC_HIDDEN;
-ULONG format_double( const double *, unsigned char * ) DECLSPEC_HIDDEN;
-ULONG format_datetime( const WS_DATETIME *, unsigned char * ) DECLSPEC_HIDDEN;
-ULONG format_guid( const GUID *, unsigned char * ) DECLSPEC_HIDDEN;
-ULONG format_urn( const GUID *, unsigned char * ) DECLSPEC_HIDDEN;
+int find_string( const struct dictionary *, const unsigned char *, ULONG, ULONG * ) DECLSPEC_HIDDEN;
+BOOL insert_string( struct dictionary *, unsigned char *, ULONG, int, ULONG * ) DECLSPEC_HIDDEN;
+HRESULT CALLBACK insert_string_cb( void *, const WS_XML_STRING *, BOOL *, ULONG *, WS_ERROR * ) DECLSPEC_HIDDEN;
+void clear_dict( struct dictionary * ) DECLSPEC_HIDDEN;
 
 const char *debugstr_xmlstr( const WS_XML_STRING * ) DECLSPEC_HIDDEN;
 WS_XML_STRING *alloc_xml_string( const unsigned char *, ULONG ) DECLSPEC_HIDDEN;
 WS_XML_STRING *dup_xml_string( const WS_XML_STRING * ) DECLSPEC_HIDDEN;
 HRESULT add_xml_string( WS_XML_STRING * ) DECLSPEC_HIDDEN;
 void free_xml_string( WS_XML_STRING * ) DECLSPEC_HIDDEN;
-WS_XML_UTF8_TEXT *alloc_utf8_text( const unsigned char *, ULONG ) DECLSPEC_HIDDEN;
 HRESULT append_attribute( WS_XML_ELEMENT_NODE *, WS_XML_ATTRIBUTE * ) DECLSPEC_HIDDEN;
 void free_attribute( WS_XML_ATTRIBUTE * ) DECLSPEC_HIDDEN;
 WS_TYPE map_value_type( WS_VALUE_TYPE ) DECLSPEC_HIDDEN;
 BOOL set_fpword( unsigned short, unsigned short * ) DECLSPEC_HIDDEN;
 void restore_fpword( unsigned short ) DECLSPEC_HIDDEN;
-HRESULT set_output( WS_XML_WRITER * ) DECLSPEC_HIDDEN;
-ULONG get_type_size( WS_TYPE, const WS_STRUCT_DESCRIPTION * ) DECLSPEC_HIDDEN;
+ULONG get_type_size( WS_TYPE, const void * ) DECLSPEC_HIDDEN;
 HRESULT read_header( WS_XML_READER *, const WS_XML_STRING *, const WS_XML_STRING *, WS_TYPE,
                      const void *, WS_READ_OPTION, WS_HEAP *, void *, ULONG ) DECLSPEC_HIDDEN;
+
+WS_XML_UTF8_TEXT *alloc_utf8_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
+WS_XML_UTF16_TEXT *alloc_utf16_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
+WS_XML_BASE64_TEXT *alloc_base64_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
+WS_XML_BOOL_TEXT *alloc_bool_text( BOOL ) DECLSPEC_HIDDEN;
+WS_XML_INT32_TEXT *alloc_int32_text( INT32 ) DECLSPEC_HIDDEN;
+WS_XML_INT64_TEXT *alloc_int64_text( INT64 ) DECLSPEC_HIDDEN;
+WS_XML_UINT64_TEXT *alloc_uint64_text( UINT64 ) DECLSPEC_HIDDEN;
+WS_XML_FLOAT_TEXT *alloc_float_text( float ) DECLSPEC_HIDDEN;
+WS_XML_DOUBLE_TEXT *alloc_double_text( double ) DECLSPEC_HIDDEN;
+WS_XML_GUID_TEXT *alloc_guid_text( const GUID * ) DECLSPEC_HIDDEN;
+WS_XML_UNIQUE_ID_TEXT *alloc_unique_id_text( const GUID * ) DECLSPEC_HIDDEN;
+WS_XML_DATETIME_TEXT *alloc_datetime_text( const WS_DATETIME * ) DECLSPEC_HIDDEN;
 
 #define INVALID_PARAMETER_INDEX 0xffff
 HRESULT get_param_desc( const WS_STRUCT_DESCRIPTION *, USHORT, const WS_FIELD_DESCRIPTION ** ) DECLSPEC_HIDDEN;
@@ -75,6 +86,7 @@ HRESULT read_output_params( WS_XML_READER *, WS_HEAP *, const WS_ELEMENT_DESCRIP
 enum node_flag
 {
     NODE_FLAG_IGNORE_TRAILING_ELEMENT_CONTENT   = 0x1,
+    NODE_FLAG_TEXT_WITH_IMPLICIT_END_ELEMENT    = 0x2,
 };
 
 struct node
@@ -310,12 +322,12 @@ enum record_type
     RECORD_EMPTY_TEXT_WITH_ENDELEMENT            = 0xa9,
     RECORD_DICTIONARY_TEXT                       = 0xaa,
     RECORD_DICTIONARY_TEXT_WITH_ENDELEMENT       = 0xab,
-    RECORD_UNIQUEID_TEXT                         = 0xac,
-    RECORD_UNIQUEID_TEXT_WITH_ENDELEMENT         = 0xad,
+    RECORD_UNIQUE_ID_TEXT                        = 0xac,
+    RECORD_UNIQUE_ID_TEXT_WITH_ENDELEMENT        = 0xad,
     RECORD_TIMESPAN_TEXT                         = 0xae,
     RECORD_TIMESPAN_TEXT_WITH_ENDELEMENT         = 0xaf,
-    RECORD_UUID_TEXT                             = 0xb0,
-    RECORD_UUID_TEXT_WITH_ENDELEMENT             = 0xb1,
+    RECORD_GUID_TEXT                             = 0xb0,
+    RECORD_GUID_TEXT_WITH_ENDELEMENT             = 0xb1,
     RECORD_UINT64_TEXT                           = 0xb2,
     RECORD_UINT64_TEXT_WITH_ENDELEMENT           = 0xb3,
     RECORD_BOOL_TEXT                             = 0xb4,
@@ -330,6 +342,19 @@ enum record_type
     RECORD_QNAME_DICTIONARY_TEXT_WITH_ENDELEMENT = 0xbd,
     /* 0xbe ... 0xff reserved */
 };
+
+#define MAX_INT8    0x7f
+#define MIN_INT8    (-MAX_INT8 - 1)
+#define MAX_INT16   0x7fff
+#define MIN_INT16   (-MAX_INT16 - 1)
+#define MAX_INT32   0x7fffffff
+#define MIN_INT32   (-MAX_INT32 - 1)
+#define MAX_INT64   (((INT64)0x7fffffff << 32) | 0xffffffff)
+#define MIN_INT64   (-MAX_INT64 - 1)
+#define MAX_UINT8   0xff
+#define MAX_UINT16  0xffff
+#define MAX_UINT32  0xffffffff
+#define MAX_UINT64  (((UINT64)0xffffffff << 32) | 0xffffffff)
 
 #define TICKS_PER_SEC       10000000
 #define TICKS_PER_MIN       (60 * (ULONGLONG)TICKS_PER_SEC)

@@ -111,6 +111,7 @@ struct d3dx_state
     UINT index;
     enum STATE_TYPE type;
     struct d3dx_parameter parameter;
+    struct d3dx_parameter *referenced_param;
 };
 
 struct d3dx_sampler
@@ -151,7 +152,7 @@ struct d3dx9_base_effect
     UINT technique_count;
     UINT object_count;
 
-    struct d3dx_parameter *parameters;
+    struct d3dx_top_level_parameter *parameters;
     struct d3dx_technique *techniques;
     struct d3dx_object *objects;
 
@@ -526,7 +527,7 @@ static void free_sampler(struct d3dx_sampler *sampler)
     HeapFree(GetProcessHeap(), 0, sampler->states);
 }
 
-static void d3dx_pool_release_shared_parameter(struct d3dx_parameter *param);
+static void d3dx_pool_release_shared_parameter(struct d3dx_top_level_parameter *param);
 
 static void free_parameter_data(struct d3dx_parameter *param, BOOL child)
 {
@@ -577,15 +578,6 @@ static void free_parameter(struct d3dx_parameter *param, BOOL element, BOOL chil
     if (param->param_eval)
         d3dx_free_param_eval(param->param_eval);
 
-    if (param->annotations)
-    {
-        for (i = 0; i < param->annotation_count; ++i)
-            free_parameter(&param->annotations[i], FALSE, FALSE);
-        HeapFree(GetProcessHeap(), 0, param->annotations);
-    }
-
-    d3dx_pool_release_shared_parameter(param);
-
     if (param->members)
     {
         unsigned int count = param->element_count ? param->element_count : param->member_count;
@@ -603,6 +595,20 @@ static void free_parameter(struct d3dx_parameter *param, BOOL element, BOOL chil
         HeapFree(GetProcessHeap(), 0, param->name);
         HeapFree(GetProcessHeap(), 0, param->semantic);
     }
+}
+
+static void free_top_level_parameter(struct d3dx_top_level_parameter *param)
+{
+    if (param->annotations)
+    {
+        unsigned int i;
+
+        for (i = 0; i < param->annotation_count; ++i)
+            free_parameter(&param->annotations[i], FALSE, FALSE);
+        HeapFree(GetProcessHeap(), 0, param->annotations);
+    }
+    d3dx_pool_release_shared_parameter(param);
+    free_parameter(&param->param, FALSE, FALSE);
 }
 
 static void free_pass(struct d3dx_pass *pass)
@@ -678,7 +684,7 @@ static void d3dx9_base_effect_cleanup(struct d3dx9_base_effect *base)
     if (base->parameters)
     {
         for (i = 0; i < base->parameter_count; ++i)
-            free_parameter(&base->parameters[i], FALSE, FALSE);
+            free_top_level_parameter(&base->parameters[i]);
         HeapFree(GetProcessHeap(), 0, base->parameters);
         base->parameters = NULL;
     }
@@ -830,9 +836,6 @@ static struct d3dx_parameter *get_parameter_element_by_name(struct d3dx_paramete
             case '.':
                 return get_parameter_by_name(NULL, temp_parameter, part);
 
-            case '@':
-                return get_annotation_by_name(temp_parameter->annotation_count, temp_parameter->annotations, part);
-
             case '\0':
                 TRACE("Returning parameter %p\n", temp_parameter);
                 return temp_parameter;
@@ -896,30 +899,20 @@ struct d3dx_parameter *get_parameter_by_name(struct d3dx9_base_effect *base,
 {
     UINT i, count, length;
     struct d3dx_parameter *temp_parameter;
-    struct d3dx_parameter *parameters;
     const char *part;
 
     TRACE("base %p, parameter %p, name %s\n", base, parameter, debugstr_a(name));
 
     if (!name || !*name) return NULL;
 
-    if (!parameter)
-    {
-        count = base->parameter_count;
-        parameters = base->parameters;
-    }
-    else
-    {
-        count = parameter->member_count;
-        parameters = parameter->members;
-    }
-
+    count = parameter ? parameter->member_count : base->parameter_count;
     length = strcspn( name, "[.@" );
     part = name + length;
 
     for (i = 0; i < count; i++)
     {
-        temp_parameter = &parameters[i];
+        temp_parameter = !parameter ? &base->parameters[i].param
+                : &parameter->members[i];
 
         if (!strcmp(temp_parameter->name, name))
         {
@@ -934,8 +927,13 @@ struct d3dx_parameter *get_parameter_by_name(struct d3dx9_base_effect *base,
                     return get_parameter_by_name(NULL, temp_parameter, part);
 
                 case '@':
-                    return get_annotation_by_name(temp_parameter->annotation_count, temp_parameter->annotations, part);
+                {
+                    struct d3dx_top_level_parameter *top_param
+                            = top_level_parameter_from_parameter(temp_parameter);
 
+                    return parameter ? NULL : get_annotation_by_name(top_param->annotation_count,
+                            top_param->annotations, part);
+                }
                 case '[':
                     return get_parameter_element_by_name(temp_parameter, part);
 
@@ -992,7 +990,8 @@ static HRESULT d3dx9_base_effect_get_parameter_desc(struct d3dx9_base_effect *ba
     desc->Rows = param->rows;
     desc->Columns = param->columns;
     desc->Elements = param->element_count;
-    desc->Annotations = param->annotation_count;
+    desc->Annotations = is_top_level_parameter(param)
+            ? top_level_parameter_from_parameter(param)->annotation_count : 0;
     desc->StructMembers = param->member_count;
     desc->Flags = param->flags;
     desc->Bytes = param->bytes;
@@ -1031,7 +1030,7 @@ static HRESULT d3dx9_get_param_value_ptr(struct d3dx_pass *pass, struct d3dx_sta
     switch (state->type)
     {
         case ST_PARAMETER:
-            param = param->u.referenced_param;
+            param = state->referenced_param;
             *param_dirty = is_param_dirty(param, pass->update_version);
             /* fallthrough */
         case ST_CONSTANT:
@@ -1042,7 +1041,7 @@ static HRESULT d3dx9_get_param_value_ptr(struct d3dx_pass *pass, struct d3dx_sta
         {
             unsigned int array_idx;
             static const struct d3dx_parameter array_idx_param =
-                {"", NULL, NULL, NULL, D3DXPC_SCALAR, D3DXPT_INT, 1, 1, 0, 0, 0, 0, sizeof(array_idx)};
+                {"", NULL, NULL, NULL, NULL, D3DXPC_SCALAR, D3DXPT_INT, 1, 1, 0, 0, 0, sizeof(array_idx)};
             HRESULT hr;
             struct d3dx_parameter *ref_param, *selected_param;
 
@@ -1062,7 +1061,7 @@ static HRESULT d3dx9_get_param_value_ptr(struct d3dx_pass *pass, struct d3dx_sta
             {
                 array_idx = state->index;
             }
-            ref_param = param->u.referenced_param;
+            ref_param = state->referenced_param;
             TRACE("Array index %u, stored array index %u, element_count %u.\n", array_idx, state->index,
                     ref_param->element_count);
             /* According to the tests, native d3dx handles the case of array index evaluated to -1
@@ -1183,7 +1182,7 @@ static D3DXHANDLE d3dx9_base_effect_get_parameter(struct d3dx9_base_effect *base
         if (index < base->parameter_count)
         {
             TRACE("Returning parameter %p.\n", &base->parameters[index]);
-            return get_parameter_handle(&base->parameters[index]);
+            return get_parameter_handle(&base->parameters[index].param);
         }
     }
     else
@@ -1230,7 +1229,7 @@ static D3DXHANDLE d3dx9_base_effect_get_parameter_by_semantic(struct d3dx9_base_
     {
         for (i = 0; i < base->parameter_count; ++i)
         {
-            temp_param = &base->parameters[i];
+            temp_param = &base->parameters[i].param;
 
             if (!temp_param->semantic)
             {
@@ -1288,7 +1287,7 @@ static D3DXHANDLE d3dx9_base_effect_get_parameter_element(struct d3dx9_base_effe
         if (index < base->parameter_count)
         {
             TRACE("Returning parameter %p.\n", &base->parameters[index]);
-            return get_parameter_handle(&base->parameters[index]);
+            return get_parameter_handle(&base->parameters[index].param);
         }
     }
     else
@@ -1409,8 +1408,19 @@ static UINT get_annotation_from_object(struct d3dx9_base_effect *base,
     }
     else if (param)
     {
-        *annotations = param->annotations;
-        return param->annotation_count;
+        if (is_top_level_parameter(param))
+        {
+            struct d3dx_top_level_parameter *top_param
+                    = top_level_parameter_from_parameter(param);
+
+            *annotations = top_param->annotations;
+            return top_param->annotation_count;
+        }
+        else
+        {
+            *annotations = NULL;
+            return 0;
+        }
     }
     else
     {
@@ -1496,10 +1506,10 @@ static ULONG64 next_effect_update_version(struct d3dx9_base_effect *base)
 static void set_dirty(struct d3dx_parameter *param)
 {
     struct d3dx_shared_data *shared_data;
-    struct d3dx_parameter *top_param = param->top_level_param;
+    struct d3dx_top_level_parameter *top_param = param->top_level_param;
     ULONG64 new_update_version = next_update_version(top_param->version_counter);
 
-    if ((shared_data = top_param->u.shared_data))
+    if ((shared_data = top_param->shared_data))
         shared_data->update_version = new_update_version;
     else
         top_param->update_version = new_update_version;
@@ -2928,15 +2938,20 @@ static HRESULT d3dx_set_shader_constants(struct ID3DXEffectImpl *effect, struct 
         if (params[i] && params[i]->class == D3DXPC_OBJECT && is_param_type_sampler(params[i]->type))
         {
             struct d3dx_sampler *sampler;
+            unsigned int sampler_idx;
 
-            sampler = (struct d3dx_sampler *)params[i]->data;
-            TRACE("sampler %s, register index %u, state count %u.\n", debugstr_a(params[i]->name),
-                    cdesc[i].RegisterIndex, sampler->state_count);
-            for (j = 0; j < sampler->state_count; ++j)
+            for (sampler_idx = 0; sampler_idx < cdesc[i].RegisterCount; ++sampler_idx)
             {
-                if (FAILED(hr = d3dx9_apply_state(effect, pass, &sampler->states[j],
-                        cdesc[i].RegisterIndex + (vs ? D3DVERTEXTEXTURESAMPLER0 : 0), update_all)))
-                    ret = hr;
+                sampler = params[i]->element_count ? params[i]->members[sampler_idx].data : params[i]->data;
+                TRACE("sampler %s, register index %u, state count %u.\n", debugstr_a(params[i]->name),
+                        cdesc[i].RegisterIndex, sampler->state_count);
+                for (j = 0; j < sampler->state_count; ++j)
+                {
+                    if (FAILED(hr = d3dx9_apply_state(effect, pass, &sampler->states[j],
+                            cdesc[i].RegisterIndex + sampler_idx + (vs ? D3DVERTEXTEXTURESAMPLER0 : 0),
+                            update_all)))
+                        ret = hr;
+                }
             }
         }
     }
@@ -3161,12 +3176,12 @@ static BOOL is_same_parameter(void *param1_, struct d3dx_parameter *param2)
     return TRUE;
 }
 
-static HRESULT d3dx_pool_sync_shared_parameter(struct d3dx_effect_pool *pool, struct d3dx_parameter *param)
+static HRESULT d3dx_pool_sync_shared_parameter(struct d3dx_effect_pool *pool, struct d3dx_top_level_parameter *param)
 {
     unsigned int i, free_entry_index;
     unsigned int new_size, new_count;
 
-    if (!(param->flags & PARAMETER_FLAG_SHARED) || !pool || is_param_type_sampler(param->type))
+    if (!(param->param.flags & PARAMETER_FLAG_SHARED) || !pool || is_param_type_sampler(param->param.type))
         return D3D_OK;
 
     free_entry_index = pool->size;
@@ -3174,7 +3189,7 @@ static HRESULT d3dx_pool_sync_shared_parameter(struct d3dx_effect_pool *pool, st
     {
         if (!pool->shared_data[i].count)
             free_entry_index = i;
-        else if (is_same_parameter(param, pool->shared_data[i].parameters[0]))
+        else if (is_same_parameter(&param->param, &pool->shared_data[i].parameters[0]->param))
             break;
     }
     if (i == pool->size)
@@ -3211,17 +3226,17 @@ static HRESULT d3dx_pool_sync_shared_parameter(struct d3dx_effect_pool *pool, st
 
                     for (j = 0; j < pool->size; ++j)
                         for (k = 0; k < new_alloc[j].count; ++k)
-                            new_alloc[j].parameters[k]->u.shared_data = &new_alloc[j];
+                            new_alloc[j].parameters[k]->shared_data = &new_alloc[j];
                 }
             }
             pool->shared_data = new_alloc;
             pool->size = new_size;
         }
-        pool->shared_data[i].data = param->data;
+        pool->shared_data[i].data = param->param.data;
     }
     else
     {
-        param_set_data_pointer(param, pool->shared_data[i].data, FALSE, TRUE);
+        param_set_data_pointer(&param->param, pool->shared_data[i].data, FALSE, TRUE);
     }
     new_count = ++pool->shared_data[i].count;
     if (new_count >= pool->shared_data[i].size)
@@ -3242,10 +3257,10 @@ static HRESULT d3dx_pool_sync_shared_parameter(struct d3dx_effect_pool *pool, st
         pool->shared_data[i].size = new_size;
     }
 
-    param->u.shared_data = &pool->shared_data[i];
+    param->shared_data = &pool->shared_data[i];
     pool->shared_data[i].parameters[new_count - 1] = param;
 
-    TRACE("name %s, parameter idx %u, new refcount %u.\n", param->name, i,
+    TRACE("name %s, parameter idx %u, new refcount %u.\n", debugstr_a(param->param.name), i,
             new_count);
 
     return D3D_OK;
@@ -3257,15 +3272,15 @@ static BOOL param_zero_data_func(void *dummy, struct d3dx_parameter *param)
     return FALSE;
 }
 
-static void d3dx_pool_release_shared_parameter(struct d3dx_parameter *param)
+static void d3dx_pool_release_shared_parameter(struct d3dx_top_level_parameter *param)
 {
     unsigned int new_count;
 
-    if (!(param->flags & PARAMETER_FLAG_SHARED) || !param->u.shared_data)
+    if (!(param->param.flags & PARAMETER_FLAG_SHARED) || !param->shared_data)
         return;
-    new_count = --param->u.shared_data->count;
+    new_count = --param->shared_data->count;
 
-    TRACE("param %p, param->u.shared_data %p, new_count %d.\n", param, param->u.shared_data, new_count);
+    TRACE("param %p, param->shared_data %p, new_count %d.\n", param, param->shared_data, new_count);
 
     if (new_count)
     {
@@ -3273,22 +3288,22 @@ static void d3dx_pool_release_shared_parameter(struct d3dx_parameter *param)
 
         for (i = 0; i < new_count; ++i)
         {
-            if (param->u.shared_data->parameters[i] == param)
+            if (param->shared_data->parameters[i] == param)
             {
-                memmove(&param->u.shared_data->parameters[i],
-                        &param->u.shared_data->parameters[i + 1],
-                        sizeof(param->u.shared_data->parameters[i]) * (new_count - i));
+                memmove(&param->shared_data->parameters[i],
+                        &param->shared_data->parameters[i + 1],
+                        sizeof(param->shared_data->parameters[i]) * (new_count - i));
                 break;
             }
         }
-        walk_parameter_tree(param, param_zero_data_func, NULL);
+        walk_parameter_tree(&param->param, param_zero_data_func, NULL);
     }
     else
     {
-        HeapFree(GetProcessHeap(), 0, param->u.shared_data->parameters);
+        HeapFree(GetProcessHeap(), 0, param->shared_data->parameters);
         /* Zeroing table size is required as the entry in pool parameters table can be reused. */
-        param->u.shared_data->size = 0;
-        param->u.shared_data = NULL;
+        param->shared_data->size = 0;
+        param->shared_data = NULL;
     }
 }
 
@@ -3978,7 +3993,7 @@ static BOOL walk_state_dep(struct d3dx_state *state, walk_parameter_dep_func par
     }
     else if (state->type == ST_ARRAY_SELECTOR || state->type == ST_PARAMETER)
     {
-        if (walk_parameter_dep(state->parameter.u.referenced_param, param_func, data))
+        if (walk_parameter_dep(state->referenced_param, param_func, data))
             return TRUE;
     }
     return walk_param_eval_dep(state->parameter.param_eval, param_func, data);
@@ -3990,7 +4005,7 @@ static BOOL walk_parameter_dep(struct d3dx_parameter *param, walk_parameter_dep_
     unsigned int i;
     unsigned int member_count;
 
-    param = param->top_level_param;
+    param = &param->top_level_param->param;
     if (param_func(data, param))
         return TRUE;
 
@@ -4000,12 +4015,17 @@ static BOOL walk_parameter_dep(struct d3dx_parameter *param, walk_parameter_dep_
     if (param->class == D3DXPC_OBJECT && is_param_type_sampler(param->type))
     {
         struct d3dx_sampler *sampler;
+        unsigned int sampler_idx;
+        unsigned int samplers_count = max(param->element_count, 1);
 
-        sampler = (struct d3dx_sampler *)param->data;
-        for (i = 0; i < sampler->state_count; ++i)
+        for (sampler_idx = 0; sampler_idx < samplers_count; ++sampler_idx)
         {
-            if (walk_state_dep(&sampler->states[i], param_func, data))
-                return TRUE;
+            sampler = param->element_count ? param->members[sampler_idx].data : param->data;
+            for (i = 0; i < sampler->state_count; ++i)
+            {
+                if (walk_state_dep(&sampler->states[i], param_func, data))
+                    return TRUE;
+            }
         }
         return FALSE;
     }
@@ -4020,16 +4040,11 @@ static BOOL walk_parameter_dep(struct d3dx_parameter *param, walk_parameter_dep_
     return FALSE;
 }
 
-static BOOL WINAPI ID3DXEffectImpl_IsParameterUsed(ID3DXEffect* iface, D3DXHANDLE parameter, D3DXHANDLE technique)
+static BOOL is_parameter_used(struct d3dx_parameter *param, struct d3dx_technique *tech)
 {
-    struct ID3DXEffectImpl *effect = impl_from_ID3DXEffect(iface);
     unsigned int i, j;
-    struct d3dx_parameter *param = get_valid_parameter(&effect->base_effect, parameter);
-    struct d3dx_technique *tech = get_valid_technique(&effect->base_effect, technique);
     struct d3dx_pass *pass;
 
-    TRACE("iface %p, parameter %p, technique %p.\n", iface, parameter, technique);
-    TRACE("param %p, name %s, tech %p.\n", param, param ? debugstr_a(param->name) : "", tech);
     if (!tech || !param)
         return FALSE;
 
@@ -4039,14 +4054,25 @@ static BOOL WINAPI ID3DXEffectImpl_IsParameterUsed(ID3DXEffect* iface, D3DXHANDL
         for (j = 0; j < pass->state_count; ++j)
         {
             if (walk_state_dep(&pass->states[j], is_same_parameter, param))
-            {
-                TRACE("Returning TRUE.\n");
                 return TRUE;
-            }
         }
     }
-    TRACE("Returning FALSE.\n");
     return FALSE;
+}
+
+static BOOL WINAPI ID3DXEffectImpl_IsParameterUsed(ID3DXEffect* iface, D3DXHANDLE parameter, D3DXHANDLE technique)
+{
+    struct ID3DXEffectImpl *effect = impl_from_ID3DXEffect(iface);
+    struct d3dx_parameter *param = get_valid_parameter(&effect->base_effect, parameter);
+    struct d3dx_technique *tech = get_valid_technique(&effect->base_effect, technique);
+    BOOL ret;
+
+    TRACE("iface %p, parameter %p, technique %p.\n", iface, parameter, technique);
+    TRACE("param %p, name %s, tech %p.\n", param, param ? debugstr_a(param->name) : "", tech);
+
+    ret = is_parameter_used(param, tech);
+    TRACE("Returning %#x.\n", ret);
+    return ret;
 }
 
 static HRESULT WINAPI ID3DXEffectImpl_Begin(ID3DXEffect *iface, UINT *passes, DWORD flags)
@@ -5460,7 +5486,6 @@ static HRESULT d3dx9_parse_effect_typedef(struct d3dx9_base_effect *base, struct
         param->name = parent->name;
         param->semantic = parent->semantic;
         param->element_count = 0;
-        param->annotation_count = 0;
         param->member_count = parent->member_count;
         param->bytes = parent->bytes;
         param->rows = parent->rows;
@@ -5619,7 +5644,7 @@ err_out:
     return hr;
 }
 
-static HRESULT d3dx9_parse_effect_parameter(struct d3dx9_base_effect *base, struct d3dx_parameter *param,
+static HRESULT d3dx9_parse_effect_parameter(struct d3dx9_base_effect *base, struct d3dx_top_level_parameter *param,
         const char *data, const char **ptr, struct d3dx_object *objects)
 {
     DWORD offset;
@@ -5628,29 +5653,29 @@ static HRESULT d3dx9_parse_effect_parameter(struct d3dx9_base_effect *base, stru
     const char *ptr2;
 
     read_dword(ptr, &offset);
-    TRACE("Typedef offset: %#x\n", offset);
+    TRACE("Typedef offset: %#x.\n", offset);
     ptr2 = data + offset;
 
     read_dword(ptr, &offset);
-    TRACE("Value offset: %#x\n", offset);
+    TRACE("Value offset: %#x.\n", offset);
 
-    read_dword(ptr, &param->flags);
-    TRACE("Flags: %#x\n", param->flags);
+    read_dword(ptr, &param->param.flags);
+    TRACE("Flags: %#x.\n", param->param.flags);
 
     read_dword(ptr, &param->annotation_count);
-    TRACE("Annotation count: %u\n", param->annotation_count);
+    TRACE("Annotation count: %u.\n", param->annotation_count);
 
-    hr = d3dx9_parse_effect_typedef(base, param, data, &ptr2, NULL, param->flags);
+    hr = d3dx9_parse_effect_typedef(base, &param->param, data, &ptr2, NULL, param->param.flags);
     if (hr != D3D_OK)
     {
-        WARN("Failed to parse type definition\n");
+        WARN("Failed to parse type definition.\n");
         return hr;
     }
 
-    hr = d3dx9_parse_init_value(base, param, data, data + offset, objects);
+    hr = d3dx9_parse_init_value(base, &param->param, data, data + offset, objects);
     if (hr != D3D_OK)
     {
-        WARN("Failed to parse value\n");
+        WARN("Failed to parse value.\n");
         return hr;
     }
 
@@ -5660,7 +5685,7 @@ static HRESULT d3dx9_parse_effect_parameter(struct d3dx9_base_effect *base, stru
                 sizeof(*param->annotations) * param->annotation_count);
         if (!param->annotations)
         {
-            ERR("Out of memory\n");
+            ERR("Out of memory.\n");
             hr = E_OUTOFMEMORY;
             goto err_out;
         }
@@ -5671,7 +5696,7 @@ static HRESULT d3dx9_parse_effect_parameter(struct d3dx9_base_effect *base, stru
             hr = d3dx9_parse_effect_annotation(base, &param->annotations[i], data, ptr, objects);
             if (hr != D3D_OK)
             {
-                WARN("Failed to parse annotation\n");
+                WARN("Failed to parse annotation.\n");
                 goto err_out;
             }
         }
@@ -5926,9 +5951,11 @@ static HRESULT d3dx9_create_object(struct d3dx9_base_effect *base, struct d3dx_o
     return D3D_OK;
 }
 
-static HRESULT d3dx9_parse_array_selector(struct d3dx9_base_effect *base, struct d3dx_parameter *param)
+static HRESULT d3dx9_parse_array_selector(struct d3dx9_base_effect *base, struct d3dx_state *state,
+        const char **skip_constants, unsigned int skip_constants_count)
 {
     DWORD string_size;
+    struct d3dx_parameter *param = &state->parameter;
     struct d3dx_object *object = &base->objects[param->object_id];
     char *ptr = object->data;
     HRESULT ret;
@@ -5936,10 +5963,10 @@ static HRESULT d3dx9_parse_array_selector(struct d3dx9_base_effect *base, struct
     TRACE("Parsing array entry selection state for parameter %p.\n", param);
 
     string_size = *(DWORD *)ptr;
-    param->u.referenced_param = get_parameter_by_name(base, NULL, ptr + 4);
-    if (param->u.referenced_param)
+    state->referenced_param = get_parameter_by_name(base, NULL, ptr + 4);
+    if (state->referenced_param)
     {
-        TRACE("Mapping to parameter %s.\n", debugstr_a(param->u.referenced_param->name));
+        TRACE("Mapping to parameter %s.\n", debugstr_a(state->referenced_param->name));
     }
     else
     {
@@ -5950,10 +5977,12 @@ static HRESULT d3dx9_parse_array_selector(struct d3dx9_base_effect *base, struct
 
     if (string_size % sizeof(DWORD))
         FIXME("Unaligned string_size %u.\n", string_size);
-    d3dx_create_param_eval(base, (DWORD *)(ptr + string_size) + 1, object->size - (string_size + sizeof(DWORD)),
-            D3DXPT_INT, &param->param_eval, get_version_counter_ptr(base));
+    if (FAILED(ret = d3dx_create_param_eval(base, (DWORD *)(ptr + string_size) + 1,
+            object->size - (string_size + sizeof(DWORD)), D3DXPT_INT, &param->param_eval,
+            get_version_counter_ptr(base), NULL, 0)))
+        return ret;
     ret = D3D_OK;
-    param = param->u.referenced_param;
+    param = state->referenced_param;
     if (param->type == D3DXPT_VERTEXSHADER || param->type == D3DXPT_PIXELSHADER)
     {
         unsigned int i;
@@ -5969,15 +5998,18 @@ static HRESULT d3dx9_parse_array_selector(struct d3dx9_base_effect *base, struct
             {
                 TRACE("Creating preshader for object %u.\n", param->members[i].object_id);
                 object = &base->objects[param->members[i].object_id];
-                d3dx_create_param_eval(base, object->data, object->size, param->type,
-                        &param->members[i].param_eval, get_version_counter_ptr(base));
+                if (FAILED(ret = d3dx_create_param_eval(base, object->data, object->size, param->type,
+                        &param->members[i].param_eval, get_version_counter_ptr(base),
+                        skip_constants, skip_constants_count)))
+                    break;
             }
         }
     }
     return ret;
 }
 
-static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *data, const char **ptr)
+static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *data, const char **ptr,
+        const char **skip_constants, unsigned int skip_constants_count)
 {
     DWORD technique_index;
     DWORD index, state_index, usage, element_index;
@@ -6012,7 +6044,7 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
             return E_FAIL;
         }
 
-        parameter = &base->parameters[index];
+        parameter = &base->parameters[index].param;
         if (element_index != 0xffffffff)
         {
             if (element_index >= parameter->element_count && parameter->element_count != 0)
@@ -6021,7 +6053,8 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
                 return E_FAIL;
             }
 
-            if (parameter->element_count != 0) parameter = &parameter->members[element_index];
+            if (parameter->element_count)
+                parameter = &parameter->members[element_index];
         }
 
         sampler = parameter->data;
@@ -6083,8 +6116,10 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
                     {
                         if (FAILED(hr = d3dx9_create_object(base, object)))
                             return hr;
-                        d3dx_create_param_eval(base, object->data, object->size, param->type,
-                                &param->param_eval, get_version_counter_ptr(base));
+                        if (FAILED(hr = d3dx_create_param_eval(base, object->data, object->size, param->type,
+                                &param->param_eval, get_version_counter_ptr(base),
+                                skip_constants, skip_constants_count)))
+                            return hr;
                     }
                     break;
 
@@ -6095,8 +6130,9 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
                     state->type = ST_FXLC;
                     if (FAILED(hr = d3dx9_copy_data(base, param->object_id, ptr)))
                         return hr;
-                    d3dx_create_param_eval(base, object->data, object->size, param->type,
-                            &param->param_eval, get_version_counter_ptr(base));
+                    if (FAILED(hr = d3dx_create_param_eval(base, object->data, object->size, param->type,
+                            &param->param_eval, get_version_counter_ptr(base), NULL, 0)))
+                        return hr;
                     break;
 
                 default:
@@ -6111,10 +6147,10 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
                 return hr;
 
             TRACE("Looking for parameter %s.\n", debugstr_a(object->data));
-            param->u.referenced_param = get_parameter_by_name(base, NULL, object->data);
-            if (param->u.referenced_param)
+            state->referenced_param = get_parameter_by_name(base, NULL, object->data);
+            if (state->referenced_param)
             {
-                struct d3dx_parameter *refpar = param->u.referenced_param;
+                struct d3dx_parameter *refpar = state->referenced_param;
 
                 TRACE("Mapping to parameter %p, having object id %u.\n", refpar, refpar->object_id);
                 if (refpar->type == D3DXPT_VERTEXSHADER || refpar->type == D3DXPT_PIXELSHADER)
@@ -6122,8 +6158,12 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
                     struct d3dx_object *refobj = &base->objects[refpar->object_id];
 
                     if (!refpar->param_eval)
-                        d3dx_create_param_eval(base, refobj->data, refobj->size,
-                                refpar->type, &refpar->param_eval, get_version_counter_ptr(base));
+                    {
+                        if (FAILED(hr = d3dx_create_param_eval(base, refobj->data, refobj->size,
+                                refpar->type, &refpar->param_eval, get_version_counter_ptr(base),
+                                skip_constants, skip_constants_count)))
+                            return hr;
+                    }
                 }
             }
             else
@@ -6137,7 +6177,7 @@ static HRESULT d3dx9_parse_resource(struct d3dx9_base_effect *base, const char *
             state->type = ST_ARRAY_SELECTOR;
             if (FAILED(hr = d3dx9_copy_data(base, param->object_id, ptr)))
                 return hr;
-            hr = d3dx9_parse_array_selector(base, param);
+            hr = d3dx9_parse_array_selector(base, state, skip_constants, skip_constants_count);
             break;
 
         default:
@@ -6154,7 +6194,8 @@ static BOOL param_set_top_level_param(void *top_level_param, struct d3dx_paramet
     return FALSE;
 }
 
-static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *data, UINT data_size, DWORD start)
+static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *data, UINT data_size,
+        DWORD start, const char **skip_constants, unsigned int skip_constants_count)
 {
     const char *ptr = data + start;
     UINT stringcount, resourcecount;
@@ -6162,20 +6203,20 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
     UINT i;
 
     read_dword(&ptr, &base->parameter_count);
-    TRACE("Parameter count: %u\n", base->parameter_count);
+    TRACE("Parameter count: %u.\n", base->parameter_count);
 
     read_dword(&ptr, &base->technique_count);
-    TRACE("Technique count: %u\n", base->technique_count);
+    TRACE("Technique count: %u.\n", base->technique_count);
 
     skip_dword_unknown(&ptr, 1);
 
     read_dword(&ptr, &base->object_count);
-    TRACE("Object count: %u\n", base->object_count);
+    TRACE("Object count: %u.\n", base->object_count);
 
     base->objects = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*base->objects) * base->object_count);
     if (!base->objects)
     {
-        ERR("Out of memory\n");
+        ERR("Out of memory.\n");
         hr = E_OUTOFMEMORY;
         goto err_out;
     }
@@ -6186,20 +6227,22 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
                 sizeof(*base->parameters) * base->parameter_count);
         if (!base->parameters)
         {
-            ERR("Out of memory\n");
+            ERR("Out of memory.\n");
             hr = E_OUTOFMEMORY;
             goto err_out;
         }
 
         for (i = 0; i < base->parameter_count; ++i)
         {
-            param_set_magic_number(&base->parameters[i]);
+            param_set_magic_number(&base->parameters[i].param);
             hr = d3dx9_parse_effect_parameter(base, &base->parameters[i], data, &ptr, base->objects);
             if (hr != D3D_OK)
             {
-                WARN("Failed to parse parameter %u\n", i);
+                WARN("Failed to parse parameter %u.\n", i);
                 goto err_out;
             }
+            walk_parameter_tree(&base->parameters[i].param, param_set_top_level_param,
+                &base->parameters[i]);
         }
     }
 
@@ -6209,7 +6252,7 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
                 sizeof(*base->techniques) * base->technique_count);
         if (!base->techniques)
         {
-            ERR("Out of memory\n");
+            ERR("Out of memory.\n");
             hr = E_OUTOFMEMORY;
             goto err_out;
         }
@@ -6220,24 +6263,24 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
             hr = d3dx9_parse_effect_technique(base, &base->techniques[i], data, &ptr, base->objects);
             if (hr != D3D_OK)
             {
-                WARN("Failed to parse technique %u\n", i);
+                WARN("Failed to parse technique %u.\n", i);
                 goto err_out;
             }
         }
     }
 
     read_dword(&ptr, &stringcount);
-    TRACE("String count: %u\n", stringcount);
+    TRACE("String count: %u.\n", stringcount);
 
     read_dword(&ptr, &resourcecount);
-    TRACE("Resource count: %u\n", resourcecount);
+    TRACE("Resource count: %u.\n", resourcecount);
 
     for (i = 0; i < stringcount; ++i)
     {
         DWORD id;
 
         read_dword(&ptr, &id);
-        TRACE("Id: %u\n", id);
+        TRACE("id: %u.\n", id);
 
         if (FAILED(hr = d3dx9_copy_data(base, id, &ptr)))
             goto err_out;
@@ -6251,12 +6294,12 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
 
     for (i = 0; i < resourcecount; ++i)
     {
-        TRACE("parse resource %u\n", i);
+        TRACE("parse resource %u.\n", i);
 
-        hr = d3dx9_parse_resource(base, data, &ptr);
+        hr = d3dx9_parse_resource(base, data, &ptr, skip_constants, skip_constants_count);
         if (hr != D3D_OK)
         {
-            WARN("Failed to parse resource %u\n", i);
+            WARN("Failed to parse resource %u.\n", i);
             goto err_out;
         }
     }
@@ -6265,12 +6308,10 @@ static HRESULT d3dx9_parse_effect(struct d3dx9_base_effect *base, const char *da
     {
         if (FAILED(hr = d3dx_pool_sync_shared_parameter(base->pool, &base->parameters[i])))
             goto err_out;
-        walk_parameter_tree(&base->parameters[i], param_set_top_level_param,
-                &base->parameters[i]);
         base->parameters[i].version_counter = base->pool
                 ? &base->pool->version_counter
                 : &base->version_counter;
-        set_dirty(&base->parameters[i]);
+        set_dirty(&base->parameters[i].param);
     }
     return D3D_OK;
 
@@ -6288,7 +6329,7 @@ err_out:
     {
         for (i = 0; i < base->parameter_count; ++i)
         {
-            free_parameter(&base->parameters[i], FALSE, FALSE);
+            free_top_level_parameter(&base->parameters[i]);
         }
         HeapFree(GetProcessHeap(), 0, base->parameters);
         base->parameters = NULL;
@@ -6307,16 +6348,77 @@ err_out:
     return hr;
 }
 
+#define INITIAL_CONST_NAMES_SIZE 4
+
+static char *next_valid_constant_name(char **string)
+{
+    char *ret = *string;
+    char *next;
+
+    while (*ret && !isalpha(*ret) && *ret != '_')
+        ++ret;
+    if (!*ret)
+        return NULL;
+
+    next = ret + 1;
+    while (isalpha(*next) || isdigit(*next) || *next == '_')
+        ++next;
+    if (*next)
+        *next++ = 0;
+    *string = next;
+    return ret;
+}
+
+static const char **parse_skip_constants_string(char *skip_constants_string, unsigned int *names_count)
+{
+    const char **names, **new_alloc;
+    const char *name;
+    char *s;
+    unsigned int size = INITIAL_CONST_NAMES_SIZE;
+
+    names = HeapAlloc(GetProcessHeap(), 0, sizeof(*names) * size);
+    if (!names)
+        return NULL;
+
+    *names_count = 0;
+    s = skip_constants_string;
+    while ((name = next_valid_constant_name(&s)))
+    {
+        if (*names_count == size)
+        {
+            size *= 2;
+            new_alloc = HeapReAlloc(GetProcessHeap(), 0, names, sizeof(*names) * size);
+            if (!new_alloc)
+            {
+                HeapFree(GetProcessHeap(), 0, names);
+                return NULL;
+            }
+            names = new_alloc;
+        }
+        names[(*names_count)++] = name;
+    }
+    new_alloc = HeapReAlloc(GetProcessHeap(), 0, names, *names_count * sizeof(*names));
+    if (!new_alloc)
+        return names;
+    return new_alloc;
+}
+
 static HRESULT d3dx9_base_effect_init(struct d3dx9_base_effect *base,
         const char *data, SIZE_T data_size, const D3D_SHADER_MACRO *defines, ID3DInclude *include,
-        UINT eflags, ID3DBlob **errors, struct ID3DXEffectImpl *effect, struct d3dx_effect_pool *pool)
+        UINT eflags, ID3DBlob **errors, struct ID3DXEffectImpl *effect, struct d3dx_effect_pool *pool,
+        const char *skip_constants_string)
 {
     DWORD tag, offset;
     const char *ptr = data;
     HRESULT hr;
     ID3DBlob *bytecode = NULL, *temp_errors = NULL;
+    char *skip_constants_buffer = NULL;
+    const char **skip_constants = NULL;
+    unsigned int skip_constants_count = 0;
+    unsigned int i, j;
 
-    TRACE("base %p, data %p, data_size %lu, effect %p, pool %p.\n", base, data, data_size, effect, pool);
+    TRACE("base %p, data %p, data_size %lu, effect %p, pool %p, skip_constants %s.\n",
+            base, data, data_size, effect, pool, debugstr_a(skip_constants_string));
 
     base->effect = effect;
     base->pool = pool;
@@ -6373,24 +6475,75 @@ static HRESULT d3dx9_base_effect_init(struct d3dx9_base_effect *base,
         TRACE("Tag: %x\n", tag);
     }
 
+    if (skip_constants_string)
+    {
+        skip_constants_buffer = HeapAlloc(GetProcessHeap(), 0,
+                sizeof(*skip_constants_buffer) * (strlen(skip_constants_string) + 1));
+        if (!skip_constants_buffer)
+        {
+            if (bytecode)
+                ID3D10Blob_Release(bytecode);
+            return E_OUTOFMEMORY;
+        }
+        strcpy(skip_constants_buffer, skip_constants_string);
+
+        if (!(skip_constants = parse_skip_constants_string(skip_constants_buffer, &skip_constants_count)))
+        {
+            HeapFree(GetProcessHeap(), 0, skip_constants_buffer);
+            if (bytecode)
+                ID3D10Blob_Release(bytecode);
+            return E_OUTOFMEMORY;
+        }
+    }
     read_dword(&ptr, &offset);
     TRACE("Offset: %x\n", offset);
 
-    hr = d3dx9_parse_effect(base, ptr, data_size, offset);
+    hr = d3dx9_parse_effect(base, ptr, data_size, offset, skip_constants, skip_constants_count);
     if (bytecode)
         ID3D10Blob_Release(bytecode);
     if (hr != D3D_OK)
     {
         FIXME("Failed to parse effect.\n");
+        HeapFree(GetProcessHeap(), 0, skip_constants_buffer);
+        HeapFree(GetProcessHeap(), 0, skip_constants);
         return hr;
     }
+
+    for (i = 0; i < skip_constants_count; ++i)
+    {
+        struct d3dx_parameter *param;
+        param = get_parameter_by_name(base, NULL, skip_constants[i]);
+        if (param)
+        {
+            for (j = 0; j < base->technique_count; ++j)
+            {
+                if (is_parameter_used(param, &base->techniques[j]))
+                {
+                    WARN("skip_constants parameter %s is used in technique %u.\n",
+                            debugstr_a(skip_constants[i]), j);
+                    HeapFree(GetProcessHeap(), 0, skip_constants_buffer);
+                    HeapFree(GetProcessHeap(), 0, skip_constants);
+                    d3dx9_base_effect_cleanup(base);
+                    return D3DERR_INVALIDCALL;
+                }
+            }
+        }
+        else
+        {
+            TRACE("skip_constants parameter %s not found.\n",
+                    debugstr_a(skip_constants[i]));
+        }
+    }
+
+    HeapFree(GetProcessHeap(), 0, skip_constants_buffer);
+    HeapFree(GetProcessHeap(), 0, skip_constants);
 
     return D3D_OK;
 }
 
 static HRESULT d3dx9_effect_init(struct ID3DXEffectImpl *effect, struct IDirect3DDevice9 *device,
         const char *data, SIZE_T data_size, const D3D_SHADER_MACRO *defines, ID3DInclude *include,
-        UINT eflags, ID3DBlob **error_messages, struct ID3DXEffectPool *pool)
+        UINT eflags, ID3DBlob **error_messages, struct ID3DXEffectPool *pool, const char *skip_constants)
 {
     HRESULT hr;
     struct d3dx_effect_pool *pool_impl = NULL;
@@ -6411,7 +6564,7 @@ static HRESULT d3dx9_effect_init(struct ID3DXEffectImpl *effect, struct IDirect3
     effect->device = device;
 
     if (FAILED(hr = d3dx9_base_effect_init(&effect->base_effect, data, data_size, defines, include,
-            eflags, error_messages, effect, pool_impl)))
+            eflags, error_messages, effect, pool_impl, skip_constants)))
     {
         FIXME("Failed to parse effect, hr %#x.\n", hr);
         free_effect(effect);
@@ -6453,15 +6606,12 @@ HRESULT WINAPI D3DXCreateEffectEx(struct IDirect3DDevice9 *device, const void *s
     if (!effect)
         return D3D_OK;
 
-    if (skip_constants)
-        FIXME("skip_constants is not NULL, not supported yet.\n");
-
     object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object));
     if (!object)
         return E_OUTOFMEMORY;
 
     hr = d3dx9_effect_init(object, device, srcdata, srcdatalen, (const D3D_SHADER_MACRO *)defines,
-            (ID3DInclude *)include, flags, (ID3DBlob **)compilation_errors, pool);
+            (ID3DInclude *)include, flags, (ID3DBlob **)compilation_errors, pool, skip_constants);
     if (FAILED(hr))
     {
         WARN("Failed to create effect object.\n");
@@ -6498,7 +6648,7 @@ static HRESULT d3dx9_effect_compiler_init(struct ID3DXEffectCompilerImpl *compil
     compiler->ref = 1;
 
     if (FAILED(hr = d3dx9_base_effect_init(&compiler->base_effect, data, data_size, defines,
-            include, eflags, error_messages, NULL, NULL)))
+            include, eflags, error_messages, NULL, NULL, NULL)))
     {
         FIXME("Failed to parse effect, hr %#x.\n", hr);
         free_effect_compiler(compiler);
@@ -6583,13 +6733,13 @@ static void free_effect_pool(struct d3dx_effect_pool *pool)
 
             WARN("Releasing pool with referenced parameters.\n");
 
-            param_set_data_pointer(pool->shared_data[i].parameters[0], NULL, FALSE, TRUE);
-            pool->shared_data[i].parameters[0]->u.shared_data = NULL;
+            param_set_data_pointer(&pool->shared_data[i].parameters[0]->param, NULL, FALSE, TRUE);
+            pool->shared_data[i].parameters[0]->shared_data = NULL;
 
             for (j = 1; j < pool->shared_data[i].count; ++j)
             {
-                walk_parameter_tree(pool->shared_data[i].parameters[j], param_zero_data_func, NULL);
-                pool->shared_data[i].parameters[j]->u.shared_data = NULL;
+                walk_parameter_tree(&pool->shared_data[i].parameters[j]->param, param_zero_data_func, NULL);
+                pool->shared_data[i].parameters[j]->shared_data = NULL;
             }
             HeapFree(GetProcessHeap(), 0, pool->shared_data[i].parameters);
         }

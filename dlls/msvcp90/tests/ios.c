@@ -531,19 +531,6 @@ static void __cdecl test_invalid_parameter_handler(const wchar_t *expression,
     invalid_parameter++;
 }
 
-static inline const char* debugstr_longlong(ULONGLONG ll)
-{
-    /* return a different string if called up to 4 times in the same ok() */
-    static char string[4][17];
-    static int which;
-
-    if (sizeof(ll) > sizeof(unsigned long) && ll >> 32)
-        sprintf(string[which & 3], "%lx%08lx", (unsigned long)(ll >> 32), (unsigned long)ll);
-    else
-        sprintf(string[which & 3], "%lx", (unsigned long)ll);
-    return string[which++ & 3];
-}
-
 /* Emulate a __thiscall */
 #ifdef __i386__
 
@@ -1145,8 +1132,8 @@ static void test_num_get_get_uint64(void)
         }
 
         ok(tests[i].state == state, "wrong state, expected = %x found = %x\n", tests[i].state, state);
-        ok(tests[i].val   == val,   "wrong val, expected = %lx%08lx found %lx%08lx\n", (unsigned long)(tests[i].val >> 32),
-                (unsigned long)tests[i].val, (unsigned long)(val >> 32), (unsigned long)val);
+        ok(tests[i].val   == val,   "wrong val, expected = %s found %s\n", wine_dbgstr_longlong(tests[i].val),
+                wine_dbgstr_longlong(val));
         ok(tests[i].next  == next,  "wrong next, expected = %c (%i) found = %c (%i)\n", tests[i].next, tests[i].next, next, next);
 
         if(tests[i].lcl)
@@ -1172,8 +1159,8 @@ static void test_num_get_get_uint64(void)
         nextus = (unsigned short)(int)call_func1(p_basic_istream_wchar_get, &wss.base.base1);
 
         ok(tests[i].state == state, "wrong state, expected = %x found = %x\n", tests[i].state, state);
-        ok(tests[i].val == val, "wrong val, expected = %lx%08lx found %lx%08lx\n", (unsigned long)(tests[i].val >> 32),
-                (unsigned long)tests[i].val, (unsigned long)(val >> 32), (unsigned long)val);
+        ok(tests[i].val == val, "wrong val, expected = %s found %s\n", wine_dbgstr_longlong(tests[i].val),
+                wine_dbgstr_longlong(val));
         testus = tests[i].next == EOF ? WEOF : (unsigned short)tests[i].next;
         ok(testus == nextus, "wrong next, expected = %c (%i) found = %c (%i)\n", testus, testus, nextus, nextus);
 
@@ -1839,7 +1826,7 @@ static void test_istream_tellg(void)
         if (tests[i].telloff_ss != -1 && spos.off != -1) /* check if tell == seek but only if not hit EOF */
             ok(spos.off == tpos.off, "tell doesn't match seek, seek = %ld tell = %ld\n", spos.off, tpos.off);
         ok(rpos == &tpos, "wrong return fpos, expected = %p found = %p\n", rpos, &tpos);
-        ok(tpos.pos == 0, "wrong position, expected = 0 found = %s\n", debugstr_longlong(tpos.pos));
+        ok(tpos.pos == 0, "wrong position, expected = 0 found = %s\n", wine_dbgstr_longlong(tpos.pos));
         ok(tpos.state == 0, "wrong state, expected = 0 found = %d\n", tpos.state);
 
         call_func1(p_basic_stringstream_char_vbase_dtor, &ss);
@@ -1866,7 +1853,7 @@ static void test_istream_tellg(void)
         if (tests[i].telloff_ss != -1 && spos.off != -1) /* check if tell == seek but only if not hit EOF */
             ok(spos.off == tpos.off, "tell doesn't match seek, seek = %ld tell = %ld\n", spos.off, tpos.off);
         ok(rpos == &tpos, "wrong return fpos, expected = %p found = %p\n", rpos, &tpos);
-        ok(tpos.pos == 0, "wrong position, expected = 0 found = %s\n", debugstr_longlong(tpos.pos));
+        ok(tpos.pos == 0, "wrong position, expected = 0 found = %s\n", wine_dbgstr_longlong(tpos.pos));
         ok(tpos.state == 0, "wrong state, expected = 0 found = %d\n", tpos.state);
 
         call_func1(p_basic_stringstream_wchar_vbase_dtor, &wss);
@@ -1893,7 +1880,7 @@ static void test_istream_tellg(void)
         rpos = call_func2(p_basic_istream_char_tellg, &fs.base.base1, &tpos);
 
         ok(tests[i].tellpos == tpos.pos, "wrong filepos, expected = %s found = %s\n",
-            debugstr_longlong(tests[i].tellpos), debugstr_longlong(tpos.pos));
+            wine_dbgstr_longlong(tests[i].tellpos), wine_dbgstr_longlong(tpos.pos));
         ok(rpos == &tpos, "wrong return fpos, expected = %p found = %p\n", rpos, &tpos);
         ok(tpos.off == tests[i].telloff_fs, "wrong offset, expected %ld found %ld\n", tests[i].telloff_fs, tpos.off);
         ok(tpos.state == 0, "wrong state, expected = 0 found = %d\n", tpos.state);
@@ -1916,7 +1903,7 @@ static void test_istream_tellg(void)
         rpos = call_func2(p_basic_istream_wchar_tellg, &wfs.base.base1, &tpos);
 
         ok(tests[i].tellpos == tpos.pos, "wrong filepos, expected = %s found = %s\n",
-            debugstr_longlong(tests[i].tellpos), debugstr_longlong(tpos.pos));
+            wine_dbgstr_longlong(tests[i].tellpos), wine_dbgstr_longlong(tpos.pos));
         ok(rpos == &tpos, "wrong return fpos, expected = %p found = %p\n", rpos, &tpos);
         ok(tpos.off == tests[i].telloff_fs, "wrong offset, expected %ld found %ld\n", tests[i].telloff_fs, tpos.off);
         ok(tpos.state == 0, "wrong state, expected = 0 found = %d\n", tpos.state);

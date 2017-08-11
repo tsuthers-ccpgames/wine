@@ -353,7 +353,7 @@ static void* get_fontface_table(IDWriteFontFace4 *fontface, UINT32 tag, struct d
     hr = IDWriteFontFace4_TryGetFontTable(fontface, tag, (const void**)&table->data, &table->size, &table->context,
         &table->exists);
     if (FAILED(hr) || !table->exists) {
-        WARN("Font does not have a %s table\n", debugstr_tag(tag));
+        TRACE("Font does not have %s table\n", debugstr_tag(tag));
         return NULL;
     }
 
@@ -441,6 +441,12 @@ static void release_fontfamily_data(struct dwrite_fontfamily_data *data)
     heap_free(data->fonts);
     IDWriteLocalizedStrings_Release(data->familyname);
     heap_free(data);
+}
+
+void fontface_detach_from_cache(IDWriteFontFace4 *iface)
+{
+    struct dwrite_fontface *fontface = impl_from_IDWriteFontFace4(iface);
+    fontface->cached = NULL;
 }
 
 static HRESULT WINAPI dwritefontface_QueryInterface(IDWriteFontFace4 *iface, REFIID riid, void **obj)
@@ -4862,6 +4868,7 @@ static void glyphrunanalysis_get_texturebounds(struct dwrite_glyphrunanalysis *a
 
     memset(&glyph_bitmap, 0, sizeof(glyph_bitmap));
     glyph_bitmap.fontface = fontface;
+    glyph_bitmap.simulations = IDWriteFontFace4_GetSimulations(fontface);
     glyph_bitmap.emsize = analysis->run.fontEmSize;
     glyph_bitmap.nohint = is_natural_rendering_mode(analysis->rendering_mode);
     if (analysis->flags & RUNANALYSIS_USE_TRANSFORM)
@@ -4954,6 +4961,7 @@ static HRESULT glyphrunanalysis_render(struct dwrite_glyphrunanalysis *analysis)
 
     memset(&glyph_bitmap, 0, sizeof(glyph_bitmap));
     glyph_bitmap.fontface = fontface;
+    glyph_bitmap.simulations = IDWriteFontFace4_GetSimulations(fontface);
     glyph_bitmap.emsize = analysis->run.fontEmSize;
     glyph_bitmap.nohint = is_natural_rendering_mode(analysis->rendering_mode);
     glyph_bitmap.type = analysis->texture_type;
@@ -5116,7 +5124,7 @@ static HRESULT WINAPI glyphrunanalysis_GetAlphaBlendParams(IDWriteGlyphRunAnalys
         break;
     }
     case DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC_DOWNSAMPLED:
-        WARN("Downsampled mode is ignored.\n");
+        WARN("NATURAL_SYMMETRIC_DOWNSAMPLED mode is ignored.\n");
         /* fallthrough */
     case DWRITE_RENDERING_MODE1_ALIASED:
     case DWRITE_RENDERING_MODE1_NATURAL:
@@ -5161,10 +5169,19 @@ HRESULT create_glyphrunanalysis(const struct glyphrunanalysis_desc *desc, IDWrit
 
     *ret = NULL;
 
-    /* check for valid rendering mode */
+    /* Check rendering, antialising, measuring, and grid fitting modes. */
     if ((UINT32)desc->rendering_mode >= DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC_DOWNSAMPLED ||
             desc->rendering_mode == DWRITE_RENDERING_MODE1_OUTLINE ||
             desc->rendering_mode == DWRITE_RENDERING_MODE1_DEFAULT)
+        return E_INVALIDARG;
+
+    if ((UINT32)desc->aa_mode > DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE)
+        return E_INVALIDARG;
+
+    if ((UINT32)desc->gridfit_mode > DWRITE_GRID_FIT_MODE_ENABLED)
+        return E_INVALIDARG;
+
+    if ((UINT32)desc->measuring_mode > DWRITE_MEASURING_MODE_GDI_NATURAL)
         return E_INVALIDARG;
 
     analysis = heap_alloc(sizeof(*analysis));

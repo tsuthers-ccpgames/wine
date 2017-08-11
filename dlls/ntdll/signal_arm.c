@@ -294,6 +294,7 @@ __ASM_STDCALL_FUNC( RtlCaptureContext, 4,
  * Set the new CPU context.
  */
 /* FIXME: What about the CPSR? */
+void set_cpu_context( const CONTEXT *context );
 __ASM_GLOBAL_FUNC( set_cpu_context,
                    "mov IP, r0\n\t"
                    "ldr r0,  [IP, #0x4]\n\t"  /* context->R0 */
@@ -319,7 +320,7 @@ __ASM_GLOBAL_FUNC( set_cpu_context,
  *
  * Copy a register context according to the flags.
  */
-void copy_context( CONTEXT *to, const CONTEXT *from, DWORD flags )
+static void copy_context( CONTEXT *to, const CONTEXT *from, DWORD flags )
 {
     flags &= ~CONTEXT_ARM;  /* get rid of CPU id */
     if (flags & CONTEXT_CONTROL)
@@ -426,6 +427,48 @@ NTSTATUS context_from_server( CONTEXT *to, const context_t *from )
      }
     return STATUS_SUCCESS;
 }
+
+/***********************************************************************
+ *              NtSetContextThread  (NTDLL.@)
+ *              ZwSetContextThread  (NTDLL.@)
+ */
+NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
+{
+    NTSTATUS ret;
+    BOOL self;
+
+    ret = set_thread_context( handle, context, &self );
+    if (self && ret == STATUS_SUCCESS) set_cpu_context( context );
+    return ret;
+}
+
+
+/***********************************************************************
+ *              NtGetContextThread  (NTDLL.@)
+ *              ZwGetContextThread  (NTDLL.@)
+ */
+NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
+{
+    NTSTATUS ret;
+    DWORD needed_flags = context->ContextFlags;
+    BOOL self = (handle == GetCurrentThread());
+
+    if (!self)
+    {
+        if ((ret = get_thread_context( handle, context, &self ))) return ret;
+        needed_flags &= ~context->ContextFlags;
+    }
+
+    if (self && needed_flags)
+    {
+        CONTEXT ctx;
+        RtlCaptureContext( &ctx );
+        copy_context( context, &ctx, ctx.ContextFlags & needed_flags );
+        context->ContextFlags |= ctx.ContextFlags & needed_flags;
+    }
+    return STATUS_SUCCESS;
+}
+
 
 extern void raise_func_trampoline_thumb( EXCEPTION_RECORD *rec, CONTEXT *context, raise_func func );
 __ASM_GLOBAL_FUNC( raise_func_trampoline_thumb,

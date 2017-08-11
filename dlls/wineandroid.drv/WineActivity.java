@@ -54,12 +54,15 @@ public class WineActivity extends Activity
     private native String wine_init( String[] cmdline, String[] env );
     public native void wine_desktop_changed( int width, int height );
     public native void wine_config_changed( int dpi );
-    public native void wine_surface_changed( int hwnd, Surface surface );
+    public native void wine_surface_changed( int hwnd, Surface surface, boolean opengl );
     public native boolean wine_motion_event( int hwnd, int action, int x, int y, int state, int vscroll );
     public native boolean wine_keyboard_event( int hwnd, int action, int keycode, int state );
 
     private final String LOGTAG = "wine";
     private ProgressDialog progress_dialog;
+
+    protected WineWindow desktop_window;
+    protected WineWindow message_window;
 
     @Override
     public void onCreate(Bundle savedInstanceState)
@@ -75,6 +78,7 @@ public class WineActivity extends Activity
     {
         File bindir = new File( getFilesDir(), Build.CPU_ABI + "/bin" );
         File libdir = new File( getFilesDir(), Build.CPU_ABI + "/lib" );
+        File dlldir = new File( libdir, "wine" );
         File prefix = new File( getFilesDir(), "prefix" );
         File loader = new File( bindir, "wine" );
         String locale = Locale.getDefault().getLanguage() + "_" +
@@ -85,9 +89,11 @@ public class WineActivity extends Activity
         HashMap<String,String> env = new HashMap<String,String>();
         env.put( "WINELOADER", loader.toString() );
         env.put( "WINEPREFIX", prefix.toString() );
-        env.put( "LD_LIBRARY_PATH", libdir.toString() );
+        env.put( "WINEDLLPATH", dlldir.toString() );
+        env.put( "LD_LIBRARY_PATH", libdir.toString() + ":" + getApplicationInfo().nativeLibraryDir );
         env.put( "LC_ALL", locale );
         env.put( "LANG", locale );
+        env.put( "PATH", bindir.toString() + ":" + System.getenv( "PATH" ));
 
         if (cmdline == null)
         {
@@ -108,7 +114,14 @@ public class WineActivity extends Activity
 
         createProgressDialog( 0, "Setting up the Windows environment..." );
 
-        System.load( libdir.toString() + "/libwine.so" );
+        try
+        {
+            System.loadLibrary( "wine" );
+        }
+        catch (java.lang.UnsatisfiedLinkError e)
+        {
+            System.load( libdir.toString() + "/libwine.so" );
+        }
         prefix.mkdirs();
 
         runWine( cmdline, env );
@@ -288,6 +301,8 @@ public class WineActivity extends Activity
 
     protected class WineWindow extends Object
     {
+        static protected final int HWND_MESSAGE = 0xfffffffd;
+        static protected final int SWP_NOZORDER = 0x04;
         static protected final int WS_VISIBLE = 0x10000000;
 
         protected int hwnd;
@@ -297,8 +312,13 @@ public class WineActivity extends Activity
         protected Rect visible_rect;
         protected Rect client_rect;
         protected WineWindow parent;
-        protected WineView window_view;
+        protected ArrayList<WineWindow> children;
         protected Surface window_surface;
+        protected Surface client_surface;
+        protected SurfaceTexture window_surftex;
+        protected SurfaceTexture client_surftex;
+        protected WineWindowGroup window_group;
+        protected WineWindowGroup client_group;
 
         public WineWindow( int w, WineWindow parent )
         {
@@ -309,54 +329,168 @@ public class WineActivity extends Activity
             visible = false;
             visible_rect = client_rect = new Rect( 0, 0, 0, 0 );
             this.parent = parent;
+            children = new ArrayList<WineWindow>();
             win_map.put( w, this );
-            if (parent == null)
-            {
-                window_view = new WineView( WineActivity.this, this );
-                window_view.layout( 0, 0, 1, 1 ); // make sure the surface gets created
-            }
+            if (parent != null) parent.children.add( this );
         }
 
         public void destroy()
         {
             Log.i( LOGTAG, String.format( "destroy hwnd %08x", hwnd ));
-            if (visible && window_view != null) top_view.removeView( window_view );
             visible = false;
-            window_view = null;
             win_map.remove( this );
+            if (parent != null) parent.children.remove( this );
+            destroy_window_groups();
+        }
+
+        public WineWindowGroup create_window_groups()
+        {
+            if (client_group != null) return client_group;
+            window_group = new WineWindowGroup( this );
+            client_group = new WineWindowGroup( this );
+            window_group.addView( client_group );
+            client_group.set_layout( client_rect.left - visible_rect.left,
+                                     client_rect.top - visible_rect.top,
+                                     client_rect.right - visible_rect.left,
+                                     client_rect.bottom - visible_rect.top );
+            if (parent != null)
+            {
+                parent.create_window_groups();
+                if (visible) add_view_to_parent();
+                window_group.set_layout( visible_rect.left, visible_rect.top,
+                                         visible_rect.right, visible_rect.bottom );
+            }
+            return client_group;
+        }
+
+        public void destroy_window_groups()
+        {
+            if (window_group != null)
+            {
+                if (parent != null && parent.client_group != null) remove_view_from_parent();
+                window_group.destroy_view();
+            }
+            if (client_group != null) client_group.destroy_view();
+            window_group = null;
+            client_group = null;
+        }
+
+        public View create_whole_view()
+        {
+            if (window_group == null) create_window_groups();
+            window_group.create_view( false ).layout( 0, 0, visible_rect.right - visible_rect.left,
+                                                      visible_rect.bottom - visible_rect.top );
+            return window_group;
+        }
+
+        public void create_client_view()
+        {
+            if (client_group == null) create_window_groups();
+            Log.i( LOGTAG, String.format( "creating client view %08x %s", hwnd, client_rect ));
+            client_group.create_view( true ).layout( 0, 0, client_rect.right - client_rect.left,
+                                                     client_rect.bottom - client_rect.top );
+        }
+
+        protected void add_view_to_parent()
+        {
+            int pos = parent.client_group.getChildCount() - 1;
+
+            // the content view is always last
+            if (pos >= 0 && parent.client_group.getChildAt( pos ) == parent.client_group.get_content_view()) pos--;
+
+            for (int i = 0; i < parent.children.size() && pos >= 0; i++)
+            {
+                WineWindow child = parent.children.get( i );
+                if (child == this) break;
+                if (!child.visible) continue;
+                if (child == ((WineWindowGroup)parent.client_group.getChildAt( pos )).get_window()) pos--;
+            }
+            parent.client_group.addView( window_group, pos + 1 );
+        }
+
+        protected void remove_view_from_parent()
+        {
+            parent.client_group.removeView( window_group );
+        }
+
+        protected void set_zorder( WineWindow prev )
+        {
+            int pos = -1;
+
+            parent.children.remove( this );
+            if (prev != null) pos = parent.children.indexOf( prev );
+            parent.children.add( pos + 1, this );
+        }
+
+        protected void sync_views_zorder()
+        {
+            int i, j;
+
+            for (i = parent.children.size() - 1, j = 0; i >= 0; i--)
+            {
+                WineWindow child = parent.children.get( i );
+                if (!child.visible) continue;
+                View child_view = parent.client_group.getChildAt( j );
+                if (child_view == parent.client_group.get_content_view()) continue;
+                if (child != ((WineWindowGroup)child_view).get_window()) break;
+                j++;
+            }
+            while (i >= 0)
+            {
+                WineWindow child = parent.children.get( i-- );
+                if (child.visible) child.window_group.bringToFront();
+            }
         }
 
         public void pos_changed( int flags, int insert_after, int owner, int style,
                                  Rect window_rect, Rect client_rect, Rect visible_rect )
         {
+            boolean was_visible = visible;
             this.visible_rect = visible_rect;
             this.client_rect = client_rect;
             this.style = style;
             this.owner = owner;
+            visible = (style & WS_VISIBLE) != 0;
+
             Log.i( LOGTAG, String.format( "pos changed hwnd %08x after %08x owner %08x style %08x win %s client %s visible %s flags %08x",
                                           hwnd, insert_after, owner, style, window_rect, client_rect, visible_rect, flags ));
 
-            if (parent == null)
+            if ((flags & SWP_NOZORDER) == 0 && parent != null) set_zorder( get_window( insert_after ));
+
+            if (window_group != null)
             {
-                window_view.layout( visible_rect.left, visible_rect.top, visible_rect.right, visible_rect.bottom );
-                if (!visible && (style & WS_VISIBLE) != 0) top_view.addView( window_view );
-                else if (visible && (style & WS_VISIBLE) == 0) top_view.removeView( window_view );
+                window_group.set_layout( visible_rect.left, visible_rect.top,
+                                         visible_rect.right, visible_rect.bottom );
+                if (parent != null)
+                {
+                    if (!was_visible && (style & WS_VISIBLE) != 0) add_view_to_parent();
+                    else if (was_visible && (style & WS_VISIBLE) == 0) remove_view_from_parent();
+                    else if (visible && (flags & SWP_NOZORDER) == 0) sync_views_zorder();
+                }
             }
-            visible = (style & WS_VISIBLE) != 0;
+
+            if (client_group != null)
+                client_group.set_layout( client_rect.left - visible_rect.left,
+                                         client_rect.top - visible_rect.top,
+                                         client_rect.right - visible_rect.left,
+                                         client_rect.bottom  - visible_rect.top );
         }
 
         public void set_parent( WineWindow new_parent )
         {
             Log.i( LOGTAG, String.format( "set parent hwnd %08x parent %08x -> %08x",
-                                          hwnd, parent == null ? 0 : parent.hwnd,
-                                          new_parent == null ? 0 : new_parent.hwnd ));
-            parent = new_parent;
-            if (new_parent == null)
+                                          hwnd, parent.hwnd, new_parent.hwnd ));
+            if (window_group != null)
             {
-                window_view = new WineView( WineActivity.this, this );
-                window_view.layout( 0, 0, 1, 1 ); // make sure the surface gets created
+                if (visible) remove_view_from_parent();
+                new_parent.create_window_groups();
+                window_group.set_layout( visible_rect.left, visible_rect.top,
+                                         visible_rect.right, visible_rect.bottom );
             }
-            else window_view = null;
+            parent.children.remove( this );
+            parent = new_parent;
+            parent.children.add( this );
+            if (visible && window_group != null) add_view_to_parent();
         }
 
         public int get_hwnd()
@@ -364,18 +498,97 @@ public class WineActivity extends Activity
             return hwnd;
         }
 
-        public void set_surface( SurfaceTexture surftex )
+        public void set_surface( SurfaceTexture surftex, boolean is_client )
         {
-            if (surftex == null) window_surface = null;
-            else if (window_surface == null) window_surface = new Surface( surftex );
-            Log.i( LOGTAG, String.format( "set window surface hwnd %08x %s", hwnd, window_surface ));
-            wine_surface_changed( hwnd, window_surface );
+            if (is_client)
+            {
+                if (surftex == null) client_surface = null;
+                else if (surftex != client_surftex)
+                {
+                    client_surftex = surftex;
+                    client_surface = new Surface( surftex );
+                }
+                Log.i( LOGTAG, String.format( "set client surface hwnd %08x %s", hwnd, client_surface ));
+                wine_surface_changed( hwnd, client_surface, true );
+            }
+            else
+            {
+                if (surftex == null) window_surface = null;
+                else if (surftex != window_surftex)
+                {
+                    window_surftex = surftex;
+                    window_surface = new Surface( surftex );
+                }
+                Log.i( LOGTAG, String.format( "set window surface hwnd %08x %s", hwnd, window_surface ));
+                wine_surface_changed( hwnd, window_surface, false );
+            }
         }
 
         public void get_event_pos( MotionEvent event, int[] pos )
         {
-            pos[0] = Math.round( event.getX() + window_view.getLeft() );
-            pos[1] = Math.round( event.getY() + window_view.getTop() );
+            pos[0] = Math.round( event.getX() + window_group.getLeft() );
+            pos[1] = Math.round( event.getY() + window_group.getTop() );
+        }
+    }
+
+    //
+    // Window group for a Wine window, optionally containing a content view
+    //
+
+    protected class WineWindowGroup extends ViewGroup
+    {
+        private WineView content_view;
+        private WineWindow win;
+
+        WineWindowGroup( WineWindow win )
+        {
+            super( WineActivity.this );
+            this.win = win;
+            setVisibility( View.VISIBLE );
+        }
+
+        /* wrapper for layout() making sure that the view is not empty */
+        public void set_layout( int left, int top, int right, int bottom )
+        {
+            if (right <= left + 1) right = left + 2;
+            if (bottom <= top + 1) bottom = top + 2;
+            layout( left, top, right, bottom );
+        }
+
+        @Override
+        protected void onLayout( boolean changed, int left, int top, int right, int bottom )
+        {
+            if (content_view != null) content_view.layout( 0, 0, right - left, bottom - top );
+        }
+
+        public WineView create_view( boolean is_client )
+        {
+            if (content_view != null) return content_view;
+            content_view = new WineView( WineActivity.this, win, is_client );
+            addView( content_view );
+            if (!is_client)
+            {
+                content_view.setFocusable( true );
+                content_view.setFocusableInTouchMode( true );
+            }
+            return content_view;
+        }
+
+        public void destroy_view()
+        {
+            if (content_view == null) return;
+            removeView( content_view );
+            content_view = null;
+        }
+
+        public WineView get_content_view()
+        {
+            return content_view;
+        }
+
+        public WineWindow get_window()
+        {
+            return win;
         }
     }
 
@@ -384,11 +597,13 @@ public class WineActivity extends Activity
     protected class WineView extends TextureView implements TextureView.SurfaceTextureListener
     {
         private WineWindow window;
+        private boolean is_client;
 
-        public WineView( Context c, WineWindow win )
+        public WineView( Context c, WineWindow win, boolean client )
         {
             super( c );
             window = win;
+            is_client = client;
             setSurfaceTextureListener( this );
             setVisibility( VISIBLE );
             setOpaque( false );
@@ -403,23 +618,24 @@ public class WineActivity extends Activity
 
         public void onSurfaceTextureAvailable( SurfaceTexture surftex, int width, int height )
         {
-            Log.i( LOGTAG, String.format( "onSurfaceTextureAvailable win %08x %dx%d",
-                                          window.hwnd, width, height ));
-            window.set_surface( surftex );
+            Log.i( LOGTAG, String.format( "onSurfaceTextureAvailable win %08x %dx%d %s",
+                                          window.hwnd, width, height, is_client ? "client" : "whole" ));
+            window.set_surface( surftex, is_client );
         }
 
         public void onSurfaceTextureSizeChanged( SurfaceTexture surftex, int width, int height )
         {
-            Log.i( LOGTAG, String.format( "onSurfaceTextureSizeChanged win %08x %dx%d",
-                                          window.hwnd, width, height ));
-            window.set_surface( surftex );
+            Log.i( LOGTAG, String.format( "onSurfaceTextureSizeChanged win %08x %dx%d %s",
+                                          window.hwnd, width, height, is_client ? "client" : "whole" ));
+            window.set_surface( surftex, is_client);
         }
 
         public boolean onSurfaceTextureDestroyed( SurfaceTexture surftex )
         {
-            Log.i( LOGTAG, String.format( "onSurfaceTextureDestroyed win %08x", window.hwnd ));
-            window.set_surface( null );
-            return true;
+            Log.i( LOGTAG, String.format( "onSurfaceTextureDestroyed win %08x %s",
+                                          window.hwnd, is_client ? "client" : "whole" ));
+            window.set_surface( null, is_client );
+            return false;  // hold on to the texture since the app may still be using it
         }
 
         public void onSurfaceTextureUpdated(SurfaceTexture surftex)
@@ -428,7 +644,8 @@ public class WineActivity extends Activity
 
         public boolean onGenericMotionEvent( MotionEvent event )
         {
-            if (window.parent != null) return false;  // let the parent handle it
+            if (is_client) return false;  // let the whole window handle it
+            if (window.parent != null && window.parent != desktop_window) return false;  // let the parent handle it
 
             if ((event.getSource() & InputDevice.SOURCE_CLASS_POINTER) != 0)
             {
@@ -445,7 +662,8 @@ public class WineActivity extends Activity
 
         public boolean onTouchEvent( MotionEvent event )
         {
-            if (window.parent != null) return false;  // let the parent handle it
+            if (is_client) return false;  // let the whole window handle it
+            if (window.parent != null && window.parent != desktop_window) return false;  // let the parent handle it
 
             int[] pos = new int[2];
             window.get_event_pos( event, pos );
@@ -472,12 +690,15 @@ public class WineActivity extends Activity
 
     protected class TopView extends ViewGroup
     {
-        private int desktop_hwnd;
-
         public TopView( Context context, int hwnd )
         {
             super( context );
-            desktop_hwnd = hwnd;
+            desktop_window = new WineWindow( hwnd, null );
+            addView( desktop_window.create_whole_view() );
+            desktop_window.client_group.bringToFront();
+
+            message_window = new WineWindow( WineWindow.HWND_MESSAGE, null );
+            message_window.create_window_groups();
         }
 
         @Override
@@ -494,8 +715,6 @@ public class WineActivity extends Activity
         }
     }
 
-    protected TopView top_view;
-
     protected WineWindow get_window( int hwnd )
     {
         return win_map.get( hwnd );
@@ -506,16 +725,21 @@ public class WineActivity extends Activity
     public void create_desktop_window( int hwnd )
     {
         Log.i( LOGTAG, String.format( "create desktop view %08x", hwnd ));
-        top_view = new TopView( this, hwnd );
-        setContentView( top_view );
+        setContentView( new TopView( this, hwnd ));
         progress_dialog.dismiss();
         wine_config_changed( getResources().getConfiguration().densityDpi );
     }
 
-    public void create_window( int hwnd, int parent, int pid )
+    public void create_window( int hwnd, boolean opengl, int parent, int pid )
     {
         WineWindow win = get_window( hwnd );
-        if (win == null) win = new WineWindow( hwnd, get_window( parent ));
+        if (win == null)
+        {
+            win = new WineWindow( hwnd, get_window( parent ));
+            win.create_window_groups();
+            if (win.parent == desktop_window) win.create_whole_view();
+        }
+        if (opengl) win.create_client_view();
     }
 
     public void destroy_window( int hwnd )
@@ -529,6 +753,7 @@ public class WineActivity extends Activity
         WineWindow win = get_window( hwnd );
         if (win == null) return;
         win.set_parent( get_window( parent ));
+        if (win.parent == desktop_window) win.create_whole_view();
     }
 
     public void window_pos_changed( int hwnd, int flags, int insert_after, int owner, int style,
@@ -544,9 +769,9 @@ public class WineActivity extends Activity
         runOnUiThread( new Runnable() { public void run() { create_desktop_window( hwnd ); }} );
     }
 
-    public void createWindow( final int hwnd, final int parent, final int pid )
+    public void createWindow( final int hwnd, final boolean opengl, final int parent, final int pid )
     {
-        runOnUiThread( new Runnable() { public void run() { create_window( hwnd, parent, pid ); }} );
+        runOnUiThread( new Runnable() { public void run() { create_window( hwnd, opengl, parent, pid ); }} );
     }
 
     public void destroyWindow( final int hwnd )

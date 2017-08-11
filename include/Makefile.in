@@ -24,6 +24,7 @@ IDL_SRCS = \
 	chprst.idl \
 	cmdbas.idl \
 	cmdtxt.idl \
+	cmnquery.idl \
 	colinf.idl \
 	comcat.idl \
 	commoncontrols.idl \
@@ -92,6 +93,7 @@ IDL_SRCS = \
 	mfidl.idl \
 	mfobjects.idl \
 	mfreadwrite.idl \
+	mftransform.idl \
 	mimeinfo.idl \
 	mimeole.idl \
 	mlang.idl \
@@ -160,6 +162,7 @@ IDL_SRCS = \
 	txdtc.idl \
 	uiautomationclient.idl \
 	uiautomationcore.idl \
+	uiribbon.idl \
 	unknwn.idl \
 	urlhist.idl \
 	urlmon.idl \
@@ -523,6 +526,7 @@ HEADER_SRCS = \
 	netioapi.h \
 	nldef.h \
 	npapi.h \
+	nserror.h \
 	nspapi.h \
 	ntddcdrm.h \
 	ntddndis.h \
@@ -688,6 +692,7 @@ HEADER_SRCS = \
 	wlanapi.h \
 	wmistr.h \
 	wmium.h \
+	wmsdk.h \
 	wnaspi32.h \
 	wownt32.h \
 	ws2def.h \

@@ -570,6 +570,12 @@ struct thread *create_process( int fd, struct thread *parent_thread, int inherit
     }
     if (!process->handles || !process->token) goto error;
 
+    /* Assign a high security label to the token. The default would be medium
+     * but Wine provides admin access to all applications right now so high
+     * makes more sense for the time being. */
+    if (!token_assign_label( process->token, security_high_label_sid ))
+        goto error;
+
     /* create the main thread */
     if (pipe( request_pipe ) == -1)
     {
@@ -592,7 +598,7 @@ struct thread *create_process( int fd, struct thread *parent_thread, int inherit
  error:
     if (process) release_object( process );
     /* if we failed to start our first process, close everything down */
-    if (!running_processes) close_master_socket( 0 );
+    if (!running_processes && master_socket_timeout != TIMEOUT_INFINITE) close_master_socket( 0 );
     return NULL;
 }
 

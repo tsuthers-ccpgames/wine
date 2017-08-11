@@ -198,6 +198,7 @@ extern void factory_release_cached_fontface(struct fontfacecached*) DECLSPEC_HID
 extern void    get_logfont_from_font(IDWriteFont*,LOGFONTW*) DECLSPEC_HIDDEN;
 extern void    get_logfont_from_fontface(IDWriteFontFace*,LOGFONTW*) DECLSPEC_HIDDEN;
 extern HRESULT create_gdiinterop(IDWriteFactory5*,IDWriteGdiInterop1**) DECLSPEC_HIDDEN;
+extern void fontface_detach_from_cache(IDWriteFontFace4*) DECLSPEC_HIDDEN;
 
 /* Opentype font table functions */
 struct dwrite_font_props {
@@ -260,6 +261,7 @@ extern WCHAR bidi_get_mirrored_char(WCHAR) DECLSPEC_HIDDEN;
 /* FreeType integration */
 struct dwrite_glyphbitmap {
     IDWriteFontFace4 *fontface;
+    DWORD simulations;
     FLOAT emsize;
     BOOL nohint;
     UINT16 index;

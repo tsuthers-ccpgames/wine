@@ -136,6 +136,58 @@ static HRESULT d3drm_create_light_object(void **object, IDirect3DRM *d3drm)
     return hr;
 }
 
+static HRESULT d3drm_create_material_object(void **object, IDirect3DRM *d3drm)
+{
+    struct d3drm_material *material;
+    HRESULT hr;
+
+    if (FAILED(hr = d3drm_material_create(&material, d3drm)))
+        return hr;
+
+    *object = &material->IDirect3DRMMaterial2_iface;
+
+    return hr;
+}
+
+static HRESULT d3drm_create_mesh_object(void **object, IDirect3DRM *d3drm)
+{
+    struct d3drm_mesh *mesh;
+    HRESULT hr;
+
+    if (FAILED(hr = d3drm_mesh_create(&mesh, d3drm)))
+        return hr;
+
+    *object = &mesh->IDirect3DRMMesh_iface;
+
+    return hr;
+}
+
+static HRESULT d3drm_create_animation_object(void **object, IDirect3DRM *d3drm)
+{
+    struct d3drm_animation *animation;
+    HRESULT hr;
+
+    if (FAILED(hr = d3drm_animation_create(&animation, d3drm)))
+        return hr;
+
+    *object = &animation->IDirect3DRMAnimation_iface;
+
+    return hr;
+}
+
+static HRESULT d3drm_create_wrap_object(void **object, IDirect3DRM *d3drm)
+{
+    struct d3drm_wrap *wrap;
+    HRESULT hr;
+
+    if (FAILED(hr = d3drm_wrap_create(&wrap, d3drm)))
+        return hr;
+
+    *object = &wrap->IDirect3DRMWrap_iface;
+
+    return hr;
+}
+
 struct d3drm
 {
     IDirect3DRM IDirect3DRM_iface;
@@ -283,9 +335,20 @@ static HRESULT WINAPI d3drm1_CreateFace(IDirect3DRM *iface, IDirect3DRMFace **fa
 
 static HRESULT WINAPI d3drm1_CreateAnimation(IDirect3DRM *iface, IDirect3DRMAnimation **animation)
 {
-    FIXME("iface %p, animation %p stub!\n", iface, animation);
+    struct d3drm_animation *object;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, animation %p.\n", iface, animation);
+
+    if (!animation)
+        return D3DRMERR_BADVALUE;
+
+    if (FAILED(hr = d3drm_animation_create(&object, iface)))
+        return hr;
+
+    *animation = &object->IDirect3DRMAnimation_iface;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI d3drm1_CreateAnimationSet(IDirect3DRM *iface, IDirect3DRMAnimationSet **set)
@@ -543,11 +606,22 @@ static HRESULT WINAPI d3drm1_CreateWrap(IDirect3DRM *iface, D3DRMWRAPTYPE type, 
         D3DVALUE ux, D3DVALUE uy, D3DVALUE uz, D3DVALUE ou, D3DVALUE ov, D3DVALUE su, D3DVALUE sv,
         IDirect3DRMWrap **wrap)
 {
+    struct d3drm_wrap *object;
+    HRESULT hr;
+
     FIXME("iface %p, type %#x, frame %p, ox %.8e, oy %.8e, oz %.8e, dx %.8e, dy %.8e, dz %.8e, "
-            "ux %.8e, uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e, wrap %p stub!\n",
+            "ux %.8e, uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e, wrap %p, semi-stub.\n",
             iface, type, frame, ox, oy, oz, dx, dy, dz, ux, uy, uz, ou, ov, su, sv, wrap);
 
-    return E_NOTIMPL;
+    if (!wrap)
+        return D3DRMERR_BADVALUE;
+
+    if (FAILED(hr = d3drm_wrap_create(&object, iface)))
+        return hr;
+
+    *wrap = &object->IDirect3DRMWrap_iface;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI d3drm1_CreateUserVisual(IDirect3DRM *iface,
@@ -814,9 +888,11 @@ static HRESULT WINAPI d3drm2_CreateFace(IDirect3DRM2 *iface, IDirect3DRMFace **f
 
 static HRESULT WINAPI d3drm2_CreateAnimation(IDirect3DRM2 *iface, IDirect3DRMAnimation **animation)
 {
-    FIXME("iface %p, animation %p stub!\n", iface, animation);
+    struct d3drm *d3drm = impl_from_IDirect3DRM2(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, animation %p.\n", iface, animation);
+
+    return IDirect3DRM_CreateAnimation(&d3drm->IDirect3DRM_iface, animation);
 }
 
 static HRESULT WINAPI d3drm2_CreateAnimationSet(IDirect3DRM2 *iface, IDirect3DRMAnimationSet **set)
@@ -1045,11 +1121,14 @@ static HRESULT WINAPI d3drm2_CreateWrap(IDirect3DRM2 *iface, D3DRMWRAPTYPE type,
         D3DVALUE ux, D3DVALUE uy, D3DVALUE uz, D3DVALUE ou, D3DVALUE ov, D3DVALUE su, D3DVALUE sv,
         IDirect3DRMWrap **wrap)
 {
-    FIXME("iface %p, type %#x, frame %p, ox %.8e, oy %.8e, oz %.8e, dx %.8e, dy %.8e, dz %.8e, "
-            "ux %.8e, uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e, wrap %p stub!\n",
+    struct d3drm *d3drm = impl_from_IDirect3DRM2(iface);
+
+    TRACE("iface %p, type %#x, frame %p, ox %.8e, oy %.8e, oz %.8e, dx %.8e, dy %.8e, dz %.8e, "
+            "ux %.8e, uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e, wrap %p.\n",
             iface, type, frame, ox, oy, oz, dx, dy, dz, ux, uy, uz, ou, ov, su, sv, wrap);
 
-    return E_NOTIMPL;
+    return IDirect3DRM_CreateWrap(&d3drm->IDirect3DRM_iface, type, frame, ox, oy, oz, dx, dy, dz, ux, uy, uz,
+            ou, ov, su, sv, wrap);
 }
 
 static HRESULT WINAPI d3drm2_CreateUserVisual(IDirect3DRM2 *iface,
@@ -1285,6 +1364,10 @@ static HRESULT WINAPI d3drm3_CreateObject(IDirect3DRM3 *iface,
         {&CLSID_CDirect3DRMMeshBuilder, d3drm_create_mesh_builder_object},
         {&CLSID_CDirect3DRMFrame, d3drm_create_frame_object},
         {&CLSID_CDirect3DRMLight, d3drm_create_light_object},
+        {&CLSID_CDirect3DRMMaterial, d3drm_create_material_object},
+        {&CLSID_CDirect3DRMMesh, d3drm_create_mesh_object},
+        {&CLSID_CDirect3DRMAnimation, d3drm_create_animation_object},
+        {&CLSID_CDirect3DRMWrap, d3drm_create_wrap_object},
     };
 
     TRACE("iface %p, clsid %s, outer %p, iid %s, out %p.\n",
@@ -1351,9 +1434,18 @@ static HRESULT WINAPI d3drm3_CreateFrame(IDirect3DRM3 *iface,
 
 static HRESULT WINAPI d3drm3_CreateMesh(IDirect3DRM3 *iface, IDirect3DRMMesh **mesh)
 {
+    struct d3drm *d3drm = impl_from_IDirect3DRM3(iface);
+    struct d3drm_mesh *object;
+    HRESULT hr;
+
     TRACE("iface %p, mesh %p.\n", iface, mesh);
 
-    return Direct3DRMMesh_create(mesh);
+    if (FAILED(hr = d3drm_mesh_create(&object, &d3drm->IDirect3DRM_iface)))
+        return hr;
+
+    *mesh = &object->IDirect3DRMMesh_iface;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI d3drm3_CreateMeshBuilder(IDirect3DRM3 *iface, IDirect3DRMMeshBuilder3 **mesh_builder)
@@ -1391,9 +1483,18 @@ static HRESULT WINAPI d3drm3_CreateFace(IDirect3DRM3 *iface, IDirect3DRMFace2 **
 
 static HRESULT WINAPI d3drm3_CreateAnimation(IDirect3DRM3 *iface, IDirect3DRMAnimation2 **animation)
 {
-    FIXME("iface %p, animation %p stub!\n", iface, animation);
+    struct d3drm *d3drm = impl_from_IDirect3DRM3(iface);
+    struct d3drm_animation *object;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, animation %p.\n", iface, animation);
+
+    if (FAILED(hr = d3drm_animation_create(&object, &d3drm->IDirect3DRM_iface)))
+        return hr;
+
+    *animation = &object->IDirect3DRMAnimation2_iface;
+
+    return hr;
 }
 
 static HRESULT WINAPI d3drm3_CreateAnimationSet(IDirect3DRM3 *iface, IDirect3DRMAnimationSet2 **set)
@@ -1474,12 +1575,16 @@ static HRESULT WINAPI d3drm3_CreateLightRGB(IDirect3DRM3 *iface, D3DRMLIGHTTYPE 
 static HRESULT WINAPI d3drm3_CreateMaterial(IDirect3DRM3 *iface,
         D3DVALUE power, IDirect3DRMMaterial2 **material)
 {
+    struct d3drm *d3drm = impl_from_IDirect3DRM3(iface);
+    struct d3drm_material *object;
     HRESULT hr;
 
     TRACE("iface %p, power %.8e, material %p.\n", iface, power, material);
 
-    if (SUCCEEDED(hr = Direct3DRMMaterial_create(material)))
-        IDirect3DRMMaterial2_SetPower(*material, power);
+    if (SUCCEEDED(hr = d3drm_material_create(&object, &d3drm->IDirect3DRM_iface)))
+        IDirect3DRMMaterial2_SetPower(&object->IDirect3DRMMaterial2_iface, power);
+
+    *material = &object->IDirect3DRMMaterial2_iface;
 
     return hr;
 }
@@ -1679,11 +1784,23 @@ static HRESULT WINAPI d3drm3_CreateWrap(IDirect3DRM3 *iface, D3DRMWRAPTYPE type,
         D3DVALUE ux, D3DVALUE uy, D3DVALUE uz, D3DVALUE ou, D3DVALUE ov, D3DVALUE su, D3DVALUE sv,
         IDirect3DRMWrap **wrap)
 {
+    struct d3drm *d3drm = impl_from_IDirect3DRM3(iface);
+    struct d3drm_wrap *object;
+    HRESULT hr;
+
     FIXME("iface %p, type %#x, frame %p, ox %.8e, oy %.8e, oz %.8e, dx %.8e, dy %.8e, dz %.8e, "
-            "ux %.8e, uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e, wrap %p stub!\n",
+            "ux %.8e, uy %.8e, uz %.8e, ou %.8e, ov %.8e, su %.8e, sv %.8e, wrap %p, semi-stub.\n",
             iface, type, frame, ox, oy, oz, dx, dy, dz, ux, uy, uz, ou, ov, su, sv, wrap);
 
-    return E_NOTIMPL;
+    if (!wrap)
+        return D3DRMERR_BADVALUE;
+
+    if (FAILED(hr = d3drm_wrap_create(&object, &d3drm->IDirect3DRM_iface)))
+        return hr;
+
+    *wrap = &object->IDirect3DRMWrap_iface;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI d3drm3_CreateUserVisual(IDirect3DRM3 *iface,

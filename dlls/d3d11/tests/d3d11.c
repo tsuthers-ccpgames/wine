@@ -7967,37 +7967,18 @@ static void test_scissor(void)
     D3D11_RASTERIZER_DESC rs_desc;
     ID3D11RasterizerState *rs;
     D3D11_RECT scissor_rect;
-    ID3D11PixelShader *ps;
     ID3D11Device *device;
     DWORD color;
     HRESULT hr;
 
     static const float red[] = {1.0f, 0.0f, 0.0f, 1.0f};
-    static const DWORD ps_code[] =
-    {
-#if 0
-        float4 main(float4 position : SV_POSITION) : SV_Target
-        {
-            return float4(0.0, 1.0, 0.0, 1.0);
-        }
-#endif
-        0x43425844, 0x30240e72, 0x012f250c, 0x8673c6ea, 0x392e4cec, 0x00000001, 0x000000d4, 0x00000003,
-        0x0000002c, 0x00000060, 0x00000094, 0x4e475349, 0x0000002c, 0x00000001, 0x00000008, 0x00000020,
-        0x00000000, 0x00000001, 0x00000003, 0x00000000, 0x0000000f, 0x505f5653, 0x5449534f, 0x004e4f49,
-        0x4e47534f, 0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000003,
-        0x00000000, 0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x52444853, 0x00000038, 0x00000040,
-        0x0000000e, 0x03000065, 0x001020f2, 0x00000000, 0x08000036, 0x001020f2, 0x00000000, 0x00004002,
-        0x00000000, 0x3f800000, 0x00000000, 0x3f800000, 0x0100003e,
-    };
+    static const struct vec4 green = {0.0f, 1.0f, 0.0f, 1.0f};
 
     if (!init_test_context(&test_context, NULL))
         return;
 
     device = test_context.device;
     immediate_context = test_context.immediate_context;
-
-    hr = ID3D11Device_CreatePixelShader(device, ps_code, sizeof(ps_code), NULL, &ps);
-    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
 
     rs_desc.FillMode = D3D11_FILL_SOLID;
     rs_desc.CullMode = D3D11_CULL_BACK;
@@ -8012,8 +7993,6 @@ static void test_scissor(void)
     hr = ID3D11Device_CreateRasterizerState(device, &rs_desc, &rs);
     ok(SUCCEEDED(hr), "Failed to create rasterizer state, hr %#x.\n", hr);
 
-    ID3D11DeviceContext_PSSetShader(immediate_context, ps, NULL, 0);
-
     scissor_rect.left = 160;
     scissor_rect.top = 120;
     scissor_rect.right = 480;
@@ -8023,7 +8002,7 @@ static void test_scissor(void)
     ID3D11DeviceContext_ClearRenderTargetView(immediate_context, test_context.backbuffer_rtv, red);
     check_texture_color(test_context.backbuffer, 0xff0000ff, 1);
 
-    draw_quad(&test_context);
+    draw_color_quad(&test_context, &green);
     color = get_texture_color(test_context.backbuffer, 320, 60);
     ok(compare_color(color, 0xff00ff00, 1), "Got unexpected color 0x%08x.\n", color);
     color = get_texture_color(test_context.backbuffer, 80, 240);
@@ -8037,7 +8016,7 @@ static void test_scissor(void)
 
     ID3D11DeviceContext_ClearRenderTargetView(immediate_context, test_context.backbuffer_rtv, red);
     ID3D11DeviceContext_RSSetState(immediate_context, rs);
-    draw_quad(&test_context);
+    draw_color_quad(&test_context, &green);
     color = get_texture_color(test_context.backbuffer, 320, 60);
     ok(compare_color(color, 0xff0000ff, 1), "Got unexpected color 0x%08x.\n", color);
     color = get_texture_color(test_context.backbuffer, 80, 240);
@@ -8050,7 +8029,6 @@ static void test_scissor(void)
     ok(compare_color(color, 0xff0000ff, 1), "Got unexpected color 0x%08x.\n", color);
 
     ID3D11RasterizerState_Release(rs);
-    ID3D11PixelShader_Release(ps);
     release_test_context(&test_context);
 }
 
@@ -12252,6 +12230,279 @@ static void test_sm4_continuec_instruction(void)
     release_test_context(&test_context);
 }
 
+static void test_sm5_swapc_instruction(void)
+{
+    struct input
+    {
+        struct uvec4 src0;
+        struct uvec4 src1;
+        struct uvec4 src2;
+    };
+
+    struct d3d11_test_context test_context;
+    D3D11_TEXTURE2D_DESC texture_desc;
+    ID3D11DeviceContext *context;
+    ID3D11RenderTargetView *rtv;
+    ID3D11Texture2D *texture;
+    ID3D11PixelShader *ps[6];
+    ID3D11Device *device;
+    ID3D11Buffer *cb;
+    unsigned int i;
+    HRESULT hr;
+
+    static const D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
+    static const DWORD ps_swapc0_code[] =
+    {
+#if 0
+        ps_5_0
+        dcl_globalFlags refactoringAllowed
+        dcl_constantbuffer cb0[3], immediateIndexed
+        dcl_output o0.xyzw
+        dcl_temps 2
+        swapc r0.xyzw, r1.xyzw, cb0[0].xyzw, cb0[1].xyzw, cb0[2].xyzw
+        mov o0.xyzw, r0.xyzw
+        ret
+#endif
+        0x43425844, 0x9e089246, 0x9f8b5cbe, 0xbac66faf, 0xaef23488, 0x00000001, 0x000000f8, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x00000080, 0x00000050, 0x00000020,
+        0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000003, 0x03000065, 0x001020f2, 0x00000000,
+        0x02000068, 0x00000002, 0x0e00008e, 0x001000f2, 0x00000000, 0x001000f2, 0x00000001, 0x00208e46,
+        0x00000000, 0x00000000, 0x00208e46, 0x00000000, 0x00000001, 0x00208e46, 0x00000000, 0x00000002,
+        0x05000036, 0x001020f2, 0x00000000, 0x00100e46, 0x00000000, 0x0100003e,
+    };
+    static const DWORD ps_swapc1_code[] =
+    {
+#if 0
+        ps_5_0
+        dcl_globalFlags refactoringAllowed
+        dcl_constantbuffer cb0[3], immediateIndexed
+        dcl_output o0.xyzw
+        dcl_temps 2
+        swapc r0.xyzw, r1.xyzw, cb0[0].xyzw, cb0[1].xyzw, cb0[2].xyzw
+        mov o0.xyzw, r1.xyzw
+        ret
+#endif
+        0x43425844, 0xf2daed61, 0xede211f7, 0x7300dbea, 0x573ed49f, 0x00000001, 0x000000f8, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x00000080, 0x00000050, 0x00000020,
+        0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000003, 0x03000065, 0x001020f2, 0x00000000,
+        0x02000068, 0x00000002, 0x0e00008e, 0x001000f2, 0x00000000, 0x001000f2, 0x00000001, 0x00208e46,
+        0x00000000, 0x00000000, 0x00208e46, 0x00000000, 0x00000001, 0x00208e46, 0x00000000, 0x00000002,
+        0x05000036, 0x001020f2, 0x00000000, 0x00100e46, 0x00000001, 0x0100003e,
+    };
+    static const DWORD ps_swapc2_code[] =
+    {
+#if 0
+        ps_5_0
+        dcl_globalFlags refactoringAllowed
+        dcl_constantbuffer cb0[3], immediateIndexed
+        dcl_output o0.xyzw
+        dcl_temps 2
+        mov r0.xyzw, cb0[1].xyzw
+        mov r1.xyzw, cb0[2].xyzw
+        swapc r0.xyzw, r1.xyzw, cb0[0].xyzw, r0.xyzw, r1.xyzw
+        mov o0.xyzw, r0.xyzw
+        ret
+#endif
+        0x43425844, 0x230fcb22, 0x70d99148, 0x65814d89, 0x97473498, 0x00000001, 0x00000120, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x000000a8, 0x00000050, 0x0000002a,
+        0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000003, 0x03000065, 0x001020f2, 0x00000000,
+        0x02000068, 0x00000002, 0x06000036, 0x001000f2, 0x00000000, 0x00208e46, 0x00000000, 0x00000001,
+        0x06000036, 0x001000f2, 0x00000001, 0x00208e46, 0x00000000, 0x00000002, 0x0c00008e, 0x001000f2,
+        0x00000000, 0x001000f2, 0x00000001, 0x00208e46, 0x00000000, 0x00000000, 0x00100e46, 0x00000000,
+        0x00100e46, 0x00000001, 0x05000036, 0x001020f2, 0x00000000, 0x00100e46, 0x00000000, 0x0100003e,
+    };
+    static const DWORD ps_swapc3_code[] =
+    {
+#if 0
+        ps_5_0
+        dcl_globalFlags refactoringAllowed
+        dcl_constantbuffer cb0[3], immediateIndexed
+        dcl_output o0.xyzw
+        dcl_temps 2
+        mov r0.xyzw, cb0[1].xyzw
+        mov r1.xyzw, cb0[2].xyzw
+        swapc r0.xyzw, r1.xyzw, cb0[0].xyzw, r0.xyzw, r1.xyzw
+        mov o0.xyzw, r1.xyzw
+        ret
+#endif
+        0x43425844, 0xce595d62, 0x98305541, 0xb04e74c8, 0xfc010f3a, 0x00000001, 0x00000120, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x000000a8, 0x00000050, 0x0000002a,
+        0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000003, 0x03000065, 0x001020f2, 0x00000000,
+        0x02000068, 0x00000002, 0x06000036, 0x001000f2, 0x00000000, 0x00208e46, 0x00000000, 0x00000001,
+        0x06000036, 0x001000f2, 0x00000001, 0x00208e46, 0x00000000, 0x00000002, 0x0c00008e, 0x001000f2,
+        0x00000000, 0x001000f2, 0x00000001, 0x00208e46, 0x00000000, 0x00000000, 0x00100e46, 0x00000000,
+        0x00100e46, 0x00000001, 0x05000036, 0x001020f2, 0x00000000, 0x00100e46, 0x00000001, 0x0100003e,
+    };
+    static const DWORD ps_swapc4_code[] =
+    {
+#if 0
+        ps_5_0
+        dcl_globalFlags refactoringAllowed
+        dcl_constantbuffer cb0[3], immediateIndexed
+        dcl_output o0.xyzw
+        dcl_temps 2
+        mov r0.xyzw, cb0[0].xyzw
+        swapc r0.xyzw, r1.xyzw, r0.xyzw, cb0[1].xyzw, cb0[2].xyzw
+        mov o0.xyzw, r0.xyzw
+        ret
+#endif
+        0x43425844, 0x72067c48, 0xb53572a0, 0x9dd9e0fd, 0x903e37e3, 0x00000001, 0x0000010c, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x00000094, 0x00000050, 0x00000025,
+        0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000003, 0x03000065, 0x001020f2, 0x00000000,
+        0x02000068, 0x00000002, 0x06000036, 0x001000f2, 0x00000000, 0x00208e46, 0x00000000, 0x00000000,
+        0x0d00008e, 0x001000f2, 0x00000000, 0x001000f2, 0x00000001, 0x00100e46, 0x00000000, 0x00208e46,
+        0x00000000, 0x00000001, 0x00208e46, 0x00000000, 0x00000002, 0x05000036, 0x001020f2, 0x00000000,
+        0x00100e46, 0x00000000, 0x0100003e,
+    };
+    static const DWORD ps_swapc5_code[] =
+    {
+#if 0
+        ps_5_0
+        dcl_globalFlags refactoringAllowed
+        dcl_constantbuffer cb0[3], immediateIndexed
+        dcl_output o0.xyzw
+        dcl_temps 2
+        mov r1.xyzw, cb0[0].xyzw
+        swapc r0.xyzw, r1.xyzw, r1.xyzw, cb0[1].xyzw, cb0[2].xyzw
+        mov o0.xyzw, r1.xyzw
+        ret
+#endif
+        0x43425844, 0x7078fb08, 0xdd24cd44, 0x469d3258, 0x9e33a0bc, 0x00000001, 0x0000010c, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x00000094, 0x00000050, 0x00000025,
+        0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000003, 0x03000065, 0x001020f2, 0x00000000,
+        0x02000068, 0x00000002, 0x06000036, 0x001000f2, 0x00000001, 0x00208e46, 0x00000000, 0x00000000,
+        0x0d00008e, 0x001000f2, 0x00000000, 0x001000f2, 0x00000001, 0x00100e46, 0x00000001, 0x00208e46,
+        0x00000000, 0x00000001, 0x00208e46, 0x00000000, 0x00000002, 0x05000036, 0x001020f2, 0x00000000,
+        0x00100e46, 0x00000001, 0x0100003e,
+    };
+    static const struct
+    {
+        struct input input;
+        struct uvec4 dst0;
+        struct uvec4 dst1;
+    }
+    tests[] =
+    {
+        {
+            {{0, 0, 0, 0}, {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}},
+            {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}
+        },
+        {
+            {{1, 1, 1, 1}, {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}},
+            {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}, {0xdead, 0xc0de, 0xffff, 0xeeee},
+        },
+        {
+            {{0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff},
+                    {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}},
+            {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}, {0xdead, 0xc0de, 0xffff, 0xeeee},
+        },
+        {
+            {{1, 0, 1, 0}, {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}},
+            {0xaaaa, 0xc0de, 0xcccc, 0xeeee}, {0xdead, 0xbbbb, 0xffff, 0xdddd},
+        },
+        {
+            {{1, 0, 0, 1}, {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}},
+            {0xaaaa, 0xc0de, 0xffff, 0xdddd}, {0xdead, 0xbbbb, 0xcccc, 0xeeee},
+        },
+        {
+            {{1, 0, 0, 0}, {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}},
+            {0xaaaa, 0xc0de, 0xffff, 0xeeee}, {0xdead, 0xbbbb, 0xcccc, 0xdddd}
+        },
+        {
+            {{0, 1, 0, 0}, {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}},
+            {0xdead, 0xbbbb, 0xffff, 0xeeee}, {0xaaaa, 0xc0de, 0xcccc, 0xdddd}
+        },
+        {
+            {{0, 0, 1, 0}, {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}},
+            {0xdead, 0xc0de, 0xcccc, 0xeeee}, {0xaaaa, 0xbbbb, 0xffff, 0xdddd}
+        },
+        {
+            {{0, 0, 0, 1}, {0xdead, 0xc0de, 0xffff, 0xeeee}, {0xaaaa, 0xbbbb, 0xcccc, 0xdddd}},
+            {0xdead, 0xc0de, 0xffff, 0xdddd}, {0xaaaa, 0xbbbb, 0xcccc, 0xeeee},
+        },
+    };
+
+    if (!init_test_context(&test_context, &feature_level))
+        return;
+
+    device = test_context.device;
+    context = test_context.immediate_context;
+
+    ID3D11Texture2D_GetDesc(test_context.backbuffer, &texture_desc);
+    texture_desc.Format = DXGI_FORMAT_R32G32B32A32_UINT;
+    hr = ID3D11Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+
+    hr = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource *)texture, NULL, &rtv);
+    ok(SUCCEEDED(hr), "Failed to create render target view, hr %#x.\n", hr);
+
+    ID3D11DeviceContext_OMSetRenderTargets(context, 1, &rtv, NULL);
+
+    cb = create_buffer(device, D3D11_BIND_CONSTANT_BUFFER, sizeof(struct input), NULL);
+    ID3D11DeviceContext_PSSetConstantBuffers(context, 0, 1, &cb);
+
+    hr = ID3D11Device_CreatePixelShader(device, ps_swapc0_code, sizeof(ps_swapc0_code), NULL, &ps[0]);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+    hr = ID3D11Device_CreatePixelShader(device, ps_swapc1_code, sizeof(ps_swapc1_code), NULL, &ps[1]);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+    hr = ID3D11Device_CreatePixelShader(device, ps_swapc2_code, sizeof(ps_swapc2_code), NULL, &ps[2]);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+    hr = ID3D11Device_CreatePixelShader(device, ps_swapc3_code, sizeof(ps_swapc3_code), NULL, &ps[3]);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+    hr = ID3D11Device_CreatePixelShader(device, ps_swapc4_code, sizeof(ps_swapc4_code), NULL, &ps[4]);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+    hr = ID3D11Device_CreatePixelShader(device, ps_swapc5_code, sizeof(ps_swapc5_code), NULL, &ps[5]);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+
+    for (i = 0; i < ARRAY_SIZE(tests); ++i)
+    {
+        ID3D11DeviceContext_UpdateSubresource(context, (ID3D11Resource *)cb, 0, NULL, &tests[i].input, 0, 0);
+
+        ID3D11DeviceContext_PSSetShader(context, ps[0], NULL, 0);
+        draw_quad(&test_context);
+        check_texture_uvec4(texture, &tests[i].dst0);
+
+        ID3D11DeviceContext_PSSetShader(context, ps[1], NULL, 0);
+        draw_quad(&test_context);
+        check_texture_uvec4(texture, &tests[i].dst1);
+
+        ID3D11DeviceContext_PSSetShader(context, ps[2], NULL, 0);
+        draw_quad(&test_context);
+        check_texture_uvec4(texture, &tests[i].dst0);
+
+        ID3D11DeviceContext_PSSetShader(context, ps[3], NULL, 0);
+        draw_quad(&test_context);
+        check_texture_uvec4(texture, &tests[i].dst1);
+
+        ID3D11DeviceContext_PSSetShader(context, ps[4], NULL, 0);
+        draw_quad(&test_context);
+        check_texture_uvec4(texture, &tests[i].dst0);
+
+        ID3D11DeviceContext_PSSetShader(context, ps[5], NULL, 0);
+        draw_quad(&test_context);
+        check_texture_uvec4(texture, &tests[i].dst1);
+    }
+
+    for (i = 0; i < ARRAY_SIZE(ps); ++i)
+        ID3D11PixelShader_Release(ps[i]);
+    ID3D11RenderTargetView_Release(rtv);
+    ID3D11Texture2D_Release(texture);
+    ID3D11Buffer_Release(cb);
+    release_test_context(&test_context);
+}
+
 static void test_create_input_layout(void)
 {
     D3D11_INPUT_ELEMENT_DESC layout_desc[] =
@@ -13335,6 +13586,29 @@ static void test_uint_shader_instructions(void)
         0x0f00008c, 0x001020f2, 0x00000000, 0x00208006, 0x00000000, 0x00000000, 0x00208556, 0x00000000,
         0x00000000, 0x00208aa6, 0x00000000, 0x00000000, 0x00208ff6, 0x00000000, 0x00000000, 0x0100003e,
     };
+    static const DWORD ps_bfi2_code[] =
+    {
+#if 0
+        ps_5_0
+        dcl_globalFlags refactoringAllowed
+        dcl_constantbuffer cb0[1], immediateIndexed
+        dcl_output o0.xyzw
+        dcl_temps 1
+        mov r0.xyzw, cb0[0].xyzw
+        bfi r0.xyzw, r0.xxxx, r0.yyyy, r0.zzzz, r0.wwww
+        mov o0.xyzw, r0.xyzw
+        ret
+#endif
+        0x43425844, 0x900f86b6, 0x73f4dabf, 0xea1b1106, 0x591ac790, 0x00000001, 0x00000104, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x0000008c, 0x00000050, 0x00000023,
+        0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000001, 0x03000065, 0x001020f2, 0x00000000,
+        0x02000068, 0x00000001, 0x06000036, 0x001000f2, 0x00000000, 0x00208e46, 0x00000000, 0x00000000,
+        0x0b00008c, 0x001000f2, 0x00000000, 0x00100006, 0x00000000, 0x00100556, 0x00000000, 0x00100aa6,
+        0x00000000, 0x00100ff6, 0x00000000, 0x05000036, 0x001020f2, 0x00000000, 0x00100e46, 0x00000000,
+        0x0100003e,
+    };
     static const DWORD ps_ibfe_code[] =
     {
 #if 0
@@ -13352,6 +13626,28 @@ static void test_uint_shader_instructions(void)
         0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000001, 0x03000065, 0x001020f2, 0x00000000,
         0x0c00008b, 0x001020f2, 0x00000000, 0x00208006, 0x00000000, 0x00000000, 0x00208556, 0x00000000,
         0x00000000, 0x00208aa6, 0x00000000, 0x00000000, 0x0100003e,
+    };
+    static const DWORD ps_ibfe2_code[] =
+    {
+#if 0
+        ps_5_0
+        dcl_globalFlags refactoringAllowed
+        dcl_constantbuffer cb0[1], immediateIndexed
+        dcl_output o0.xyzw
+        dcl_temps 1
+        mov r0.xyzw, cb0[0].xyzw
+        ibfe r0.xyzw, r0.xxxx, r0.yyyy, r0.zzzz
+        mov o0.xyzw, r0.xyzw
+        ret
+#endif
+        0x43425844, 0x347a9c0e, 0x3eff39a4, 0x3dd41cc5, 0xff87ec8d, 0x00000001, 0x000000fc, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x00000084, 0x00000050, 0x00000021,
+        0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000001, 0x03000065, 0x001020f2, 0x00000000,
+        0x02000068, 0x00000001, 0x06000036, 0x001000f2, 0x00000000, 0x00208e46, 0x00000000, 0x00000000,
+        0x0900008b, 0x001000f2, 0x00000000, 0x00100006, 0x00000000, 0x00100556, 0x00000000, 0x00100aa6,
+        0x00000000, 0x05000036, 0x001020f2, 0x00000000, 0x00100e46, 0x00000000, 0x0100003e,
     };
     static const DWORD ps_ubfe_code[] =
     {
@@ -13371,6 +13667,28 @@ static void test_uint_shader_instructions(void)
         0x1000008a, 0x001020f2, 0x00000000, 0x00004002, 0x00000004, 0x00000017, 0x00000007, 0x0000001e,
         0x00004002, 0x00000004, 0x00000008, 0x00000001, 0x00000001, 0x00208006, 0x00000000, 0x00000000,
         0x0100003e,
+    };
+    static const DWORD ps_ubfe2_code[] =
+    {
+#if 0
+       ps_5_0
+       dcl_globalFlags refactoringAllowed
+       dcl_constantbuffer cb0[1], immediateIndexed
+       dcl_output o0.xyzw
+       dcl_temps 1
+       mov r0.xyzw, cb0[0].xyzw
+       ubfe r0.xyzw, r0.xxxx, r0.yyyy, r0.zzzz
+       mov o0.xyzw, r0.xyzw
+       ret
+#endif
+        0x43425844, 0xf377b7fc, 0x1e4cb9e7, 0xb9b1020d, 0xde484388, 0x00000001, 0x000000fc, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000001, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x00000084, 0x00000050, 0x00000021,
+        0x0100086a, 0x04000059, 0x00208e46, 0x00000000, 0x00000001, 0x03000065, 0x001020f2, 0x00000000,
+        0x02000068, 0x00000001, 0x06000036, 0x001000f2, 0x00000000, 0x00208e46, 0x00000000, 0x00000000,
+        0x0900008a, 0x001000f2, 0x00000000, 0x00100006, 0x00000000, 0x00100556, 0x00000000, 0x00100aa6,
+        0x00000000, 0x05000036, 0x001020f2, 0x00000000, 0x00100e46, 0x00000000, 0x0100003e,
     };
     static const DWORD ps_bfrev_code[] =
     {
@@ -13495,8 +13813,11 @@ static void test_uint_shader_instructions(void)
         0x00000000, 0x0600003b, 0x00102052, 0x00000000, 0x00208106, 0x00000000, 0x00000000, 0x0100003e,
     };
     static const struct shader ps_bfi = {ps_bfi_code, sizeof(ps_bfi_code), D3D_FEATURE_LEVEL_11_0};
+    static const struct shader ps_bfi2 = {ps_bfi2_code, sizeof(ps_bfi2_code), D3D_FEATURE_LEVEL_11_0};
     static const struct shader ps_ibfe = {ps_ibfe_code, sizeof(ps_ibfe_code), D3D_FEATURE_LEVEL_11_0};
+    static const struct shader ps_ibfe2 = {ps_ibfe2_code, sizeof(ps_ibfe2_code), D3D_FEATURE_LEVEL_11_0};
     static const struct shader ps_ubfe = {ps_ubfe_code, sizeof(ps_ubfe_code), D3D_FEATURE_LEVEL_11_0};
+    static const struct shader ps_ubfe2 = {ps_ubfe2_code, sizeof(ps_ubfe2_code), D3D_FEATURE_LEVEL_11_0};
     static const struct shader ps_bfrev = {ps_bfrev_code, sizeof(ps_bfrev_code), D3D_FEATURE_LEVEL_11_0};
     static const struct shader ps_bits = {ps_bits_code, sizeof(ps_bits_code), D3D_FEATURE_LEVEL_11_0};
     static const struct shader ps_ftou = {ps_ftou_code, sizeof(ps_ftou_code), D3D_FEATURE_LEVEL_10_0};
@@ -13531,6 +13852,11 @@ static void test_uint_shader_instructions(void)
         {&ps_bfi, {~0x1fu, ~0x1fu,  ~0u,    1}, {         1,          1,          1,          1}},
         {&ps_bfi, {~0x1fu, ~0x1fu,  ~0u,    2}, {         2,          2,          2,          2}},
 
+        {&ps_bfi2, {   ~0u,      0,  ~0u,    0}, {0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff}},
+        {&ps_bfi2, {   ~0u,    ~0u,  ~0u,    0}, {0x80000000, 0x80000000, 0x80000000, 0x80000000}},
+        {&ps_bfi2, {   ~0u,  0x1fu,  ~0u,    0}, {0x80000000, 0x80000000, 0x80000000, 0x80000000}},
+        {&ps_bfi2, {   ~0u, ~0x1fu,  ~0u,    0}, {0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff}},
+
         {&ps_ibfe, { 0,  4, 0x00000000}, {0x00000000, 0x00000000, 0x00000000, 0x00000000}},
         {&ps_ibfe, { 0,  4, 0xffffffff}, {0x00000000, 0x00000000, 0x00000000, 0x00000000}},
         {&ps_ibfe, { 0,  4, 0x7fffffff}, {0x00000000, 0x00000000, 0x00000000, 0x00000000}},
@@ -13558,6 +13884,8 @@ static void test_uint_shader_instructions(void)
         {&ps_ibfe, {31, 31, 0x80000000}, {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff}},
         {&ps_ibfe, {31, 31, 0x7fffffff}, {0x00000000, 0x00000000, 0x00000000, 0x00000000}},
 
+        {&ps_ibfe2, {16, 15, 0x3fffffff}, {0x00007fff, 0x00007fff, 0x00007fff, 0x00007fff}},
+
         {&ps_ubfe, {0x00000000}, {0x00000000, 0x00000000, 0x00000000, 0x00000000}},
         {&ps_ubfe, {0xffffffff}, {0x0000000f, 0x007fffff, 0x0000007f, 0x3fffffff}},
         {&ps_ubfe, {0xff000000}, {0x00000000, 0x007f0000, 0x00000000, 0x3f800000}},
@@ -13565,6 +13893,18 @@ static void test_uint_shader_instructions(void)
         {&ps_ubfe, {0x000000ff}, {0x0000000f, 0x00000000, 0x0000007f, 0x0000007f}},
         {&ps_ubfe, {0x80000001}, {0x00000000, 0x00000000, 0x00000000, 0x00000000}},
         {&ps_ubfe, {0xc0000003}, {0x00000000, 0x00400000, 0x00000001, 0x20000001}},
+
+        {&ps_ubfe2, { 4,  4, 0x7fffffff}, {0x0000000f, 0x0000000f, 0x0000000f, 0x0000000f}},
+        {&ps_ubfe2, {23,  8, 0xffffffff}, {0x007fffff, 0x007fffff, 0x007fffff, 0x007fffff}},
+        {&ps_ubfe2, {30,  1, 0xffffffff}, {0x3fffffff, 0x3fffffff, 0x3fffffff, 0x3fffffff}},
+        {&ps_ubfe2, {15, 15, 0x7fffffff}, {0x00007fff, 0x00007fff, 0x00007fff, 0x00007fff}},
+        {&ps_ubfe2, {15, 15, 0xffff00ff}, {0x00007ffe, 0x00007ffe, 0x00007ffe, 0x00007ffe}},
+        {&ps_ubfe2, {16, 15, 0xffffffff}, {0x0000ffff, 0x0000ffff, 0x0000ffff, 0x0000ffff}},
+        {&ps_ubfe2, {16, 15, 0x3fffffff}, {0x00007fff, 0x00007fff, 0x00007fff, 0x00007fff}},
+        {&ps_ubfe2, {20, 15, 0xffffffff}, {0x0001ffff, 0x0001ffff, 0x0001ffff, 0x0001ffff}},
+        {&ps_ubfe2, {31, 31, 0xffffffff}, {0x00000001, 0x00000001, 0x00000001, 0x00000001}},
+        {&ps_ubfe2, {31, 31, 0x80000000}, {0x00000001, 0x00000001, 0x00000001, 0x00000001}},
+        {&ps_ubfe2, {31, 31, 0x7fffffff}, {0x00000000, 0x00000000, 0x00000000, 0x00000000}},
 
         {&ps_bfrev, {0x12345678}, {0x1e6a2c48, 0x12345678, 0x1e6a0000, 0x2c480000}},
         {&ps_bfrev, {0xffff0000}, {0x0000ffff, 0xffff0000, 0x00000000, 0xffff0000}},
@@ -17631,7 +17971,7 @@ static void test_uav_counters(void)
     data = 8;
     ID3D11DeviceContext_CSSetUnorderedAccessViews(context, 0, 1, &uav, &data);
     data = read_uav_counter(context, staging_buffer, uav);
-    todo_wine ok(data == 8, "Got unexpected value %u.\n", data);
+    ok(data == 8, "Got unexpected value %u.\n", data);
 
     ID3D11DeviceContext_CSSetShader(context, cs_producer, NULL, 0);
     data = 0;
@@ -17643,7 +17983,7 @@ static void test_uav_counters(void)
     /* produce */
     ID3D11DeviceContext_Dispatch(context, 16, 1, 1);
     data = read_uav_counter(context, staging_buffer, uav);
-    todo_wine ok(data == 64, "Got unexpected value %u.\n", data);
+    ok(data == 64, "Got unexpected value %u.\n", data);
     get_buffer_readback(buffer, &rb);
     memcpy(id, rb.map_desc.pData, 64 * sizeof(*id));
     release_resource_readback(&rb);
@@ -17679,12 +18019,12 @@ static void test_uav_counters(void)
     data = 8;
     ID3D11DeviceContext_CSSetUnorderedAccessViews(context, 0, 1, &uav, &data);
     data = read_uav_counter(context, staging_buffer, uav);
-    todo_wine ok(data == 8, "Got unexpected value %u.\n", data);
+    ok(data == 8, "Got unexpected value %u.\n", data);
 
     /* consume */
     ID3D11DeviceContext_Dispatch(context, 1, 1, 1);
     data = read_uav_counter(context, staging_buffer, uav);
-    todo_wine ok(data == 4, "Got unexpected value %u.\n", data);
+    ok(data == 4, "Got unexpected value %u.\n", data);
     ID3D11DeviceContext_Dispatch(context, 1, 1, 1);
     data = read_uav_counter(context, staging_buffer, uav);
     ok(!data, "Got unexpected value %u.\n", data);
@@ -17692,7 +18032,7 @@ static void test_uav_counters(void)
     for (i = 0; i < 8; ++i)
     {
         data = get_readback_color(&rb, i, 0);
-        todo_wine ok(data == 0xdeadbeef, "Got data %u at %u.\n", data, i);
+        ok(data == 0xdeadbeef, "Got data %u at %u.\n", data, i);
     }
     release_resource_readback(&rb);
 
@@ -20326,6 +20666,127 @@ static void test_fractional_viewports(void)
     release_test_context(&test_context);
 }
 
+static void test_early_depth_stencil(void)
+{
+    ID3D11DepthStencilState *depth_stencil_state;
+    D3D11_DEPTH_STENCIL_DESC depth_stencil_desc;
+    ID3D11Texture2D *texture, *depth_texture;
+    struct d3d11_test_context test_context;
+    D3D11_TEXTURE2D_DESC texture_desc;
+    ID3D11UnorderedAccessView *uav;
+    ID3D11DeviceContext *context;
+    ID3D11DepthStencilView *dsv;
+    ID3D11PixelShader *ps;
+    ID3D11Device *device;
+    D3D11_VIEWPORT vp;
+    HRESULT hr;
+
+    static const DWORD ps_code[] =
+    {
+#if 0
+        RWTexture2D<int> u;
+
+        [earlydepthstencil]
+        float4 main() : SV_Target
+        {
+            InterlockedAdd(u[uint2(0, 0)], 1);
+            return float4(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+#endif
+        0x43425844, 0xda4325ad, 0xc01d3815, 0xfd610cc9, 0x8ed1e351, 0x00000001, 0x000000ec, 0x00000003,
+        0x0000002c, 0x0000003c, 0x00000070, 0x4e475349, 0x00000008, 0x00000000, 0x00000008, 0x4e47534f,
+        0x0000002c, 0x00000001, 0x00000008, 0x00000020, 0x00000000, 0x00000000, 0x00000003, 0x00000000,
+        0x0000000f, 0x545f5653, 0x65677261, 0xabab0074, 0x58454853, 0x00000074, 0x00000050, 0x0000001d,
+        0x0100286a, 0x0400189c, 0x0011e000, 0x00000001, 0x00003333, 0x03000065, 0x001020f2, 0x00000000,
+        0x0a0000ad, 0x0011e000, 0x00000001, 0x00004002, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+        0x00004001, 0x00000001, 0x08000036, 0x001020f2, 0x00000000, 0x00004002, 0x3f800000, 0x3f800000,
+        0x3f800000, 0x3f800000, 0x0100003e,
+    };
+    static const D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
+    static const UINT values[4] = {0};
+
+    if (!init_test_context(&test_context, &feature_level))
+        return;
+
+    device = test_context.device;
+    context = test_context.immediate_context;
+
+    depth_stencil_desc.DepthEnable = TRUE;
+    depth_stencil_desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    depth_stencil_desc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+    depth_stencil_desc.StencilEnable = FALSE;
+    hr = ID3D11Device_CreateDepthStencilState(device, &depth_stencil_desc, &depth_stencil_state);
+    ok(SUCCEEDED(hr), "Failed to create depth stencil state, hr %#x.\n", hr);
+
+    texture_desc.Width = 1;
+    texture_desc.Height = 1;
+    texture_desc.MipLevels = 1;
+    texture_desc.ArraySize = 1;
+    texture_desc.Format = DXGI_FORMAT_R32_SINT;
+    texture_desc.SampleDesc.Count = 1;
+    texture_desc.SampleDesc.Quality = 0;
+    texture_desc.Usage = D3D11_USAGE_DEFAULT;
+    texture_desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+    texture_desc.CPUAccessFlags = 0;
+    texture_desc.MiscFlags = 0;
+    hr = ID3D11Device_CreateTexture2D(device, &texture_desc, NULL, &texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    hr = ID3D11Device_CreateUnorderedAccessView(device, (ID3D11Resource *)texture, NULL, &uav);
+    ok(SUCCEEDED(hr), "Failed to create unordered access view, hr %#x.\n", hr);
+
+    ID3D11Texture2D_GetDesc(test_context.backbuffer, &texture_desc);
+    texture_desc.Format = DXGI_FORMAT_D32_FLOAT;
+    texture_desc.Usage = D3D11_USAGE_DEFAULT;
+    texture_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    hr = ID3D11Device_CreateTexture2D(device, &texture_desc, NULL, &depth_texture);
+    ok(SUCCEEDED(hr), "Failed to create texture, hr %#x.\n", hr);
+    hr = ID3D11Device_CreateDepthStencilView(device, (ID3D11Resource *)depth_texture, NULL, &dsv);
+    ok(SUCCEEDED(hr), "Failed to create depth stencil view, hr %#x.\n", hr);
+
+    hr = ID3D11Device_CreatePixelShader(device, ps_code, sizeof(ps_code), NULL, &ps);
+    ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
+    ID3D11DeviceContext_PSSetShader(context, ps, NULL, 0);
+
+    memset(&vp, 0, sizeof(vp));
+    vp.Width = 1.0f;
+    vp.Height = 100.0f;
+    vp.MinDepth = 0.5f;
+    vp.MaxDepth = 0.5f;
+    ID3D11DeviceContext_RSSetViewports(context, 1, &vp);
+    ID3D11DeviceContext_OMSetDepthStencilState(context, depth_stencil_state, 0);
+    ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews(context,
+            1, &test_context.backbuffer_rtv, dsv, 1, 1, &uav, NULL);
+
+    ID3D11DeviceContext_ClearUnorderedAccessViewUint(context, uav, values);
+
+    ID3D11DeviceContext_ClearDepthStencilView(context, dsv, D3D11_CLEAR_DEPTH, 0.6f, 0);
+    draw_quad(&test_context);
+    check_texture_color(texture, 100, 1);
+    draw_quad(&test_context);
+    check_texture_color(texture, 200, 1);
+    check_texture_float(depth_texture, 0.6f, 1);
+
+    ID3D11DeviceContext_ClearDepthStencilView(context, dsv, D3D11_CLEAR_DEPTH, 0.3f, 0);
+    draw_quad(&test_context);
+    draw_quad(&test_context);
+    ID3D11DeviceContext_ClearDepthStencilView(context, dsv, D3D11_CLEAR_DEPTH, 0.55f, 0);
+    draw_quad(&test_context);
+    check_texture_color(texture, 300, 1);
+
+    ID3D11DeviceContext_ClearDepthStencilView(context, dsv, D3D11_CLEAR_DEPTH, 0.5f, 0);
+    draw_quad(&test_context);
+    check_texture_color(texture, 400, 1);
+    check_texture_float(depth_texture, 0.5f, 1);
+
+    ID3D11Texture2D_Release(depth_texture);
+    ID3D11DepthStencilView_Release(dsv);
+    ID3D11DepthStencilState_Release(depth_stencil_state);
+    ID3D11PixelShader_Release(ps);
+    ID3D11Texture2D_Release(texture);
+    ID3D11UnorderedAccessView_Release(uav);
+    release_test_context(&test_context);
+}
+
 START_TEST(d3d11)
 {
     test_create_device();
@@ -20382,6 +20843,7 @@ START_TEST(d3d11)
     test_sm4_if_instruction();
     test_sm4_breakc_instruction();
     test_sm4_continuec_instruction();
+    test_sm5_swapc_instruction();
     test_create_input_layout();
     test_input_assembler();
     test_null_sampler();
@@ -20422,4 +20884,5 @@ START_TEST(d3d11)
     test_gather();
     test_gather_c();
     test_fractional_viewports();
+    test_early_depth_stencil();
 }

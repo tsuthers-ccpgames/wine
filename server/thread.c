@@ -182,6 +182,7 @@ static inline void init_thread_structure( struct thread *thread )
     thread->debug_ctx       = NULL;
     thread->debug_event     = NULL;
     thread->debug_break     = 0;
+    thread->system_regs     = 0;
     thread->queue           = NULL;
     thread->wait            = NULL;
     thread->error           = 0;
@@ -583,7 +584,7 @@ void make_wait_abandoned( struct wait_queue_entry *entry )
 }
 
 /* finish waiting */
-static void end_wait( struct thread *thread )
+static unsigned int end_wait( struct thread *thread, unsigned int status )
 {
     struct thread_wait *wait = thread->wait;
     struct wait_queue_entry *entry;
@@ -591,10 +592,26 @@ static void end_wait( struct thread *thread )
 
     assert( wait );
     thread->wait = wait->next;
+
+    if (status < wait->count)  /* wait satisfied, tell it to the objects */
+    {
+        if (wait->select == SELECT_WAIT_ALL)
+        {
+            for (i = 0, entry = wait->queues; i < wait->count; i++, entry++)
+                entry->obj->ops->satisfied( entry->obj, entry );
+        }
+        else
+        {
+            entry = wait->queues + status;
+            entry->obj->ops->satisfied( entry->obj, entry );
+        }
+        if (wait->abandoned) status += STATUS_ABANDONED_WAIT_0;
+    }
     for (i = 0, entry = wait->queues; i < wait->count; i++, entry++)
         entry->obj->ops->remove_queue( entry->obj, entry );
     if (wait->user) remove_timeout_user( wait->user );
     free( wait );
+    return status;
 }
 
 /* build the thread wait structure */
@@ -624,7 +641,7 @@ static int wait_on( const select_op_t *select_op, unsigned int count, struct obj
         if (!obj->ops->add_queue( obj, entry ))
         {
             wait->count = i;
-            end_wait( current );
+            end_wait( current, get_error() );
             return 0;
         }
     }
@@ -672,25 +689,14 @@ static int check_wait( struct thread *thread )
          * want to do something when signaled, even if others are not */
         for (i = 0, entry = wait->queues; i < wait->count; i++, entry++)
             not_ok |= !entry->obj->ops->signaled( entry->obj, entry );
-        if (not_ok) goto other_checks;
-        /* Wait satisfied: tell it to all objects */
-        for (i = 0, entry = wait->queues; i < wait->count; i++, entry++)
-            entry->obj->ops->satisfied( entry->obj, entry );
-        return wait->abandoned ? STATUS_ABANDONED_WAIT_0 : STATUS_WAIT_0;
+        if (!not_ok) return STATUS_WAIT_0;
     }
     else
     {
         for (i = 0, entry = wait->queues; i < wait->count; i++, entry++)
-        {
-            if (!entry->obj->ops->signaled( entry->obj, entry )) continue;
-            /* Wait satisfied: tell it to the object */
-            entry->obj->ops->satisfied( entry->obj, entry );
-            if (wait->abandoned) i += STATUS_ABANDONED_WAIT_0;
-            return i;
-        }
+            if (entry->obj->ops->signaled( entry->obj, entry )) return i;
     }
 
- other_checks:
     if ((wait->flags & SELECT_ALERTABLE) && !list_empty(&thread->user_apc)) return STATUS_USER_APC;
     if (wait->timeout <= current_time) return STATUS_TIMEOUT;
     return -1;
@@ -728,8 +734,8 @@ int wake_thread( struct thread *thread )
         if ((signaled = check_wait( thread )) == -1) break;
 
         cookie = thread->wait->cookie;
+        signaled = end_wait( thread, signaled );
         if (debug_level) fprintf( stderr, "%04x: *wakeup* signaled=%d\n", thread->id, signaled );
-        end_wait( thread );
         if (cookie && send_thread_wakeup( thread, cookie, signaled ) == -1) /* error */
         {
             if (!count) count = -1;
@@ -752,13 +758,9 @@ int wake_thread_queue_entry( struct wait_queue_entry *entry )
 
     assert( wait->select != SELECT_WAIT_ALL );
 
-    signaled = entry - wait->queues;
-    entry->obj->ops->satisfied( entry->obj, entry );
-    if (wait->abandoned) signaled += STATUS_ABANDONED_WAIT_0;
-
     cookie = wait->cookie;
+    signaled = end_wait( thread, entry - wait->queues );
     if (debug_level) fprintf( stderr, "%04x: *wakeup* signaled=%d\n", thread->id, signaled );
-    end_wait( thread );
 
     if (!cookie || send_thread_wakeup( thread, cookie, signaled ) != -1)
         wake_thread( thread );  /* check other waits too */
@@ -778,7 +780,7 @@ static void thread_timeout( void *ptr )
     if (thread->suspend + thread->process->suspend > 0) return;  /* suspended, ignore it */
 
     if (debug_level) fprintf( stderr, "%04x: *wakeup* signaled=TIMEOUT\n", thread->id );
-    end_wait( thread );
+    end_wait( thread, STATUS_TIMEOUT );
 
     assert( cookie );
     if (send_thread_wakeup( thread, cookie, STATUS_TIMEOUT ) == -1) return;
@@ -836,7 +838,7 @@ static timeout_t select_on( const select_op_t *select_op, data_size_t op_size, c
         {
             if (!signal_object( select_op->signal_and_wait.signal ))
             {
-                end_wait( current );
+                end_wait( current, get_error() );
                 return timeout;
             }
             /* check if we woke ourselves up */
@@ -863,8 +865,7 @@ static timeout_t select_on( const select_op_t *select_op, data_size_t op_size, c
     if ((ret = check_wait( current )) != -1)
     {
         /* condition is already satisfied */
-        end_wait( current );
-        set_error( ret );
+        set_error( end_wait( current, ret ));
         return timeout;
     }
 
@@ -874,7 +875,7 @@ static timeout_t select_on( const select_op_t *select_op, data_size_t op_size, c
         if (!(current->wait->user = add_timeout_user( current->wait->timeout,
                                                       thread_timeout, current->wait )))
         {
-            end_wait( current );
+            end_wait( current, get_error() );
             return timeout;
         }
     }
@@ -1106,7 +1107,7 @@ void kill_thread( struct thread *thread, int violent_death )
                  thread->id, thread->exit_code );
     if (thread->wait)
     {
-        while (thread->wait) end_wait( thread );
+        while (thread->wait) end_wait( thread, STATUS_THREAD_IS_TERMINATING );
         send_thread_wakeup( thread, 0, thread->exit_code );
         /* if it is waiting on the socket, we don't need to send a SIGQUIT */
         violent_death = 0;
@@ -1245,6 +1246,7 @@ DECL_HANDLER(new_thread)
 
     if ((thread = create_thread( request_fd, current->process )))
     {
+        thread->system_regs = current->system_regs;
         if (req->suspend) thread->suspend++;
         reply->tid = get_thread_id( thread );
         if ((reply->handle = alloc_handle( current->process, thread, req->access, req->attributes )))
@@ -1317,6 +1319,7 @@ DECL_HANDLER(init_thread)
         }
         if (process->unix_pid != current->unix_pid)
             process->unix_pid = -1;  /* can happen with linuxthreads */
+        init_thread_context( current );
         stop_thread_if_suspended( current );
         generate_debug_event( current, CREATE_THREAD_DEBUG_EVENT, &req->entry );
         set_thread_affinity( current, current->affinity );

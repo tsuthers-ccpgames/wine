@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#define NONAMELESSSTRUCT
 #define NONAMELESSUNION
 
 #include "debugger.h"
@@ -237,6 +238,30 @@ static struct dbg_internal_var be_x86_64_ctx[] =
     {CV_AMD64_R13,      "R13",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, R13),     dbg_itype_unsigned_long_int},
     {CV_AMD64_R14,      "R14",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, R14),     dbg_itype_unsigned_long_int},
     {CV_AMD64_R15,      "R15",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, R15),     dbg_itype_unsigned_long_int},
+    {CV_AMD64_ST0,      "ST0",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.FltSave.FloatRegisters[0]), dbg_itype_long_real},
+    {CV_AMD64_ST0+1,    "ST1",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.FltSave.FloatRegisters[1]), dbg_itype_long_real},
+    {CV_AMD64_ST0+2,    "ST2",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.FltSave.FloatRegisters[2]), dbg_itype_long_real},
+    {CV_AMD64_ST0+3,    "ST3",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.FltSave.FloatRegisters[3]), dbg_itype_long_real},
+    {CV_AMD64_ST0+4,    "ST4",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.FltSave.FloatRegisters[4]), dbg_itype_long_real},
+    {CV_AMD64_ST0+5,    "ST5",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.FltSave.FloatRegisters[5]), dbg_itype_long_real},
+    {CV_AMD64_ST0+6,    "ST6",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.FltSave.FloatRegisters[6]), dbg_itype_long_real},
+    {CV_AMD64_ST0+7,    "ST7",          (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.FltSave.FloatRegisters[7]), dbg_itype_long_real},
+    {CV_AMD64_XMM0,     "XMM0",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm0),  dbg_itype_m128a},
+    {CV_AMD64_XMM0+1,   "XMM1",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm1),  dbg_itype_m128a},
+    {CV_AMD64_XMM0+2,   "XMM2",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm2),  dbg_itype_m128a},
+    {CV_AMD64_XMM0+3,   "XMM3",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm3),  dbg_itype_m128a},
+    {CV_AMD64_XMM0+4,   "XMM4",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm4),  dbg_itype_m128a},
+    {CV_AMD64_XMM0+5,   "XMM5",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm5),  dbg_itype_m128a},
+    {CV_AMD64_XMM0+6,   "XMM6",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm6),  dbg_itype_m128a},
+    {CV_AMD64_XMM0+7,   "XMM7",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm7),  dbg_itype_m128a},
+    {CV_AMD64_XMM8,     "XMM8",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm8),  dbg_itype_m128a},
+    {CV_AMD64_XMM8+1,   "XMM9",         (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm9),  dbg_itype_m128a},
+    {CV_AMD64_XMM8+2,   "XMM10",        (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm10), dbg_itype_m128a},
+    {CV_AMD64_XMM8+3,   "XMM11",        (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm11), dbg_itype_m128a},
+    {CV_AMD64_XMM8+4,   "XMM12",        (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm12), dbg_itype_m128a},
+    {CV_AMD64_XMM8+5,   "XMM13",        (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm13), dbg_itype_m128a},
+    {CV_AMD64_XMM8+6,   "XMM14",        (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm14), dbg_itype_m128a},
+    {CV_AMD64_XMM8+7,   "XMM15",        (DWORD_PTR*)FIELD_OFFSET(CONTEXT, u.s.Xmm15), dbg_itype_m128a},
     {0,                 NULL,           0,                                          dbg_itype_none}
 };
 
@@ -631,9 +656,9 @@ static BOOL be_x86_64_fetch_float(const struct dbg_lvalue* lvalue, unsigned size
     if (!memory_read_value(lvalue, size, tmp)) return FALSE;
 
     /* float & double types have to be promoted to a long double */
-    if (size == sizeof(float)) *ret = *(float*)tmp;
-    else if (size == sizeof(double)) *ret = *(double*)tmp;
-    else if (size == sizeof(long double)) *ret = *(long double*)tmp;
+    if (size == 4) *ret = *(float*)tmp;
+    else if (size == 8) *ret = *(double*)tmp;
+    else if (size == 10) *ret = *(long double*)tmp;
     else return FALSE;
 
     return TRUE;

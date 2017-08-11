@@ -1053,9 +1053,13 @@ static void test_CreateBitmapRenderTarget(void)
 {
     IDWriteBitmapRenderTarget *target, *target2;
     IDWriteBitmapRenderTarget1 *target1;
+    IDWriteRenderingParams *params;
     IDWriteGdiInterop *interop;
+    IDWriteFontFace *fontface;
     IDWriteFactory *factory;
+    DWRITE_GLYPH_RUN run;
     HBITMAP hbm, hbm2;
+    UINT16 glyphs[2];
     DWRITE_MATRIX m;
     DIBSECTION ds;
     XFORM xform;
@@ -1064,6 +1068,7 @@ static void test_CreateBitmapRenderTarget(void)
     FLOAT pdip;
     SIZE size;
     ULONG ref;
+    UINT32 ch;
     HDC hdc;
     int ret;
 
@@ -1306,6 +1311,61 @@ static void test_CreateBitmapRenderTarget(void)
     }
     else
         win_skip("IDWriteBitmapRenderTarget1 is not supported.\n");
+
+    /* DrawGlyphRun() argument validation. */
+    hr = IDWriteBitmapRenderTarget_Resize(target, 16, 16);
+    ok(hr == S_OK, "Failed to resize target, hr %#x.\n", hr);
+
+    fontface = create_fontface(factory);
+
+    ch = 'A';
+    glyphs[0] = 0;
+    hr = IDWriteFontFace_GetGlyphIndices(fontface, &ch, 1, glyphs);
+    ok(hr == S_OK, "got 0x%08x\n", hr);
+    ok(glyphs[0] > 0, "got %u\n", glyphs[0]);
+    glyphs[1] = glyphs[0];
+
+    memset(&run, 0, sizeof(run));
+    run.fontFace = fontface;
+    run.fontEmSize = 12.0f;
+    run.glyphCount = 2;
+    run.glyphIndices = glyphs;
+
+    hr = IDWriteFactory_CreateCustomRenderingParams(factory, 1.0f, 0.0f, 0.0f, DWRITE_PIXEL_GEOMETRY_FLAT,
+            DWRITE_RENDERING_MODE_DEFAULT, &params);
+    ok(hr == S_OK, "Failed to create rendering params, hr %#x.\n", hr);
+
+    hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 0.0f, 0.0f, DWRITE_MEASURING_MODE_NATURAL,
+        &run, NULL, RGB(255, 0, 0), NULL);
+    ok(hr == E_INVALIDARG, "Unexpected hr %#x.\n", hr);
+
+    hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 0.0f, 0.0f, DWRITE_MEASURING_MODE_GDI_NATURAL + 1,
+        &run, NULL, RGB(255, 0, 0), NULL);
+    ok(hr == E_INVALIDARG, "Unexpected hr %#x.\n", hr);
+
+    hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 0.0f, 0.0f, DWRITE_MEASURING_MODE_GDI_NATURAL + 1,
+        &run, params, RGB(255, 0, 0), NULL);
+    ok(hr == E_INVALIDARG || broken(hr == S_OK) /* Vista */, "Unexpected hr %#x.\n", hr);
+
+    hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 0.0f, 0.0f, DWRITE_MEASURING_MODE_GDI_NATURAL,
+        &run, params, RGB(255, 0, 0), NULL);
+    ok(hr == S_OK, "Failed to draw a run, hr %#x.\n", hr);
+
+    IDWriteRenderingParams_Release(params);
+
+    /* Zero sized target returns earlier. */
+    hr = IDWriteBitmapRenderTarget_Resize(target, 0, 16);
+    ok(hr == S_OK, "Failed to resize target, hr %#x.\n", hr);
+
+    hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 0.0f, 0.0f, DWRITE_MEASURING_MODE_NATURAL,
+        &run, NULL, RGB(255, 0, 0), NULL);
+    ok(hr == S_OK, "Unexpected hr %#x.\n", hr);
+
+    hr = IDWriteBitmapRenderTarget_DrawGlyphRun(target, 0.0f, 0.0f, DWRITE_MEASURING_MODE_GDI_NATURAL + 1,
+        &run, params, RGB(255, 0, 0), NULL);
+    ok(hr == S_OK, "Unexpected hr %#x.\n", hr);
+
+    IDWriteFontFace_Release(fontface);
 
     ref = IDWriteBitmapRenderTarget_Release(target);
     ok(ref == 0, "render target not released, %u\n", ref);
@@ -3946,7 +4006,7 @@ static void test_CreateStreamFromKey(void)
     writetime = 0;
     hr = IDWriteFontFileStream_GetLastWriteTime(stream, &writetime);
     ok(hr == S_OK, "got 0x%08x\n", hr);
-    ok(writetime != 0, "got %08x%08x\n", (UINT)(writetime >> 32), (UINT)writetime);
+    ok(writetime != 0, "got %s\n", wine_dbgstr_longlong(writetime));
 
     IDWriteFontFileStream_Release(stream);
     IDWriteFontFile_Release(file);
@@ -4624,6 +4684,8 @@ static void test_CreateGlyphRunAnalysis(void)
     };
 
     IDWriteGlyphRunAnalysis *analysis, *analysis2;
+    IDWriteRenderingParams *params;
+    IDWriteFactory2 *factory2;
     IDWriteFactory *factory;
     DWRITE_GLYPH_RUN run;
     IDWriteFontFace *face;
@@ -4920,6 +4982,56 @@ static void test_CreateGlyphRunAnalysis(void)
     IDWriteGlyphRunAnalysis_Release(analysis2);
 
     IDWriteGlyphRunAnalysis_Release(analysis);
+
+    if (IDWriteFactory_QueryInterface(factory, &IID_IDWriteFactory2, (void **)&factory2) == S_OK) {
+        FLOAT gamma, contrast, cleartype_level;
+
+        /* Invalid antialias mode. */
+        hr = IDWriteFactory2_CreateGlyphRunAnalysis(factory2, &run, NULL, DWRITE_RENDERING_MODE_ALIASED,
+                DWRITE_MEASURING_MODE_NATURAL, DWRITE_GRID_FIT_MODE_DEFAULT, DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE + 1,
+                0.0f, 0.0f, &analysis);
+        ok(hr == E_INVALIDARG, "Unexpected hr %#x.\n", hr);
+
+        /* Invalid grid fit mode. */
+        hr = IDWriteFactory2_CreateGlyphRunAnalysis(factory2, &run, NULL, DWRITE_RENDERING_MODE_ALIASED,
+                DWRITE_MEASURING_MODE_NATURAL, DWRITE_GRID_FIT_MODE_ENABLED + 1, DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+                0.0f, 0.0f, &analysis);
+        ok(hr == E_INVALIDARG, "Unexpected hr %#x.\n", hr);
+
+        /* Invalid rendering mode. */
+        hr = IDWriteFactory2_CreateGlyphRunAnalysis(factory2, &run, NULL, DWRITE_RENDERING_MODE_OUTLINE,
+                DWRITE_MEASURING_MODE_NATURAL, DWRITE_GRID_FIT_MODE_ENABLED, DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+                0.0f, 0.0f, &analysis);
+        ok(hr == E_INVALIDARG, "Unexpected hr %#x.\n", hr);
+
+        /* Invalid measuring mode. */
+        hr = IDWriteFactory2_CreateGlyphRunAnalysis(factory2, &run, NULL, DWRITE_RENDERING_MODE_ALIASED,
+                DWRITE_MEASURING_MODE_GDI_NATURAL + 1, DWRITE_GRID_FIT_MODE_ENABLED, DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+                0.0f, 0.0f, &analysis);
+        ok(hr == E_INVALIDARG, "Unexpected hr %#x.\n", hr);
+
+        /* Natural mode, grayscale antialiased. */
+        hr = IDWriteFactory2_CreateGlyphRunAnalysis(factory2, &run, NULL, DWRITE_RENDERING_MODE_NATURAL,
+                DWRITE_MEASURING_MODE_NATURAL, DWRITE_GRID_FIT_MODE_DEFAULT, DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+                0.0f,  0.0f, &analysis);
+        ok(hr == S_OK || broken(hr == E_INVALIDARG) /* Win8 */, "Failed to create glyph run analysis, hr %#x.\n", hr);
+
+        if (hr == S_OK) {
+            hr = IDWriteFactory_CreateCustomRenderingParams(factory, 0.1f, 0.0f, 1.0f, DWRITE_PIXEL_GEOMETRY_FLAT,
+                    DWRITE_RENDERING_MODE_NATURAL, &params);
+            ok(hr == S_OK, "Failed to create custom parameters, hr %#x.\n", hr);
+
+            hr = IDWriteGlyphRunAnalysis_GetAlphaBlendParams(analysis, params, &gamma, &contrast, &cleartype_level);
+            ok(hr == S_OK, "Failed to get alpha blend params, hr %#x.\n", hr);
+        todo_wine
+            ok(cleartype_level == 0.0f, "Unexpected cleartype level %f.\n", cleartype_level);
+
+            IDWriteRenderingParams_Release(params);
+            IDWriteGlyphRunAnalysis_Release(analysis);
+        }
+
+        IDWriteFactory2_Release(factory2);
+    }
 
     IDWriteFontFace_Release(face);
     ref = IDWriteFactory_Release(factory);
@@ -7633,6 +7745,70 @@ static void test_GetGlyphImageFormats(void)
     ok(ref == 0, "factory not released, %u\n", ref);
 }
 
+static void test_CreateCustomRenderingParams(void)
+{
+    static const struct custom_params_test
+    {
+        FLOAT gamma;
+        FLOAT contrast;
+        FLOAT cleartype_level;
+        DWRITE_PIXEL_GEOMETRY geometry;
+        DWRITE_RENDERING_MODE rendering_mode;
+        HRESULT hr;
+    } params_tests[] =
+    {
+        {  0.0f,  0.0f,  0.0f, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_NATURAL, E_INVALIDARG },
+        {  0.0f,  0.1f,  0.0f, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_NATURAL, E_INVALIDARG },
+        {  0.0f,  0.0f,  0.1f, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_NATURAL, E_INVALIDARG },
+        { -0.1f,  0.0f,  0.0f, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_NATURAL, E_INVALIDARG },
+        {  0.1f, -0.1f,  0.0f, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_NATURAL, E_INVALIDARG },
+        {  0.1f,  0.0f, -0.1f, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_NATURAL, E_INVALIDARG },
+        {  0.1f,  0.0f,  0.0f, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_NATURAL },
+        {  0.01f, 0.0f,  0.0f, DWRITE_PIXEL_GEOMETRY_FLAT, DWRITE_RENDERING_MODE_NATURAL },
+        {  0.1f,  0.0f,  0.0f, DWRITE_PIXEL_GEOMETRY_BGR + 1, DWRITE_RENDERING_MODE_NATURAL, E_INVALIDARG },
+        {  0.1f,  0.0f,  0.0f, DWRITE_PIXEL_GEOMETRY_BGR, DWRITE_RENDERING_MODE_OUTLINE + 1, E_INVALIDARG },
+        {  0.1f,  0.0f,  2.0f, DWRITE_PIXEL_GEOMETRY_BGR, DWRITE_RENDERING_MODE_NATURAL },
+    };
+    IDWriteFactory *factory;
+    unsigned int i;
+    HRESULT hr;
+    ULONG ref;
+
+    factory = create_factory();
+
+    for (i = 0; i < sizeof(params_tests)/sizeof(*params_tests); i++) {
+        IDWriteRenderingParams *params;
+
+        params = (void *)0xdeadbeef;
+        hr = IDWriteFactory_CreateCustomRenderingParams(factory, params_tests[i].gamma, params_tests[i].contrast,
+                params_tests[i].cleartype_level, params_tests[i].geometry, params_tests[i].rendering_mode, &params);
+        ok(hr == params_tests[i].hr, "%u: unexpected hr %#x, expected %#x.\n", i, hr, params_tests[i].hr);
+
+        if (hr == S_OK) {
+            ok(params_tests[i].gamma == IDWriteRenderingParams_GetGamma(params), "%u: unexpected gamma %f, expected %f.\n",
+                    i, IDWriteRenderingParams_GetGamma(params), params_tests[i].gamma);
+            ok(params_tests[i].contrast == IDWriteRenderingParams_GetEnhancedContrast(params),
+                    "%u: unexpected contrast %f, expected %f.\n",
+                    i, IDWriteRenderingParams_GetEnhancedContrast(params), params_tests[i].contrast);
+            ok(params_tests[i].cleartype_level == IDWriteRenderingParams_GetClearTypeLevel(params),
+                    "%u: unexpected ClearType level %f, expected %f.\n",
+                    i, IDWriteRenderingParams_GetClearTypeLevel(params), params_tests[i].cleartype_level);
+            ok(params_tests[i].geometry == IDWriteRenderingParams_GetPixelGeometry(params),
+                    "%u: unexpected pixel geometry %u, expected %u.\n", i, IDWriteRenderingParams_GetPixelGeometry(params),
+                    params_tests[i].geometry);
+            ok(params_tests[i].rendering_mode == IDWriteRenderingParams_GetRenderingMode(params),
+                    "%u: unexpected rendering mode %u, expected %u.\n", i, IDWriteRenderingParams_GetRenderingMode(params),
+                    params_tests[i].rendering_mode);
+            IDWriteRenderingParams_Release(params);
+        }
+        else
+            ok(params == NULL, "%u: expected NULL interface pointer on failure.\n", i);
+    }
+
+    ref = IDWriteFactory_Release(factory);
+    ok(ref == 0, "factory not released, %u\n", ref);
+}
+
 START_TEST(font)
 {
     IDWriteFactory *factory;
@@ -7696,6 +7872,7 @@ START_TEST(font)
     test_ComputeGlyphOrigins();
     test_inmemory_file_loader();
     test_GetGlyphImageFormats();
+    test_CreateCustomRenderingParams();
 
     IDWriteFactory_Release(factory);
 }

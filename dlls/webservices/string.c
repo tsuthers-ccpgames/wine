@@ -17,6 +17,7 @@
  */
 
 #include <stdarg.h>
+#include <assert.h>
 
 #include "windef.h"
 #include "winbase.h"
@@ -44,10 +45,9 @@ static CRITICAL_SECTION_DEBUG dict_cs_debug =
 };
 static CRITICAL_SECTION dict_cs = { &dict_cs_debug, -1, 0, 0, 0, 0 };
 
-static ULONG dict_size, *dict_sorted;
-WS_XML_DICTIONARY dict_builtin =
+struct dictionary dict_builtin =
 {
-    {0x82704485,0x222a,0x4f7c,{0xb9,0x7b,0xe9,0xa4,0x62,0xa9,0x66,0x2b}}
+    {{0x82704485,0x222a,0x4f7c,{0xb9,0x7b,0xe9,0xa4,0x62,0xa9,0x66,0x2b}}}
 };
 
 static inline int cmp_string( const unsigned char *str, ULONG len, const unsigned char *str2, ULONG len2 )
@@ -63,22 +63,21 @@ static inline int cmp_string( const unsigned char *str, ULONG len, const unsigne
 }
 
 /* return -1 and string id if found, sort index if not found */
-static int find_string( const unsigned char *data, ULONG len, ULONG *id )
+int find_string( const struct dictionary *dict, const unsigned char *data, ULONG len, ULONG *id )
 {
-    int i, c, min = 0, max = dict_builtin.stringCount - 1;
+    int i, c, min = 0, max = dict->dict.stringCount - 1;
+    const WS_XML_STRING *strings = dict->dict.strings;
     while (min <= max)
     {
         i = (min + max) / 2;
-        c = cmp_string( data, len,
-                        dict_builtin.strings[dict_sorted[i]].bytes,
-                        dict_builtin.strings[dict_sorted[i]].length );
+        c = cmp_string( data, len, strings[dict->sorted[i]].bytes, strings[dict->sorted[i]].length );
         if (c < 0)
             max = i - 1;
         else if (c > 0)
             min = i + 1;
         else
         {
-            *id = dict_builtin.strings[dict_sorted[i]].id;
+            if (id) *id = strings[dict->sorted[i]].id;
             return -1;
         }
     }
@@ -88,52 +87,78 @@ static int find_string( const unsigned char *data, ULONG len, ULONG *id )
 #define MIN_DICTIONARY_SIZE 256
 #define MAX_DICTIONARY_SIZE 2048
 
-static BOOL grow_dict( ULONG size )
+static BOOL grow_dict( struct dictionary *dict, ULONG size )
 {
     WS_XML_STRING *tmp;
     ULONG new_size, *tmp_sorted;
 
-    if (dict_size >= dict_builtin.stringCount + size) return TRUE;
-    if (dict_size + size > MAX_DICTIONARY_SIZE) return FALSE;
+    assert( !dict->dict.isConst );
+    if (dict->size >= dict->dict.stringCount + size) return TRUE;
+    if (dict->size + size > MAX_DICTIONARY_SIZE) return FALSE;
 
-    if (!dict_builtin.strings)
+    if (!dict->dict.strings)
     {
         new_size = max( MIN_DICTIONARY_SIZE, size );
-        if (!(dict_builtin.strings = heap_alloc( new_size * sizeof(WS_XML_STRING) ))) return FALSE;
-        if (!(dict_sorted = heap_alloc( new_size * sizeof(ULONG) )))
+        if (!(dict->dict.strings = heap_alloc( new_size * sizeof(*dict->dict.strings) ))) return FALSE;
+        if (!(dict->sorted = heap_alloc( new_size * sizeof(*dict->sorted) )))
         {
-            heap_free( dict_builtin.strings );
-            dict_builtin.strings = NULL;
+            heap_free( dict->dict.strings );
+            dict->dict.strings = NULL;
             return FALSE;
         }
-        dict_size = new_size;
+        dict->size = new_size;
         return TRUE;
     }
 
-    new_size = max( dict_size * 2, size );
-    if (!(tmp = heap_realloc( dict_builtin.strings, new_size * sizeof(*tmp) ))) return FALSE;
-    dict_builtin.strings = tmp;
-    if (!(tmp_sorted = heap_realloc( dict_sorted, new_size * sizeof(*tmp_sorted) ))) return FALSE;
-    dict_sorted = tmp_sorted;
+    new_size = max( dict->size * 2, size );
+    if (!(tmp = heap_realloc( dict->dict.strings, new_size * sizeof(*tmp) ))) return FALSE;
+    dict->dict.strings = tmp;
+    if (!(tmp_sorted = heap_realloc( dict->sorted, new_size * sizeof(*tmp_sorted) ))) return FALSE;
+    dict->sorted = tmp_sorted;
 
-    dict_size = new_size;
+    dict->size = new_size;
     return TRUE;
 }
 
-static BOOL insert_string( unsigned char *data, ULONG len, int i, ULONG *ret_id )
+void clear_dict( struct dictionary *dict )
 {
-    ULONG id = dict_builtin.stringCount;
-    if (!grow_dict( 1 )) return FALSE;
-    memmove( &dict_sorted[i] + 1, &dict_sorted[i], (dict_builtin.stringCount - i) * sizeof(WS_XML_STRING *) );
-    dict_sorted[i] = id;
+    ULONG i;
+    assert( !dict->dict.isConst );
+    for (i = 0; i < dict->dict.stringCount; i++) heap_free( dict->dict.strings[i].bytes );
+    heap_free( dict->dict.strings );
+    dict->dict.strings = NULL;
+    dict->dict.stringCount = 0;
+    heap_free( dict->sorted );
+    dict->sorted = NULL;
+    dict->size = 0;
+}
 
-    dict_builtin.strings[id].length     = len;
-    dict_builtin.strings[id].bytes      = data;
-    dict_builtin.strings[id].dictionary = &dict_builtin;
-    dict_builtin.strings[id].id         = id;
-    dict_builtin.stringCount++;
-    *ret_id = id;
+BOOL insert_string( struct dictionary *dict, unsigned char *data, ULONG len, int i, ULONG *ret_id )
+{
+    ULONG id = dict->dict.stringCount;
+    assert( !dict->dict.isConst );
+    if (!grow_dict( dict, 1 )) return FALSE;
+    memmove( &dict->sorted[i] + 1, &dict->sorted[i], (dict->dict.stringCount - i) * sizeof(*dict->sorted) );
+    dict->sorted[i] = id;
+
+    dict->dict.strings[id].length     = len;
+    dict->dict.strings[id].bytes      = data;
+    dict->dict.strings[id].dictionary = &dict->dict;
+    dict->dict.strings[id].id         = id;
+    dict->dict.stringCount++;
+    if (ret_id) *ret_id = id;
     return TRUE;
+}
+
+HRESULT CALLBACK insert_string_cb( void *state, const WS_XML_STRING *str, BOOL *found, ULONG *id, WS_ERROR *error )
+{
+    struct dictionary *dict = state;
+    int index = find_string( dict, str->bytes, str->length, id );
+
+    assert( !dict->dict.isConst );
+    if (index == -1 || insert_string( dict, str->bytes, str->length, index, id )) *found = TRUE;
+    else *found = FALSE;
+    return S_OK;
 }
 
 HRESULT add_xml_string( WS_XML_STRING *str )
@@ -142,18 +167,17 @@ HRESULT add_xml_string( WS_XML_STRING *str )
     ULONG id;
 
     if (str->dictionary) return S_OK;
-
     EnterCriticalSection( &dict_cs );
-    if ((index = find_string( str->bytes, str->length, &id )) == -1)
+    if ((index = find_string( &dict_builtin, str->bytes, str->length, &id )) == -1)
     {
         heap_free( str->bytes );
-        *str = dict_builtin.strings[id];
+        *str = dict_builtin.dict.strings[id];
         LeaveCriticalSection( &dict_cs );
         return S_OK;
     }
-    if (insert_string( str->bytes, str->length, index, &id ))
+    if (insert_string( &dict_builtin, str->bytes, str->length, index, &id ))
     {
-        *str = dict_builtin.strings[id];
+        *str = dict_builtin.dict.strings[id];
         LeaveCriticalSection( &dict_cs );
         return S_OK;
     }
@@ -199,11 +223,10 @@ WS_XML_STRING *dup_xml_string( const WS_XML_STRING *src )
         *ret = *src;
         return ret;
     }
-
     EnterCriticalSection( &dict_cs );
-    if ((index = find_string( src->bytes, src->length, &id )) == -1)
+    if ((index = find_string( &dict_builtin, src->bytes, src->length, &id )) == -1)
     {
-        *ret = dict_builtin.strings[id];
+        *ret = dict_builtin.dict.strings[id];
         LeaveCriticalSection( &dict_cs );
         return ret;
     }
@@ -214,9 +237,9 @@ WS_XML_STRING *dup_xml_string( const WS_XML_STRING *src )
         return NULL;
     }
     memcpy( data, src->bytes, src->length );
-    if (insert_string( data, src->length, index, &id ))
+    if (insert_string( &dict_builtin, data, src->length, index, &id ))
     {
-        *ret = dict_builtin.strings[id];
+        *ret = dict_builtin.dict.strings[id];
         LeaveCriticalSection( &dict_cs );
         return ret;
     }
@@ -230,10 +253,10 @@ WS_XML_STRING *dup_xml_string( const WS_XML_STRING *src )
     return ret;
 }
 
-const WS_XML_DICTIONARY dict_builtin_static;
+const struct dictionary dict_builtin_static;
 static const WS_XML_STRING dict_strings[] =
 {
-#define X(str, id) { sizeof(str) - 1, (BYTE *)(str), (WS_XML_DICTIONARY *)&dict_builtin_static, id },
+#define X(str, id) { sizeof(str) - 1, (BYTE *)(str), (WS_XML_DICTIONARY *)&dict_builtin_static.dict, id },
     X("mustUnderstand", 0)
     X("Envelope", 1)
     X("http://www.w3.org/2003/05/soap-envelope", 2)
@@ -725,12 +748,40 @@ static const WS_XML_STRING dict_strings[] =
 #undef X
 };
 
-const WS_XML_DICTIONARY dict_builtin_static =
+static const ULONG dict_sorted[] =
 {
-    {0xf93578f8,0x5852,0x4eb7,{0xa6,0xfc,0xe7,0x2b,0xb7,0x1d,0xb6,0x22}},
-    (WS_XML_STRING *)dict_strings,
-    sizeof(dict_strings) / sizeof(dict_strings[0]),
-    TRUE
+    81, 91, 129, 314, 185, 164, 346, 66, 235, 305, 14, 6, 114, 97, 96, 94, 11, 95, 110, 451,
+    443, 121, 213, 7, 71, 82, 431, 343, 74, 75, 73, 59, 447, 445, 467, 163, 472, 463, 453, 409,
+    69, 286, 466, 444, 383, 67, 117, 26, 40, 345, 465, 90, 25, 77, 482, 455, 470, 344, 353, 80,
+    70, 449, 299, 331, 251, 330, 5, 253, 224, 390, 120, 76, 281, 4, 276, 56, 118, 436, 72, 394,
+    232, 464, 486, 456, 473, 459, 357, 393, 21, 269, 209, 54, 204, 55, 83, 35, 317, 196, 221, 321,
+    433, 387, 22, 78, 288, 419, 461, 446, 457, 474, 261, 272, 424, 308, 1, 274, 322, 93, 319, 202,
+    277, 416, 104, 318, 309, 165, 87, 85, 388, 389, 364, 300, 391, 52, 31, 227, 301, 167, 323, 458,
+    462, 411, 194, 8, 198, 179, 256, 392, 270, 418, 303, 337, 296, 13, 283, 284, 311, 12, 9, 41,
+    287, 53, 187, 18, 58, 483, 471, 468, 425, 49, 271, 295, 410, 116, 15, 379, 112, 119, 109, 42,
+    17, 485, 469, 254, 50, 206, 415, 20, 228, 339, 430, 435, 320, 127, 242, 208, 86, 484, 452, 420,
+    328, 210, 243, 200, 19, 170, 312, 429, 376, 275, 247, 313, 278, 279, 285, 166, 417, 460, 448, 454,
+    257, 199, 267, 46, 47, 421, 171, 32, 282, 79, 57, 226, 347, 168, 450, 252, 260, 201, 310, 380,
+    332, 361, 225, 414, 413, 68, 280, 438, 45, 325, 0, 128, 27, 306, 39, 60, 377, 184, 44, 294,
+    351, 327, 476, 475, 266, 362, 48, 354, 355, 365, 89, 297, 324, 326, 479, 381, 84, 378, 349, 98,
+    258, 259, 291, 412, 366, 348, 423, 478, 477, 169, 360, 406, 273, 229, 113, 407, 100, 88, 363, 205,
+    289, 24, 255, 264, 231, 182, 183, 101, 207, 115, 263, 334, 342, 186, 43, 480, 335, 338, 203, 30,
+    265, 244, 197, 23, 290, 230, 358, 408, 341, 367, 368, 245, 262, 195, 246, 374, 404, 405, 422, 268,
+    375, 442, 359, 37, 33, 3, 180, 487, 62, 155, 156, 157, 111, 2, 122, 16, 38, 316, 315, 144,
+    154, 481, 441, 103, 28, 382, 145, 152, 139, 141, 143, 150, 99, 102, 298, 214, 130, 63, 147, 138,
+    140, 142, 428, 356, 131, 292, 434, 159, 293, 307, 158, 10, 437, 151, 352, 162, 105, 403, 395, 402,
+    238, 241, 248, 153, 108, 398, 399, 373, 149, 249, 211, 148, 400, 401, 396, 132, 212, 146, 65, 123,
+    397, 340, 240, 133, 440, 124, 223, 384, 385, 371, 329, 250, 236, 34, 432, 107, 386, 237, 304, 234,
+    439, 333, 161, 222, 64, 239, 92, 233, 160, 134, 217, 220, 350, 136, 135, 137, 125, 426, 218, 126,
+    372, 215, 216, 106, 336, 29, 219, 61, 302, 193, 369, 191, 192, 181, 370, 178, 189, 36, 188, 51,
+    190, 174, 427, 176, 173, 177, 172, 175,
+};
+
+const struct dictionary dict_builtin_static =
+{
+    {{0xf93578f8,0x5852,0x4eb7,{0xa6,0xfc,0xe7,0x2b,0xb7,0x1d,0xb6,0x22}},
+     (WS_XML_STRING *)dict_strings, sizeof(dict_strings)/sizeof(dict_strings[0]), TRUE},
+    (ULONG *)dict_sorted
 };
 
 /**************************************************************************

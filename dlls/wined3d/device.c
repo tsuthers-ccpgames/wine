@@ -1164,6 +1164,15 @@ HRESULT CDECL wined3d_device_init_gdi(struct wined3d_device *device,
         goto err_out;
     }
     device->swapchains[0] = swapchain;
+
+    if (!(device->blitter = wined3d_cpu_blitter_create()))
+    {
+        ERR("Failed to create CPU blitter.\n");
+        HeapFree(GetProcessHeap(), 0, device->swapchains);
+        device->swapchain_count = 0;
+        goto err_out;
+    }
+
     return WINED3D_OK;
 
 err_out:
@@ -1251,6 +1260,8 @@ HRESULT CDECL wined3d_device_uninit_3d(struct wined3d_device *device)
 HRESULT CDECL wined3d_device_uninit_gdi(struct wined3d_device *device)
 {
     unsigned int i;
+
+    device->blitter->ops->blitter_destroy(device->blitter, NULL);
 
     for (i = 0; i < device->swapchain_count; ++i)
     {
@@ -2939,7 +2950,8 @@ struct wined3d_sampler * CDECL wined3d_device_get_cs_sampler(const struct wined3
 }
 
 static void wined3d_device_set_pipeline_unordered_access_view(struct wined3d_device *device,
-        enum wined3d_pipeline pipeline, unsigned int idx, struct wined3d_unordered_access_view *uav)
+        enum wined3d_pipeline pipeline, unsigned int idx, struct wined3d_unordered_access_view *uav,
+        unsigned int initial_count)
 {
     struct wined3d_unordered_access_view *prev;
 
@@ -2950,14 +2962,14 @@ static void wined3d_device_set_pipeline_unordered_access_view(struct wined3d_dev
     }
 
     prev = device->update_state->unordered_access_view[pipeline][idx];
-    if (uav == prev)
+    if (uav == prev && initial_count == ~0u)
         return;
 
     if (uav)
         wined3d_unordered_access_view_incref(uav);
     device->update_state->unordered_access_view[pipeline][idx] = uav;
     if (!device->recording)
-        wined3d_cs_emit_set_unordered_access_view(device->cs, pipeline, idx, uav);
+        wined3d_cs_emit_set_unordered_access_view(device->cs, pipeline, idx, uav, initial_count);
     if (prev)
         wined3d_unordered_access_view_decref(prev);
 }
@@ -2975,11 +2987,11 @@ static struct wined3d_unordered_access_view *wined3d_device_get_pipeline_unorder
 }
 
 void CDECL wined3d_device_set_cs_uav(struct wined3d_device *device, unsigned int idx,
-        struct wined3d_unordered_access_view *uav)
+        struct wined3d_unordered_access_view *uav, unsigned int initial_count)
 {
-    TRACE("device %p, idx %u, uav %p.\n", device, idx, uav);
+    TRACE("device %p, idx %u, uav %p, initial_count %#x.\n", device, idx, uav, initial_count);
 
-    wined3d_device_set_pipeline_unordered_access_view(device, WINED3D_PIPELINE_COMPUTE, idx, uav);
+    wined3d_device_set_pipeline_unordered_access_view(device, WINED3D_PIPELINE_COMPUTE, idx, uav, initial_count);
 }
 
 struct wined3d_unordered_access_view * CDECL wined3d_device_get_cs_uav(const struct wined3d_device *device,
@@ -2991,11 +3003,11 @@ struct wined3d_unordered_access_view * CDECL wined3d_device_get_cs_uav(const str
 }
 
 void CDECL wined3d_device_set_unordered_access_view(struct wined3d_device *device,
-        unsigned int idx, struct wined3d_unordered_access_view *uav)
+        unsigned int idx, struct wined3d_unordered_access_view *uav, unsigned int initial_count)
 {
-    TRACE("device %p, idx %u, uav %p.\n", device, idx, uav);
+    TRACE("device %p, idx %u, uav %p, initial_count %#x.\n", device, idx, uav, initial_count);
 
-    wined3d_device_set_pipeline_unordered_access_view(device, WINED3D_PIPELINE_GRAPHICS, idx, uav);
+    wined3d_device_set_pipeline_unordered_access_view(device, WINED3D_PIPELINE_GRAPHICS, idx, uav, initial_count);
 }
 
 struct wined3d_unordered_access_view * CDECL wined3d_device_get_unordered_access_view(
@@ -3946,6 +3958,15 @@ float CDECL wined3d_device_get_npatch_mode(const struct wined3d_device *device)
     }
 
     return 0.0f;
+}
+
+void CDECL wined3d_device_copy_uav_counter(struct wined3d_device *device,
+        struct wined3d_buffer *dst_buffer, unsigned int offset, struct wined3d_unordered_access_view *uav)
+{
+    TRACE("device %p, dst_buffer %p, offset %u, uav %p.\n",
+            device, dst_buffer, offset, uav);
+
+    wined3d_cs_emit_copy_uav_counter(device->cs, dst_buffer, offset, uav);
 }
 
 void CDECL wined3d_device_copy_resource(struct wined3d_device *device,

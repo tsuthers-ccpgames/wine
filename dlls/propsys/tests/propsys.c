@@ -735,10 +735,10 @@ static void test_PropVariantCompare(void)
     ok(res == 0, "res=%i\n", res);
 
     res = PropVariantCompareEx(&i2_2, &str_2, 0, 0);
-    todo_wine ok(res == 0, "res=%i\n", res);
+    ok(res == 0, "res=%i\n", res);
 
     res = PropVariantCompareEx(&i2_2, &str_02, 0, 0);
-    todo_wine ok(res == 0, "res=%i\n", res);
+    ok(res == 0, "res=%i\n", res);
 
     res = PropVariantCompareEx(&str_2, &i2_2, 0, 0);
     todo_wine ok(res == 0, "res=%i\n", res);
@@ -761,16 +761,6 @@ static void test_PropVariantCompare(void)
     SysFreeString(str_2.u.bstrVal);
     SysFreeString(str_02.u.bstrVal);
     SysFreeString(str_b.u.bstrVal);
-}
-
-static inline const char* debugstr_longlong(ULONGLONG ll)
-{
-    static char string[17];
-    if (sizeof(ll) > sizeof(unsigned long) && ll >> 32)
-        sprintf(string, "%lx%08lx", (unsigned long)(ll >> 32), (unsigned long)ll);
-    else
-        sprintf(string, "%lx", (unsigned long)ll);
-    return string;
 }
 
 static void test_intconversions(void)
@@ -796,7 +786,7 @@ static void test_intconversions(void)
 
     hr = PropVariantToInt64(&propvar, &llval);
     ok(hr == S_OK, "hr=%x\n", hr);
-    ok(llval == (ULONGLONG)1 << 63, "got wrong value %s\n", debugstr_longlong(llval));
+    ok(llval == (ULONGLONG)1 << 63, "got wrong value %s\n", wine_dbgstr_longlong(llval));
 
     hr = PropVariantToUInt64(&propvar, &ullval);
     ok(hr == HRESULT_FROM_WIN32(ERROR_ARITHMETIC_OVERFLOW), "hr=%x\n", hr);
@@ -818,11 +808,11 @@ static void test_intconversions(void)
 
     hr = PropVariantToInt64(&propvar, &llval);
     ok(hr == S_OK, "hr=%x\n", hr);
-    ok(llval == 5, "got wrong value %s\n", debugstr_longlong(llval));
+    ok(llval == 5, "got wrong value %s\n", wine_dbgstr_longlong(llval));
 
     hr = PropVariantToUInt64(&propvar, &ullval);
     ok(hr == S_OK, "hr=%x\n", hr);
-    ok(ullval == 5, "got wrong value %s\n", debugstr_longlong(ullval));
+    ok(ullval == 5, "got wrong value %s\n", wine_dbgstr_longlong(ullval));
 
     hr = PropVariantToInt32(&propvar, &lval);
     ok(hr == S_OK, "hr=%x\n", hr);
@@ -845,7 +835,7 @@ static void test_intconversions(void)
 
     hr = PropVariantToInt64(&propvar, &llval);
     ok(hr == S_OK, "hr=%x\n", hr);
-    ok(llval == -5, "got wrong value %s\n", debugstr_longlong(llval));
+    ok(llval == -5, "got wrong value %s\n", wine_dbgstr_longlong(llval));
 
     hr = PropVariantToUInt64(&propvar, &ullval);
     ok(hr == HRESULT_FROM_WIN32(ERROR_ARITHMETIC_OVERFLOW), "hr=%x\n", hr);
@@ -869,28 +859,28 @@ static void test_intconversions(void)
 
     hr = PropVariantToInt64(&propvar, &llval);
     ok(hr == S_OK, "hr=%x\n", hr);
-    ok(llval == 6, "got wrong value %s\n", debugstr_longlong(llval));
+    ok(llval == 6, "got wrong value %s\n", wine_dbgstr_longlong(llval));
 
     propvar.vt = VT_I4;
     propvar.u.lVal = -6;
 
     hr = PropVariantToInt64(&propvar, &llval);
     ok(hr == S_OK, "hr=%x\n", hr);
-    ok(llval == -6, "got wrong value %s\n", debugstr_longlong(llval));
+    ok(llval == -6, "got wrong value %s\n", wine_dbgstr_longlong(llval));
 
     propvar.vt = VT_UI2;
     propvar.u.uiVal = 7;
 
     hr = PropVariantToInt64(&propvar, &llval);
     ok(hr == S_OK, "hr=%x\n", hr);
-    ok(llval == 7, "got wrong value %s\n", debugstr_longlong(llval));
+    ok(llval == 7, "got wrong value %s\n", wine_dbgstr_longlong(llval));
 
     propvar.vt = VT_I2;
     propvar.u.iVal = -7;
 
     hr = PropVariantToInt64(&propvar, &llval);
     ok(hr == S_OK, "hr=%x\n", hr);
-    ok(llval == -7, "got wrong value %s\n", debugstr_longlong(llval));
+    ok(llval == -7, "got wrong value %s\n", wine_dbgstr_longlong(llval));
 }
 
 static void test_PropVariantChangeType_LPWSTR(void)

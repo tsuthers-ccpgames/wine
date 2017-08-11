@@ -22,6 +22,8 @@
 
 #define COBJMACROS
 
+#include "winsock2.h"
+#include "ws2tcpip.h"
 #include "windef.h"
 #include "winbase.h"
 #include "wine/debug.h"
@@ -32,6 +34,11 @@ WINE_DEFAULT_DEBUG_CHANNEL(wsdapi);
 typedef struct IWSDUdpAddressImpl {
     IWSDUdpAddress IWSDUdpAddress_iface;
     LONG           ref;
+    SOCKADDR_STORAGE sockAddr;
+    WCHAR            ipv4Address[25];
+    WCHAR            ipv6Address[64];
+    WORD             port;
+    WSDUdpMessageType messageType;
 } IWSDUdpAddressImpl;
 
 static inline IWSDUdpAddressImpl *impl_from_IWSDUdpAddress(IWSDUdpAddress *iface)
@@ -108,44 +115,148 @@ static HRESULT WINAPI IWSDUdpAddressImpl_Deserialize(IWSDUdpAddress *This, LPCWS
 
 static HRESULT WINAPI IWSDUdpAddressImpl_GetPort(IWSDUdpAddress *This, WORD *pwPort)
 {
-    FIXME("(%p, %p)\n", This, pwPort);
-    return E_NOTIMPL;
+    IWSDUdpAddressImpl *impl = impl_from_IWSDUdpAddress(This);
+
+    TRACE("(%p, %p)\n", This, pwPort);
+
+    if (pwPort == NULL)
+    {
+        return E_POINTER;
+    }
+
+    *pwPort = impl->port;
+    return S_OK;
 }
 
 static HRESULT WINAPI IWSDUdpAddressImpl_SetPort(IWSDUdpAddress *This, WORD wPort)
 {
-    FIXME("(%p, %d)\n", This, wPort);
-    return E_NOTIMPL;
-}
+    IWSDUdpAddressImpl *impl = impl_from_IWSDUdpAddress(This);
 
-static HRESULT WINAPI IWSDUdpAddressImpl_GetTransportAddress(IWSDUdpAddress *This, LPCWSTR *ppszAddress)
-{
-    FIXME("(%p, %p)\n", This, ppszAddress);
-    return E_NOTIMPL;
+    TRACE("(%p, %d)\n", This, wPort);
+
+    impl->port = wPort;
+    return S_OK;
 }
 
 static HRESULT WINAPI IWSDUdpAddressImpl_GetTransportAddressEx(IWSDUdpAddress *This, BOOL fSafe, LPCWSTR *ppszAddress)
 {
-    FIXME("(%p, %d, %p)\n", This, fSafe, ppszAddress);
-    return E_NOTIMPL;
+    IWSDUdpAddressImpl *impl = impl_from_IWSDUdpAddress(This);
+    SOCKADDR_STORAGE storage;
+    DWORD size;
+
+    TRACE("(%p, %d, %p)\n", This, fSafe, ppszAddress);
+
+    if (ppszAddress == NULL)
+        return E_POINTER;
+
+    *ppszAddress = NULL;
+
+    switch (((SOCKADDR_IN *) &impl->sockAddr)->sin_family)
+    {
+        case AF_INET:
+            size = sizeof(impl->ipv4Address) / sizeof(WCHAR);
+
+            if (WSAAddressToStringW((LPSOCKADDR) &impl->sockAddr, sizeof(SOCKADDR_IN), NULL, impl->ipv4Address, &size) == 0)
+            {
+                *ppszAddress = impl->ipv4Address;
+                return S_OK;
+            }
+
+            break;
+
+        case AF_INET6:
+            size = sizeof(impl->ipv6Address) / sizeof(WCHAR);
+
+            /* Copy the SOCKADDR structure so we can remove the scope ID if not required */
+            memcpy(&storage, &impl->sockAddr, sizeof(SOCKADDR_IN6));
+
+            if (!fSafe)
+                ((SOCKADDR_IN6 *) &storage)->sin6_scope_id = 0;
+
+            if (WSAAddressToStringW((LPSOCKADDR) &storage, sizeof(SOCKADDR_IN6), NULL, impl->ipv6Address, &size) == 0)
+            {
+                *ppszAddress = impl->ipv6Address;
+                return S_OK;
+            }
+
+            break;
+
+        default:
+            return S_OK;
+    }
+
+    return HRESULT_FROM_WIN32(WSAGetLastError());
+}
+
+static HRESULT WINAPI IWSDUdpAddressImpl_GetTransportAddress(IWSDUdpAddress *This, LPCWSTR *ppszAddress)
+{
+    return IWSDUdpAddressImpl_GetTransportAddressEx(This, FALSE, ppszAddress);
 }
 
 static HRESULT WINAPI IWSDUdpAddressImpl_SetTransportAddress(IWSDUdpAddress *This, LPCWSTR pszAddress)
 {
-    FIXME("(%p, %s)\n", This, debugstr_w(pszAddress));
-    return E_NOTIMPL;
+    IWSDUdpAddressImpl *impl = impl_from_IWSDUdpAddress(This);
+    ADDRINFOW *addrInfo = NULL;
+    ADDRINFOW hints;
+    int ret;
+
+    TRACE("(%p, %s)\n", impl, debugstr_w(pszAddress));
+
+    if (pszAddress == NULL)
+        return E_INVALIDARG;
+
+    ZeroMemory(&hints, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+
+    ret = GetAddrInfoW(pszAddress, NULL, &hints, &addrInfo);
+
+    if (ret == 0)
+    {
+        ZeroMemory(&impl->sockAddr, sizeof(SOCKADDR_STORAGE));
+        memcpy(&impl->sockAddr, addrInfo->ai_addr, addrInfo->ai_addrlen);
+    }
+
+    if (addrInfo != NULL)
+        FreeAddrInfoW(addrInfo);
+
+    return HRESULT_FROM_WIN32(ret);
 }
 
 static HRESULT WINAPI IWSDUdpAddressImpl_SetSockaddr(IWSDUdpAddress *This, const SOCKADDR_STORAGE *pSockAddr)
 {
-    FIXME("(%p, %p)\n", This, pSockAddr);
-    return E_NOTIMPL;
+    IWSDUdpAddressImpl *impl = impl_from_IWSDUdpAddress(This);
+
+    TRACE("(%p, %p)\n", This, pSockAddr);
+
+    if (pSockAddr == NULL)
+    {
+        return E_POINTER;
+    }
+
+    memcpy(&impl->sockAddr, pSockAddr, sizeof(SOCKADDR_STORAGE));
+    return S_OK;
 }
 
 static HRESULT WINAPI IWSDUdpAddressImpl_GetSockaddr(IWSDUdpAddress *This, SOCKADDR_STORAGE *pSockAddr)
 {
-    FIXME("(%p, %p)\n", This, pSockAddr);
-    return E_NOTIMPL;
+    IWSDUdpAddressImpl *impl = impl_from_IWSDUdpAddress(This);
+    SOCKADDR_IN *sockAddr = (SOCKADDR_IN *) &impl->sockAddr;
+
+    TRACE("(%p, %p)\n", This, pSockAddr);
+
+    if (pSockAddr == NULL)
+    {
+        return E_POINTER;
+    }
+
+    /* Ensure the sockaddr is initialised correctly */
+    if ((sockAddr->sin_family != AF_INET) && (sockAddr->sin_family != AF_INET6))
+    {
+        return E_FAIL;
+    }
+
+    memcpy(pSockAddr, &impl->sockAddr, sizeof(SOCKADDR_STORAGE));
+    return S_OK;
 }
 
 static HRESULT WINAPI IWSDUdpAddressImpl_SetExclusive(IWSDUdpAddress *This, BOOL fExclusive)
@@ -162,14 +273,27 @@ static HRESULT WINAPI IWSDUdpAddressImpl_GetExclusive(IWSDUdpAddress *This)
 
 static HRESULT WINAPI IWSDUdpAddressImpl_SetMessageType(IWSDUdpAddress *This, WSDUdpMessageType messageType)
 {
-    FIXME("(%p, %d)\n", This, messageType);
-    return E_NOTIMPL;
+    IWSDUdpAddressImpl *impl = impl_from_IWSDUdpAddress(This);
+
+    TRACE("(%p, %d)\n", This, messageType);
+
+    impl->messageType = messageType;
+    return S_OK;
 }
 
 static HRESULT WINAPI IWSDUdpAddressImpl_GetMessageType(IWSDUdpAddress *This, WSDUdpMessageType *pMessageType)
 {
-    FIXME("(%p, %p)\n", This, pMessageType);
-    return E_NOTIMPL;
+    IWSDUdpAddressImpl *impl = impl_from_IWSDUdpAddress(This);
+
+    TRACE("(%p, %p)\n", This, pMessageType);
+
+    if (pMessageType == NULL)
+    {
+        return E_POINTER;
+    }
+
+    *pMessageType = impl->messageType;
+    return S_OK;
 }
 
 static HRESULT WINAPI IWSDUdpAddressImpl_SetTTL(IWSDUdpAddress *This, DWORD dwTTL)

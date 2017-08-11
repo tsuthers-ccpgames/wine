@@ -127,6 +127,7 @@ typedef struct EventTarget EventTarget;
     XDIID(HTMLElementEvents2) \
     XIID(IDocumentSelector) \
     XIID(IElementSelector) \
+    XIID(IElementTraversal) \
     XIID(IHTMLAnchorElement) \
     XIID(IHTMLAreaElement) \
     XIID(IHTMLAttributeCollection) \
@@ -151,6 +152,7 @@ typedef struct EventTarget EventTarget;
     XIID(IHTMLDOMImplementation) \
     XIID(IHTMLDOMNode) \
     XIID(IHTMLDOMNode2) \
+    XIID(IHTMLDOMNode3) \
     XIID(IHTMLDOMTextNode) \
     XIID(IHTMLDOMTextNode2) \
     XIID(IHTMLElement) \
@@ -725,6 +727,7 @@ struct HTMLDOMNode {
     EventTarget   event_target;
     IHTMLDOMNode  IHTMLDOMNode_iface;
     IHTMLDOMNode2 IHTMLDOMNode2_iface;
+    IHTMLDOMNode3 IHTMLDOMNode3_iface;
     const NodeImplVtbl *vtbl;
 
     nsCycleCollectingAutoRefCnt ccref;
@@ -755,6 +758,7 @@ typedef struct {
     IHTMLElement6 IHTMLElement6_iface;
     IHTMLUniqueName IHTMLUniqueName_iface;
     IElementSelector IElementSelector_iface;
+    IElementTraversal IElementTraversal_iface;
     IProvideMultipleClassInfo IProvideMultipleClassInfo_iface;
 
     nsIDOMHTMLElement *nselem;
@@ -924,12 +928,7 @@ UINT32 nsAString_GetData(const nsAString*,const PRUnichar**) DECLSPEC_HIDDEN;
 void nsAString_Finish(nsAString*) DECLSPEC_HIDDEN;
 
 HRESULT return_nsstr(nsresult,nsAString*,BSTR*) DECLSPEC_HIDDEN;
-
-static inline HRESULT return_nsstr_variant(nsresult nsres, nsAString *nsstr, VARIANT *p)
-{
-    V_VT(p) = VT_BSTR;
-    return return_nsstr(nsres, nsstr, &V_BSTR(p));
-}
+HRESULT return_nsstr_variant(nsresult nsres, nsAString *nsstr, VARIANT *p) DECLSPEC_HIDDEN;
 
 nsICommandParams *create_nscommand_params(void) DECLSPEC_HIDDEN;
 HRESULT nsnode_to_nsstring(nsIDOMNode*,nsAString*) DECLSPEC_HIDDEN;
@@ -1038,6 +1037,7 @@ void HTMLFrameBase_Init(HTMLFrameBase*,HTMLDocumentNode*,nsIDOMHTMLElement*,disp
 
 HRESULT HTMLDOMNode_QI(HTMLDOMNode*,REFIID,void**) DECLSPEC_HIDDEN;
 void HTMLDOMNode_destructor(HTMLDOMNode*) DECLSPEC_HIDDEN;
+void HTMLDOMNode_init_dispex_info(dispex_data_t*,compat_mode_t) DECLSPEC_HIDDEN;
 
 HRESULT HTMLElement_QI(HTMLDOMNode*,REFIID,void**) DECLSPEC_HIDDEN;
 void HTMLElement_destructor(HTMLDOMNode*) DECLSPEC_HIDDEN;

@@ -57,6 +57,7 @@ struct thread
     struct debug_ctx      *debug_ctx;     /* debugger context if this thread is a debugger */
     struct debug_event    *debug_event;   /* debug event being sent to debugger */
     int                    debug_break;   /* debug breakpoint pending? */
+    unsigned int           system_regs;   /* which system regs have been set */
     struct msg_queue      *queue;         /* message queue */
     struct thread_wait    *wait;          /* current wait condition if sleeping */
     struct list            system_apc;    /* queue of system async procedure calls */
@@ -131,6 +132,7 @@ extern int is_cpu_supported( enum cpu_type cpu );
 /* ptrace functions */
 
 extern void sigchld_callback(void);
+extern void init_thread_context( struct thread *thread );
 extern void get_thread_context( struct thread *thread, context_t *context, unsigned int flags );
 extern void set_thread_context( struct thread *thread, const context_t *context, unsigned int flags );
 extern int send_thread_signal( struct thread *thread, int sig );

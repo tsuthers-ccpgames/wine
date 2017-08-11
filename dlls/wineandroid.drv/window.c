@@ -113,7 +113,7 @@ static struct android_win_data *alloc_win_data( HWND hwnd )
     if ((data = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*data))))
     {
         data->hwnd = hwnd;
-        data->window = create_ioctl_window( hwnd );
+        data->window = create_ioctl_window( hwnd, FALSE );
         EnterCriticalSection( &win_data_section );
         win_data_context[context_idx(hwnd)] = data;
     }
@@ -245,12 +245,13 @@ void config_changed( JNIEnv *env, jobject obj, jint dpi )
  *
  * JNI callback, runs in the context of the Java thread.
  */
-void surface_changed( JNIEnv *env, jobject obj, jint win, jobject surface )
+void surface_changed( JNIEnv *env, jobject obj, jint win, jobject surface, jboolean client )
 {
     union event_data data;
 
     memset( &data, 0, sizeof(data) );
     data.surface.hwnd = LongToHandle( win );
+    data.surface.client = client;
     if (surface)
     {
         int width, height;
@@ -261,8 +262,8 @@ void surface_changed( JNIEnv *env, jobject obj, jint win, jobject surface )
         data.surface.window = win;
         data.surface.width = width;
         data.surface.height = height;
-        p__android_log_print( ANDROID_LOG_INFO, "wine", "surface_changed: %p %ux%u",
-                              data.surface.hwnd, width, height );
+        p__android_log_print( ANDROID_LOG_INFO, "wine", "surface_changed: %p %s %ux%u",
+                              data.surface.hwnd, client ? "client" : "whole", width, height );
     }
     data.type = SURFACE_CHANGED;
     send_event( &data );
@@ -451,10 +452,11 @@ static int process_events( DWORD mask )
             break;
 
         case SURFACE_CHANGED:
-            TRACE("SURFACE_CHANGED %p %p size %ux%u\n", event->data.surface.hwnd,
-                  event->data.surface.window, event->data.surface.width, event->data.surface.height );
+            TRACE("SURFACE_CHANGED %p %p %s size %ux%u\n", event->data.surface.hwnd,
+                  event->data.surface.window, event->data.surface.client ? "client" : "whole",
+                  event->data.surface.width, event->data.surface.height );
 
-            register_native_window( event->data.surface.hwnd, event->data.surface.window );
+            register_native_window( event->data.surface.hwnd, event->data.surface.window, event->data.surface.client );
             break;
 
         case MOTION_EVENT:
@@ -945,7 +947,7 @@ static LRESULT CALLBACK desktop_wndproc_wrapper( HWND hwnd, UINT msg, WPARAM wp,
     switch (msg)
     {
     case WM_PARENTNOTIFY:
-        if (LOWORD(wp) == WM_DESTROY) destroy_ioctl_window( (HWND)lp );
+        if (LOWORD(wp) == WM_DESTROY) destroy_ioctl_window( (HWND)lp, FALSE );
         break;
     }
     return desktop_orig_wndproc( hwnd, msg, wp, lp );
@@ -999,6 +1001,7 @@ void CDECL ANDROID_DestroyWindow( HWND hwnd )
 
     if (data->surface) window_surface_release( data->surface );
     data->surface = NULL;
+    destroy_gl_drawable( hwnd );
     free_win_data( data );
 }
 
@@ -1016,34 +1019,11 @@ static struct android_win_data *create_win_data( HWND hwnd, const RECT *window_r
 
     if (!(parent = GetAncestor( hwnd, GA_PARENT ))) return NULL;  /* desktop or HWND_MESSAGE */
 
-    if (parent != GetDesktopWindow())
-    {
-        if (!(data = get_win_data( parent )) &&
-            !(data = create_win_data( parent, NULL, NULL )))
-            return NULL;
-        release_win_data( data );
-    }
-
     if (!(data = alloc_win_data( hwnd ))) return NULL;
 
     data->parent = (parent == GetDesktopWindow()) ? 0 : parent;
-
-    if (window_rect)
-    {
-        data->whole_rect = data->window_rect = *window_rect;
-        data->client_rect = *client_rect;
-    }
-    else
-    {
-        GetWindowRect( hwnd, &data->window_rect );
-        MapWindowPoints( 0, parent, (POINT *)&data->window_rect, 2 );
-        data->whole_rect = data->window_rect;
-        GetClientRect( hwnd, &data->client_rect );
-        MapWindowPoints( hwnd, parent, (POINT *)&data->client_rect, 2 );
-        ioctl_window_pos_changed( hwnd, &data->window_rect, &data->client_rect, &data->whole_rect,
-                                  GetWindowLongW( hwnd, GWL_STYLE ), SWP_NOACTIVATE,
-                                  GetWindow( hwnd, GW_HWNDPREV ), GetWindow( hwnd, GW_OWNER ));
-    }
+    data->whole_rect = data->window_rect = *window_rect;
+    data->client_rect = *client_rect;
     return data;
 }
 
@@ -1143,8 +1123,11 @@ void CDECL ANDROID_WindowPosChanged( HWND hwnd, HWND insert_after, UINT swp_flag
     if (!data->parent) owner = GetWindow( hwnd, GW_OWNER );
     release_win_data( data );
 
-    TRACE( "win %p window %s client %s style %08x owner %p flags %08x\n", hwnd,
-           wine_dbgstr_rect(window_rect), wine_dbgstr_rect(client_rect), new_style, owner, swp_flags );
+    if (!(swp_flags & SWP_NOZORDER)) insert_after = GetWindow( hwnd, GW_HWNDPREV );
+
+    TRACE( "win %p window %s client %s style %08x owner %p after %p flags %08x\n", hwnd,
+           wine_dbgstr_rect(window_rect), wine_dbgstr_rect(client_rect),
+           new_style, owner, insert_after, swp_flags );
 
     ioctl_window_pos_changed( hwnd, window_rect, client_rect, visible_rect,
                               new_style, swp_flags, insert_after, owner );
@@ -1267,7 +1250,7 @@ BOOL CDECL ANDROID_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO
     char buffer[FIELD_OFFSET( BITMAPINFO, bmiColors[256] )];
     BITMAPINFO *bmi = (BITMAPINFO *)buffer;
     void *src_bits, *dst_bits;
-    RECT rect;
+    RECT rect, src_rect;
     HDC hdc = 0;
     HBITMAP dib;
     BOOL ret = FALSE;
@@ -1284,7 +1267,7 @@ BOOL CDECL ANDROID_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO
         surface = NULL;
     }
 
-    if (!surface || memcmp( &surface->rect, &rect, sizeof(RECT) ))
+    if (!surface || !EqualRect( &surface->rect, &rect ))
     {
         data->surface = create_surface( data->hwnd, &rect, 255, color_key, TRUE );
         if (surface) window_surface_release( surface );
@@ -1317,11 +1300,13 @@ BOOL CDECL ANDROID_UpdateLayeredWindow( HWND hwnd, const UPDATELAYEREDWINDOWINFO
         memcpy( src_bits, dst_bits, bmi->bmiHeader.biSizeImage );
         PatBlt( hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, BLACKNESS );
     }
+    src_rect = rect;
+    if (info->pptSrc) OffsetRect( &src_rect, info->pptSrc->x, info->pptSrc->y );
+    DPtoLP( info->hdcSrc, (POINT *)&src_rect, 2 );
+
     ret = GdiAlphaBlend( hdc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-                         info->hdcSrc,
-                         rect.left + (info->pptSrc ? info->pptSrc->x : 0),
-                         rect.top + (info->pptSrc ? info->pptSrc->y : 0),
-                         rect.right - rect.left, rect.bottom - rect.top,
+                         info->hdcSrc, src_rect.left, src_rect.top,
+                         src_rect.right - src_rect.left, src_rect.bottom - src_rect.top,
                          (info->dwFlags & ULW_ALPHA) ? *info->pblend : blend );
     if (ret)
     {
@@ -1350,7 +1335,11 @@ LRESULT CDECL ANDROID_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
     switch (msg)
     {
     case WM_ANDROID_REFRESH:
-        if ((data = get_win_data( hwnd )))
+        if (wp)  /* opengl client window */
+        {
+            update_gl_drawable( hwnd );
+        }
+        else if ((data = get_win_data( hwnd )))
         {
             struct window_surface *surface = data->surface;
             if (surface)

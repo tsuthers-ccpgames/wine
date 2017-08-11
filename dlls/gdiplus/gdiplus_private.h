@@ -41,6 +41,7 @@
 
 #define VERSION_MAGIC  0xdbc01001
 #define VERSION_MAGIC2 0xdbc01002
+#define VALID_MAGIC(x) (((x) & 0xfffff000) == 0xdbc01000)
 #define TENSION_CONST (0.3)
 
 #define GIF_DISPOSE_UNSPECIFIED 0
@@ -82,6 +83,7 @@ extern GpStatus get_graphics_transform(GpGraphics *graphics, GpCoordinateSpace d
         GpCoordinateSpace src_space, GpMatrix *matrix) DECLSPEC_HIDDEN;
 
 extern GpStatus graphics_from_image(GpImage *image, GpGraphics **graphics) DECLSPEC_HIDDEN;
+extern GpStatus encode_image_png(GpImage *image, IStream* stream, GDIPCONST EncoderParameters* params) DECLSPEC_HIDDEN;
 
 extern GpStatus METAFILE_GetGraphicsContext(GpMetafile* metafile, GpGraphics **result) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_GetDC(GpMetafile* metafile, HDC *hdc) DECLSPEC_HIDDEN;
@@ -105,6 +107,13 @@ extern GpStatus METAFILE_EndContainer(GpMetafile* metafile, DWORD StackIndex) DE
 extern GpStatus METAFILE_SaveGraphics(GpMetafile* metafile, DWORD StackIndex) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_RestoreGraphics(GpMetafile* metafile, DWORD StackIndex) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_GraphicsDeleted(GpMetafile* metafile) DECLSPEC_HIDDEN;
+extern GpStatus METAFILE_DrawImagePointsRect(GpMetafile* metafile, GpImage *image,
+     GDIPCONST GpPointF *points, INT count, REAL srcx, REAL srcy, REAL srcwidth,
+     REAL srcheight, GpUnit srcUnit, GDIPCONST GpImageAttributes* imageAttributes,
+     DrawImageAbort callback, VOID *callbackData) DECLSPEC_HIDDEN;
+extern GpStatus METAFILE_AddSimpleProperty(GpMetafile *metafile, SHORT prop, SHORT val) DECLSPEC_HIDDEN;
+extern GpStatus METAFILE_DrawPath(GpMetafile *metafile, GpPen *pen, GpPath *path) DECLSPEC_HIDDEN;
+extern GpStatus METAFILE_FillPath(GpMetafile *metafile, GpBrush *brush, GpPath *path) DECLSPEC_HIDDEN;
 
 extern void calc_curve_bezier(const GpPointF *pts, REAL tension, REAL *x1,
     REAL *y1, REAL *x2, REAL *y2) DECLSPEC_HIDDEN;
@@ -114,6 +123,8 @@ extern void calc_curve_bezier_endp(REAL xend, REAL yend, REAL xadj, REAL yadj,
 extern void free_installed_fonts(void) DECLSPEC_HIDDEN;
 
 extern BOOL lengthen_path(GpPath *path, INT len) DECLSPEC_HIDDEN;
+
+extern DWORD write_path_data(GpPath *path, void *data) DECLSPEC_HIDDEN;
 
 extern GpStatus trace_path(GpGraphics *graphics, GpPath *path) DECLSPEC_HIDDEN;
 
@@ -365,6 +376,7 @@ struct GpMetafile{
     IStream *record_stream;
     BOOL auto_frame; /* If true, determine the frame automatically */
     GpPointF auto_frame_min, auto_frame_max;
+    DWORD next_object_id;
 
     /* playback */
     GpGraphics *playback_graphics;

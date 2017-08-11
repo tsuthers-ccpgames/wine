@@ -332,7 +332,7 @@ HANDLE thread_init(void)
     teb->StaticUnicodeString.Buffer = teb->StaticUnicodeBuffer;
     teb->StaticUnicodeString.MaximumLength = sizeof(teb->StaticUnicodeBuffer);
 
-    thread_data = (struct ntdll_thread_data *)teb->SpareBytes1;
+    thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
     thread_data->request_fd = -1;
     thread_data->reply_fd   = -1;
     thread_data->wait_fd[0] = -1;
@@ -440,7 +440,7 @@ void exit_thread( int status )
 
     if ((teb = interlocked_xchg_ptr( &prev_teb, NtCurrentTeb() )))
     {
-        struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)teb->SpareBytes1;
+        struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
 
         if (thread_data->pthread_id)
         {
@@ -465,7 +465,7 @@ void exit_thread( int status )
 static void start_thread( struct startup_info *info )
 {
     TEB *teb = info->teb;
-    struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)teb->SpareBytes1;
+    struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
     PRTL_THREAD_START_ROUTINE func = info->entry_point;
     void *arg = info->entry_arg;
     struct debug_info debug_info;
@@ -585,7 +585,7 @@ NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, const SECURITY_DESCRIPTOR *
     info->entry_point = start;
     info->entry_arg   = param;
 
-    thread_data = (struct ntdll_thread_data *)teb->SpareBytes1;
+    thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
     thread_data->request_fd  = request_pipe[1];
     thread_data->reply_fd    = -1;
     thread_data->wait_fd[0]  = -1;
@@ -769,76 +769,51 @@ NTSTATUS WINAPI NtQueueApcThread( HANDLE handle, PNTAPCFUNC func, ULONG_PTR arg1
 
 
 /***********************************************************************
- *              NtSetContextThread  (NTDLL.@)
- *              ZwSetContextThread  (NTDLL.@)
+ *              set_thread_context
  */
-NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
+NTSTATUS set_thread_context( HANDLE handle, const CONTEXT *context, BOOL *self )
 {
     NTSTATUS ret;
     DWORD dummy, i;
-    BOOL self;
+    context_t server_context;
 
-#ifdef __i386__
-    /* on i386 debug registers always require a server call */
-    self = (handle == GetCurrentThread());
-    if (self && (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_i386)))
+    context_to_server( &server_context, context );
+
+    SERVER_START_REQ( set_thread_context )
     {
-        self = (ntdll_get_thread_data()->dr0 == context->Dr0 &&
-                ntdll_get_thread_data()->dr1 == context->Dr1 &&
-                ntdll_get_thread_data()->dr2 == context->Dr2 &&
-                ntdll_get_thread_data()->dr3 == context->Dr3 &&
-                ntdll_get_thread_data()->dr6 == context->Dr6 &&
-                ntdll_get_thread_data()->dr7 == context->Dr7);
+        req->handle  = wine_server_obj_handle( handle );
+        req->suspend = 1;
+        wine_server_add_data( req, &server_context, sizeof(server_context) );
+        ret = wine_server_call( req );
+        *self = reply->self;
     }
-#else
-    self = FALSE;
-#endif
+    SERVER_END_REQ;
 
-    if (!self)
+    if (ret == STATUS_PENDING)
     {
-        context_t server_context;
-
-        context_to_server( &server_context, context );
-
-        SERVER_START_REQ( set_thread_context )
+        for (i = 0; i < 100; i++)
         {
-            req->handle  = wine_server_obj_handle( handle );
-            req->suspend = 1;
-            wine_server_add_data( req, &server_context, sizeof(server_context) );
-            ret = wine_server_call( req );
-            self = reply->self;
-        }
-        SERVER_END_REQ;
-
-        if (ret == STATUS_PENDING)
-        {
-            for (i = 0; i < 100; i++)
+            SERVER_START_REQ( set_thread_context )
             {
-                SERVER_START_REQ( set_thread_context )
-                {
-                    req->handle  = wine_server_obj_handle( handle );
-                    req->suspend = 0;
-                    wine_server_add_data( req, &server_context, sizeof(server_context) );
-                    ret = wine_server_call( req );
-                }
-                SERVER_END_REQ;
-                if (ret == STATUS_PENDING)
-                {
-                    LARGE_INTEGER timeout;
-                    timeout.QuadPart = -10000;
-                    NtDelayExecution( FALSE, &timeout );
-                }
-                else break;
+                req->handle  = wine_server_obj_handle( handle );
+                req->suspend = 0;
+                wine_server_add_data( req, &server_context, sizeof(server_context) );
+                ret = wine_server_call( req );
             }
-            NtResumeThread( handle, &dummy );
-            if (ret == STATUS_PENDING) ret = STATUS_ACCESS_DENIED;
+            SERVER_END_REQ;
+            if (ret == STATUS_PENDING)
+            {
+                LARGE_INTEGER timeout;
+                timeout.QuadPart = -10000;
+                NtDelayExecution( FALSE, &timeout );
+            }
+            else break;
         }
-
-        if (ret) return ret;
+        NtResumeThread( handle, &dummy );
+        if (ret == STATUS_PENDING) ret = STATUS_ACCESS_DENIED;
     }
 
-    if (self) set_cpu_context( context );
-    return STATUS_SUCCESS;
+    return ret;
 }
 
 
@@ -866,91 +841,52 @@ static inline unsigned int get_server_context_flags( DWORD flags )
 }
 
 /***********************************************************************
- *              NtGetContextThread  (NTDLL.@)
- *              ZwGetContextThread  (NTDLL.@)
+ *              get_thread_context
  */
-NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
+NTSTATUS get_thread_context( HANDLE handle, CONTEXT *context, BOOL *self )
 {
     NTSTATUS ret;
     DWORD dummy, i;
-    DWORD needed_flags = context->ContextFlags;
-    BOOL self = (handle == GetCurrentThread());
+    unsigned int server_flags = get_server_context_flags( context->ContextFlags );
+    context_t server_context;
 
-    /* on i386/amd64 debug registers always require a server call */
-#ifdef __i386__
-    if (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_i386)) self = FALSE;
-#elif defined(__x86_64__)
-    if (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_AMD64)) self = FALSE;
-#endif
-
-    if (!self)
+    SERVER_START_REQ( get_thread_context )
     {
-        unsigned int server_flags = get_server_context_flags( context->ContextFlags );
-        context_t server_context;
+        req->handle  = wine_server_obj_handle( handle );
+        req->flags   = server_flags;
+        req->suspend = 1;
+        wine_server_set_reply( req, &server_context, sizeof(server_context) );
+        ret = wine_server_call( req );
+        *self = reply->self;
+    }
+    SERVER_END_REQ;
 
-        SERVER_START_REQ( get_thread_context )
+    if (ret == STATUS_PENDING)
+    {
+        for (i = 0; i < 100; i++)
         {
-            req->handle  = wine_server_obj_handle( handle );
-            req->flags   = server_flags;
-            req->suspend = 1;
-            wine_server_set_reply( req, &server_context, sizeof(server_context) );
-            ret = wine_server_call( req );
-            self = reply->self;
-        }
-        SERVER_END_REQ;
-
-        if (ret == STATUS_PENDING)
-        {
-            for (i = 0; i < 100; i++)
+            SERVER_START_REQ( get_thread_context )
             {
-                SERVER_START_REQ( get_thread_context )
-                {
-                    req->handle  = wine_server_obj_handle( handle );
-                    req->flags   = server_flags;
-                    req->suspend = 0;
-                    wine_server_set_reply( req, &server_context, sizeof(server_context) );
-                    ret = wine_server_call( req );
-                }
-                SERVER_END_REQ;
-                if (ret == STATUS_PENDING)
-                {
-                    LARGE_INTEGER timeout;
-                    timeout.QuadPart = -10000;
-                    NtDelayExecution( FALSE, &timeout );
-                }
-                else break;
+                req->handle  = wine_server_obj_handle( handle );
+                req->flags   = server_flags;
+                req->suspend = 0;
+                wine_server_set_reply( req, &server_context, sizeof(server_context) );
+                ret = wine_server_call( req );
             }
-            NtResumeThread( handle, &dummy );
-            if (ret == STATUS_PENDING) ret = STATUS_ACCESS_DENIED;
+            SERVER_END_REQ;
+            if (ret == STATUS_PENDING)
+            {
+                LARGE_INTEGER timeout;
+                timeout.QuadPart = -10000;
+                NtDelayExecution( FALSE, &timeout );
+            }
+            else break;
         }
-        if (!ret) ret = context_from_server( context, &server_context );
-        if (ret) return ret;
-        needed_flags &= ~context->ContextFlags;
+        NtResumeThread( handle, &dummy );
+        if (ret == STATUS_PENDING) ret = STATUS_ACCESS_DENIED;
     }
-
-    if (self)
-    {
-        if (needed_flags)
-        {
-            CONTEXT ctx;
-            RtlCaptureContext( &ctx );
-            copy_context( context, &ctx, ctx.ContextFlags & needed_flags );
-            context->ContextFlags |= ctx.ContextFlags & needed_flags;
-        }
-#ifdef __i386__
-        /* update the cached version of the debug registers */
-        if (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_i386))
-        {
-            ntdll_get_thread_data()->dr0 = context->Dr0;
-            ntdll_get_thread_data()->dr1 = context->Dr1;
-            ntdll_get_thread_data()->dr2 = context->Dr2;
-            ntdll_get_thread_data()->dr3 = context->Dr3;
-            ntdll_get_thread_data()->dr6 = context->Dr6;
-            ntdll_get_thread_data()->dr7 = context->Dr7;
-        }
-#endif
-    }
-    return STATUS_SUCCESS;
+    if (!ret) ret = context_from_server( context, &server_context );
+    return ret;
 }
 
 
@@ -1091,7 +1027,7 @@ NTSTATUS WINAPI NtQueryInformationThread( HANDLE handle, THREADINFOCLASS class,
                     {
                         if (sel == (wine_get_cs() & ~3))
                             tdi->Entry.HighWord.Bits.Type |= 8;  /* code segment */
-                        else if (sel == (ntdll_get_thread_data()->fs & ~3))
+                        else if (sel == (wine_get_fs() & ~3))
                         {
                             ULONG_PTR fs_base = (ULONG_PTR)NtCurrentTeb();
                             tdi->Entry.BaseLow                   = fs_base & 0xffff;
