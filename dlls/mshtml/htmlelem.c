@@ -1267,7 +1267,7 @@ static HRESULT WINAPI HTMLElement_contains(IHTMLElement *iface, IHTMLElement *pC
         assert(nsres == NS_OK);
     }
 
-    *pfResult = result ? VARIANT_TRUE : VARIANT_FALSE;
+    *pfResult = variant_bool(result);
     return S_OK;
 }
 
@@ -1777,18 +1777,29 @@ static HRESULT WINAPI HTMLElement_get_isTextEdit(IHTMLElement *iface, VARIANT_BO
 
     TRACE("(%p)->(%p)\n", This, p);
 
-    *p = This->node.vtbl->is_text_edit && This->node.vtbl->is_text_edit(&This->node)
-        ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(This->node.vtbl->is_text_edit && This->node.vtbl->is_text_edit(&This->node));
     return S_OK;
 }
 
 static HRESULT WINAPI HTMLElement_click(IHTMLElement *iface)
 {
     HTMLElement *This = impl_from_IHTMLElement(iface);
+    nsresult nsres;
 
     TRACE("(%p)\n", This);
 
-    return call_fire_event(&This->node, EVENTID_CLICK);
+    if(!This->nselem) {
+        FIXME("not implemented for comments\n");
+        return E_NOTIMPL;
+    }
+
+    nsres = nsIDOMHTMLElement_Click(This->nselem);
+    if(NS_FAILED(nsres)) {
+        ERR("Click failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLElement_get_filters(IHTMLElement *iface,
@@ -3101,6 +3112,11 @@ static HRESULT WINAPI HTMLElement2_getElementsByTagName(IHTMLElement2 *iface, BS
 
     TRACE("(%p)->(%s %p)\n", This, debugstr_w(v), pelColl);
 
+    if(!This->nselem) {
+        *pelColl = create_collection_from_htmlcol(This->node.doc, NULL);
+        return S_OK;
+    }
+
     nsAString_InitDepend(&tag_str, v);
     nsres = nsIDOMHTMLElement_GetElementsByTagName(This->nselem, &tag_str, &nscol);
     nsAString_Finish(&tag_str);
@@ -3509,7 +3525,7 @@ static HRESULT WINAPI HTMLElement3_fireEvent(IHTMLElement3 *iface, BSTR bstrEven
     TRACE("(%p)->(%s %s %p)\n", This, debugstr_w(bstrEventName), debugstr_variant(pvarEventObject),
           pfCancelled);
 
-    return dispatch_event(&This->node, bstrEventName, pvarEventObject, pfCancelled);
+    return fire_event(&This->node, bstrEventName, pvarEventObject, pfCancelled);
 }
 
 static HRESULT WINAPI HTMLElement3_put_onresizestart(IHTMLElement3 *iface, VARIANT v)
@@ -4036,36 +4052,75 @@ static HRESULT WINAPI HTMLElement6_hasAttributeNS(IHTMLElement6 *iface, VARIANT 
 static HRESULT WINAPI HTMLElement6_getAttribute(IHTMLElement6 *iface, BSTR strAttributeName, VARIANT *AttributeValue)
 {
     HTMLElement *This = impl_from_IHTMLElement6(iface);
-    FIXME("(%p)->(%s %p)\n", This, debugstr_w(strAttributeName), AttributeValue);
-    return E_NOTIMPL;
+
+    WARN("(%p)->(%s %p) forwarding to IHTMLElement\n", This, debugstr_w(strAttributeName), AttributeValue);
+
+    return IHTMLElement_getAttribute(&This->IHTMLElement_iface, strAttributeName, 0, AttributeValue);
 }
 
 static HRESULT WINAPI HTMLElement6_setAttribute(IHTMLElement6 *iface, BSTR strAttributeName, VARIANT *pvarAttributeValue)
 {
     HTMLElement *This = impl_from_IHTMLElement6(iface);
-    FIXME("(%p)->(%s %p)\n", This, debugstr_w(strAttributeName), pvarAttributeValue);
-    return E_NOTIMPL;
+
+    WARN("(%p)->(%s %p) forwarding to IHTMLElement\n", This, debugstr_w(strAttributeName), pvarAttributeValue);
+
+    return IHTMLElement_setAttribute(&This->IHTMLElement_iface, strAttributeName, *pvarAttributeValue, 0);
 }
 
 static HRESULT WINAPI HTMLElement6_removeAttribute(IHTMLElement6 *iface, BSTR strAttributeName)
 {
     HTMLElement *This = impl_from_IHTMLElement6(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_w(strAttributeName));
-    return E_NOTIMPL;
+    VARIANT_BOOL success;
+
+    WARN("(%p)->(%s) forwarding to IHTMLElement\n", This, debugstr_w(strAttributeName));
+
+    return IHTMLElement_removeAttribute(&This->IHTMLElement_iface, strAttributeName, 0, &success);
 }
 
 static HRESULT WINAPI HTMLElement6_getAttributeNode(IHTMLElement6 *iface, BSTR strAttributeName, IHTMLDOMAttribute2 **ppretAttribute)
 {
     HTMLElement *This = impl_from_IHTMLElement6(iface);
-    FIXME("(%p)->(%s %p)\n", This, debugstr_w(strAttributeName), ppretAttribute);
-    return E_NOTIMPL;
+    IHTMLDOMAttribute *attr;
+    HRESULT hres;
+
+    WARN("(%p)->(%s %p) forwarding to IHTMLElement4\n", This, debugstr_w(strAttributeName), ppretAttribute);
+
+    hres = IHTMLElement4_getAttributeNode(&This->IHTMLElement4_iface, strAttributeName, &attr);
+    if(FAILED(hres))
+        return hres;
+
+    if(attr) {
+        hres = IHTMLDOMAttribute_QueryInterface(attr, &IID_IHTMLDOMAttribute2, (void**)ppretAttribute);
+        IHTMLDOMAttribute_Release(attr);
+    }else {
+        *ppretAttribute = NULL;
+    }
+    return hres;
 }
 
 static HRESULT WINAPI HTMLElement6_setAttributeNode(IHTMLElement6 *iface, IHTMLDOMAttribute2 *pattr, IHTMLDOMAttribute2 **ppretAttribute)
 {
     HTMLElement *This = impl_from_IHTMLElement6(iface);
-    FIXME("(%p)->(%p %p)\n", This, pattr, ppretAttribute);
-    return E_NOTIMPL;
+    IHTMLDOMAttribute *attr, *ret_attr;
+    HRESULT hres;
+
+    WARN("(%p)->(%p %p) forwarding to IHTMLElement4\n", This, pattr, ppretAttribute);
+
+    hres = IHTMLDOMAttribute2_QueryInterface(pattr, &IID_IHTMLDOMAttribute, (void**)&attr);
+    if(FAILED(hres))
+        return hres;
+
+    hres = IHTMLElement4_setAttributeNode(&This->IHTMLElement4_iface, attr, &ret_attr);
+    if(FAILED(hres))
+        return hres;
+
+    if(ret_attr) {
+        hres = IHTMLDOMAttribute_QueryInterface(ret_attr, &IID_IHTMLDOMAttribute2, (void**)ppretAttribute);
+        IHTMLDOMAttribute_Release(ret_attr);
+    }else {
+        *ppretAttribute = NULL;
+    }
+    return hres;
 }
 
 static HRESULT WINAPI HTMLElement6_removeAttributeNode(IHTMLElement6 *iface, IHTMLDOMAttribute2 *pattr, IHTMLDOMAttribute2 **ppretAttribute)
@@ -4092,15 +4147,19 @@ static HRESULT WINAPI HTMLElement6_getElementsByTagNameNS(IHTMLElement6 *iface, 
 static HRESULT WINAPI HTMLElement6_get_tagName(IHTMLElement6 *iface, BSTR *p)
 {
     HTMLElement *This = impl_from_IHTMLElement6(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    return IHTMLElement_get_tagName(&This->IHTMLElement_iface, p);
 }
 
 static HRESULT WINAPI HTMLElement6_get_nodeName(IHTMLElement6 *iface, BSTR *p)
 {
     HTMLElement *This = impl_from_IHTMLElement6(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    return IHTMLDOMNode_get_nodeName(&This->node.IHTMLDOMNode_iface, p);
 }
 
 static HRESULT WINAPI HTMLElement6_getElementsByClassName(IHTMLElement6 *iface, BSTR v, IHTMLElementCollection **pel)
@@ -5128,10 +5187,17 @@ HRESULT HTMLElement_handle_event(HTMLDOMNode *iface, DWORD eid, nsIDOMEvent *eve
 
             nsIDOMKeyEvent_GetKeyCode(key_event, &code);
 
-            switch(code) {
-            case VK_F1: /* DOM_VK_F1 */
+            if(code == VK_F1 /* DOM_VK_F1 */) {
+                DOMEvent *help_event;
+                HRESULT hres;
+
                 TRACE("F1 pressed\n");
-                fire_event(This->node.doc, EVENTID_HELP, TRUE, &This->node, NULL, NULL);
+
+                hres = create_document_event(This->node.doc, EVENTID_HELP, &help_event);
+                if(SUCCEEDED(hres)) {
+                    dispatch_event(&This->node.event_target, help_event);
+                    IDOMEvent_Release(&help_event->IDOMEvent_iface);
+                }
                 *prevent_default = TRUE;
             }
 
@@ -5272,15 +5338,7 @@ static HRESULT HTMLElement_populate_props(DispatchEx *dispex)
     return S_OK;
 }
 
-static EventTarget *HTMLElement_get_event_target(DispatchEx *dispex)
-{
-    HTMLElement *This = impl_from_DispatchEx(dispex);
-    return This->node.vtbl->get_event_target
-        ? This->node.vtbl->get_event_target(&This->node)
-        : &This->node.event_target;
-}
-
-static void HTMLElement_bind_event(DispatchEx *dispex, int eid)
+static void HTMLElement_bind_event(DispatchEx *dispex, eventid_t eid)
 {
     HTMLElement *This = impl_from_DispatchEx(dispex);
 
@@ -5291,23 +5349,71 @@ static void HTMLElement_bind_event(DispatchEx *dispex, int eid)
         add_nsevent_listener(This->node.doc, This->node.nsnode, loadW);
         return;
     default:
-        dispex_get_vtbl(&This->node.doc->node.event_target.dispex)->bind_event(&This->node.doc->node.event_target.dispex, eid);
+        ensure_doc_nsevent_handler(This->node.doc, eid);
     }
+}
+
+static HRESULT HTMLElement_handle_event_default(DispatchEx *dispex, eventid_t eid, nsIDOMEvent *nsevent, BOOL *prevent_default)
+{
+    HTMLElement *This = impl_from_DispatchEx(dispex);
+
+    if(!This->node.vtbl->handle_event)
+        return S_OK;
+    return This->node.vtbl->handle_event(&This->node, eid, nsevent, prevent_default);
+}
+
+static EventTarget *HTMLElement_get_parent_event_target(DispatchEx *dispex)
+{
+    HTMLElement *This = impl_from_DispatchEx(dispex);
+    HTMLDOMNode *node;
+    nsIDOMNode *nsnode;
+    nsresult nsres;
+    HRESULT hres;
+
+    nsres = nsIDOMNode_GetParentNode(This->node.nsnode, &nsnode);
+    assert(nsres == NS_OK);
+    if(!nsnode)
+        return NULL;
+
+    hres = get_node(This->node.doc, nsnode, TRUE, &node);
+    nsIDOMNode_Release(nsnode);
+    if(FAILED(hres))
+        return NULL;
+
+    return &node->event_target;
+}
+
+static ConnectionPointContainer *HTMLElement_get_cp_container(DispatchEx *dispex)
+{
+    HTMLElement *This = impl_from_DispatchEx(dispex);
+    IConnectionPointContainer_AddRef(&This->cp_container.IConnectionPointContainer_iface);
+    return &This->cp_container;
+}
+
+static IHTMLEventObj *HTMLElement_set_current_event(DispatchEx *dispex, IHTMLEventObj *event)
+{
+    HTMLElement *This = impl_from_DispatchEx(dispex);
+    return default_set_current_event(This->node.doc->window, event);
 }
 
 void HTMLElement_init_dispex_info(dispex_data_t *info, compat_mode_t mode)
 {
-    static const DISPID elem2_ie11_blacklist[] = {DISPID_IHTMLELEMENT2_DOSCROLL, DISPID_UNKNOWN};
+    static const dispex_hook_t elem2_ie11_hooks[] = {
+        {DISPID_IHTMLELEMENT2_DOSCROLL, NULL},
+        {DISPID_UNKNOWN}
+    };
 
     HTMLDOMNode_init_dispex_info(info, mode);
 
-    dispex_info_add_interface(info, IHTMLElement2_tid, mode >= COMPAT_MODE_IE11 ? elem2_ie11_blacklist : NULL);
+    dispex_info_add_interface(info, IHTMLElement2_tid, mode >= COMPAT_MODE_IE11 ? elem2_ie11_hooks : NULL);
 
     if(mode >= COMPAT_MODE_IE8)
         dispex_info_add_interface(info, IElementSelector_tid, NULL);
 
-    if(mode >= COMPAT_MODE_IE9)
+    if(mode >= COMPAT_MODE_IE9) {
+        dispex_info_add_interface(info, IHTMLElement6_tid, NULL);
         dispex_info_add_interface(info, IElementTraversal_tid, NULL);
+    }
 }
 
 static const tid_t HTMLElement_iface_tids[] = {
@@ -5315,17 +5421,23 @@ static const tid_t HTMLElement_iface_tids[] = {
     0
 };
 
-static dispex_static_data_vtbl_t HTMLElement_dispex_vtbl = {
-    NULL,
-    HTMLElement_get_dispid,
-    HTMLElement_invoke,
-    HTMLElement_populate_props,
-    HTMLElement_get_event_target,
-    HTMLElement_bind_event
+static event_target_vtbl_t HTMLElement_event_target_vtbl = {
+    {
+        NULL,
+        HTMLElement_get_dispid,
+        HTMLElement_invoke,
+        NULL,
+        HTMLElement_populate_props
+    },
+    HTMLElement_bind_event,
+    HTMLElement_get_parent_event_target,
+    HTMLElement_handle_event_default,
+    HTMLElement_get_cp_container,
+    HTMLElement_set_current_event
 };
 
 static dispex_static_data_t HTMLElement_dispex = {
-    &HTMLElement_dispex_vtbl,
+    &HTMLElement_event_target_vtbl.dispex_vtbl,
     DispHTMLUnknownElement_tid,
     HTMLElement_iface_tids,
     HTMLElement_init_dispex_info
@@ -5344,19 +5456,16 @@ void HTMLElement_Init(HTMLElement *This, HTMLDocumentNode *doc, nsIDOMHTMLElemen
     This->IProvideMultipleClassInfo_iface.lpVtbl = &ProvideMultipleClassInfoVtbl;
 
     if(dispex_data && !dispex_data->vtbl)
-        dispex_data->vtbl = &HTMLElement_dispex_vtbl;
-    init_dispex_with_compat_mode(&This->node.event_target.dispex, (IUnknown*)&This->IHTMLElement_iface,
-            dispex_data ? dispex_data : &HTMLElement_dispex, doc->document_mode);
+        dispex_data->vtbl = &HTMLElement_event_target_vtbl.dispex_vtbl;
 
     if(nselem) {
-        HTMLDOMNode_Init(doc, &This->node, (nsIDOMNode*)nselem);
+        HTMLDOMNode_Init(doc, &This->node, (nsIDOMNode*)nselem, dispex_data ? dispex_data : &HTMLElement_dispex);
 
         /* No AddRef, share reference with HTMLDOMNode */
         assert((nsIDOMNode*)nselem == This->node.nsnode);
         This->nselem = nselem;
     }
 
-    This->node.cp_container = &This->cp_container;
     ConnectionPointContainer_Init(&This->cp_container, (IUnknown*)&This->IHTMLElement_iface, This->node.vtbl->cpc_entries);
 }
 

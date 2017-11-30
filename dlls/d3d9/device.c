@@ -239,8 +239,6 @@ static BOOL wined3d_swapchain_desc_from_present_parameters(struct wined3d_swapch
             = wined3dformat_from_d3dformat(present_parameters->AutoDepthStencilFormat);
     swapchain_desc->flags
             = (present_parameters->Flags & D3DPRESENTFLAGS_MASK) | WINED3D_SWAPCHAIN_ALLOW_MODE_SWITCH;
-    if (is_gdi_compat_wined3dformat(swapchain_desc->backbuffer_format))
-        swapchain_desc->flags |= WINED3D_SWAPCHAIN_GDI_COMPATIBLE;
     swapchain_desc->refresh_rate = present_parameters->FullScreen_RefreshRateInHz;
     swapchain_desc->swap_interval = present_parameters->PresentationInterval;
     swapchain_desc->auto_restore_display_mode = TRUE;
@@ -1395,20 +1393,35 @@ static HRESULT WINAPI d3d9_device_UpdateSurface(IDirect3DDevice9Ex *iface,
     struct d3d9_device *device = impl_from_IDirect3DDevice9Ex(iface);
     struct d3d9_surface *src = unsafe_impl_from_IDirect3DSurface9(src_surface);
     struct d3d9_surface *dst = unsafe_impl_from_IDirect3DSurface9(dst_surface);
+    struct wined3d_sub_resource_desc src_desc, dst_desc;
     struct wined3d_box src_box;
     HRESULT hr;
 
     TRACE("iface %p, src_surface %p, src_rect %p, dst_surface %p, dst_point %p.\n",
             iface, src_surface, src_rect, dst_surface, dst_point);
 
+    wined3d_mutex_lock();
+
+    wined3d_texture_get_sub_resource_desc(src->wined3d_texture, src->sub_resource_idx, &src_desc);
+    wined3d_texture_get_sub_resource_desc(dst->wined3d_texture, dst->sub_resource_idx, &dst_desc);
+    if (src_desc.format != dst_desc.format)
+    {
+        wined3d_mutex_unlock();
+        WARN("Surface formats (%#x/%#x) don't match.\n",
+                d3dformat_from_wined3dformat(src_desc.format),
+                d3dformat_from_wined3dformat(dst_desc.format));
+        return D3DERR_INVALIDCALL;
+    }
+
     if (src_rect)
         wined3d_box_set(&src_box, src_rect->left, src_rect->top, src_rect->right, src_rect->bottom, 0, 1);
+    else
+        wined3d_box_set(&src_box, 0, 0, src_desc.width, src_desc.height, 0, 1);
 
-    wined3d_mutex_lock();
     hr = wined3d_device_copy_sub_resource_region(device->wined3d_device,
             wined3d_texture_get_resource(dst->wined3d_texture), dst->sub_resource_idx, dst_point ? dst_point->x : 0,
             dst_point ? dst_point->y : 0, 0, wined3d_texture_get_resource(src->wined3d_texture),
-            src->sub_resource_idx, src_rect ? &src_box : NULL);
+            src->sub_resource_idx, &src_box);
     wined3d_mutex_unlock();
 
     if (FAILED(hr))
@@ -3550,9 +3563,12 @@ static HRESULT WINAPI d3d9_device_CheckResourceResidency(IDirect3DDevice9Ex *ifa
 
 static HRESULT WINAPI d3d9_device_SetMaximumFrameLatency(IDirect3DDevice9Ex *iface, UINT max_latency)
 {
-    FIXME("iface %p, max_latency %u stub!\n", iface, max_latency);
+    TRACE("iface %p, max_latency %u.\n", iface, max_latency);
 
-    return E_NOTIMPL;
+    if (max_latency)
+        FIXME("Ignoring max_latency %u.\n", max_latency);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI d3d9_device_GetMaximumFrameLatency(IDirect3DDevice9Ex *iface, UINT *max_latency)
@@ -3921,6 +3937,9 @@ static HRESULT CDECL device_parent_create_swapchain_texture(struct wined3d_devic
 
     if (container_parent == device_parent)
         container_parent = &device->IDirect3DDevice9Ex_iface;
+
+    if (is_gdi_compat_wined3dformat(desc->format))
+        texture_flags |= WINED3D_TEXTURE_CREATE_GET_DC;
 
     if (FAILED(hr = wined3d_texture_create(device->wined3d_device, desc, 1, 1,
             texture_flags | WINED3D_TEXTURE_CREATE_MAPPABLE, NULL, container_parent,

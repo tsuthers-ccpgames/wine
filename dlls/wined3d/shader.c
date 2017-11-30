@@ -25,7 +25,6 @@
 #include "config.h"
 #include "wine/port.h"
 
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -693,14 +692,6 @@ static void shader_set_limits(struct wined3d_shader *shader)
     }
 }
 
-static inline void set_bitmap_bit(DWORD *bitmap, DWORD bit)
-{
-    DWORD idx, shift;
-    idx = bit >> 5;
-    shift = bit & 0x1f;
-    bitmap[idx] |= (1u << shift);
-}
-
 static BOOL shader_record_register_usage(struct wined3d_shader *shader, struct wined3d_shader_reg_maps *reg_maps,
         const struct wined3d_shader_register *reg, enum wined3d_shader_type shader_type, unsigned int constf_size)
 {
@@ -768,7 +759,7 @@ static BOOL shader_record_register_usage(struct wined3d_shader *shader, struct w
                 }
                 else
                 {
-                    set_bitmap_bit(reg_maps->constf, reg->idx[0].offset);
+                    wined3d_insert_bits(reg_maps->constf, reg->idx[0].offset, 1, 0x1);
                 }
             }
             break;
@@ -961,6 +952,16 @@ static HRESULT shader_record_shader_phase(struct wined3d_shader *shader,
     return WINED3D_OK;
 }
 
+static void wined3d_insert_interpolation_mode(DWORD *packed_interpolation_mode,
+        unsigned int register_idx, enum wined3d_shader_interpolation_mode mode)
+{
+    if (mode > WINED3DSIM_LINEAR_NOPERSPECTIVE_SAMPLE)
+        FIXME("Unexpected interpolation mode %#x.\n", mode);
+
+    wined3d_insert_bits(packed_interpolation_mode,
+            register_idx * WINED3D_PACKED_INTERPOLATION_BIT_COUNT, WINED3D_PACKED_INTERPOLATION_BIT_COUNT, mode);
+}
+
 /* Note that this does not count the loop register as an address register. */
 static HRESULT shader_get_registers_used(struct wined3d_shader *shader, const struct wined3d_shader_frontend *fe,
         struct wined3d_shader_reg_maps *reg_maps, struct wined3d_shader_signature *input_signature,
@@ -1147,6 +1148,33 @@ static HRESULT shader_get_registers_used(struct wined3d_shader *shader, const st
             else
                 FIXME("Invalid instruction %#x for shader type %#x.\n",
                         ins.handler_idx, shader_version.type);
+        }
+        else if (ins.handler_idx == WINED3DSIH_DCL_INPUT_PS)
+        {
+            unsigned int reg_idx = ins.declaration.dst.reg.idx[0].offset;
+            if (reg_idx >= MAX_REG_INPUT)
+            {
+                ERR("Invalid register index %u.\n", reg_idx);
+                break;
+            }
+            if (shader_version.type == WINED3D_SHADER_TYPE_PIXEL)
+                wined3d_insert_interpolation_mode(shader->u.ps.interpolation_mode, reg_idx, ins.flags);
+            else
+                FIXME("Invalid instruction %#x for shader type %#x.\n",
+                        ins.handler_idx, shader_version.type);
+        }
+        else if (ins.handler_idx == WINED3DSIH_DCL_OUTPUT)
+        {
+            if (ins.declaration.dst.reg.type == WINED3DSPR_DEPTHOUT
+                    || ins.declaration.dst.reg.type == WINED3DSPR_DEPTHOUTGE
+                    || ins.declaration.dst.reg.type == WINED3DSPR_DEPTHOUTLE)
+            {
+                if (shader_version.type == WINED3D_SHADER_TYPE_PIXEL)
+                    shader->u.ps.depth_output = ins.declaration.dst.reg.type;
+                else
+                    FIXME("Invalid instruction %#x for shader type %#x.\n",
+                            ins.handler_idx, shader_version.type);
+            }
         }
         else if (ins.handler_idx == WINED3DSIH_DCL_OUTPUT_CONTROL_POINT_COUNT)
         {
@@ -2141,6 +2169,14 @@ static void shader_dump_register(struct wined3d_string_buffer *buffer,
 
         case WINED3DSPR_DEPTHOUT:
             shader_addline(buffer, "oDepth");
+            break;
+
+        case WINED3DSPR_DEPTHOUTGE:
+            shader_addline(buffer, "oDepthGE");
+            break;
+
+        case WINED3DSPR_DEPTHOUTLE:
+            shader_addline(buffer, "oDepthLE");
             break;
 
         case WINED3DSPR_ATTROUT:
@@ -3365,25 +3401,41 @@ HRESULT CDECL wined3d_shader_set_local_constants_float(struct wined3d_shader *sh
     return WINED3D_OK;
 }
 
-void find_vs_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
-        WORD swizzle_map, struct vs_compile_args *args, const struct wined3d_d3d_info *d3d_info)
+static void init_interpolation_compile_args(DWORD *interpolation_args,
+        const struct wined3d_shader *pixel_shader, const struct wined3d_gl_info *gl_info)
 {
+    if (!needs_interpolation_qualifiers_for_shader_outputs(gl_info)
+            || !pixel_shader || pixel_shader->reg_maps.shader_version.major < 4)
+    {
+        memset(interpolation_args, 0, sizeof(pixel_shader->u.ps.interpolation_mode));
+        return;
+    }
+
+    memcpy(interpolation_args, pixel_shader->u.ps.interpolation_mode,
+            sizeof(pixel_shader->u.ps.interpolation_mode));
+}
+
+void find_vs_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
+        WORD swizzle_map, struct vs_compile_args *args, const struct wined3d_context *context)
+{
+    const struct wined3d_shader *geometry_shader = state->shader[WINED3D_SHADER_TYPE_GEOMETRY];
+    const struct wined3d_shader *pixel_shader = state->shader[WINED3D_SHADER_TYPE_PIXEL];
+    const struct wined3d_shader *hull_shader = state->shader[WINED3D_SHADER_TYPE_HULL];
+    const struct wined3d_d3d_info *d3d_info = context->d3d_info;
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+
     args->fog_src = state->render_states[WINED3D_RS_FOGTABLEMODE]
             == WINED3D_FOG_NONE ? VS_FOG_COORD : VS_FOG_Z;
     args->clip_enabled = state->render_states[WINED3D_RS_CLIPPING]
             && state->render_states[WINED3D_RS_CLIPPLANEENABLE];
     args->point_size = state->gl_primitive_type == GL_POINTS;
     args->per_vertex_point_size = shader->reg_maps.point_size;
-    args->next_shader_type = state->shader[WINED3D_SHADER_TYPE_HULL] ? WINED3D_SHADER_TYPE_HULL
-            : state->shader[WINED3D_SHADER_TYPE_GEOMETRY] ? WINED3D_SHADER_TYPE_GEOMETRY
-            : WINED3D_SHADER_TYPE_PIXEL;
+    args->next_shader_type = hull_shader? WINED3D_SHADER_TYPE_HULL
+            : geometry_shader ? WINED3D_SHADER_TYPE_GEOMETRY : WINED3D_SHADER_TYPE_PIXEL;
     if (shader->reg_maps.shader_version.major >= 4)
-        args->next_shader_input_count = state->shader[WINED3D_SHADER_TYPE_HULL]
-                ? state->shader[WINED3D_SHADER_TYPE_HULL]->limits->packed_input
-                : state->shader[WINED3D_SHADER_TYPE_GEOMETRY]
-                ? state->shader[WINED3D_SHADER_TYPE_GEOMETRY]->limits->packed_input
-                : state->shader[WINED3D_SHADER_TYPE_PIXEL]
-                ? state->shader[WINED3D_SHADER_TYPE_PIXEL]->limits->packed_input : 0;
+        args->next_shader_input_count = hull_shader ? hull_shader->limits->packed_input
+                : geometry_shader ? geometry_shader->limits->packed_input
+                : pixel_shader ? pixel_shader->limits->packed_input : 0;
     else
         args->next_shader_input_count = 0;
     args->swizzle_map = swizzle_map;
@@ -3391,6 +3443,9 @@ void find_vs_compile_args(const struct wined3d_state *state, const struct wined3
         args->flatshading = state->render_states[WINED3D_RS_SHADEMODE] == WINED3D_SHADE_FLAT;
     else
         args->flatshading = 0;
+
+    init_interpolation_compile_args(args->interpolation_mode,
+            args->next_shader_type == WINED3D_SHADER_TYPE_PIXEL ? pixel_shader : NULL, gl_info);
 }
 
 static BOOL match_usage(BYTE usage1, BYTE usage_idx1, BYTE usage2, BYTE usage_idx2)
@@ -3619,18 +3674,6 @@ static HRESULT vertex_shader_init(struct wined3d_shader *shader, struct wined3d_
     return WINED3D_OK;
 }
 
-static HRESULT domain_shader_init(struct wined3d_shader *shader, struct wined3d_device *device,
-        const struct wined3d_shader_desc *desc, void *parent, const struct wined3d_parent_ops *parent_ops)
-{
-    return shader_init(shader, device, desc, 0, WINED3D_SHADER_TYPE_DOMAIN, parent, parent_ops);
-}
-
-static HRESULT hull_shader_init(struct wined3d_shader *shader, struct wined3d_device *device,
-        const struct wined3d_shader_desc *desc, void *parent, const struct wined3d_parent_ops *parent_ops)
-{
-    return shader_init(shader, device, desc, 0, WINED3D_SHADER_TYPE_HULL, parent, parent_ops);
-}
-
 static HRESULT geometry_shader_init(struct wined3d_shader *shader, struct wined3d_device *device,
         const struct wined3d_shader_desc *desc, const struct wined3d_stream_output_desc *so_desc,
         void *parent, const struct wined3d_parent_ops *parent_ops)
@@ -3660,28 +3703,35 @@ static HRESULT geometry_shader_init(struct wined3d_shader *shader, struct wined3
 void find_ds_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
         struct ds_compile_args *args, const struct wined3d_context *context)
 {
+    const struct wined3d_shader *geometry_shader = state->shader[WINED3D_SHADER_TYPE_GEOMETRY];
+    const struct wined3d_shader *pixel_shader = state->shader[WINED3D_SHADER_TYPE_PIXEL];
     const struct wined3d_shader *hull_shader = state->shader[WINED3D_SHADER_TYPE_HULL];
+    const struct wined3d_gl_info *gl_info = context->gl_info;
 
     args->tessellator_output_primitive = hull_shader->u.hs.tessellator_output_primitive;
     args->tessellator_partitioning = hull_shader->u.hs.tessellator_partitioning;
 
-    args->output_count = state->shader[WINED3D_SHADER_TYPE_GEOMETRY] ?
-            state->shader[WINED3D_SHADER_TYPE_GEOMETRY]->limits->packed_input :
-            state->shader[WINED3D_SHADER_TYPE_PIXEL] ? state->shader[WINED3D_SHADER_TYPE_PIXEL]->limits->packed_input
-            : shader->limits->packed_output;
-    args->next_shader_type = state->shader[WINED3D_SHADER_TYPE_GEOMETRY] ? WINED3D_SHADER_TYPE_GEOMETRY
-            : WINED3D_SHADER_TYPE_PIXEL;
+    args->output_count = geometry_shader ? geometry_shader->limits->packed_input
+            : pixel_shader ? pixel_shader->limits->packed_input : shader->limits->packed_output;
+    args->next_shader_type = geometry_shader ? WINED3D_SHADER_TYPE_GEOMETRY : WINED3D_SHADER_TYPE_PIXEL;
 
     args->render_offscreen = context->render_offscreen;
+
+    init_interpolation_compile_args(args->interpolation_mode,
+            args->next_shader_type == WINED3D_SHADER_TYPE_PIXEL ? pixel_shader : NULL, gl_info);
 
     args->padding = 0;
 }
 
 void find_gs_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
-        struct gs_compile_args *args)
+        struct gs_compile_args *args, const struct wined3d_context *context)
 {
-    args->output_count = state->shader[WINED3D_SHADER_TYPE_PIXEL]
-            ? state->shader[WINED3D_SHADER_TYPE_PIXEL]->limits->packed_input : shader->limits->packed_output;
+    const struct wined3d_shader *pixel_shader = state->shader[WINED3D_SHADER_TYPE_PIXEL];
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+
+    args->output_count = pixel_shader ? pixel_shader->limits->packed_input : shader->limits->packed_output;
+
+    init_interpolation_compile_args(args->interpolation_mode, pixel_shader, gl_info);
 }
 
 void find_ps_compile_args(const struct wined3d_state *state, const struct wined3d_shader *shader,
@@ -4004,12 +4054,6 @@ void pixelshader_update_resource_types(struct wined3d_shader *shader, WORD tex_t
     }
 }
 
-static HRESULT compute_shader_init(struct wined3d_shader *shader, struct wined3d_device *device,
-        const struct wined3d_shader_desc *desc, void *parent, const struct wined3d_parent_ops *parent_ops)
-{
-    return shader_init(shader, device, desc, 0, WINED3D_SHADER_TYPE_COMPUTE, parent, parent_ops);
-}
-
 HRESULT CDECL wined3d_shader_create_cs(struct wined3d_device *device, const struct wined3d_shader_desc *desc,
         void *parent, const struct wined3d_parent_ops *parent_ops, struct wined3d_shader **shader)
 {
@@ -4022,7 +4066,7 @@ HRESULT CDECL wined3d_shader_create_cs(struct wined3d_device *device, const stru
     if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    if (FAILED(hr = compute_shader_init(object, device, desc, parent, parent_ops)))
+    if (FAILED(hr = shader_init(object, device, desc, 0, WINED3D_SHADER_TYPE_COMPUTE, parent, parent_ops)))
     {
         WARN("Failed to initialize compute shader, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
@@ -4047,7 +4091,7 @@ HRESULT CDECL wined3d_shader_create_ds(struct wined3d_device *device, const stru
     if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    if (FAILED(hr = domain_shader_init(object, device, desc, parent, parent_ops)))
+    if (FAILED(hr = shader_init(object, device, desc, 0, WINED3D_SHADER_TYPE_DOMAIN, parent, parent_ops)))
     {
         WARN("Failed to initialize domain shader, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);
@@ -4098,7 +4142,7 @@ HRESULT CDECL wined3d_shader_create_hs(struct wined3d_device *device, const stru
     if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    if (FAILED(hr = hull_shader_init(object, device, desc, parent, parent_ops)))
+    if (FAILED(hr = shader_init(object, device, desc, 0, WINED3D_SHADER_TYPE_HULL, parent, parent_ops)))
     {
         WARN("Failed to initialize hull shader, hr %#x.\n", hr);
         HeapFree(GetProcessHeap(), 0, object);

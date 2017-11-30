@@ -107,6 +107,7 @@ static const struct fd_ops file_fd_ops =
     no_fd_read,                   /* read */
     no_fd_write,                  /* write */
     file_flush,                   /* flush */
+    no_fd_get_volume_info,        /* get_volume_info */
     default_fd_ioctl,             /* ioctl */
     default_fd_queue_async,       /* queue_async */
     default_fd_reselect_async     /* reselect_async */
@@ -263,12 +264,6 @@ static struct object *create_file( struct fd *root, const char *nameptr, data_si
 done:
     free( name );
     return obj;
-}
-
-/* check if two file objects point to the same file */
-int is_same_file( struct file *file1, struct file *file2 )
-{
-    return is_same_file_fd( file1->fd, file2->fd );
 }
 
 static void file_dump( struct object *obj, int verbose )

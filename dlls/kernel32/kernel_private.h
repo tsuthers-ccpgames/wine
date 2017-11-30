@@ -84,12 +84,12 @@ struct binary_info
     enum binary_type type;
     DWORD            arch;
     DWORD            flags;
-    void            *res_start;
-    void            *res_end;
+    ULONGLONG        res_start;
+    ULONGLONG        res_end;
 };
 
 /* module.c */
-extern WCHAR *MODULE_get_dll_load_path( LPCWSTR module ) DECLSPEC_HIDDEN;
+extern WCHAR *MODULE_get_dll_load_path( LPCWSTR module, int safe_mode ) DECLSPEC_HIDDEN;
 extern void MODULE_get_binary_info( HANDLE hfile, struct binary_info *info ) DECLSPEC_HIDDEN;
 
 extern BOOL NLS_IsUnicodeOnlyLcid(LCID) DECLSPEC_HIDDEN;

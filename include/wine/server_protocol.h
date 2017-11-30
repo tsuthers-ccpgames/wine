@@ -799,6 +799,8 @@ struct init_process_done_request
 struct init_process_done_reply
 {
     struct reply_header __header;
+    int          suspend;
+    char __pad_12[4];
 };
 
 
@@ -989,9 +991,9 @@ struct get_dll_info_reply
 {
     struct reply_header __header;
     client_ptr_t entry_point;
-    data_size_t  size;
     data_size_t  filename_len;
     /* VARARG(filename,unicode_str); */
+    char __pad_20[4];
 };
 
 
@@ -1027,14 +1029,12 @@ struct resume_thread_reply
 struct load_dll_request
 {
     struct request_header __header;
-    obj_handle_t mapping;
+    data_size_t  dbg_offset;
     mod_handle_t base;
     client_ptr_t name;
-    data_size_t  size;
-    int          dbg_offset;
-    int          dbg_size;
+    data_size_t  dbg_size;
     /* VARARG(filename,unicode_str); */
-    char __pad_44[4];
+    char __pad_36[4];
 };
 struct load_dll_reply
 {
@@ -1535,6 +1535,19 @@ struct flush_reply
     char __pad_12[4];
 };
 
+
+struct get_volume_info_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+    unsigned int info_class;
+    char __pad_20[4];
+};
+struct get_volume_info_reply
+{
+    struct reply_header __header;
+    /* VARARG(data,bytes); */
+};
 
 
 struct lock_file_request
@@ -2174,7 +2187,7 @@ struct create_mapping_request
     struct request_header __header;
     unsigned int access;
     unsigned int flags;
-    unsigned int protect;
+    unsigned int file_access;
     mem_size_t   size;
     obj_handle_t file_handle;
     /* VARARG(objattr,object_attributes); */
@@ -2186,20 +2199,6 @@ struct create_mapping_reply
     obj_handle_t handle;
     char __pad_12[4];
 };
-
-#define VPROT_READ       0x01
-#define VPROT_WRITE      0x02
-#define VPROT_EXEC       0x04
-#define VPROT_WRITECOPY  0x08
-#define VPROT_GUARD      0x10
-#define VPROT_NOCACHE    0x20
-#define VPROT_COMMITTED  0x40
-#define VPROT_WRITEWATCH 0x80
-
-#define VPROT_IMAGE      0x0100
-#define VPROT_SYSTEM     0x0200
-#define VPROT_VALLOC     0x0400
-#define VPROT_NOEXEC     0x0800
 
 
 
@@ -2232,10 +2231,38 @@ struct get_mapping_info_reply
     struct reply_header __header;
     mem_size_t   size;
     unsigned int flags;
-    int          protect;
-    obj_handle_t mapping;
     obj_handle_t shared_file;
     /* VARARG(image,pe_image_info); */
+};
+
+
+
+struct map_view_request
+{
+    struct request_header __header;
+    obj_handle_t mapping;
+    unsigned int access;
+    char __pad_20[4];
+    client_ptr_t base;
+    mem_size_t   size;
+    file_pos_t   start;
+};
+struct map_view_reply
+{
+    struct reply_header __header;
+};
+
+
+
+struct unmap_view_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+    client_ptr_t base;
+};
+struct unmap_view_reply
+{
+    struct reply_header __header;
 };
 
 
@@ -2243,7 +2270,8 @@ struct get_mapping_info_reply
 struct get_mapping_committed_range_request
 {
     struct request_header __header;
-    obj_handle_t handle;
+    char __pad_12[4];
+    client_ptr_t base;
     file_pos_t   offset;
 };
 struct get_mapping_committed_range_reply
@@ -2259,11 +2287,26 @@ struct get_mapping_committed_range_reply
 struct add_mapping_committed_range_request
 {
     struct request_header __header;
-    obj_handle_t handle;
+    char __pad_12[4];
+    client_ptr_t base;
     file_pos_t   offset;
     mem_size_t   size;
 };
 struct add_mapping_committed_range_reply
+{
+    struct reply_header __header;
+};
+
+
+
+struct is_same_mapping_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+    client_ptr_t base1;
+    client_ptr_t base2;
+};
+struct is_same_mapping_reply
 {
     struct reply_header __header;
 };
@@ -5602,6 +5645,7 @@ enum request
     REQ_get_handle_fd,
     REQ_get_directory_cache_entry,
     REQ_flush,
+    REQ_get_volume_info,
     REQ_lock_file,
     REQ_unlock_file,
     REQ_create_socket,
@@ -5638,8 +5682,11 @@ enum request
     REQ_create_mapping,
     REQ_open_mapping,
     REQ_get_mapping_info,
+    REQ_map_view,
+    REQ_unmap_view,
     REQ_get_mapping_committed_range,
     REQ_add_mapping_committed_range,
+    REQ_is_same_mapping,
     REQ_create_snapshot,
     REQ_next_process,
     REQ_next_thread,
@@ -5893,6 +5940,7 @@ union generic_request
     struct get_handle_fd_request get_handle_fd_request;
     struct get_directory_cache_entry_request get_directory_cache_entry_request;
     struct flush_request flush_request;
+    struct get_volume_info_request get_volume_info_request;
     struct lock_file_request lock_file_request;
     struct unlock_file_request unlock_file_request;
     struct create_socket_request create_socket_request;
@@ -5929,8 +5977,11 @@ union generic_request
     struct create_mapping_request create_mapping_request;
     struct open_mapping_request open_mapping_request;
     struct get_mapping_info_request get_mapping_info_request;
+    struct map_view_request map_view_request;
+    struct unmap_view_request unmap_view_request;
     struct get_mapping_committed_range_request get_mapping_committed_range_request;
     struct add_mapping_committed_range_request add_mapping_committed_range_request;
+    struct is_same_mapping_request is_same_mapping_request;
     struct create_snapshot_request create_snapshot_request;
     struct next_process_request next_process_request;
     struct next_thread_request next_thread_request;
@@ -6182,6 +6233,7 @@ union generic_reply
     struct get_handle_fd_reply get_handle_fd_reply;
     struct get_directory_cache_entry_reply get_directory_cache_entry_reply;
     struct flush_reply flush_reply;
+    struct get_volume_info_reply get_volume_info_reply;
     struct lock_file_reply lock_file_reply;
     struct unlock_file_reply unlock_file_reply;
     struct create_socket_reply create_socket_reply;
@@ -6218,8 +6270,11 @@ union generic_reply
     struct create_mapping_reply create_mapping_reply;
     struct open_mapping_reply open_mapping_reply;
     struct get_mapping_info_reply get_mapping_info_reply;
+    struct map_view_reply map_view_reply;
+    struct unmap_view_reply unmap_view_reply;
     struct get_mapping_committed_range_reply get_mapping_committed_range_reply;
     struct add_mapping_committed_range_reply add_mapping_committed_range_reply;
+    struct is_same_mapping_reply is_same_mapping_reply;
     struct create_snapshot_reply create_snapshot_reply;
     struct next_process_reply next_process_reply;
     struct next_thread_reply next_thread_reply;
@@ -6420,6 +6475,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 535
+#define SERVER_PROTOCOL_VERSION 543
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

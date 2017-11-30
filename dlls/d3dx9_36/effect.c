@@ -103,6 +103,7 @@ struct d3dx_object
     UINT size;
     void *data;
     struct d3dx_parameter *param;
+    BOOL creation_failed;
 };
 
 struct d3dx_state
@@ -178,7 +179,7 @@ struct ID3DXEffectImpl
     DWORD begin_flags;
 
     D3DLIGHT9 current_light[8];
-    BOOL light_updated[8];
+    unsigned int light_updated;
     D3DMATERIAL9 current_material;
     BOOL material_updated;
 };
@@ -1143,21 +1144,17 @@ static HRESULT d3dx9_base_effect_get_pass_desc(struct d3dx9_base_effect *base,
             void *param_value;
             BOOL param_dirty;
             HRESULT hr;
+            void *data;
 
             if (FAILED(hr = d3dx9_get_param_value_ptr(pass, &pass->states[i], &param_value, &param,
                     FALSE, &param_dirty)))
                 return hr;
 
-            if (!param->object_id)
-            {
-                FIXME("Zero object ID in shader parameter.\n");
-                return E_FAIL;
-            }
-
+            data = param->object_id ? base->objects[param->object_id].data : NULL;
             if (state_table[state->operation].class == SC_VERTEXSHADER)
-                desc->pVertexShaderFunction = base->objects[param->object_id].data;
+                desc->pVertexShaderFunction = data;
             else
-                desc->pPixelShaderFunction = base->objects[param->object_id].data;
+                desc->pPixelShaderFunction = data;
         }
     }
 
@@ -3067,7 +3064,7 @@ static HRESULT d3dx9_apply_state(struct ID3DXEffectImpl *effect, struct d3dx_pas
                     state_table[state->operation].op);
             d3dx9_set_light_parameter(state_table[state->operation].op,
                     &effect->current_light[state->index], param_value);
-            effect->light_updated[state->index] = TRUE;
+            effect->light_updated |= 1u << state->index;
             return D3D_OK;
         }
         case SC_MATERIAL:
@@ -3112,15 +3109,19 @@ static HRESULT d3dx9_apply_pass_states(struct ID3DXEffectImpl *effect, struct d3
             ret = hr;
         }
     }
-    for (i = 0; i < ARRAY_SIZE(effect->current_light); ++i)
+
+    if (effect->light_updated)
     {
-        if (effect->light_updated[i]
-                && FAILED(hr = SET_D3D_STATE(effect, SetLight, i, &effect->current_light[i])))
+        for (i = 0; i < ARRAY_SIZE(effect->current_light); ++i)
         {
-            WARN("Error setting light, hr %#x.\n", hr);
-            ret = hr;
+            if ((effect->light_updated & (1u << i))
+                    && FAILED(hr = SET_D3D_STATE(effect, SetLight, i, &effect->current_light[i])))
+            {
+                WARN("Error setting light, hr %#x.\n", hr);
+                ret = hr;
+            }
         }
-        effect->light_updated[i] = FALSE;
+        effect->light_updated = 0;
     }
 
     if (effect->material_updated
@@ -3937,11 +3938,50 @@ static D3DXHANDLE WINAPI ID3DXEffectImpl_GetCurrentTechnique(ID3DXEffect *iface)
 
 static HRESULT WINAPI ID3DXEffectImpl_ValidateTechnique(ID3DXEffect* iface, D3DXHANDLE technique)
 {
-    struct ID3DXEffectImpl *This = impl_from_ID3DXEffect(iface);
+    struct ID3DXEffectImpl *effect = impl_from_ID3DXEffect(iface);
+    struct d3dx9_base_effect *base = &effect->base_effect;
+    struct d3dx_technique *tech = get_valid_technique(base, technique);
+    HRESULT ret = D3D_OK;
+    unsigned int i, j;
 
-    FIXME("(%p)->(%p): stub\n", This, technique);
+    FIXME("iface %p, technique %p semi-stub.\n", iface, technique);
 
-    return D3D_OK;
+    if (!tech)
+    {
+        ret = D3DERR_INVALIDCALL;
+        goto done;
+    }
+    for (i = 0; i < tech->pass_count; ++i)
+    {
+        struct d3dx_pass *pass = &tech->passes[i];
+
+        for (j = 0; j < pass->state_count; ++j)
+        {
+            struct d3dx_state *state = &pass->states[j];
+
+            if (state_table[state->operation].class == SC_VERTEXSHADER
+                    || state_table[state->operation].class == SC_PIXELSHADER)
+            {
+                struct d3dx_parameter *param;
+                void *param_value;
+                BOOL param_dirty;
+                HRESULT hr;
+
+                if (FAILED(hr = d3dx9_get_param_value_ptr(pass, &pass->states[j], &param_value, &param,
+                        FALSE, &param_dirty)))
+                    return hr;
+
+                if (param->object_id && base->objects[param->object_id].creation_failed)
+                {
+                    ret = E_FAIL;
+                    goto done;
+                }
+            }
+        }
+    }
+done:
+    TRACE("Returning %#x.\n", ret);
+    return ret;
 }
 
 static HRESULT WINAPI ID3DXEffectImpl_FindNextValidTechnique(ID3DXEffect* iface, D3DXHANDLE technique, D3DXHANDLE* next_technique)
@@ -5934,7 +5974,7 @@ static HRESULT d3dx9_create_object(struct d3dx9_base_effect *base, struct d3dx_o
                     (IDirect3DVertexShader9 **)param->data)))
             {
                 WARN("Failed to create vertex shader.\n");
-                return hr;
+                object->creation_failed = TRUE;
             }
             break;
         case D3DXPT_PIXELSHADER:
@@ -5942,7 +5982,7 @@ static HRESULT d3dx9_create_object(struct d3dx9_base_effect *base, struct d3dx_o
                     (IDirect3DPixelShader9 **)param->data)))
             {
                 WARN("Failed to create pixel shader.\n");
-                return hr;
+                object->creation_failed = TRUE;
             }
             break;
         default:

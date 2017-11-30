@@ -3518,6 +3518,7 @@ BOOL WINAPI TrackPopupMenuEx( HMENU hMenu, UINT wFlags, INT x, INT y,
                SendMessageW( hWnd, WM_UNINITMENUPOPUP, (WPARAM)hMenu,
                              MAKELPARAM(0, IS_SYSTEM_MENU(menu)) );
         }
+        SetLastError(0);
     }
 
     return ret;
@@ -5285,6 +5286,16 @@ INT WINAPI MenuItemFromPoint(HWND hWnd, HMENU hMenu, POINT ptScreen)
     if (!menu) return -1;
     if (MENU_FindItemByCoords( menu, ptScreen, &pos ) != ht_item) return -1;
     return pos;
+}
+
+
+/**********************************************************************
+ *      CalcMenuBar     (USER32.@)
+ */
+DWORD WINAPI CalcMenuBar(HWND hwnd, DWORD left, DWORD right, DWORD top, RECT *rect)
+{
+    FIXME("(%p, %d, %d, %d, %p): stub\n", hwnd, left, right, top, rect);
+    return 0;
 }
 
 

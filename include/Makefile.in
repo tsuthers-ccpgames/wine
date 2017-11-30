@@ -41,6 +41,9 @@ IDL_SRCS = \
 	d3d10sdklayers.idl \
 	d3d11.idl \
 	d3d11_1.idl \
+	d3d11_2.idl \
+	d3d11_3.idl \
+	d3d11_4.idl \
 	d3d11sdklayers.idl \
 	d3dcommon.idl \
 	d3dx10core.idl \
@@ -51,6 +54,7 @@ IDL_SRCS = \
 	dbinit.idl \
 	dbprop.idl \
 	dbs.idl \
+	dcommon.idl \
 	ddstream.idl \
 	devenum.idl \
 	devicetopology.idl \
@@ -66,10 +70,18 @@ IDL_SRCS = \
 	dwrite_3.idl \
 	dxgi.idl \
 	dxgi1_2.idl \
+	dxgi1_3.idl \
+	dxgi1_4.idl \
+	dxgi1_5.idl \
+	dxgi1_6.idl \
+	dxgicommon.idl \
+	dxgiformat.idl \
+	dxgitype.idl \
 	dxva2api.idl \
 	dyngraph.idl \
 	endpointvolume.idl \
 	errrec.idl \
+	evr.idl \
 	exdisp.idl \
 	fusion.idl \
 	gameux.idl \
@@ -80,6 +92,7 @@ IDL_SRCS = \
 	httprequest.idl \
 	iads.idl \
 	icftypes.idl \
+	ieautomation.idl \
 	iextag.idl \
 	iimgctx.idl \
 	imnact.idl \
@@ -133,6 +146,7 @@ IDL_SRCS = \
 	pstore.idl \
 	qedit.idl \
 	richole.idl \
+	roparameterizediid.idl \
 	row.idl \
 	rowchg.idl \
 	rowpos.idl \
@@ -141,6 +155,8 @@ IDL_SRCS = \
 	rstinf.idl \
 	rstloc.idl \
 	rstnot.idl \
+	sapi.idl \
+	sapiddk.idl \
 	sensevts.idl \
 	servprov.idl \
 	sesprp.idl \
@@ -160,6 +176,7 @@ IDL_SRCS = \
 	transact.idl \
 	txcoord.idl \
 	txdtc.idl \
+	uianimation.idl \
 	uiautomationclient.idl \
 	uiautomationcore.idl \
 	uiribbon.idl \
@@ -209,6 +226,7 @@ HEADER_SRCS = \
 	amaudio.h \
 	appcompatapi.h \
 	appmgmt.h \
+	appmodel.h \
 	atlbase.h \
 	atlcom.h \
 	atlwin.h \
@@ -288,7 +306,6 @@ HEADER_SRCS = \
 	dbt.h \
 	dciddi.h \
 	dciman.h \
-	dcommon.h \
 	dde.h \
 	dde.rh \
 	ddeml.h \
@@ -363,8 +380,6 @@ HEADER_SRCS = \
 	dxerr8.h \
 	dxerr9.h \
 	dxfile.h \
-	dxgiformat.h \
-	dxgitype.h \
 	errorrep.h \
 	errors.h \
 	evcode.h \
@@ -422,6 +437,7 @@ HEADER_SRCS = \
 	ksguid.h \
 	ksmedia.h \
 	ksuuids.h \
+	libloaderapi.h \
 	lm.h \
 	lmaccess.h \
 	lmapibuf.h \
@@ -520,6 +536,7 @@ HEADER_SRCS = \
 	msxml6did.h \
 	msxmldid.h \
 	mtxdm.h \
+	multimon.h \
 	nb30.h \
 	ncrypt.h \
 	ndrtypes.h \
@@ -534,6 +551,7 @@ HEADER_SRCS = \
 	ntddstor.h \
 	ntdef.h \
 	ntdsapi.h \
+	ntlsa.h \
 	ntquery.h \
 	ntsecapi.h \
 	ntsecpkg.h \
@@ -550,6 +568,7 @@ HEADER_SRCS = \
 	patchapi.h \
 	pdh.h \
 	pdhmsg.h \
+	perflib.h \
 	physicalmonitorenumerationapi.h \
 	pktdef.h \
 	poppack.h \
@@ -603,12 +622,14 @@ HEADER_SRCS = \
 	slpublic.h \
 	snmp.h \
 	softpub.h \
+	sperror.h \
 	sql.h \
 	sqlext.h \
 	sqltypes.h \
 	sqlucode.h \
 	srrestoreptapi.h \
 	sspi.h \
+	stgprop.h \
 	sti.h \
 	storage.h \
 	strsafe.h \

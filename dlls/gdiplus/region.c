@@ -76,18 +76,17 @@ WINE_DEFAULT_DEBUG_CHANNEL(gdiplus);
 
 #define FLAGS_INTPATH   0x4000
 
-struct memory_buffer
+struct region_header
 {
-    const BYTE *buffer;
-    INT size, pos;
+    DWORD magic;
+    DWORD num_children;
 };
 
-struct region_header
+struct region_data_header
 {
     DWORD size;
     DWORD checksum;
-    DWORD magic;
-    DWORD num_children;
+    struct region_header header;
 };
 
 struct path_header
@@ -97,11 +96,6 @@ struct path_header
     DWORD count;
     DWORD flags;
 };
-
-/* Header size as far as header->size is concerned. This doesn't include
- * header->size or header->checksum
- */
-static const INT sizeheader_size = sizeof(DWORD) * 2;
 
 typedef struct packed_point
 {
@@ -699,6 +693,24 @@ static void write_element(const region_element* element, DWORD *buffer,
     }
 }
 
+DWORD write_region_data(const GpRegion *region, void *data)
+{
+    struct region_header *header = data;
+    INT filled = 0;
+    DWORD size;
+
+    size = sizeof(struct region_header) + get_element_size(&region->node);
+    if (!data) return size;
+
+    header->magic = VERSION_MAGIC2;
+    header->num_children = region->num_children;
+    filled += 2;
+    /* With few exceptions, everything written is DWORD aligned,
+     * so use that as our base */
+    write_element(&region->node, (DWORD*)data, &filled);
+    return size;
+}
+
 /*****************************************************************************
  * GdipGetRegionData [GDIPLUS.@]
  *
@@ -735,56 +747,29 @@ static void write_element(const region_element* element, DWORD *buffer,
 GpStatus WINGDIPAPI GdipGetRegionData(GpRegion *region, BYTE *buffer, UINT size,
         UINT *needed)
 {
-    struct region_header *region_header;
-    INT filled = 0;
+    struct region_data_header *region_data_header;
     UINT required;
-    GpStatus status;
 
     TRACE("%p, %p, %d, %p\n", region, buffer, size, needed);
 
     if (!region || !buffer || !size)
         return InvalidParameter;
 
-    status = GdipGetRegionDataSize(region, &required);
-    if (status != Ok) return status;
+    required = FIELD_OFFSET(struct region_data_header, header) + write_region_data(region, NULL);
     if (size < required)
     {
         if (needed) *needed = size;
         return InsufficientBuffer;
     }
 
-    region_header = (struct region_header *)buffer;
-    region_header->size = sizeheader_size + get_element_size(&region->node);
-    region_header->checksum = 0;
-    region_header->magic = VERSION_MAGIC2;
-    region_header->num_children = region->num_children;
-    filled += 4;
-    /* With few exceptions, everything written is DWORD aligned,
-     * so use that as our base */
-    write_element(&region->node, (DWORD*)buffer, &filled);
+    region_data_header = (struct region_data_header *)buffer;
+    region_data_header->size = write_region_data(region, &region_data_header->header);
+    region_data_header->checksum = 0;
 
     if (needed)
-        *needed = filled * sizeof(DWORD);
+        *needed = required;
 
     return Ok;
-}
-
-static inline void init_memory_buffer(struct memory_buffer *mbuf, const BYTE *buffer, INT size)
-{
-    mbuf->buffer = buffer;
-    mbuf->size = size;
-    mbuf->pos = 0;
-}
-
-static inline const void *buffer_read(struct memory_buffer *mbuf, INT size)
-{
-    if (mbuf->size - mbuf->pos >= size)
-    {
-        const void *data = mbuf->buffer + mbuf->pos;
-        mbuf->pos += size;
-        return data;
-    }
-    return NULL;
 }
 
 static GpStatus read_element(struct memory_buffer *mbuf, GpRegion *region, region_element *node, INT *count)
@@ -960,7 +945,7 @@ static GpStatus read_element(struct memory_buffer *mbuf, GpRegion *region, regio
  */
 GpStatus WINGDIPAPI GdipCreateRegionRgnData(GDIPCONST BYTE *data, INT size, GpRegion **region)
 {
-    const struct region_header *region_header;
+    const struct region_data_header *region_data_header;
     struct memory_buffer mbuf;
     GpStatus status;
     INT count;
@@ -972,8 +957,8 @@ GpStatus WINGDIPAPI GdipCreateRegionRgnData(GDIPCONST BYTE *data, INT size, GpRe
 
     init_memory_buffer(&mbuf, data, size);
 
-    region_header = buffer_read(&mbuf, sizeof(*region_header));
-    if (!region_header || !VALID_MAGIC(region_header->magic))
+    region_data_header = buffer_read(&mbuf, sizeof(*region_data_header));
+    if (!region_data_header || !VALID_MAGIC(region_data_header->header.magic))
         return InvalidParameter;
 
     status = GdipCreateRegion(region);
@@ -1005,7 +990,7 @@ GpStatus WINGDIPAPI GdipGetRegionDataSize(GpRegion *region, UINT *needed)
         return InvalidParameter;
 
     /* header.size doesn't count header.size and header.checksum */
-    *needed = sizeof(DWORD) * 2 + sizeheader_size + get_element_size(&region->node);
+    *needed = FIELD_OFFSET(struct region_data_header, header) + write_region_data(region, NULL);
 
     return Ok;
 }
@@ -1050,12 +1035,16 @@ static GpStatus get_path_hrgn(GpPath *path, GpGraphics *graphics, HRGN *hrgn)
     SetPolyFillMode(graphics->hdc, (path->fill == FillModeAlternate ? ALTERNATE
                                                                     : WINDING));
 
+    gdi_transform_acquire(graphics);
+
     stat = trace_path(graphics, path);
     if (stat == Ok)
     {
         *hrgn = PathToRegion(graphics->hdc);
         stat = *hrgn ? Ok : OutOfMemory;
     }
+
+    gdi_transform_release(graphics);
 
     RestoreDC(graphics->hdc, save_state);
     if (new_hdc)

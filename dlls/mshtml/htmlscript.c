@@ -258,9 +258,7 @@ static HRESULT WINAPI HTMLScriptElement_get_defer(IHTMLScriptElement *iface, VAR
         ERR("GetSrc failed: %08x\n", nsres);
     }
 
-    *p = defer ? VARIANT_TRUE : VARIANT_FALSE;
-
-    TRACE("*p = %d\n", *p);
+    *p = variant_bool(defer);
     return S_OK;
 }
 
@@ -437,7 +435,6 @@ static const NodeImplVtbl HTMLScriptElementImplVtbl = {
     HTMLElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col,
-    NULL,
     NULL,
     NULL,
     NULL,

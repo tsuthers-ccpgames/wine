@@ -22,7 +22,7 @@
 @ stdcall BroadcastSystemMessageW(long ptr long long long)
 # @ stub BuildReasonArray
 @ stdcall CalcChildScroll(long long)
-# @ stub CalcMenuBar
+@ stdcall CalcMenuBar(long long long long ptr) CalcMenuBar
 @ stdcall CallMsgFilter(ptr long) CallMsgFilterA
 @ stdcall CallMsgFilterA(ptr long)
 @ stdcall CallMsgFilterW(ptr long)
@@ -73,6 +73,7 @@
 @ stdcall ClipCursor(ptr)
 @ stdcall CloseClipboard()
 @ stdcall CloseDesktop(long)
+@ stdcall CloseTouchInputHandle(long)
 @ stdcall CloseWindow(long)
 @ stdcall CloseWindowStation(long)
 @ stdcall CopyAcceleratorTableA(long ptr long)
@@ -294,6 +295,7 @@
 @ stdcall GetFocus()
 @ stdcall GetForegroundWindow()
 @ stdcall GetGestureConfig(long long long ptr ptr long)
+@ stdcall GetGestureInfo(long ptr)
 @ stdcall GetGUIThreadInfo(long ptr)
 @ stdcall GetGuiResources(long long)
 @ stdcall GetIconInfo(long ptr)
@@ -375,6 +377,7 @@
 @ stdcall GetThreadDesktop(long)
 @ stdcall GetTitleBarInfo(long ptr)
 @ stdcall GetTopWindow(long)
+@ stdcall GetTouchInputInfo(long long ptr long)
 @ stdcall GetUpdateRect(long ptr long)
 @ stdcall GetUpdateRgn(long long long)
 @ stdcall GetUpdatedClipboardFormats(ptr long ptr)
@@ -751,6 +754,7 @@
 @ stdcall UnregisterHotKey(long long)
 # @ stub UnregisterMessagePumpHook
 @ stdcall UnregisterPowerSettingNotification(ptr)
+@ stdcall UnregisterTouchWindow(long)
 # @ stub UnregisterUserApiHook
 @ stdcall UpdateLayeredWindow(long long ptr ptr long ptr long ptr long)
 @ stdcall UpdateLayeredWindowIndirect(long ptr)

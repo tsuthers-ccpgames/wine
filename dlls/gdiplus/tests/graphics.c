@@ -1868,6 +1868,15 @@ static void test_transformpoints(void)
     status = GdipTransformPoints(graphics, CoordinateSpacePage, CoordinateSpaceWorld, ptf, -1);
     expect(InvalidParameter, status);
 
+    status = GdipTransformPoints(graphics, CoordinateSpaceDevice+1, CoordinateSpaceWorld, ptf, 2);
+    expect(InvalidParameter, status);
+    status = GdipTransformPoints(graphics, -1, CoordinateSpaceWorld, ptf, 2);
+    expect(InvalidParameter, status);
+    status = GdipTransformPoints(graphics, CoordinateSpaceDevice, CoordinateSpaceDevice+1, ptf, 2);
+    expect(InvalidParameter, status);
+    status = GdipTransformPoints(graphics, CoordinateSpaceDevice, -1, ptf, 2);
+    expect(InvalidParameter, status);
+
     ptf[0].X = 1.0;
     ptf[0].Y = 0.0;
     ptf[1].X = 0.0;
@@ -4950,6 +4959,16 @@ static void test_clipping(void)
     ok(rect.X == 100.0 && rect.Y == 100.0 && rect.Width == 100.0 && rect.Height == 100.0,
        "expected 100.0,100.0-100.0,100.0, got %.2f,%.2f-%.2f,%.2f\n", rect.X, rect.Y, rect.Width, rect.Height);
 
+    /* Clip region does not account for changes to gdi32 transform */
+    SetViewportOrgEx(hdc, 10, 10, NULL);
+
+    status = GdipGetClipBounds(graphics, &rect);
+    expect(Ok, status);
+    ok(rect.X == 100.0 && rect.Y == 100.0 && rect.Width == 100.0 && rect.Height == 100.0,
+       "expected 100.0,100.0-100.0,100.0, got %.2f,%.2f-%.2f,%.2f\n", rect.X, rect.Y, rect.Width, rect.Height);
+
+    SetViewportOrgEx(hdc, 0, 0, NULL);
+
     status = GdipSetEmpty(region);
     expect(Ok, status);
     status = GdipGetClip(graphics, region);
@@ -6179,6 +6198,446 @@ static void test_GdipGraphicsSetAbort(void)
     ReleaseDC(hwnd, hdc);
 }
 
+#define BLUE_COLOR (0xff0000ff)
+#define is_blue_color(color) ( ((color) & 0x00ffffff) == 0xff )
+#define get_bitmap_pixel(x,y) pixel[(y)*(width) + (x)]
+static DWORD* GetBitmapPixelBuffer(HDC hdc, HBITMAP hbmp, int width, int height)
+{
+    BITMAPINFOHEADER bi;
+    UINT lines = 0;
+    DWORD *buffer = (DWORD *)GdipAlloc(width*height*4);
+
+    bi.biSize = sizeof(BITMAPINFOHEADER);
+    bi.biWidth = width;
+    bi.biHeight = -height; /*very Important, set negative, indicating a top-down DIB*/
+    bi.biPlanes = 1;
+    bi.biBitCount = 32;
+    bi.biCompression = BI_RGB;
+    bi.biSizeImage = 0;
+    bi.biXPelsPerMeter = 0;
+    bi.biYPelsPerMeter = 0;
+    bi.biClrUsed = 0;
+    bi.biClrImportant = 0;
+
+    lines = GetDIBits(hdc, hbmp, 0, height, buffer, (BITMAPINFO *)&bi, DIB_RGB_COLORS);
+    ok(lines == height, "Expected GetDIBits:%p,%d->%d,%d\n", buffer, height, lines, GetLastError());
+
+    return buffer;
+}
+
+static void test_GdipFillRectanglesOnMemoryDCSolidBrush(void)
+{
+    ARGB color[6] = {0,0,0,0,0,0};
+    POINT pt = {0,0};
+    RECT rect = {100, 100, 180, 180};
+    UINT width = rect.right - rect.left;
+    UINT height = rect.bottom - rect.top;
+    GpStatus status = 0;
+    GpSolidFill *brush = NULL;
+    GpGraphics *graphics = NULL;
+    HDC dc = GetDC( hwnd);
+    HDC hdc = CreateCompatibleDC(dc);
+    HBITMAP bmp = CreateCompatibleBitmap(dc, width, height);
+    HGDIOBJ old = SelectObject(hdc, bmp);
+    DWORD* pixel = NULL;
+
+    /*Change the window origin is the key test point*/
+    SetWindowOrgEx(hdc, rect.left, rect.top, &pt);
+
+    status = GdipCreateSolidFill(BLUE_COLOR, &brush);
+    expect(Ok, status);
+
+    status = GdipCreateFromHDC(hdc, &graphics);
+    expect(Ok, status);
+
+    status = GdipSetClipRectI(graphics, rect.left+width/2, rect.top+height/2,
+            width, height, CombineModeReplace);
+    expect(Ok, status);
+
+    status = GdipFillRectangleI(graphics, (GpBrush*)brush, 0, 0, rect.right, rect.bottom);
+    expect(Ok, status);
+
+    GdipDeleteBrush((GpBrush*)brush);
+    GdipDeleteGraphics(graphics);
+
+    pixel = GetBitmapPixelBuffer(hdc, bmp, width, height);
+    if (pixel)
+    {
+       color[0] = get_bitmap_pixel(width/2, height/2);
+       color[1] = get_bitmap_pixel(width/2+1, height/2);
+       color[2] = get_bitmap_pixel(width/2, height/2+1);
+       color[3] = get_bitmap_pixel(width/2-1, height/2-1);
+       color[4] = get_bitmap_pixel(width/2-1, height-1);
+       color[5] = get_bitmap_pixel(width-1, height/2-1);
+    }
+
+    ok(is_blue_color(color[0]) && is_blue_color(color[1]) && is_blue_color(color[2]) &&
+       color[3] == 0 && color[4] == 0 && color[5] == 0,
+       "Expected GdipFillRectangleI take effect!\n" );
+    GdipFree(pixel);
+
+    SelectObject(hdc, old);
+    DeleteObject(bmp);
+    DeleteDC(hdc);
+    ReleaseDC(hwnd, dc);
+}
+
+static void test_GdipFillRectanglesOnMemoryDCTextureBrush(void)
+{
+    ARGB color[6] = {0,0,0,0,0,0};
+    POINT pt = {0,0};
+    RECT rect = {100, 100, 180, 180};
+    UINT width = rect.right - rect.left;
+    UINT height = rect.bottom - rect.top;
+    GpStatus status = 0;
+    union
+    {
+        GpBitmap *bitmap;
+        GpImage *image;
+    } src_img;
+    GpTexture *brush = NULL;
+    GpGraphics *graphics = NULL;
+    HDC dc = GetDC( hwnd);
+    HDC hdc = CreateCompatibleDC(dc);
+    HBITMAP bmp = CreateCompatibleBitmap(dc, width, height);
+    HGDIOBJ old = SelectObject(hdc, bmp);
+
+    UINT x = 0;
+    UINT y = 0;
+    UINT src_img_width = width/2;
+    UINT src_img_height = height/2;
+    BYTE *src_img_data = GdipAlloc(src_img_width*src_img_height*4);
+    DWORD *pixel = (DWORD *)src_img_data;
+    ok(pixel != NULL, "Expected src_img_data is valid\n");
+
+    /*Change the window origin is the key test point*/
+    SetWindowOrgEx(hdc, rect.left, rect.top, &pt);
+
+    /*build a blue solid image!*/
+    for(y = 0; y < src_img_height; ++y)
+    {
+        for(x = 0; x < src_img_width; ++x)
+        {
+            pixel[x] = BLUE_COLOR;
+        }
+
+        pixel += src_img_width;
+    }
+
+    status = GdipCreateBitmapFromScan0(src_img_width, src_img_height, src_img_width*4,
+            PixelFormat32bppARGB, src_img_data, &src_img.bitmap);
+    expect(Ok, status);
+
+    status = GdipCreateTexture(src_img.image, 0, &brush);
+    expect(Ok, status);
+
+    status = GdipCreateFromHDC(hdc, &graphics);
+    expect(Ok, status);
+
+    status = GdipSetClipRectI(graphics, rect.left+width/2, rect.top+height/2,
+            width, height, CombineModeReplace);
+    expect(Ok, status);
+
+    status = GdipFillRectangleI(graphics, (GpBrush*)brush, 0, 0, rect.right, rect.bottom);
+    expect(Ok, status);
+
+    GdipDisposeImage(src_img.image);
+    GdipDeleteBrush((GpBrush*)brush);
+    GdipDeleteGraphics(graphics);
+    GdipFree(src_img_data);
+
+    pixel = GetBitmapPixelBuffer(hdc, bmp, width, height);
+    if (pixel)
+    {
+       color[0] = get_bitmap_pixel(width/2, height/2);
+       color[1] = get_bitmap_pixel(width/2+1, height/2);
+       color[2] = get_bitmap_pixel(width/2, height/2+1);
+       color[3] = get_bitmap_pixel(width/2-1, height/2-1);
+       color[4] = get_bitmap_pixel(width/2-1, height-1);
+       color[5] = get_bitmap_pixel(width-1, height/2-1);
+    }
+    ok(is_blue_color(color[0]) && is_blue_color(color[1]) && is_blue_color(color[2]) &&
+       color[3] == 0 && color[4] == 0 && color[5] == 0,
+      "Expected GdipFillRectangleI take effect!\n" );
+    GdipFree(pixel);
+
+    SelectObject(hdc, old);
+    DeleteObject(bmp);
+    DeleteDC(hdc);
+    ReleaseDC(hwnd, dc);
+}
+
+static void test_GdipFillRectanglesOnBitmapTextureBrush(void)
+{
+    ARGB color[6] = {0,0,0,0,0,0};
+    UINT x = 0;
+    UINT y = 0;
+    RECT rect = {100, 100, 180, 180};
+    UINT width = rect.right - rect.left;
+    UINT height = rect.bottom - rect.top;
+    UINT src_img_width = width/2;
+    UINT src_img_height = height/2;
+
+    GpStatus status = 0;
+    union
+    {
+        GpBitmap *bitmap;
+        GpImage *image;
+    } src_img;
+    union
+    {
+        GpBitmap *bitmap;
+        GpImage *image;
+    } dst_img;
+
+    GpTexture *brush = NULL;
+    GpGraphics *graphics = NULL;
+    BYTE *src_img_data = GdipAlloc(src_img_width*src_img_height*4);
+    DWORD *pixel = (DWORD *)src_img_data;
+    ok(pixel != NULL, "Expected src_img_data is valid\n");
+
+    status = GdipCreateBitmapFromScan0(width, height, width*4,
+            PixelFormat32bppARGB, NULL, &dst_img.bitmap);
+    expect(Ok, status);
+
+    /*build a blue solid image!*/
+    for(y = 0; y < src_img_height; ++y)
+    {
+        for(x = 0; x < src_img_width; ++x)
+        {
+            pixel[x] = BLUE_COLOR;
+        }
+
+        pixel += src_img_width;
+    }
+
+    status = GdipCreateBitmapFromScan0(src_img_width, src_img_height, src_img_width*4,
+            PixelFormat32bppARGB, src_img_data, &src_img.bitmap);
+    expect(Ok, status);
+
+    status = GdipCreateTexture(src_img.image, 0, &brush);
+    expect(Ok, status);
+
+    status = GdipGetImageGraphicsContext(dst_img.image, &graphics);
+    expect(Ok, status);
+
+    status = GdipSetClipRectI(graphics, 0, 0, width, height, CombineModeReplace);
+    expect(Ok, status);
+
+    status = GdipFillRectangleI(graphics, (GpBrush*)brush, 0, 0, width/2, height/2);
+    expect(Ok, status);
+
+    GdipDeleteBrush((GpBrush*)brush);
+    GdipDeleteGraphics(graphics);
+
+    GdipBitmapGetPixel(dst_img.bitmap, 0, 0, &color[0]);
+    GdipBitmapGetPixel(dst_img.bitmap, 0, 1, &color[1]);
+    GdipBitmapGetPixel(dst_img.bitmap, 1, 0, &color[2]);
+    GdipBitmapGetPixel(dst_img.bitmap, width/2, 0, &color[3]);
+    GdipBitmapGetPixel(dst_img.bitmap, width/2, height/2, &color[4]);
+    GdipBitmapGetPixel(dst_img.bitmap, 0, height/2, &color[5]);
+
+    ok(is_blue_color(color[0]) && is_blue_color(color[1]) && is_blue_color(color[2]) &&
+       color[3] == 0 && color[4] == 0 && color[5] == 0,
+       "Expected GdipFillRectangleI take effect!\n" );
+
+    GdipDisposeImage(src_img.image);
+    GdipDisposeImage(dst_img.image);
+    GdipFree(src_img_data);
+}
+
+static void test_GdipDrawImagePointsRectOnMemoryDC(void)
+{
+    ARGB color[6] = {0,0,0,0,0,0};
+    POINT pt = {0,0};
+    RECT rect = {100, 100, 180, 180};
+    UINT width = rect.right - rect.left;
+    UINT height = rect.bottom - rect.top;
+    GpStatus status = 0;
+    union
+    {
+        GpBitmap *bitmap;
+        GpImage *image;
+    } src_img;
+    GpGraphics *graphics = NULL;
+    HDC dc = GetDC( hwnd);
+    HDC hdc = CreateCompatibleDC(dc);
+    HBITMAP bmp = CreateCompatibleBitmap(dc, width, height);
+    HGDIOBJ old = SelectObject(hdc, bmp);
+
+    UINT x = 0;
+    UINT y = 0;
+    UINT src_img_width = width/2;
+    UINT src_img_height = height/2;
+    BYTE *src_img_data = GdipAlloc(src_img_width*src_img_height*4);
+    DWORD *pixel = (DWORD *)src_img_data;
+    ok(pixel != NULL, "Expected src_img_data is valid\n");
+
+    /*Change the window origin is the key test point*/
+    SetWindowOrgEx(hdc, rect.left, rect.top, &pt);
+
+    /*build a blue solid image!*/
+    for(y = 0; y < src_img_height; ++y)
+    {
+        for(x = 0; x < src_img_width; ++x)
+        {
+            pixel[x] = BLUE_COLOR;
+        }
+
+        pixel += src_img_width;
+    }
+
+    status = GdipCreateBitmapFromScan0(src_img_width, src_img_height, src_img_width*4,
+            PixelFormat32bppARGB, src_img_data, &src_img.bitmap);
+    expect(Ok, status);
+
+    status = GdipCreateFromHDC(hdc, &graphics);
+    expect(Ok, status);
+
+    status = GdipDrawImageRectRectI(graphics, src_img.image,
+            rect.left+width/2, rect.top+height/2, width/2, height/2,
+            0, 0, src_img_width, src_img_height, UnitPixel, NULL, NULL, NULL);
+    expect(Ok, status);
+
+    GdipDisposeImage(src_img.image);
+    GdipDeleteGraphics(graphics);
+    GdipFree(src_img_data);
+
+    pixel = GetBitmapPixelBuffer(hdc, bmp, width, height);
+    if (pixel)
+    {
+       color[0] = get_bitmap_pixel(width/2, height/2);
+       color[1] = get_bitmap_pixel(width/2+1, height/2);
+       color[2] = get_bitmap_pixel(width/2, height/2+1);
+       color[3] = get_bitmap_pixel(width/2-1, height/2-1);
+       color[4] = get_bitmap_pixel(width/2-1, height-1);
+       color[5] = get_bitmap_pixel(width-1, height/2-1);
+    }
+    ok(is_blue_color(color[0]) && is_blue_color(color[1]) && is_blue_color(color[2]) &&
+       color[3] == 0 && color[4] == 0 && color[5] == 0,
+       "Expected GdipDrawImageRectRectI take effect!\n" );
+    GdipFree(pixel);
+
+    SelectObject(hdc, old);
+    DeleteObject(bmp);
+    DeleteDC(hdc);
+    ReleaseDC(hwnd, dc);
+}
+
+static void test_cliphrgn_transform(void)
+{
+    HDC hdc;
+    GpStatus status;
+    GpGraphics *graphics;
+    HRGN rgn;
+    RectF rectf;
+    BOOL res;
+
+    hdc = GetDC(hwnd);
+
+    SetViewportOrgEx(hdc, 10, 10, NULL);
+
+    status = GdipCreateFromHDC(hdc, &graphics);
+    expect(Ok, status);
+
+    rgn = CreateRectRgn(0, 0, 100, 100);
+
+    status = GdipSetClipHrgn(graphics, rgn, CombineModeReplace);
+    expect(Ok, status);
+
+    status = GdipGetVisibleClipBounds(graphics, &rectf);
+    expect(Ok, status);
+    expectf(-10.0, rectf.X);
+    expectf(-10.0, rectf.Y);
+    expectf(100.0, rectf.Width);
+    expectf(100.0, rectf.Height);
+
+    status = GdipIsVisiblePoint(graphics, 95, 95, &res);
+    expect(Ok, status);
+    expect(FALSE, res);
+
+    status = GdipIsVisiblePoint(graphics, -5, -5, &res);
+    expect(Ok, status);
+    expect(TRUE, res);
+
+    DeleteObject(rgn);
+
+    GdipDeleteGraphics(graphics);
+
+    SetViewportOrgEx(hdc, 0, 0, NULL);
+
+    ReleaseDC(hwnd, hdc);
+}
+
+static void test_hdc_caching(void)
+{
+    GpStatus status;
+    HDC hdc;
+    HBITMAP hbm;
+    GpGraphics *graphics;
+    ULONG *bits;
+    BITMAPINFO bmi;
+    HRGN hrgn;
+    GpBrush *brush;
+
+    hdc = CreateCompatibleDC(0);
+    ok(hdc != NULL, "CreateCompatibleDC failed\n");
+    bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
+    bmi.bmiHeader.biHeight = -5;
+    bmi.bmiHeader.biWidth = 5;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    bmi.bmiHeader.biClrUsed = 0;
+
+    hbm = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&bits, NULL, 0);
+    ok(hbm != NULL, "CreateDIBSection failed\n");
+
+    SelectObject(hdc, hbm);
+
+    SetViewportOrgEx(hdc, 1, 1, NULL);
+
+    hrgn = CreateRectRgn(0, 0, 3, 3);
+    SelectClipRgn(hdc, hrgn);
+    DeleteObject(hrgn);
+
+    status = GdipCreateSolidFill((ARGB)0xffaaaaaa, (GpSolidFill**)&brush);
+    expect(Ok, status);
+
+    status = GdipCreateFromHDC(hdc, &graphics);
+    expect(Ok, status);
+
+    memset(bits, 0, sizeof(*bits) * 25);
+    status = GdipFillRectangleI(graphics, brush, 0, 0, 4, 4);
+    expect(Ok, status);
+
+    expect(0, bits[0]);
+    expect(0xffaaaaaa, bits[6]);
+    expect(0xffaaaaaa, bits[12]);
+    expect(0, bits[18]);
+    expect(0, bits[24]);
+
+    SetViewportOrgEx(hdc, 0, 0, NULL);
+    OffsetClipRgn(hdc, 2, 2);
+
+    memset(bits, 0, sizeof(*bits) * 25);
+    status = GdipFillRectangleI(graphics, brush, 0, 0, 4, 4);
+    expect(Ok, status);
+
+    expect(0, bits[0]);
+    expect(0xffaaaaaa, bits[6]);
+    expect(0xffaaaaaa, bits[12]);
+    expect(0, bits[18]);
+    expect(0, bits[24]);
+
+    GdipDeleteGraphics(graphics);
+
+    GdipDeleteBrush(brush);
+
+    DeleteDC(hdc);
+    DeleteObject(hbm);
+}
+
 START_TEST(graphics)
 {
     struct GdiplusStartupInput gdiplusStartupInput;
@@ -6262,8 +6721,14 @@ START_TEST(graphics)
     test_bitmapfromgraphics();
     test_GdipFillRectangles();
     test_GdipGetVisibleClipBounds_memoryDC();
+    test_GdipFillRectanglesOnMemoryDCSolidBrush();
+    test_GdipFillRectanglesOnMemoryDCTextureBrush();
+    test_GdipFillRectanglesOnBitmapTextureBrush();
+    test_GdipDrawImagePointsRectOnMemoryDC();
     test_container_rects();
     test_GdipGraphicsSetAbort();
+    test_cliphrgn_transform();
+    test_hdc_caching();
 
     GdiplusShutdown(gdiplusToken);
     DestroyWindow( hwnd );

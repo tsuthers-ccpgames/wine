@@ -2121,7 +2121,6 @@ static void test_knownFolders(void)
             CoTaskMemFree(folderPath);
 
             hr = IKnownFolder_GetRedirectionCapabilities(folder, &redirectionCapabilities);
-            todo_wine
             ok(hr == S_OK, "failed to get redirection capabilities: 0x%08x\n", hr);
             todo_wine
             ok(redirectionCapabilities==0, "invalid redirection capabilities returned: %d\n", redirectionCapabilities);
@@ -2781,9 +2780,33 @@ if (0) { /* crashes on native */
     hr = pSHGetKnownFolderIDList(&FOLDERID_Desktop, 0, NULL, NULL);
     ok(hr == E_INVALIDARG, "got 0x%08x\n", hr);
 
+    pidl = (void*)0xdeadbeef;
     hr = pSHGetKnownFolderIDList(&FOLDERID_Desktop, 0, NULL, &pidl);
-    ok(hr == S_OK, "got 0x%08x\n", hr);
-    CoTaskMemFree(pidl);
+    ok(hr == S_OK, "SHGetKnownFolderIDList failed: 0x%08x\n", hr);
+    ok(ILIsEmpty(pidl), "pidl should be empty.\n");
+    ok(pidl->mkid.cb == 0, "get wrong value: %d\n", pidl->mkid.cb);
+    ILFree(pidl);
+
+    pidl = (void*)0xdeadbeef;
+    hr = pSHGetKnownFolderIDList(&FOLDERID_Desktop, KF_FLAG_NO_ALIAS, NULL, &pidl);
+    ok(hr == S_OK, "SHGetKnownFolderIDList failed: 0x%08x\n", hr);
+    todo_wine ok(!ILIsEmpty(pidl), "pidl should not be empty.\n");
+    todo_wine ok(pidl->mkid.cb == 20, "get wrong value: %d\n", pidl->mkid.cb);
+    ILFree(pidl);
+
+    pidl = (void*)0xdeadbeef;
+    hr = pSHGetKnownFolderIDList(&FOLDERID_Documents, 0, NULL, &pidl);
+    ok(hr == S_OK, "SHGetKnownFolderIDList failed: 0x%08x\n", hr);
+    ok(!ILIsEmpty(pidl), "pidl should not be empty.\n");
+    ok(pidl->mkid.cb == 20, "get wrong value: %d\n", pidl->mkid.cb);
+    ILFree(pidl);
+
+    pidl = (void*)0xdeadbeef;
+    hr = pSHGetKnownFolderIDList(&FOLDERID_Documents, KF_FLAG_NO_ALIAS, NULL, &pidl);
+    ok(hr == S_OK, "SHGetKnownFolderIDList failed: 0x%08x\n", hr);
+    ok(!ILIsEmpty(pidl), "pidl should not be empty.\n");
+    ok(pidl->mkid.cb == 20, "get wrong value: %d\n", pidl->mkid.cb);
+    ILFree(pidl);
 }
 
 START_TEST(shellpath)

@@ -79,8 +79,14 @@ extern REAL units_to_pixels(REAL units, GpUnit unit, REAL dpi) DECLSPEC_HIDDEN;
 extern REAL pixels_to_units(REAL pixels, GpUnit unit, REAL dpi) DECLSPEC_HIDDEN;
 extern REAL units_scale(GpUnit from, GpUnit to, REAL dpi) DECLSPEC_HIDDEN;
 
+#define WineCoordinateSpaceGdiDevice ((GpCoordinateSpace)4)
+
+extern GpStatus gdi_transform_acquire(GpGraphics *graphics);
+extern GpStatus gdi_transform_release(GpGraphics *graphics);
 extern GpStatus get_graphics_transform(GpGraphics *graphics, GpCoordinateSpace dst_space,
         GpCoordinateSpace src_space, GpMatrix *matrix) DECLSPEC_HIDDEN;
+extern GpStatus gdip_transform_points(GpGraphics *graphics, GpCoordinateSpace dst_space,
+        GpCoordinateSpace src_space, GpPointF *points, INT count) DECLSPEC_HIDDEN;
 
 extern GpStatus graphics_from_image(GpImage *image, GpGraphics **graphics) DECLSPEC_HIDDEN;
 extern GpStatus encode_image_png(GpImage *image, IStream* stream, GDIPCONST EncoderParameters* params) DECLSPEC_HIDDEN;
@@ -93,6 +99,7 @@ extern GpStatus METAFILE_FillRectangles(GpMetafile* metafile, GpBrush* brush,
     GDIPCONST GpRectF* rects, INT count) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_SetClipRect(GpMetafile* metafile,
     REAL x, REAL y, REAL width, REAL height, CombineMode mode) DECLSPEC_HIDDEN;
+extern GpStatus METAFILE_SetClipRegion(GpMetafile* metafile, GpRegion* region, CombineMode mode) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_SetPageTransform(GpMetafile* metafile, GpUnit unit, REAL scale) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_SetWorldTransform(GpMetafile* metafile, GDIPCONST GpMatrix* transform) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_ScaleWorldTransform(GpMetafile* metafile, REAL sx, REAL sy, MatrixOrder order) DECLSPEC_HIDDEN;
@@ -114,6 +121,7 @@ extern GpStatus METAFILE_DrawImagePointsRect(GpMetafile* metafile, GpImage *imag
 extern GpStatus METAFILE_AddSimpleProperty(GpMetafile *metafile, SHORT prop, SHORT val) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_DrawPath(GpMetafile *metafile, GpPen *pen, GpPath *path) DECLSPEC_HIDDEN;
 extern GpStatus METAFILE_FillPath(GpMetafile *metafile, GpBrush *brush, GpPath *path) DECLSPEC_HIDDEN;
+extern void METAFILE_Free(GpMetafile *metafile) DECLSPEC_HIDDEN;
 
 extern void calc_curve_bezier(const GpPointF *pts, REAL tension, REAL *x1,
     REAL *y1, REAL *x2, REAL *y2) DECLSPEC_HIDDEN;
@@ -124,6 +132,7 @@ extern void free_installed_fonts(void) DECLSPEC_HIDDEN;
 
 extern BOOL lengthen_path(GpPath *path, INT len) DECLSPEC_HIDDEN;
 
+extern DWORD write_region_data(const GpRegion *region, void *data) DECLSPEC_HIDDEN;
 extern DWORD write_path_data(GpPath *path, void *data) DECLSPEC_HIDDEN;
 
 extern GpStatus trace_path(GpGraphics *graphics, GpPath *path) DECLSPEC_HIDDEN;
@@ -131,7 +140,7 @@ extern GpStatus trace_path(GpGraphics *graphics, GpPath *path) DECLSPEC_HIDDEN;
 typedef struct region_element region_element;
 extern void delete_element(region_element *element) DECLSPEC_HIDDEN;
 
-extern GpStatus get_hatch_data(HatchStyle hatchstyle, const char **result) DECLSPEC_HIDDEN;
+extern GpStatus get_hatch_data(GpHatchStyle hatchstyle, const char **result) DECLSPEC_HIDDEN;
 
 static inline INT gdip_round(REAL x)
 {
@@ -252,6 +261,9 @@ struct GpGraphics{
     struct list containers;
     GraphicsContainer contid; /* last-issued container ID */
     INT origin_x, origin_y;
+    INT gdi_transform_acquire_count, gdi_transform_save;
+    GpMatrix gdi_transform;
+    HRGN gdi_clip;
     /* For giving the caller an HDC when we technically can't: */
     HBITMAP temp_hbitmap;
     int temp_hbitmap_width;
@@ -266,7 +278,7 @@ struct GpBrush{
 
 struct GpHatch{
     GpBrush brush;
-    HatchStyle hatchstyle;
+    GpHatchStyle hatchstyle;
     ARGB forecol;
     ARGB backcol;
 };
@@ -310,6 +322,7 @@ struct GpLineGradient{
     ARGB* pblendcolor; /* preset blend colors */
     REAL* pblendpos; /* preset blend positions */
     INT pblendcount;
+    GpMatrix transform;
 };
 
 struct GpTexture{
@@ -359,6 +372,38 @@ struct GpImage{
     LONG busy;
 };
 
+#define EmfPlusObjectTableSize 64
+
+typedef enum EmfPlusObjectType
+{
+    ObjectTypeInvalid,
+    ObjectTypeBrush,
+    ObjectTypePen,
+    ObjectTypePath,
+    ObjectTypeRegion,
+    ObjectTypeImage,
+    ObjectTypeFont,
+    ObjectTypeStringFormat,
+    ObjectTypeImageAttributes,
+    ObjectTypeCustomLineCap,
+    ObjectTypeMax = ObjectTypeCustomLineCap,
+} EmfPlusObjectType;
+
+/* Deserialized EmfPlusObject record. */
+struct emfplus_object {
+    EmfPlusObjectType type;
+    union {
+        GpBrush *brush;
+        GpPen *pen;
+        GpPath *path;
+        GpRegion *region;
+        GpImage *image;
+        GpFont *font;
+        GpImageAttributes *image_attributes;
+        void *object;
+    } u;
+};
+
 struct GpMetafile{
     GpImage image;
     GpRectF bounds;
@@ -392,6 +437,7 @@ struct GpMetafile{
     GpRegion *base_clip; /* clip region in device space for all metafile output */
     GpRegion *clip; /* clip region within the metafile */
     struct list containers;
+    struct emfplus_object objtable[EmfPlusObjectTableSize];
 };
 
 struct GpBitmap{
@@ -435,6 +481,12 @@ struct color_remap_table{
     ColorMap *colormap;
 };
 
+enum imageattr_noop{
+    IMAGEATTR_NOOP_UNDEFINED,
+    IMAGEATTR_NOOP_SET,
+    IMAGEATTR_NOOP_CLEAR,
+};
+
 struct GpImageAttributes{
     WrapMode wrap;
     ARGB outside_color;
@@ -444,6 +496,7 @@ struct GpImageAttributes{
     struct color_remap_table colorremaptables[ColorAdjustTypeCount];
     BOOL gamma_enabled[ColorAdjustTypeCount];
     REAL gamma[ColorAdjustTypeCount];
+    enum imageattr_noop noop[ColorAdjustTypeCount];
 };
 
 struct GpFont{
@@ -515,6 +568,30 @@ struct GpRegion{
     DWORD num_children;
     region_element node;
 };
+
+struct memory_buffer
+{
+    const BYTE *buffer;
+    INT size, pos;
+};
+
+static inline void init_memory_buffer(struct memory_buffer *mbuf, const BYTE *buffer, INT size)
+{
+    mbuf->buffer = buffer;
+    mbuf->size = size;
+    mbuf->pos = 0;
+}
+
+static inline const void *buffer_read(struct memory_buffer *mbuf, INT size)
+{
+    if (mbuf->size - mbuf->pos >= size)
+    {
+        const void *data = mbuf->buffer + mbuf->pos;
+        mbuf->pos += size;
+        return data;
+    }
+    return NULL;
+}
 
 typedef GpStatus (*gdip_format_string_callback)(HDC hdc,
     GDIPCONST WCHAR *string, INT index, INT length, GDIPCONST GpFont *font,

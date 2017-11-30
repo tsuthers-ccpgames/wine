@@ -69,6 +69,9 @@
 
 #undef ERR  /* Solaris needs to define this */
 
+WINE_DEFAULT_DEBUG_CHANNEL(seh);
+WINE_DECLARE_DEBUG_CHANNEL(relay);
+
 /* not defined for x86, so copy the x86_64 definition */
 typedef struct DECLSPEC_ALIGN(16) _M128A
 {
@@ -467,8 +470,6 @@ typedef struct trapframe ucontext_t;
 #else
 #error You must define the signal context functions for your platform
 #endif /* linux */
-
-WINE_DEFAULT_DEBUG_CHANNEL(seh);
 
 typedef int (*wine_signal_handler)(unsigned int sig);
 
@@ -1589,7 +1590,7 @@ NTSTATUS CDECL DECLSPEC_HIDDEN __regs_NtGetContextThread( DWORD edi, DWORD esi, 
                context->Ebp, context->Esp, context->Eip, context->SegCs, context->SegSs, context->EFlags );
     if (context->ContextFlags & (CONTEXT_SEGMENTS & ~CONTEXT_i386))
         TRACE( "%p: ds=%04x es=%04x fs=%04x gs=%04x\n", handle,
-               context->SegCs, context->SegDs, context->SegEs, context->SegFs );
+               context->SegDs, context->SegEs, context->SegFs, context->SegGs );
     if (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_i386))
         TRACE( "%p: dr0=%08x dr1=%08x dr2=%08x dr3=%08x dr6=%08x dr7=%08x\n", handle,
                context->Dr0, context->Dr1, context->Dr2, context->Dr3, context->Dr6, context->Dr7 );
@@ -1808,8 +1809,8 @@ static BOOL check_atl_thunk( EXCEPTION_RECORD *rec, CONTEXT *context )
     if (thunk_len >= sizeof(thunk_copy.t1) && thunk_copy.t1.movl == 0x042444c7 &&
                                               thunk_copy.t1.jmp == 0xe9)
     {
-        if (virtual_uninterrupted_write_memory( (DWORD *)context->Esp + 1,
-            &thunk_copy.t1.this, sizeof(DWORD) ) == sizeof(DWORD))
+        if (!virtual_uninterrupted_write_memory( (DWORD *)context->Esp + 1,
+                                                 &thunk_copy.t1.this, sizeof(DWORD) ))
         {
             context->Eip = (DWORD_PTR)(&thunk->t1.func + 1) + thunk_copy.t1.func;
             TRACE( "emulating ATL thunk type 1 at %p, func=%08x arg=%08x\n",
@@ -1856,8 +1857,7 @@ static BOOL check_atl_thunk( EXCEPTION_RECORD *rec, CONTEXT *context )
             stack, sizeof(stack) ) == sizeof(stack) &&
             virtual_uninterrupted_read_memory( (DWORD *)stack[1] + 1,
             &func, sizeof(DWORD) ) == sizeof(DWORD) &&
-            virtual_uninterrupted_write_memory( (DWORD *)context->Esp + 1,
-            &stack[0], sizeof(stack[0]) ) == sizeof(stack[0]))
+            !virtual_uninterrupted_write_memory( (DWORD *)context->Esp + 1, &stack[0], sizeof(stack[0]) ))
         {
             context->Ecx = stack[0];
             context->Eax = stack[1];
@@ -2505,16 +2505,10 @@ NTSTATUS signal_alloc_thread( TEB **teb )
  */
 void signal_free_thread( TEB *teb )
 {
-    SIZE_T size;
+    SIZE_T size = 0;
     struct x86_thread_data *thread_data = (struct x86_thread_data *)teb->SystemReserved2;
 
-    if (thread_data) wine_ldt_free_fs( thread_data->fs );
-    if (teb->DeallocationStack)
-    {
-        size = 0;
-        NtFreeVirtualMemory( GetCurrentProcess(), &teb->DeallocationStack, &size, MEM_RELEASE );
-    }
-    size = 0;
+    wine_ldt_free_fs( thread_data->fs );
     NtFreeVirtualMemory( NtCurrentProcess(), (void **)&teb, &size, MEM_RELEASE );
 }
 
@@ -2605,6 +2599,71 @@ void signal_init_process(void)
  error:
     perror("sigaction");
     exit(1);
+}
+
+
+struct startup_info
+{
+    LPTHREAD_START_ROUTINE entry;
+    void                  *arg;
+};
+
+static void thread_startup( void *param )
+{
+    struct startup_info *info = param;
+    call_thread_entry_point( info->entry, info->arg );
+}
+
+
+/***********************************************************************
+ *           signal_start_thread
+ */
+NTSTATUS signal_start_thread( LPTHREAD_START_ROUTINE entry, void *arg )
+{
+    NTSTATUS status;
+    struct startup_info info = { entry, arg };
+
+    if (!(status = wine_call_on_stack( attach_dlls, (void *)1, NtCurrentTeb()->Tib.StackBase )))
+    {
+        TRACE_(relay)( "\1Starting thread proc %p (arg=%p)\n", entry, arg );
+        wine_switch_to_stack( thread_startup, &info, NtCurrentTeb()->Tib.StackBase );
+    }
+    return status;
+}
+
+
+/**********************************************************************
+ *		signal_start_process
+ */
+NTSTATUS signal_start_process( LPTHREAD_START_ROUTINE entry, BOOL suspend )
+{
+    CONTEXT context = { 0 };
+    NTSTATUS status;
+
+    /* build the initial context */
+    context.ContextFlags = CONTEXT_FULL;
+    context.SegCs = wine_get_cs();
+    context.SegDs = wine_get_ds();
+    context.SegEs = wine_get_es();
+    context.SegFs = wine_get_fs();
+    context.SegGs = wine_get_gs();
+    context.SegSs = wine_get_ss();
+    context.Eax   = (DWORD)entry;
+    context.Ebx   = (DWORD)NtCurrentTeb()->Peb;
+    context.Esp   = (DWORD)NtCurrentTeb()->Tib.StackBase - 16;
+    context.Eip   = (DWORD)call_thread_entry_point;
+    ((void **)context.Esp)[1] = kernel32_start_process;
+    ((void **)context.Esp)[2] = entry;
+
+    if (suspend) wait_suspend( &context );
+
+    if (!(status = wine_call_on_stack( attach_dlls, (void *)1,
+                                       (char *)NtCurrentTeb()->Tib.StackBase - page_size )))
+    {
+        virtual_clear_thread_stack();
+        set_cpu_context( &context );
+    }
+    return status;
 }
 
 

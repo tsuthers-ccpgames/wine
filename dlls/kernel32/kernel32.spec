@@ -140,7 +140,7 @@
 @ stdcall AddAtomW(wstr)
 @ stdcall AddConsoleAliasA(str str str)
 @ stdcall AddConsoleAliasW(wstr wstr wstr)
-# @ stub AddDllDirectory
+@ stdcall AddDllDirectory(wstr)
 # @ stub AddIntegrityLabelToBoundaryDescriptor
 # @ stub AddLocalAlternateComputerNameA
 # @ stub AddLocalAlternateComputerNameW
@@ -333,7 +333,7 @@
 @ stdcall CreateThread(ptr long ptr long long ptr)
 @ stdcall CreateThreadpool(ptr)
 @ stdcall CreateThreadpoolCleanupGroup()
-# @ stub CreateThreadpoolIo
+@ stdcall CreateThreadpoolIo(ptr ptr ptr ptr)
 @ stdcall CreateThreadpoolTimer(ptr ptr ptr)
 @ stdcall CreateThreadpoolWait(ptr ptr ptr)
 @ stdcall CreateThreadpoolWork(ptr ptr ptr)
@@ -793,7 +793,7 @@
 # @ stub GetProcessUserModeExceptionPolicy
 @ stdcall GetProcessVersion(long)
 @ stdcall GetProcessWorkingSetSize(long ptr ptr)
-# @ stub GetProcessWorkingSetSizeEx
+@ stdcall GetProcessWorkingSetSizeEx(long ptr ptr ptr)
 @ stdcall GetProductInfo(long long long long ptr)
 @ stub GetProductName
 @ stdcall GetProfileIntA(str str long)
@@ -1274,7 +1274,7 @@
 @ stub RequestDeviceWakeup
 # @ stub RemoveDirectoryTransactedA
 # @ stub RemoveDirectoryTransactedW
-# @ stub RemoveDllDirectory
+@ stdcall RemoveDllDirectory(ptr)
 # @ stub RemoveSecureMemoryCacheCallback
 # @ stub ReplacePartitionUnit
 @ stdcall RequestWakeupLatency(long)

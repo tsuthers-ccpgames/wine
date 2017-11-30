@@ -267,8 +267,8 @@
 /* Define to 1 if you have the `getuid' function. */
 #undef HAVE_GETUID
 
-/* Define to 1 if you have the `gnutls_hash' function. */
-#undef HAVE_GNUTLS_HASH
+/* Define to 1 if you have the `gnutls_cipher_init' function. */
+#undef HAVE_GNUTLS_CIPHER_INIT
 
 /* Define if we have the libgphoto2 development environment */
 #undef HAVE_GPHOTO2
@@ -341,6 +341,9 @@
 
 /* Define to 1 if you have the `kqueue' function. */
 #undef HAVE_KQUEUE
+
+/* Define to 1 if you have the <krb5/krb5.h> header file. */
+#undef HAVE_KRB5_KRB5_H
 
 /* Define to 1 if you have the <kstat.h> header file. */
 #undef HAVE_KSTAT_H
@@ -710,9 +713,6 @@
 
 /* Define to 1 if you have the <png.h> header file. */
 #undef HAVE_PNG_H
-
-/* Define to 1 if libpng has the png_set_expand_gray_1_2_4_to_8 function. */
-#undef HAVE_PNG_SET_EXPAND_GRAY_1_2_4_TO_8
 
 /* Define to 1 if you have the `poll' function. */
 #undef HAVE_POLL
@@ -1477,6 +1477,9 @@
 
 /* Define to the soname of the libjpeg library. */
 #undef SONAME_LIBJPEG
+
+/* Define to the soname of the libkrb5 library. */
+#undef SONAME_LIBKRB5
 
 /* Define to the soname of the libncurses library. */
 #undef SONAME_LIBNCURSES

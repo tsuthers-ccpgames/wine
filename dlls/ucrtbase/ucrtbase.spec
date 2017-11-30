@@ -49,13 +49,13 @@
 @ stub __BuildCatchObject
 @ stub __BuildCatchObjectHelper
 @ stdcall -arch=x86_64 __C_specific_handler(ptr long ptr ptr) ntdll.__C_specific_handler
-@ cdecl -arch=i386,x86_64,arm __CxxDetectRethrow(ptr)
-@ cdecl -arch=i386,x86_64,arm __CxxExceptionFilter(ptr ptr long ptr)
-@ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler(ptr ptr ptr ptr)
-@ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
-@ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr) __CxxFrameHandler
+@ cdecl -arch=i386,x86_64,arm,arm64 __CxxDetectRethrow(ptr)
+@ cdecl -arch=i386,x86_64,arm,arm64 __CxxExceptionFilter(ptr ptr long ptr)
+@ cdecl -arch=i386,x86_64,arm,arm64 -norelay __CxxFrameHandler(ptr ptr ptr ptr)
+@ cdecl -arch=i386,x86_64,arm,arm64 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) __CxxFrameHandler
+@ cdecl -arch=i386,x86_64,arm,arm64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr) __CxxFrameHandler
 @ stdcall -arch=i386 __CxxLongjmpUnwind(ptr)
-@ cdecl -arch=i386,x86_64,arm __CxxQueryExceptionSize()
+@ cdecl -arch=i386,x86_64,arm,arm64 __CxxQueryExceptionSize()
 @ cdecl __CxxRegisterExceptionObject(ptr ptr)
 @ cdecl __CxxUnregisterExceptionObject(ptr long)
 @ cdecl __DestructExceptionObject(ptr)
@@ -93,7 +93,7 @@
 @ cdecl __fpecode()
 @ cdecl __initialize_lconv_for_unsigned_char() __lconv_init
 @ stub __intrinsic_abnormal_termination
-@ cdecl -arch=i386,x86_64,arm -norelay __intrinsic_setjmp(ptr) MSVCRT__setjmp
+@ cdecl -arch=i386,x86_64,arm,arm64 -norelay __intrinsic_setjmp(ptr) MSVCRT__setjmp
 @ stub __intrinsic_setjmpex
 @ cdecl __isascii(long) MSVCRT___isascii
 @ cdecl __iscsym(long) MSVCRT___iscsym
@@ -148,16 +148,16 @@
 @ cdecl __std_type_info_name(ptr ptr) MSVCRT_type_info_name_list
 @ cdecl __stdio_common_vfprintf(int64 ptr str ptr ptr) MSVCRT__stdio_common_vfprintf
 @ stub __stdio_common_vfprintf_p
-@ stub __stdio_common_vfprintf_s
+@ cdecl __stdio_common_vfprintf_s(int64 ptr str ptr ptr) MSVCRT__stdio_common_vfprintf_s
 @ cdecl __stdio_common_vfscanf(int64 ptr str ptr ptr) MSVCRT__stdio_common_vfscanf
 @ cdecl __stdio_common_vfwprintf(int64 ptr wstr ptr ptr) MSVCRT__stdio_common_vfwprintf
 @ stub __stdio_common_vfwprintf_p
-@ stub __stdio_common_vfwprintf_s
+@ cdecl __stdio_common_vfwprintf_s(int64 ptr wstr ptr ptr) MSVCRT__stdio_common_vfwprintf_s
 @ cdecl __stdio_common_vfwscanf(int64 ptr wstr ptr ptr) MSVCRT__stdio_common_vfwscanf
 @ cdecl __stdio_common_vsnprintf_s(int64 ptr long long str ptr ptr) MSVCRT__stdio_common_vsnprintf_s
 @ cdecl __stdio_common_vsnwprintf_s(int64 ptr long long wstr ptr ptr) MSVCRT__stdio_common_vsnwprintf_s
 @ cdecl __stdio_common_vsprintf(int64 ptr long str ptr ptr) MSVCRT__stdio_common_vsprintf
-@ stub __stdio_common_vsprintf_p
+@ cdecl __stdio_common_vsprintf_p(int64 ptr long str ptr ptr) MSVCRT__stdio_common_vsprintf_p
 @ cdecl __stdio_common_vsprintf_s(int64 ptr long str ptr ptr) MSVCRT__stdio_common_vsprintf_s
 @ cdecl __stdio_common_vsscanf(int64 ptr long str ptr ptr) MSVCRT__stdio_common_vsscanf
 @ cdecl __stdio_common_vswprintf(int64 ptr long wstr ptr ptr) MSVCRT__stdio_common_vswprintf
@@ -325,7 +325,7 @@
 @ cdecl _flushall() MSVCRT__flushall
 @ cdecl _fpclass(double) MSVCRT__fpclass
 @ stub _fpclassf
-@ cdecl -arch=i386,x86_64,arm _fpieee_flt(long ptr ptr)
+@ cdecl -arch=i386,x86_64,arm,arm64 _fpieee_flt(long ptr ptr)
 @ cdecl _fpreset()
 @ cdecl _fputc_nolock(long ptr) MSVCRT__fputc_nolock
 @ cdecl _fputchar(long) MSVCRT__fputchar
@@ -372,7 +372,7 @@
 @ cdecl _get_osfhandle(long) MSVCRT__get_osfhandle
 @ cdecl _get_pgmptr(ptr)
 @ cdecl _get_printf_count_output() MSVCRT__get_printf_count_output
-@ stub _get_purecall_handler
+@ cdecl _get_purecall_handler()
 @ cdecl _get_stream_buffer_pointers(ptr ptr ptr ptr) MSVCRT__get_stream_buffer_pointers
 @ cdecl _get_terminate() MSVCRT__get_terminate
 @ cdecl _get_thread_local_invalid_parameter_handler()
@@ -476,7 +476,7 @@
 @ stub _ismbchira_l
 @ cdecl _ismbckata(long)
 @ stub _ismbckata_l
-@ stub _ismbcl0(long)
+@ cdecl _ismbcl0(long)
 @ stub _ismbcl0_l
 @ stub _ismbcl1(long)
 @ stub _ismbcl1_l
@@ -586,10 +586,10 @@
 @ cdecl _mbbtype(long long)
 @ stub _mbbtype_l
 @ stub _mbcasemap
-@ cdecl _mbccpy(ptr str)
-@ stub _mbccpy_l
-@ stub _mbccpy_s
-@ stub _mbccpy_s_l
+@ cdecl _mbccpy(ptr ptr)
+@ cdecl _mbccpy_l(ptr ptr ptr)
+@ cdecl _mbccpy_s(ptr long ptr ptr)
+@ cdecl _mbccpy_s_l(ptr long ptr ptr ptr)
 @ cdecl _mbcjistojms(long)
 @ stub _mbcjistojms_l
 @ cdecl _mbcjmstojis(long)
@@ -631,7 +631,7 @@
 @ cdecl _mbsinc(str)
 @ stub _mbsinc_l
 @ cdecl _mbslen(str)
-@ stub _mbslen_l
+@ cdecl _mbslen_l(str ptr)
 @ cdecl _mbslwr(str)
 @ stub _mbslwr_l
 @ cdecl _mbslwr_s(str long)
@@ -680,8 +680,8 @@
 @ stub _mbsnicoll_l
 @ cdecl _mbsninc(str long)
 @ stub _mbsninc_l
-@ stub _mbsnlen
-@ stub _mbsnlen_l
+@ cdecl _mbsnlen(str long)
+@ cdecl _mbsnlen_l(str long ptr)
 @ cdecl _mbsnset(ptr long long)
 @ stub _mbsnset_l
 @ stub _mbsnset_s
@@ -718,8 +718,8 @@
 @ stub _mbsupr_s_l
 @ cdecl _mbtowc_l(ptr str long ptr) MSVCRT_mbtowc_l
 @ cdecl _memccpy(ptr ptr long long) ntdll._memccpy
-@ cdecl _memicmp(str str long) ntdll._memicmp
-@ stub _memicmp_l
+@ cdecl _memicmp(str str long) MSVCRT__memicmp
+@ cdecl _memicmp_l(str str long ptr) MSVCRT__memicmp_l
 @ cdecl _mkdir(str) MSVCRT__mkdir
 @ cdecl _mkgmtime32(ptr) MSVCRT__mkgmtime32
 @ cdecl _mkgmtime64(ptr) MSVCRT__mkgmtime64
@@ -1862,7 +1862,7 @@
 @ cdecl _realloc_base(ptr long)
 @ cdecl _recalloc(ptr long long)
 @ cdecl _register_onexit_function(ptr ptr) MSVCRT__register_onexit_function
-@ stub _register_thread_local_exe_atexit_callback
+@ cdecl _register_thread_local_exe_atexit_callback(ptr)
 @ cdecl _resetstkoflw() MSVCRT__resetstkoflw
 @ cdecl _rmdir(str) MSVCRT__rmdir
 @ cdecl _rmtmp() MSVCRT__rmtmp
@@ -1874,7 +1874,7 @@
 @ cdecl -arch=x86_64 _scalbf(float long) MSVCRT__scalbf
 @ cdecl _searchenv(str str ptr) MSVCRT__searchenv
 @ cdecl _searchenv_s(str str ptr long) MSVCRT__searchenv_s
-@ cdecl -arch=i386,x86_64,arm _seh_filter_dll(long ptr) __CppXcptFilter
+@ cdecl -arch=i386,x86_64,arm,arm64 _seh_filter_dll(long ptr) __CppXcptFilter
 @ cdecl _seh_filter_exe(long ptr) _XcptFilter
 @ cdecl -arch=win64 _set_FMA3_enable(long) MSVCRT__set_FMA3_enable
 @ stdcall -arch=i386 _seh_longjmp_unwind4(ptr)
@@ -2222,7 +2222,7 @@
 @ stub cimagf
 @ stub cimagl
 @ cdecl clearerr(ptr) MSVCRT_clearerr
-@ stub clearerr_s
+@ cdecl clearerr_s(ptr) MSVCRT_clearerr_s
 @ cdecl clock() MSVCRT_clock
 @ stub clog
 @ stub clog10
@@ -2402,7 +2402,7 @@
 @ stub logbf
 @ stub logbl
 @ cdecl -arch=arm,x86_64,arm64 logf(float) MSVCRT_logf
-@ cdecl -arch=i386,x86_64,arm longjmp(ptr long) MSVCRT_longjmp
+@ cdecl -arch=i386,x86_64,arm,arm64 longjmp(ptr long) MSVCRT_longjmp
 @ cdecl lrint(double) MSVCR120_lrint
 @ cdecl lrintf(float) MSVCR120_lrintf
 @ cdecl lrintl(double) MSVCR120_lrintl

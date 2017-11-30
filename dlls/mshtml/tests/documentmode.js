@@ -35,6 +35,87 @@ function test_elem_props() {
     test_exposed("textContent", v >= 9);
     test_exposed("prefix", v >= 9);
     test_exposed("firstElementChild", v >= 9);
+    test_exposed("onsubmit", v >= 9);
+    test_exposed("getElementsByClassName", v >= 9);
+    test_exposed("removeAttributeNS", v >= 9);
+    test_exposed("addEventListener", v >= 9);
+    test_exposed("removeEventListener", v >= 9);
+    test_exposed("dispatchEvent", v >= 9);
+
+    next_test();
+}
+
+function test_doc_props() {
+    function test_exposed(prop, expect) {
+        if(expect)
+            ok(prop in document, prop + " not found in document.");
+        else
+            ok(!(prop in document), prop + " found in document.");
+    }
+
+    var v = document.documentMode;
+
+    test_exposed("textContent", v >= 9);
+    test_exposed("prefix", v >= 9);
+    test_exposed("defaultView", v >= 9);
+    test_exposed("head", v >= 9);
+    test_exposed("addEventListener", v >= 9);
+    test_exposed("removeEventListener", v >= 9);
+    test_exposed("dispatchEvent", v >= 9);
+
+    test_exposed("parentWindow", true);
+    if(v >= 9) ok(document.defaultView === document.parentWindow, "defaultView != parentWindow");
+
+    next_test();
+}
+
+function test_window_props() {
+    function test_exposed(prop, expect) {
+        if(expect)
+            ok(prop in window, prop + " not found in window.");
+        else
+            ok(!(prop in window), prop + " found in window.");
+    }
+
+    var v = document.documentMode;
+
+    test_exposed("addEventListener", v >= 9);
+    test_exposed("removeEventListener", v >= 9);
+    test_exposed("dispatchEvent", v >= 9);
+
+    next_test();
+}
+
+function test_xhr_props() {
+    var xhr = new XMLHttpRequest();
+
+    function test_exposed(prop, expect) {
+        if(expect)
+            ok(prop in xhr, prop + " not found in XMLHttpRequest.");
+        else
+            ok(!(prop in xhr), prop + " found in XMLHttpRequest.");
+    }
+
+    var v = document.documentMode;
+
+    test_exposed("addEventListener", v >= 9);
+    test_exposed("removeEventListener", v >= 9);
+    test_exposed("dispatchEvent", v >= 9);
+
+    next_test();
+}
+
+function test_elem_by_id() {
+    document.body.innerHTML = '<form id="testid" name="testname"></form>';
+
+    var id_elem = document.getElementById("testid");
+    ok(id_elem.tagName === "FORM", "id_elem.tagName = " + id_elem.tagName);
+
+    var name_elem = document.getElementById("testname");
+    if(document.documentMode < 8)
+        ok(id_elem === name_elem, "id_elem != id_elem");
+    else
+        ok(name_elem === null, "name_elem != null");
 
     next_test();
 }
@@ -58,6 +139,22 @@ function test_doc_mode() {
         ok(document.compatMode === "BackCompat", "document.compatMode = " + document.compatMode);
 
     next_test();
+}
+
+function test_iframe_doc_mode() {
+    var iframe = document.createElement("iframe");
+
+    iframe.onload = function() {
+        var iframe_mode = iframe.contentWindow.document.documentMode;
+        if(document.documentMode < 9)
+            ok(iframe_mode === 5, "iframe_mode = " + iframe_mode);
+        else
+            ok(iframe_mode === document.documentMode, "iframe_mode = " + iframe_mode);
+        next_test();
+    }
+
+    iframe.src = "about:blank";
+    document.body.appendChild(iframe);
 }
 
 function test_conditional_comments() {
@@ -98,6 +195,11 @@ function test_conditional_comments() {
 
 var tests = [
     test_doc_mode,
+    test_iframe_doc_mode,
     test_elem_props,
+    test_doc_props,
+    test_window_props,
+    test_xhr_props,
+    test_elem_by_id,
     test_conditional_comments
 ];

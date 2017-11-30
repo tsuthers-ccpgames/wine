@@ -610,7 +610,7 @@ static HRESULT WINAPI HTMLDOMNode_hasChildNodes(IHTMLDOMNode *iface, VARIANT_BOO
     if(NS_FAILED(nsres))
         ERR("HasChildNodes failed: %08x\n", nsres);
 
-    *fChildren = has_child ? VARIANT_TRUE : VARIANT_FALSE;
+    *fChildren = variant_bool(has_child);
     return S_OK;
 }
 
@@ -1341,8 +1341,25 @@ static HRESULT WINAPI HTMLDOMNode3_isSameNode(IHTMLDOMNode3 *iface, IHTMLDOMNode
 static HRESULT WINAPI HTMLDOMNode3_compareDocumentPosition(IHTMLDOMNode3 *iface, IHTMLDOMNode *otherNode, USHORT *flags)
 {
     HTMLDOMNode *This = impl_from_IHTMLDOMNode3(iface);
-    FIXME("(%p)->()\n", This);
-    return E_NOTIMPL;
+    HTMLDOMNode *other;
+    UINT16 position;
+    nsresult nsres;
+
+    TRACE("(%p)->()\n", This);
+
+    other = get_node_obj(otherNode);
+    if(!other)
+        return E_INVALIDARG;
+
+    nsres = nsIDOMNode_CompareDocumentPosition(This->nsnode, other->nsnode, &position);
+    IHTMLDOMNode_Release(&other->IHTMLDOMNode_iface);
+    if(NS_FAILED(nsres)) {
+        ERR("failed: %08x\n", nsres);
+        return E_FAIL;
+    }
+
+    *flags = position;
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLDOMNode3_isSupported(IHTMLDOMNode3 *iface, BSTR feature, VARIANT version, VARIANT_BOOL *pfisSupported)
@@ -1399,12 +1416,8 @@ HRESULT HTMLDOMNode_QI(HTMLDOMNode *This, REFIID riid, void **ppv)
     }else if(IsEqualGUID(&IID_nsCycleCollectionISupports, riid)) {
         *ppv = &This->IHTMLDOMNode_iface;
         return S_OK;
-    }else if(dispex_query_interface(&This->event_target.dispex, riid, ppv)) {
-        return *ppv ? S_OK : E_NOINTERFACE;
     }else {
-        *ppv = NULL;
-        WARN("(%p)->(%s %p)\n", This, debugstr_mshtml_guid(riid), ppv);
-        return E_NOINTERFACE;
+        return EventTarget_QI(&This->event_target, riid, ppv);
     }
 
     IUnknown_AddRef((IUnknown*)*ppv);
@@ -1429,6 +1442,8 @@ void HTMLDOMNode_init_dispex_info(dispex_data_t *info, compat_mode_t mode)
 {
     if(mode >= COMPAT_MODE_IE9)
         dispex_info_add_interface(info, IHTMLDOMNode3_tid, NULL);
+
+    EventTarget_init_dispex_info(info, mode);
 }
 
 static const cpc_entry_t HTMLDOMNode_cpc[] = {{NULL}};
@@ -1441,7 +1456,7 @@ static const NodeImplVtbl HTMLDOMNodeImplVtbl = {
     HTMLDOMNode_clone
 };
 
-void HTMLDOMNode_Init(HTMLDocumentNode *doc, HTMLDOMNode *node, nsIDOMNode *nsnode)
+void HTMLDOMNode_Init(HTMLDocumentNode *doc, HTMLDOMNode *node, nsIDOMNode *nsnode, dispex_static_data_t *dispex_data)
 {
     nsresult nsres;
 
@@ -1450,7 +1465,7 @@ void HTMLDOMNode_Init(HTMLDocumentNode *doc, HTMLDOMNode *node, nsIDOMNode *nsno
     node->IHTMLDOMNode3_iface.lpVtbl = &HTMLDOMNode3Vtbl;
 
     ccref_init(&node->ccref, 1);
-    init_event_target(&node->event_target);
+    EventTarget_Init(&node->event_target, (IUnknown*)&node->IHTMLDOMNode_iface, dispex_data, doc->document_mode);
 
     if(&doc->node != node)
         htmldoc_addref(&doc->basedoc);
@@ -1462,6 +1477,17 @@ void HTMLDOMNode_Init(HTMLDocumentNode *doc, HTMLDOMNode *node, nsIDOMNode *nsno
     nsres = nsIDOMNode_SetMshtmlNode(nsnode, (nsISupports*)&node->IHTMLDOMNode_iface);
     assert(nsres == NS_OK);
 }
+
+static const tid_t HTMLDOMNode_iface_tids[] = {
+    IHTMLDOMNode_tid,
+    0
+};
+static dispex_static_data_t HTMLDOMNode_dispex = {
+    NULL,
+    IHTMLDOMNode_tid,
+    HTMLDOMNode_iface_tids,
+    HTMLDOMNode_init_dispex_info
+};
 
 static HRESULT create_node(HTMLDocumentNode *doc, nsIDOMNode *nsnode, HTMLDOMNode **ret)
 {
@@ -1500,12 +1526,14 @@ static HRESULT create_node(HTMLDocumentNode *doc, nsIDOMNode *nsnode, HTMLDOMNod
     default: {
         HTMLDOMNode *node;
 
+        FIXME("unimplemented node type %u\n", node_type);
+
         node = heap_alloc_zero(sizeof(HTMLDOMNode));
         if(!node)
             return E_OUTOFMEMORY;
 
         node->vtbl = &HTMLDOMNodeImplVtbl;
-        HTMLDOMNode_Init(doc, node, nsnode);
+        HTMLDOMNode_Init(doc, node, nsnode, &HTMLDOMNode_dispex);
         *ret = node;
     }
     }

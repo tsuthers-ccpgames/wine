@@ -1336,8 +1336,6 @@ static nsrefcnt NSAPI nsWebBrowserChrome_Release(nsIWebBrowserChrome *iface)
     TRACE("(%p) ref=%d\n", This, ref);
 
     if(!ref) {
-        if(This->parent)
-            nsIWebBrowserChrome_Release(&This->parent->nsIWebBrowserChrome_iface);
         if(This->weak_reference) {
             This->weak_reference->nscontainer = NULL;
             nsIWeakReference_Release(&This->weak_reference->nsIWeakReference_iface);
@@ -1486,8 +1484,9 @@ static nsresult NSAPI nsContextMenuListener_OnShowContextMenu(nsIContextMenuList
         UINT32 aContextFlags, nsIDOMEvent *aEvent, nsIDOMNode *aNode)
 {
     NSContainer *This = impl_from_nsIContextMenuListener(iface);
-    nsIDOMMouseEvent *event;
+    nsIDOMMouseEvent *mouse_event;
     HTMLDOMNode *node;
+    DOMEvent *event;
     POINT pt;
     DWORD dwID = CONTEXT_MENU_DEFAULT;
     nsresult nsres;
@@ -1499,14 +1498,18 @@ static nsresult NSAPI nsContextMenuListener_OnShowContextMenu(nsIContextMenuList
     if(FAILED(hres))
         return NS_ERROR_FAILURE;
 
-    fire_event(This->doc->basedoc.doc_node /* FIXME */, EVENTID_CONTEXTMENU, TRUE, node, aEvent, NULL);
+    hres = create_event_from_nsevent(aEvent, &event);
+    if(SUCCEEDED(hres)) {
+        dispatch_event(&node->event_target, event);
+        IDOMEvent_Release(&event->IDOMEvent_iface);
+    }
 
-    nsres = nsIDOMEvent_QueryInterface(aEvent, &IID_nsIDOMMouseEvent, (void**)&event);
+    nsres = nsIDOMEvent_QueryInterface(aEvent, &IID_nsIDOMMouseEvent, (void**)&mouse_event);
     assert(NS_SUCCEEDED(nsres));
 
-    nsIDOMMouseEvent_GetScreenX(event, &pt.x);
-    nsIDOMMouseEvent_GetScreenY(event, &pt.y);
-    nsIDOMMouseEvent_Release(event);
+    nsIDOMMouseEvent_GetScreenX(mouse_event, &pt.x);
+    nsIDOMMouseEvent_GetScreenY(mouse_event, &pt.y);
+    nsIDOMMouseEvent_Release(mouse_event);
 
     switch(aContextFlags) {
     case CONTEXT_NONE:

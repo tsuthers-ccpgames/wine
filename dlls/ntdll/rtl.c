@@ -49,15 +49,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
 
-static RTL_CRITICAL_SECTION peb_lock;
-static RTL_CRITICAL_SECTION_DEBUG critsect_debug =
-{
-    0, 0, &peb_lock,
-    { &critsect_debug.ProcessLocksList, &critsect_debug.ProcessLocksList },
-      0, 0, { (DWORD_PTR)(__FILE__ ": peb_lock") }
-};
-static RTL_CRITICAL_SECTION peb_lock = { &critsect_debug, -1, 0, 0, 0, 0 };
-
 #ifdef __i386__
 #define DEFINE_FASTCALL4_ENTRYPOINT( name ) \
     __ASM_STDCALL_FUNC( name, 16, \
@@ -380,7 +371,7 @@ NTSTATUS WINAPI vDbgPrintExWithPrefix( LPCSTR prefix, ULONG id, ULONG level, LPC
  */
 VOID WINAPI RtlAcquirePebLock(void)
 {
-    RtlEnterCriticalSection( &peb_lock );
+    RtlEnterCriticalSection( NtCurrentTeb()->Peb->FastPebLock );
 }
 
 /******************************************************************************
@@ -388,7 +379,7 @@ VOID WINAPI RtlAcquirePebLock(void)
  */
 VOID WINAPI RtlReleasePebLock(void)
 {
-    RtlLeaveCriticalSection( &peb_lock );
+    RtlLeaveCriticalSection( NtCurrentTeb()->Peb->FastPebLock );
 }
 
 /******************************************************************************
@@ -893,12 +884,22 @@ void WINAPI RtlCopyLuidAndAttributesArray(
     for (i = 0; i < Count; i++) Dest[i] = Src[i];
 }
 
-NTSTATUS WINAPI RtlIpv4StringToAddressExW(PULONG IP, PULONG Port,
-                                          LPCWSTR Buffer, PULONG MaxSize)
+/***********************************************************************
+ * RtlIpv4StringToAddressExW [NTDLL.@]
+ */
+NTSTATUS WINAPI RtlIpv4StringToAddressExW(const WCHAR *str, BOOLEAN strict, IN_ADDR *address, USHORT *port)
 {
-    FIXME("(%p,%p,%p,%p): stub\n", IP, Port, Buffer, MaxSize);
+    FIXME("(%s, %u, %p, %p): stub\n", debugstr_w(str), strict, address, port);
+    return STATUS_NOT_IMPLEMENTED;
+}
 
-    return STATUS_SUCCESS;
+/***********************************************************************
+ * RtlIpv4StringToAddressW [NTDLL.@]
+ */
+NTSTATUS WINAPI RtlIpv4StringToAddressW(const WCHAR *str, BOOLEAN strict, const WCHAR **terminator, IN_ADDR *address)
+{
+    FIXME("(%s, %u, %p, %p): stub\n", debugstr_w(str), strict, terminator, address);
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 /***********************************************************************
@@ -1651,4 +1652,23 @@ NTSTATUS WINAPI RtlCreateUserProcess(UNICODE_STRING *path, ULONG attributes, RTL
     FIXME("(%p %u %p %p %p %p %d %p %p %p): stub\n", path, attributes, parameters, process_descriptor, thread_descriptor,
                                      parent, inherit, debug, exception, info);
     return STATUS_NOT_IMPLEMENTED;
+}
+
+typedef struct _RTL_UNLOAD_EVENT_TRACE
+{
+    PVOID BaseAddress;
+    SIZE_T SizeOfImage;
+    ULONG Sequence;
+    ULONG TimeDateStamp;
+    ULONG CheckSum;
+    WCHAR ImageName[32];
+} RTL_UNLOAD_EVENT_TRACE, *PRTL_UNLOAD_EVENT_TRACE;
+
+/*********************************************************************
+ *           RtlGetUnloadEventTrace [NTDLL.@]
+ */
+RTL_UNLOAD_EVENT_TRACE * WINAPI RtlGetUnloadEventTrace(void)
+{
+    FIXME("stub!\n");
+    return NULL;
 }

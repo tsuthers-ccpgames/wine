@@ -7,7 +7,6 @@ C_SRCS = \
 	conpoint.c \
 	dispex.c \
 	editor.c \
-	hlink.c \
 	htmlanchor.c \
 	htmlarea.c \
 	htmlattr.c \
@@ -60,7 +59,6 @@ C_SRCS = \
 	nsservice.c \
 	olecmd.c \
 	oleobj.c \
-	olewnd.c \
 	omnavigator.c \
 	persist.c \
 	pluginhost.c \

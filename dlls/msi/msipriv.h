@@ -371,6 +371,15 @@ enum clr_version
     CLR_VERSION_MAX
 };
 
+enum script
+{
+    SCRIPT_NONE     = -1,
+    SCRIPT_INSTALL  = 0,
+    SCRIPT_COMMIT   = 1,
+    SCRIPT_ROLLBACK = 2,
+    SCRIPT_MAX      = 3
+};
+
 typedef struct tagMSIPACKAGE
 {
     MSIOBJECTHDR hdr;
@@ -403,7 +412,13 @@ typedef struct tagMSIPACKAGE
     struct list mimes;
     struct list appids;
 
-    struct tagMSISCRIPT *script;
+    enum script script;
+    LPWSTR *script_actions[SCRIPT_MAX];
+    int    script_actions_count[SCRIPT_MAX];
+    LPWSTR *unique_actions;
+    int    unique_actions_count;
+    BOOL   ExecuteSequenceRun;
+    UINT   InWhatSequence;
 
     struct list RunningActions;
 
@@ -427,13 +442,9 @@ typedef struct tagMSIPACKAGE
     struct list sourcelist_info;
     struct list sourcelist_media;
 
-    unsigned char scheduled_action_running : 1;
-    unsigned char commit_action_running : 1;
-    unsigned char rollback_action_running : 1;
     unsigned char need_reboot_at_end : 1;
     unsigned char need_reboot_now : 1;
     unsigned char need_rollback : 1;
-    unsigned char full_reinstall : 1;
 } MSIPACKAGE;
 
 typedef struct tagMSIPREVIEW
@@ -679,28 +690,8 @@ struct tagMSIMIME
     MSICLASS *Class;
 };
 
-enum SCRIPTS
-{
-    SCRIPT_NONE     = -1,
-    SCRIPT_INSTALL  = 0,
-    SCRIPT_COMMIT   = 1,
-    SCRIPT_ROLLBACK = 2,
-    SCRIPT_MAX      = 3
-};
-
 #define SEQUENCE_UI       0x1
 #define SEQUENCE_EXEC     0x2
-#define SEQUENCE_INSTALL  0x10
-
-typedef struct tagMSISCRIPT
-{
-    LPWSTR  *Actions[SCRIPT_MAX];
-    UINT    ActionCount[SCRIPT_MAX];
-    BOOL    ExecuteSequenceRun;
-    UINT    InWhatSequence;
-    LPWSTR  *UniqueActions;
-    UINT    UniqueActionsCount;
-} MSISCRIPT;
 
 #define MSIHANDLETYPE_ANY 0
 #define MSIHANDLETYPE_DATABASE 1
@@ -982,10 +973,9 @@ extern WCHAR *gszLogFile DECLSPEC_HIDDEN;
 extern HINSTANCE msi_hInstance DECLSPEC_HIDDEN;
 
 /* action related functions */
-extern UINT ACTION_PerformAction(MSIPACKAGE *package, const WCHAR *action, UINT script) DECLSPEC_HIDDEN;
-extern UINT ACTION_PerformUIAction(MSIPACKAGE *package, const WCHAR *action, UINT script) DECLSPEC_HIDDEN;
+extern UINT ACTION_PerformAction(MSIPACKAGE *package, const WCHAR *action) DECLSPEC_HIDDEN;
 extern void ACTION_FinishCustomActions( const MSIPACKAGE* package) DECLSPEC_HIDDEN;
-extern UINT ACTION_CustomAction(MSIPACKAGE *, const WCHAR *, UINT) DECLSPEC_HIDDEN;
+extern UINT ACTION_CustomAction(MSIPACKAGE *, const WCHAR *) DECLSPEC_HIDDEN;
 
 /* actions in other modules */
 extern UINT ACTION_AppSearch(MSIPACKAGE *package) DECLSPEC_HIDDEN;
@@ -1204,6 +1194,7 @@ static const WCHAR szLangResource[] = {'\\','V','a','r','F','i','l','e','I','n',
 static const WCHAR szInstallLocation[] = {'I','n','s','t','a','l','l','L','o','c','a','t','i','o','n',0};
 static const WCHAR szProperty[] = {'P','r','o','p','e','r','t','y',0};
 static const WCHAR szUninstallable[] = {'U','n','i','n','s','t','a','l','l','a','b','l','e',0};
+static const WCHAR szEXECUTEACTION[] = {'E','X','E','C','U','T','E','A','C','T','I','O','N',0};
 
 /* memory allocation macro functions */
 static void *msi_alloc( size_t len ) __WINE_ALLOC_SIZE(1);

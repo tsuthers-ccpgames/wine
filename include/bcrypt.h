@@ -74,6 +74,9 @@ typedef LONG NTSTATUS;
 #define BCRYPT_CHAIN_MODE_NA        (const WCHAR []){'C','h','a','i','n','i','n','g','M','o','d','e','N','/','A',0}
 #define BCRYPT_CHAIN_MODE_CBC       (const WCHAR []){'C','h','a','i','n','i','n','g','M','o','d','e','C','B','C',0}
 #define BCRYPT_CHAIN_MODE_ECB       (const WCHAR []){'C','h','a','i','n','i','n','g','M','o','d','e','E','C','B',0}
+#define BCRYPT_CHAIN_MODE_CFB       (const WCHAR []){'C','h','a','i','n','i','n','g','M','o','d','e','C','F','B',0}
+#define BCRYPT_CHAIN_MODE_CCM       (const WCHAR []){'C','h','a','i','n','i','n','g','M','o','d','e','C','C','M',0}
+#define BCRYPT_CHAIN_MODE_GCM       (const WCHAR []){'C','h','a','i','n','i','n','g','M','o','d','e','G','C','M',0}
 
 typedef struct _BCRYPT_ALGORITHM_IDENTIFIER
 {
@@ -81,6 +84,13 @@ typedef struct _BCRYPT_ALGORITHM_IDENTIFIER
     ULONG  dwClass;
     ULONG  dwFlags;
 } BCRYPT_ALGORITHM_IDENTIFIER;
+
+typedef struct __BCRYPT_KEY_LENGTHS_STRUCT
+{
+    ULONG dwMinLength;
+    ULONG dwMaxLength;
+    ULONG dwIncrement;
+} BCRYPT_KEY_LENGTHS_STRUCT;
 
 typedef PVOID BCRYPT_ALG_HANDLE;
 typedef PVOID BCRYPT_KEY_HANDLE;

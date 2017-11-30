@@ -125,9 +125,11 @@ typedef struct EventTarget EventTarget;
     XDIID(DispHTMLXMLHttpRequest) \
     XDIID(HTMLDocumentEvents) \
     XDIID(HTMLElementEvents2) \
+    XIID(IDOMEvent) \
     XIID(IDocumentSelector) \
     XIID(IElementSelector) \
     XIID(IElementTraversal) \
+    XIID(IEventTarget) \
     XIID(IHTMLAnchorElement) \
     XIID(IHTMLAreaElement) \
     XIID(IHTMLAttributeCollection) \
@@ -146,6 +148,7 @@ typedef struct EventTarget EventTarget;
     XIID(IHTMLDocument4) \
     XIID(IHTMLDocument5) \
     XIID(IHTMLDocument6) \
+    XIID(IHTMLDocument7) \
     XIID(IHTMLDOMAttribute) \
     XIID(IHTMLDOMAttribute2) \
     XIID(IHTMLDOMChildrenCollection) \
@@ -267,10 +270,8 @@ typedef struct {
     HRESULT (*value)(DispatchEx*,LCID,WORD,DISPPARAMS*,VARIANT*,EXCEPINFO*,IServiceProvider*);
     HRESULT (*get_dispid)(DispatchEx*,BSTR,DWORD,DISPID*);
     HRESULT (*invoke)(DispatchEx*,DISPID,LCID,WORD,DISPPARAMS*,VARIANT*,EXCEPINFO*,IServiceProvider*);
+    compat_mode_t (*get_compat_mode)(DispatchEx*);
     HRESULT (*populate_props)(DispatchEx*);
-    /* We abuse this vtbl for EventTarget functions to avoid separated vtbl. */
-    EventTarget *(*get_event_target)(DispatchEx*);
-    void (*bind_event)(DispatchEx*,int);
 } dispex_static_data_vtbl_t;
 
 typedef struct {
@@ -279,7 +280,16 @@ typedef struct {
     const tid_t* const iface_tids;
     void (*init_info)(dispex_data_t*,compat_mode_t);
     dispex_data_t *info_cache[COMPAT_MODE_CNT];
+    dispex_data_t *delayed_init_info;
 } dispex_static_data_t;
+
+typedef HRESULT (*dispex_hook_invoke_t)(DispatchEx*,LCID,WORD,DISPPARAMS*,VARIANT*,
+                                        EXCEPINFO*,IServiceProvider*);
+
+typedef struct {
+    DISPID dispid;
+    dispex_hook_invoke_t invoke;
+} dispex_hook_t;
 
 struct DispatchEx {
     IDispatchEx IDispatchEx_iface;
@@ -328,8 +338,9 @@ void dispex_traverse(DispatchEx*,nsCycleCollectionTraversalCallback*) DECLSPEC_H
 void dispex_unlink(DispatchEx*) DECLSPEC_HIDDEN;
 void release_typelib(void) DECLSPEC_HIDDEN;
 HRESULT get_class_typeinfo(const CLSID*,ITypeInfo**) DECLSPEC_HIDDEN;
-const dispex_static_data_vtbl_t *dispex_get_vtbl(DispatchEx*) DECLSPEC_HIDDEN;
-void dispex_info_add_interface(dispex_data_t*,tid_t,const DISPID*) DECLSPEC_HIDDEN;
+const void *dispex_get_vtbl(DispatchEx*) DECLSPEC_HIDDEN;
+void dispex_info_add_interface(dispex_data_t*,tid_t,const dispex_hook_t*) DECLSPEC_HIDDEN;
+compat_mode_t dispex_compat_mode(DispatchEx*) DECLSPEC_HIDDEN;
 
 static inline void init_dispex(DispatchEx *dispex, IUnknown *outer, dispex_static_data_t *desc)
 {
@@ -376,6 +387,7 @@ typedef struct {
 
 struct EventTarget {
     DispatchEx dispex;
+    IEventTarget IEventTarget_iface;
     struct wine_rb_tree handler_map;
 };
 
@@ -567,6 +579,7 @@ struct HTMLDocument {
     IHTMLDocument6              IHTMLDocument6_iface;
     IHTMLDocument7              IHTMLDocument7_iface;
     IDocumentSelector           IDocumentSelector_iface;
+    IDocumentEvent              IDocumentEvent_iface;
     IPersistMoniker             IPersistMoniker_iface;
     IPersistFile                IPersistFile_iface;
     IPersistHistory             IPersistHistory_iface;
@@ -597,10 +610,7 @@ struct HTMLDocument {
 
     HTMLOuterWindow *window;
 
-    LONG task_magic;
-
     ConnectionPointContainer cp_container;
-    IOleAdviseHolder *advise_holder;
 };
 
 static inline HRESULT htmldoc_query_interface(HTMLDocument *This, REFIID riid, void **ppv)
@@ -643,6 +653,7 @@ struct HTMLDocumentObj {
     IUnknown *webbrowser;
     ITravelLog *travel_log;
     IUnknown *browser_service;
+    IOleAdviseHolder *advise_holder;
 
     DOCHOSTUIINFO hostinfo;
 
@@ -667,6 +678,7 @@ struct HTMLDocumentObj {
     LPWSTR mime;
 
     DWORD update;
+    LONG task_magic;
 };
 
 typedef struct nsWeakReference nsWeakReference;
@@ -692,7 +704,6 @@ struct NSContainer {
 
     nsWeakReference *weak_reference;
 
-    NSContainer *parent;
     HTMLDocumentObj *doc;
 
     nsIURIContentListener *content_listener;
@@ -708,8 +719,7 @@ typedef struct {
     HRESULT (*clone)(HTMLDOMNode*,nsIDOMNode*,HTMLDOMNode**);
     HRESULT (*handle_event)(HTMLDOMNode*,DWORD,nsIDOMEvent*,BOOL*);
     HRESULT (*get_attr_col)(HTMLDOMNode*,HTMLAttributeCollection**);
-    EventTarget *(*get_event_target)(HTMLDOMNode*);
-    HRESULT (*fire_event)(HTMLDOMNode*,DWORD,BOOL*);
+    EventTarget *(*get_event_prop_target)(HTMLDOMNode*,int);
     HRESULT (*put_disabled)(HTMLDOMNode*,VARIANT_BOOL);
     HRESULT (*get_disabled)(HTMLDOMNode*,VARIANT_BOOL*);
     HRESULT (*get_document)(HTMLDOMNode*,IDispatch**);
@@ -734,7 +744,6 @@ struct HTMLDOMNode {
 
     nsIDOMNode *nsnode;
     HTMLDocumentNode *doc;
-    ConnectionPointContainer *cp_container;
 };
 
 static inline void node_addref(HTMLDOMNode *node)
@@ -811,8 +820,10 @@ struct HTMLDocumentNode {
 
     LONG ref;
 
-    compat_mode_t document_mode;
     HTMLInnerWindow *window;
+
+    compat_mode_t document_mode;
+    BOOL document_mode_locked;
 
     nsIDOMHTMLDocument *nsdoc;
     BOOL content_ready;
@@ -862,9 +873,7 @@ void HTMLDocument_Persist_Init(HTMLDocument*) DECLSPEC_HIDDEN;
 void HTMLDocument_OleCmd_Init(HTMLDocument*) DECLSPEC_HIDDEN;
 void HTMLDocument_OleObj_Init(HTMLDocument*) DECLSPEC_HIDDEN;
 void HTMLDocument_View_Init(HTMLDocument*) DECLSPEC_HIDDEN;
-void HTMLDocument_Window_Init(HTMLDocument*) DECLSPEC_HIDDEN;
 void HTMLDocument_Service_Init(HTMLDocument*) DECLSPEC_HIDDEN;
-void HTMLDocument_Hlink_Init(HTMLDocument*) DECLSPEC_HIDDEN;
 
 void TargetContainer_Init(HTMLDocumentObj*) DECLSPEC_HIDDEN;
 void init_binding_ui(HTMLDocumentObj*) DECLSPEC_HIDDEN;
@@ -1030,10 +1039,14 @@ HRESULT HTMLTextAreaElement_Create(HTMLDocumentNode*,nsIDOMHTMLElement*,HTMLElem
 HRESULT HTMLTitleElement_Create(HTMLDocumentNode*,nsIDOMHTMLElement*,HTMLElement**) DECLSPEC_HIDDEN;
 HRESULT HTMLGenericElement_Create(HTMLDocumentNode*,nsIDOMHTMLElement*,HTMLElement**) DECLSPEC_HIDDEN;
 
-void HTMLDOMNode_Init(HTMLDocumentNode*,HTMLDOMNode*,nsIDOMNode*) DECLSPEC_HIDDEN;
+void HTMLDOMNode_Init(HTMLDocumentNode*,HTMLDOMNode*,nsIDOMNode*,dispex_static_data_t*) DECLSPEC_HIDDEN;
 void HTMLElement_Init(HTMLElement*,HTMLDocumentNode*,nsIDOMHTMLElement*,dispex_static_data_t*) DECLSPEC_HIDDEN;
 void HTMLTextContainer_Init(HTMLTextContainer*,HTMLDocumentNode*,nsIDOMHTMLElement*,dispex_static_data_t*) DECLSPEC_HIDDEN;
 void HTMLFrameBase_Init(HTMLFrameBase*,HTMLDocumentNode*,nsIDOMHTMLElement*,dispex_static_data_t*) DECLSPEC_HIDDEN;
+
+void EventTarget_Init(EventTarget*,IUnknown*,dispex_static_data_t*,compat_mode_t) DECLSPEC_HIDDEN;
+HRESULT EventTarget_QI(EventTarget*,REFIID,void**) DECLSPEC_HIDDEN;
+void EventTarget_init_dispex_info(dispex_data_t*,compat_mode_t) DECLSPEC_HIDDEN;
 
 HRESULT HTMLDOMNode_QI(HTMLDOMNode*,REFIID,void**) DECLSPEC_HIDDEN;
 void HTMLDOMNode_destructor(HTMLDOMNode*) DECLSPEC_HIDDEN;
@@ -1092,7 +1105,7 @@ void do_ns_command(HTMLDocument*,const char*,nsICommandParams*) DECLSPEC_HIDDEN;
 #define UPDATE_UI       0x0001
 #define UPDATE_TITLE    0x0002
 
-void update_doc(HTMLDocument*,DWORD) DECLSPEC_HIDDEN;
+void update_doc(HTMLDocumentObj*,DWORD) DECLSPEC_HIDDEN;
 void update_title(HTMLDocumentObj*) DECLSPEC_HIDDEN;
 void set_document_navigation(HTMLDocumentObj*,BOOL) DECLSPEC_HIDDEN;
 
@@ -1138,7 +1151,6 @@ HWND get_thread_hwnd(void) DECLSPEC_HIDDEN;
 LONG get_task_target_magic(void) DECLSPEC_HIDDEN;
 HRESULT push_task(task_t*,task_proc_t,task_proc_t,LONG) DECLSPEC_HIDDEN;
 void remove_target_tasks(LONG) DECLSPEC_HIDDEN;
-void flush_pending_tasks(LONG) DECLSPEC_HIDDEN;
 
 HRESULT set_task_timer(HTMLInnerWindow*,LONG,BOOL,IDispatch*,LONG*) DECLSPEC_HIDDEN;
 HRESULT clear_task_timer(HTMLInnerWindow*,DWORD) DECLSPEC_HIDDEN;
@@ -1322,6 +1334,11 @@ static inline void windowref_release(windowref_t *ref)
 {
     if(!InterlockedDecrement(&ref->ref))
         heap_free(ref);
+}
+
+static inline VARIANT_BOOL variant_bool(BOOL b)
+{
+    return b ? VARIANT_TRUE : VARIANT_FALSE;
 }
 
 UINT cp_from_charset_string(BSTR) DECLSPEC_HIDDEN;

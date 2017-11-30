@@ -5880,7 +5880,7 @@ DEFINE_THISCALL_WRAPPER(basic_ios_char_narrow, 12)
 char __thiscall basic_ios_char_narrow(basic_ios_char *this, char ch, char def)
 {
     TRACE("(%p %c %c)\n", this, ch, def);
-    return ctype_char_narrow_ch(ctype_char_use_facet(IOS_LOCALE(this->strbuf)), ch, def);
+    return ctype_char_narrow_ch(ctype_char_use_facet(IOS_LOCALE(&this->base)), ch, def);
 }
 
 /* ?rdbuf@?$basic_ios@DU?$char_traits@D@std@@@std@@QAEPAV?$basic_streambuf@DU?$char_traits@D@std@@@2@PAV32@@Z */
@@ -5953,7 +5953,7 @@ DEFINE_THISCALL_WRAPPER(basic_ios_char_widen, 8)
 char __thiscall basic_ios_char_widen(basic_ios_char *this, char ch)
 {
     TRACE("(%p %c)\n", this, ch);
-    return ctype_char_widen_ch(ctype_char_use_facet(IOS_LOCALE(this->strbuf)), ch);
+    return ctype_char_widen_ch(ctype_char_use_facet(IOS_LOCALE(&this->base)), ch);
 }
 
 /* ?swap@?$basic_ios@DU?$char_traits@D@std@@@std@@QAEXAAV12@@Z */
@@ -6161,7 +6161,7 @@ DEFINE_THISCALL_WRAPPER(basic_ios_wchar_narrow, 12)
 char __thiscall basic_ios_wchar_narrow(basic_ios_wchar *this, wchar_t ch, char def)
 {
     TRACE("(%p %c %c)\n", this, ch, def);
-    return ctype_wchar_narrow_ch(ctype_wchar_use_facet(IOS_LOCALE(this->strbuf)), ch, def);
+    return ctype_wchar_narrow_ch(ctype_wchar_use_facet(IOS_LOCALE(&this->base)), ch, def);
 }
 
 /* ?rdbuf@?$basic_ios@_WU?$char_traits@_W@std@@@std@@QAEPAV?$basic_streambuf@_WU?$char_traits@_W@std@@@2@PAV32@@Z */
@@ -6248,7 +6248,7 @@ DEFINE_THISCALL_WRAPPER(basic_ios_wchar_widen, 8)
 wchar_t __thiscall basic_ios_wchar_widen(basic_ios_wchar *this, char ch)
 {
     TRACE("(%p %c)\n", this, ch);
-    return ctype_wchar_widen_ch(ctype_wchar_use_facet(IOS_LOCALE(this->strbuf)), ch);
+    return ctype_wchar_widen_ch(ctype_wchar_use_facet(IOS_LOCALE(&this->base)), ch);
 }
 
 /* ?swap@?$basic_ios@GU?$char_traits@G@std@@@std@@QAEXAAV12@@Z */
@@ -8414,7 +8414,7 @@ basic_istream_char* __thiscall basic_istream_char_get_str_delim(basic_istream_ch
     basic_ios_char *base = basic_istream_char_get_basic_ios(this);
     int ch = delim;
 
-    TRACE("(%p %p %s %c)\n", this, str, wine_dbgstr_longlong(count), delim);
+    TRACE("(%p %p %s %s)\n", this, str, wine_dbgstr_longlong(count), debugstr_an(&delim, 1));
 
     this->count = 0;
 
@@ -8460,7 +8460,7 @@ basic_istream_char* __thiscall basic_istream_char_get_streambuf_delim(basic_istr
     basic_ios_char *base = basic_istream_char_get_basic_ios(this);
     int ch = delim;
 
-    TRACE("(%p %p %c)\n", this, strbuf, delim);
+    TRACE("(%p %p %s)\n", this, strbuf, debugstr_an(&delim, 1));
 
     this->count = 0;
 
@@ -8504,7 +8504,7 @@ basic_istream_char* __thiscall basic_istream_char_getline_delim(basic_istream_ch
     basic_ios_char *base = basic_istream_char_get_basic_ios(this);
     int ch = (unsigned char)delim;
 
-    TRACE("(%p %p %s %c)\n", this, str, wine_dbgstr_longlong(count), delim);
+    TRACE("(%p %p %s %s)\n", this, str, wine_dbgstr_longlong(count), debugstr_an(&delim, 1));
 
     this->count = 0;
 
@@ -9271,7 +9271,7 @@ basic_istream_char* __cdecl basic_istream_char_getline_bstr_delim(
     IOSB_iostate state = IOSTATE_goodbit;
     int c = (unsigned char)delim;
 
-    TRACE("(%p %p %c)\n", istream, str, delim);
+    TRACE("(%p %p %s)\n", istream, str, debugstr_an(&delim, 1));
 
     if(basic_istream_char_sentry_create(istream, TRUE)) {
         basic_streambuf_char *strbuf = basic_ios_char_rdbuf_get(base);
@@ -9957,7 +9957,7 @@ basic_istream_wchar* __thiscall basic_istream_wchar_get_str_delim(basic_istream_
     basic_ios_wchar *base = basic_istream_wchar_get_basic_ios(this);
     unsigned short ch = delim;
 
-    TRACE("(%p %p %s %c)\n", this, str, wine_dbgstr_longlong(count), delim);
+    TRACE("(%p %p %s %s)\n", this, str, wine_dbgstr_longlong(count), debugstr_wn(&delim, 1));
 
     this->count = 0;
 
@@ -10007,7 +10007,7 @@ basic_istream_wchar* __thiscall basic_istream_wchar_get_streambuf_delim(basic_is
     basic_ios_wchar *base = basic_istream_wchar_get_basic_ios(this);
     unsigned short ch = delim;
 
-    TRACE("(%p %p %c)\n", this, strbuf, delim);
+    TRACE("(%p %p %s)\n", this, strbuf, debugstr_wn(&delim, 1));
 
     this->count = 0;
 
@@ -10055,7 +10055,7 @@ basic_istream_wchar* __thiscall basic_istream_wchar_getline_delim(basic_istream_
     basic_ios_wchar *base = basic_istream_wchar_get_basic_ios(this);
     unsigned short ch = delim;
 
-    TRACE("(%p %p %s %c)\n", this, str, wine_dbgstr_longlong(count), delim);
+    TRACE("(%p %p %s %s)\n", this, str, wine_dbgstr_longlong(count), debugstr_wn(&delim, 1));
 
     this->count = 0;
 
@@ -11018,7 +11018,7 @@ basic_istream_wchar* __cdecl basic_istream_wchar_getline_bstr_delim(
     IOSB_iostate state = IOSTATE_goodbit;
     int c = delim;
 
-    TRACE("(%p %p %c)\n", istream, str, delim);
+    TRACE("(%p %p %s)\n", istream, str, debugstr_wn(&delim, 1));
 
     if(basic_istream_wchar_sentry_create(istream, TRUE)) {
         basic_streambuf_wchar *strbuf = basic_ios_wchar_rdbuf_get(base);
@@ -15036,6 +15036,20 @@ int __cdecl tr2_sys__Link(char const* existing_path, char const* new_path)
     return GetLastError();
 }
 
+/* ?_Link@sys@tr2@std@@YAHPB_W0@Z */
+/* ?_Link@sys@tr2@std@@YAHPEB_W0@Z */
+/* _Link */
+int __cdecl tr2_sys__Link_wchar(WCHAR const* existing_path, WCHAR const* new_path)
+{
+    TRACE("(%s %s)\n", debugstr_w(existing_path), debugstr_w(new_path));
+    if(!existing_path || !new_path)
+        return ERROR_INVALID_PARAMETER;
+
+    if(CreateHardLinkW(new_path, existing_path, NULL))
+        return ERROR_SUCCESS;
+    return GetLastError();
+}
+
 /* ?_Symlink@sys@tr2@std@@YAHPBD0@Z */
 /* ?_Symlink@sys@tr2@std@@YAHPEBD0@Z */
 int __cdecl tr2_sys__Symlink(char const* existing_file_name, char const* file_name)
@@ -15049,6 +15063,20 @@ int __cdecl tr2_sys__Symlink(char const* existing_file_name, char const* file_na
     return GetLastError();
 }
 
+/* ?_Symlink@sys@tr2@std@@YAHPB_W0@Z */
+/* ?_Symlink@sys@tr2@std@@YAHPEB_W0@Z */
+/* _Symlink */
+int __cdecl tr2_sys__Symlink_wchar(WCHAR const* existing_file_name, WCHAR const* file_name)
+{
+    TRACE("(%s %s)\n", debugstr_w(existing_file_name), debugstr_w(file_name));
+    if(!existing_file_name || !file_name)
+        return ERROR_INVALID_PARAMETER;
+
+    if(CreateSymbolicLinkW(file_name, existing_file_name, 0))
+        return ERROR_SUCCESS;
+    return GetLastError();
+}
+
 /* ?_Unlink@sys@tr2@std@@YAHPBD@Z */
 /* ?_Unlink@sys@tr2@std@@YAHPEBD@Z */
 int __cdecl tr2_sys__Unlink(char const* path)
@@ -15056,6 +15084,18 @@ int __cdecl tr2_sys__Unlink(char const* path)
     TRACE("(%s)\n", debugstr_a(path));
 
     if(DeleteFileA(path))
+        return ERROR_SUCCESS;
+    return GetLastError();
+}
+
+/* ?_Unlink@sys@tr2@std@@YAHPB_W@Z */
+/* ?_Unlink@sys@tr2@std@@YAHPEB_W@Z */
+/* _Unlink */
+int __cdecl tr2_sys__Unlink_wchar(WCHAR const* path)
+{
+    TRACE("(%s)\n", debugstr_w(path));
+
+    if(DeleteFileW(path))
         return ERROR_SUCCESS;
     return GetLastError();
 }

@@ -523,6 +523,7 @@ static void test_Loader(void)
     };
     int i;
     DWORD file_size;
+    HANDLE h;
     HMODULE hlib, hlib_as_data_file;
     char temp_path[MAX_PATH];
     char dll_name[MAX_PATH];
@@ -585,8 +586,6 @@ static void test_Loader(void)
             SetLastError(0xdeadbeef);
             ptr = VirtualAlloc(hlib, page_size, MEM_COMMIT, info.Protect);
             ok(!ptr, "%d: VirtualAlloc should fail\n", i);
-            /* FIXME: Remove once Wine is fixed */
-            todo_wine_if (info.Protect == PAGE_WRITECOPY || info.Protect == PAGE_EXECUTE_WRITECOPY)
             ok(GetLastError() == ERROR_ACCESS_DENIED, "%d: expected ERROR_ACCESS_DENIED, got %d\n", i, GetLastError());
 
             SetLastError(0xdeadbeef);
@@ -671,8 +670,6 @@ static void test_Loader(void)
                 SetLastError(0xdeadbeef);
                 ptr = VirtualAlloc((char *)hlib + section.VirtualAddress, page_size, MEM_COMMIT, info.Protect);
                 ok(!ptr, "%d: VirtualAlloc should fail\n", i);
-                /* FIXME: Remove once Wine is fixed */
-                todo_wine_if (info.Protect == PAGE_WRITECOPY || info.Protect == PAGE_EXECUTE_WRITECOPY)
                 ok(GetLastError() == ERROR_ACCESS_DENIED || GetLastError() == ERROR_INVALID_ADDRESS,
                    "%d: expected ERROR_ACCESS_DENIED, got %d\n", i, GetLastError());
             }
@@ -706,8 +703,36 @@ static void test_Loader(void)
             ok(!hlib, "GetModuleHandle should fail\n");
 
             SetLastError(0xdeadbeef);
+            h = CreateFileA( dll_name, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0 );
+            ok( h != INVALID_HANDLE_VALUE, "open failed err %u\n", GetLastError() );
+            CloseHandle( h );
+
+            SetLastError(0xdeadbeef);
             ret = FreeLibrary(hlib_as_data_file);
             ok(ret, "FreeLibrary error %d\n", GetLastError());
+
+            SetLastError(0xdeadbeef);
+            hlib_as_data_file = LoadLibraryExA(dll_name, 0, LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE);
+            if (!((ULONG_PTR)hlib_as_data_file & 1) ||  /* winxp */
+                (!hlib_as_data_file && GetLastError() == ERROR_INVALID_PARAMETER))  /* w2k3 */
+            {
+                win_skip( "LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE not supported\n" );
+                FreeLibrary(hlib_as_data_file);
+            }
+            else
+            {
+                ok(hlib_as_data_file != 0, "LoadLibraryEx error %u\n", GetLastError());
+
+                SetLastError(0xdeadbeef);
+                h = CreateFileA( dll_name, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0 );
+                todo_wine ok( h == INVALID_HANDLE_VALUE, "open succeeded\n" );
+                todo_wine ok( GetLastError() == ERROR_SHARING_VIOLATION, "wrong error %u\n", GetLastError() );
+                CloseHandle( h );
+
+                SetLastError(0xdeadbeef);
+                ret = FreeLibrary(hlib_as_data_file);
+                ok(ret, "FreeLibrary error %d\n", GetLastError());
+            }
 
             query_image_section( i, dll_name, &nt_header );
         }
@@ -1457,6 +1482,7 @@ static void test_import_resolution(void)
             ok( ptr->thunks[0].u1.Function == 0xdeadbeef, "thunk resolved to %p for %s.%s\n",
                 (void *)ptr->thunks[0].u1.Function, data.module, data.function.name );
             ok( ptr->tls_index == 9999, "wrong tls index %d\n", ptr->tls_index );
+            FreeLibrary( mod2 );
             FreeLibrary( mod );
             break;
         case 2:  /* load without IMAGE_FILE_DLL doesn't resolve imports */
@@ -1497,7 +1523,7 @@ static DWORD WINAPI mutex_thread_proc(void *param)
     wait_list[2] = peb_lock_event;
     wait_list[3] = heap_lock_event;
 
-    trace("%04u: mutex_thread_proc: starting\n", GetCurrentThreadId());
+    trace("%04x: mutex_thread_proc: starting\n", GetCurrentThreadId());
     while (1)
     {
         ret = WaitForMultipleObjects(sizeof(wait_list)/sizeof(wait_list[0]), wait_list, FALSE, 50);
@@ -1505,7 +1531,7 @@ static DWORD WINAPI mutex_thread_proc(void *param)
         else if (ret == WAIT_OBJECT_0 + 1)
         {
             ULONG_PTR loader_lock_magic;
-            trace("%04u: mutex_thread_proc: Entering loader lock\n", GetCurrentThreadId());
+            trace("%04x: mutex_thread_proc: Entering loader lock\n", GetCurrentThreadId());
             ret = pLdrLockLoaderLock(0, NULL, &loader_lock_magic);
             ok(!ret, "LdrLockLoaderLock error %#x\n", ret);
             inside_loader_lock++;
@@ -1513,21 +1539,21 @@ static DWORD WINAPI mutex_thread_proc(void *param)
         }
         else if (ret == WAIT_OBJECT_0 + 2)
         {
-            trace("%04u: mutex_thread_proc: Entering PEB lock\n", GetCurrentThreadId());
+            trace("%04x: mutex_thread_proc: Entering PEB lock\n", GetCurrentThreadId());
             pRtlAcquirePebLock();
             inside_peb_lock++;
             SetEvent(ack_event);
         }
         else if (ret == WAIT_OBJECT_0 + 3)
         {
-            trace("%04u: mutex_thread_proc: Entering heap lock\n", GetCurrentThreadId());
+            trace("%04x: mutex_thread_proc: Entering heap lock\n", GetCurrentThreadId());
             HeapLock(GetProcessHeap());
             inside_heap_lock++;
             SetEvent(ack_event);
         }
     }
 
-    trace("%04u: mutex_thread_proc: exiting\n", GetCurrentThreadId());
+    trace("%04x: mutex_thread_proc: exiting\n", GetCurrentThreadId());
     return 196;
 }
 
@@ -1543,11 +1569,11 @@ static DWORD WINAPI semaphore_thread_proc(void *param)
     while (1)
     {
         if (winetest_debug > 1)
-            trace("%04u: semaphore_thread_proc: still alive\n", GetCurrentThreadId());
+            trace("%04x: semaphore_thread_proc: still alive\n", GetCurrentThreadId());
         if (WaitForSingleObject(stop_event, 50) != WAIT_TIMEOUT) break;
     }
 
-    trace("%04u: semaphore_thread_proc: exiting\n", GetCurrentThreadId());
+    trace("%04x: semaphore_thread_proc: exiting\n", GetCurrentThreadId());
     return 196;
 }
 
@@ -1559,7 +1585,7 @@ static DWORD WINAPI noop_thread_proc(void *param)
         InterlockedIncrement(noop_thread_started);
     }
 
-    trace("%04u: noop_thread_proc: exiting\n", GetCurrentThreadId());
+    trace("%04x: noop_thread_proc: exiting\n", GetCurrentThreadId());
     return 195;
 }
 
@@ -2123,7 +2149,6 @@ static void child_process(const char *dll_name, DWORD target_offset)
     case 3:
         trace("signalling thread exit\n");
         SetEvent(stop_event);
-        CloseHandle(stop_event);
         break;
 
     case 4:

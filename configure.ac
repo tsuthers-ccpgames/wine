@@ -56,6 +56,7 @@ AC_ARG_WITH(gsm,       AS_HELP_STRING([--without-gsm],[do not use libgsm (GSM 06
 AC_ARG_WITH(gstreamer, AS_HELP_STRING([--without-gstreamer],[do not use GStreamer (codecs support)]))
 AC_ARG_WITH(hal,       AS_HELP_STRING([--without-hal],[do not use HAL (dynamic device support)]))
 AC_ARG_WITH(jpeg,      AS_HELP_STRING([--without-jpeg],[do not use JPEG]))
+AC_ARG_WITH(krb5,      AS_HELP_STRING([--without-krb5],[do not use krb5 (Kerberos)]))
 AC_ARG_WITH(ldap,      AS_HELP_STRING([--without-ldap],[do not use LDAP]),
             [if test "x$withval" = "xno"; then ac_cv_header_ldap_h=no; ac_cv_header_lber_h=no; fi])
 AC_ARG_WITH(mpg123,    AS_HELP_STRING([--without-mpg123],[do not use the mpg123 library]))
@@ -178,6 +179,11 @@ case $host in
                        AC_MSG_ERROR([You need a target with Thumb support to build Wine for ARM.])])
     CFLAGS="$CFLAGS -marm"
     AC_SUBST(TARGETFLAGS,"-marm")
+    AC_MSG_CHECKING([whether $CC supports floating point])
+    WINE_TRY_ASM_LINK(["vmrs r2,fpscr"],,,
+                      [AC_MSG_RESULT([yes])],
+                      [AC_MSG_RESULT([no])
+                       AC_MSG_ERROR([You need a target with floating point support to build Wine for ARM.])])
     ;;
   i[[3456789]]86*)
     enable_win16=${enable_win16:-yes}
@@ -914,7 +920,7 @@ case $host_os in
                       [LDRPATH_INSTALL="$LDRPATH_INSTALL -Wl,--enable-new-dtags"])
 
       case $host_cpu in
-        *i[[3456789]]86* | x86_64)
+        *i[[3456789]]86* | x86_64 | *aarch64*)
           WINE_TRY_CFLAGS([-Wl,-Ttext-segment=0x7bc00000],
                           [case $host_os in
                            freebsd* | kfreebsd*-gnu) WINELOADER_LDFLAGS="$WINELOADER_LDFLAGS -Wl,-Ttext-segment=0x60000000" ;;
@@ -1304,8 +1310,8 @@ then
             [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <gnutls/gnutls.h>
 #include <gnutls/crypto.h>]], [[static typeof(gnutls_mac_get_key_size) *func; if (func) return 0;]])],
                 [WINE_CHECK_SONAME(gnutls,gnutls_global_init,,[GNUTLS_CFLAGS=""],[$GNUTLS_LIBS],[[libgnutls\\(-deb0\\)\\{0,1\\}]])
-                 WINE_CHECK_LIB_FUNCS(gnutls_hash,[$GNUTLS_LIBS],,
-                                      [WINE_NOTICE([libgnutls ${notice_platform}development files too old, bcrypt hashes won't be supported.])])])],
+                 WINE_CHECK_LIB_FUNCS(gnutls_cipher_init,[$GNUTLS_LIBS],,
+                                      [WINE_NOTICE([libgnutls ${notice_platform}development files too old, bcrypt encryption won't be supported.])])])],
             [GNUTLS_CFLAGS=""])])
 fi
 WINE_WARNING_WITH(gnutls,[test "x$ac_cv_lib_soname_gnutls" = "x"],
@@ -1585,19 +1591,19 @@ WINE_NOTICE_WITH(capi,[test "x$ac_cv_lib_soname_capi20" = "x"],
                  [libcapi20 ${notice_platform}development files not found, ISDN won't be supported.])
 
 dnl **** Check for cups ****
-AC_SUBST(CUPS_CFLAGS,"")
 if test "x$with_cups" != "xno"
 then
-    ac_save_CPPFLAGS="$CPPFLAGS"
-    ac_cups_cflags=`${CUPS_CONFIG:-cups-config} --cflags 2>/dev/null`
-    ac_cups_libs=`${CUPS_CONFIG:-cups-config} --ldflags 2>/dev/null`
-    CPPFLAGS="$CPPFLAGS $ac_cups_cflags"
-    AC_CHECK_HEADERS(cups/cups.h,
-            [WINE_CHECK_SONAME(cups,cupsGetDefault,
-                       [CUPS_CFLAGS="$ac_cups_cflags"],,
-                       [$ac_cups_libs])
-             AC_CHECK_HEADERS(cups/ppd.h)])
-    CPPFLAGS="$ac_save_CPPFLAGS"
+    WINE_PACKAGE_FLAGS(CUPS,[cups],[-lcups],
+                       [`${CUPS_CONFIG:-cups-config} --cflags 2>/dev/null`],
+                       [`${CUPS_CONFIG:-cups-config} --libs 2>/dev/null`],
+                       [AC_CHECK_HEADERS(cups/cups.h cups/ppd.h)
+                        if test "$ac_cv_header_cups_cups_h" = "yes"
+                        then
+                            WINE_CHECK_SONAME(cups,cupsGetDefault,,[CUPS_LIBS=""],[$CUPS_LIBS])
+                        else
+                            CUPS_CFLAGS=""
+                            CUPS_LIBS=""
+                        fi])
 fi
 WINE_NOTICE_WITH(cups,[test "x$ac_cv_lib_soname_cups" = "x"],
                  [libcups ${notice_platform}development files not found, CUPS won't be supported.])
@@ -1625,6 +1631,23 @@ fi
 WINE_NOTICE_WITH(gsm,[test "x$ac_cv_lib_soname_gsm" = "x"],
                  [libgsm ${notice_platform}development files not found, gsm 06.10 codec won't be supported.])
 
+dnl **** Check for krb5 ****
+if test "x$with_krb5" != "xno"
+then
+    WINE_PACKAGE_FLAGS(KRB5,[krb5],,
+                       [`${KRB5_CONFIG:-krb5-config} --cflags 2>/dev/null`],
+                       [`${KRB5_CONFIG:-krb5-config} --libs 2>/dev/null`],
+        [AC_CHECK_HEADERS([krb5/krb5.h])
+         if test "$ac_cv_header_krb5_krb5_h" = "yes"
+         then
+             WINE_CHECK_SONAME(krb5,krb5_init_context,,[KRB5_CFLAGS=""],[$KRB5_LIBS])
+         else
+             KRB5_CFLAGS=""
+         fi])
+fi
+WINE_NOTICE_WITH(krb5,[test "x$ac_cv_lib_soname_krb5" = "x"],
+                 [libkrb5 ${notice_platform}development files not found, Kerberos won't be supported.])
+
 dnl **** Check for libjpeg ****
 if test "x$with_jpeg" != "xno"
 then
@@ -1647,9 +1670,7 @@ then
         [AC_CHECK_HEADERS([png.h])
         if test "$ac_cv_header_png_h" = "yes"
         then
-            WINE_CHECK_SONAME(png,png_create_read_struct,
-                [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <png.h>]],[[typeof(png_set_expand_gray_1_2_4_to_8) *p]])],
-                    [AC_DEFINE(HAVE_PNG_SET_EXPAND_GRAY_1_2_4_TO_8,1,[Define to 1 if libpng has the png_set_expand_gray_1_2_4_to_8 function.])])],
+            WINE_CHECK_SONAME(png,png_create_read_struct,,
                 [PNG_CFLAGS=""],[$PNG_LIBS -lm -lz],[[libpng[[0-9]]*]])
         else
             PNG_CFLAGS=""
@@ -1686,7 +1707,7 @@ then
 fi
 WINE_NOTICE_WITH(mpg123,[test "x$ac_cv_lib_mpg123_mpg123_feed" != xyes -a x"$ac_cv_header_CoreAudio_CoreAudio_h" != xyes],
                  [libmpg123 ${notice_platform}development files not found (or too old), mp3 codec won't be supported.],
-                 [enable_winemp3_acm])
+                 [enable_l3codeca_acm])
 
 dnl **** Check for OpenAL 1.1 ****
 if test "$ac_cv_header_AL_al_h" = "yes"
@@ -1803,6 +1824,7 @@ then
   WINE_TRY_CFLAGS([-Wdeclaration-after-statement])
   WINE_TRY_CFLAGS([-Wempty-body])
   WINE_TRY_CFLAGS([-Wignored-qualifiers])
+  WINE_TRY_CFLAGS([-Wno-packed-not-aligned])
   WINE_TRY_CFLAGS([-Wshift-overflow=2])
   WINE_TRY_CFLAGS([-Wstrict-prototypes])
   WINE_TRY_CFLAGS([-Wtype-limits])
@@ -2006,7 +2028,7 @@ esac
 case $host_os in
   linux*)
     case $host_cpu in
-      *i[[3456789]]86*|x86_64*)
+      *i[[3456789]]86*|x86_64*|*aarch64*)
         test "$wine_binary" = wine || WINE_IGNORE_FILE("loader/wine-preloader")
         WINELOADER_PROGRAMS="$WINELOADER_PROGRAMS $wine_binary-preloader"
         ;;
@@ -2736,6 +2758,7 @@ WINE_CONFIG_DLL(amstream,,[clean])
 WINE_CONFIG_TEST(dlls/amstream/tests)
 WINE_CONFIG_DLL(api-ms-win-appmodel-identity-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-appmodel-runtime-l1-1-1)
+WINE_CONFIG_DLL(api-ms-win-appmodel-runtime-l1-1-2)
 WINE_CONFIG_DLL(api-ms-win-core-apiquery-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-appcompat-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-appinit-l1-1-0)
@@ -2757,16 +2780,20 @@ WINE_CONFIG_DLL(api-ms-win-core-delayload-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-errorhandling-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-errorhandling-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-errorhandling-l1-1-2)
+WINE_CONFIG_DLL(api-ms-win-core-errorhandling-l1-1-3)
 WINE_CONFIG_DLL(api-ms-win-core-fibers-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-fibers-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-file-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-file-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-file-l1-2-1)
+WINE_CONFIG_DLL(api-ms-win-core-file-l1-2-2)
 WINE_CONFIG_DLL(api-ms-win-core-file-l2-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-file-l2-1-1)
+WINE_CONFIG_DLL(api-ms-win-core-file-l2-1-2)
 WINE_CONFIG_DLL(api-ms-win-core-handle-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-heap-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-heap-l1-2-0)
+WINE_CONFIG_DLL(api-ms-win-core-heap-l2-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-heap-obsolete-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-interlocked-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-interlocked-l1-2-0)
@@ -2780,6 +2807,7 @@ WINE_CONFIG_DLL(api-ms-win-core-kernel32-private-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-libraryloader-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-libraryloader-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-libraryloader-l1-2-0)
+WINE_CONFIG_DLL(api-ms-win-core-libraryloader-l1-2-1)
 WINE_CONFIG_DLL(api-ms-win-core-libraryloader-l1-2-2)
 WINE_CONFIG_DLL(api-ms-win-core-localization-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-localization-l1-2-0)
@@ -2787,6 +2815,7 @@ WINE_CONFIG_DLL(api-ms-win-core-localization-l1-2-1)
 WINE_CONFIG_DLL(api-ms-win-core-localization-l2-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-localization-obsolete-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-localization-obsolete-l1-2-0)
+WINE_CONFIG_DLL(api-ms-win-core-localization-obsolete-l1-3-0)
 WINE_CONFIG_DLL(api-ms-win-core-localization-private-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-localregistry-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-memory-l1-1-0)
@@ -2804,6 +2833,7 @@ WINE_CONFIG_DLL(api-ms-win-core-processenvironment-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-processthreads-l1-1-2)
+WINE_CONFIG_DLL(api-ms-win-core-processtopology-obsolete-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-profile-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-psapi-ansi-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-psapi-l1-1-0)
@@ -2817,13 +2847,16 @@ WINE_CONFIG_DLL(api-ms-win-core-rtlsupport-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-rtlsupport-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-shlwapi-legacy-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-shlwapi-obsolete-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-shlwapi-obsolete-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-sidebyside-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-string-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-string-l2-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-string-obsolete-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-stringansi-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-synch-ansi-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-synch-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-synch-l1-2-0)
+WINE_CONFIG_DLL(api-ms-win-core-synch-l1-2-1)
 WINE_CONFIG_DLL(api-ms-win-core-sysinfo-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-sysinfo-l1-2-0)
 WINE_CONFIG_DLL(api-ms-win-core-sysinfo-l1-2-1)
@@ -2836,6 +2869,7 @@ WINE_CONFIG_DLL(api-ms-win-core-toolhelp-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-url-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-util-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-version-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-version-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-version-private-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-versionansi-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-windowserrorreporting-l1-1-0)
@@ -2847,6 +2881,7 @@ WINE_CONFIG_DLL(api-ms-win-core-winrt-registration-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-winrt-roparameterizediid-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-winrt-string-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-wow64-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-core-wow64-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-core-xstate-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-core-xstate-l2-1-0)
 WINE_CONFIG_DLL(api-ms-win-crt-conio-l1-1-0)
@@ -2879,12 +2914,15 @@ WINE_CONFIG_DLL(api-ms-win-dx-d3dkmt-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-eventing-classicprovider-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-eventing-consumer-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-eventing-controller-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-eventing-legacy-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-eventing-provider-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-eventlog-legacy-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-mm-joystick-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-mm-misc-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-mm-mme-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-mm-time-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-ntuser-dc-access-l1-1-0)
+WINE_CONFIG_DLL(api-ms-win-ntuser-rectangle-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-power-base-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-power-setting-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-rtcore-ntuser-private-l1-1-0)
@@ -2909,6 +2947,7 @@ WINE_CONFIG_DLL(api-ms-win-service-management-l2-1-0)
 WINE_CONFIG_DLL(api-ms-win-service-private-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-service-winsvc-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-service-winsvc-l1-2-0)
+WINE_CONFIG_DLL(api-ms-win-shcore-scaling-l1-1-1)
 WINE_CONFIG_DLL(api-ms-win-shell-shellcom-l1-1-0)
 WINE_CONFIG_DLL(api-ms-win-shell-shellfolders-l1-1-0)
 WINE_CONFIG_DLL(apphelp)
@@ -3094,7 +3133,7 @@ WINE_CONFIG_DLL(dpwsockx)
 WINE_CONFIG_DLL(drmclien)
 WINE_CONFIG_DLL(dsound,,[clean,implib])
 WINE_CONFIG_TEST(dlls/dsound/tests)
-WINE_CONFIG_DLL(dsquery)
+WINE_CONFIG_DLL(dsquery,,[clean])
 WINE_CONFIG_DLL(dssenh)
 WINE_CONFIG_TEST(dlls/dssenh/tests)
 WINE_CONFIG_DLL(dswave,,[clean])
@@ -3102,6 +3141,7 @@ WINE_CONFIG_TEST(dlls/dswave/tests)
 WINE_CONFIG_DLL(dwmapi,,[implib])
 WINE_CONFIG_DLL(dwrite,,[implib])
 WINE_CONFIG_TEST(dlls/dwrite/tests)
+WINE_CONFIG_DLL(dx8vb,,[clean])
 WINE_CONFIG_DLL(dxdiagn,,[clean])
 WINE_CONFIG_TEST(dlls/dxdiagn/tests)
 WINE_CONFIG_LIB(dxerr8)
@@ -3111,7 +3151,8 @@ WINE_CONFIG_TEST(dlls/dxgi/tests)
 WINE_CONFIG_LIB(dxguid)
 WINE_CONFIG_DLL(dxva2)
 WINE_CONFIG_DLL(esent)
-WINE_CONFIG_DLL(evr)
+WINE_CONFIG_DLL(evr,,[clean])
+WINE_CONFIG_TEST(dlls/evr/tests)
 WINE_CONFIG_DLL(explorerframe,,[clean])
 WINE_CONFIG_TEST(dlls/explorerframe/tests)
 WINE_CONFIG_DLL(ext-ms-win-authz-context-l1-1-0)
@@ -3170,6 +3211,7 @@ WINE_CONFIG_DLL(iccvid,,[clean])
 WINE_CONFIG_DLL(icmp)
 WINE_CONFIG_DLL(ieframe,,[clean,implib])
 WINE_CONFIG_TEST(dlls/ieframe/tests)
+WINE_CONFIG_DLL(ieproxy,,[clean])
 WINE_CONFIG_DLL(ifsmgr.vxd,enable_win16)
 WINE_CONFIG_DLL(imaadp32.acm)
 WINE_CONFIG_DLL(imagehlp,,[implib])
@@ -3199,6 +3241,7 @@ WINE_CONFIG_DLL(jscript,,[clean])
 WINE_CONFIG_TEST(dlls/jscript/tests)
 WINE_CONFIG_DLL(jsproxy,,[implib])
 WINE_CONFIG_TEST(dlls/jsproxy/tests)
+WINE_CONFIG_DLL(kerberos)
 WINE_CONFIG_DLL(kernel32,,[clean,implib])
 WINE_CONFIG_TEST(dlls/kernel32/tests)
 WINE_CONFIG_DLL(kernelbase)
@@ -3206,6 +3249,7 @@ WINE_CONFIG_DLL(keyboard.drv16,enable_win16)
 WINE_CONFIG_DLL(krnl386.exe16,enable_win16,[implib],[kernel])
 WINE_CONFIG_DLL(ksuser)
 WINE_CONFIG_DLL(ktmw32)
+WINE_CONFIG_DLL(l3codeca.acm)
 WINE_CONFIG_DLL(loadperf,,[implib])
 WINE_CONFIG_DLL(localspl,,[clean])
 WINE_CONFIG_TEST(dlls/localspl/tests)
@@ -3228,6 +3272,7 @@ WINE_CONFIG_DLL(mf3216)
 WINE_CONFIG_DLL(mfplat,,[implib])
 WINE_CONFIG_TEST(dlls/mfplat/tests)
 WINE_CONFIG_DLL(mfreadwrite)
+WINE_CONFIG_LIB(mfuuid)
 WINE_CONFIG_DLL(mgmtapi)
 WINE_CONFIG_DLL(midimap)
 WINE_CONFIG_DLL(mlang,,[clean,implib])
@@ -3433,6 +3478,8 @@ WINE_CONFIG_DLL(rstrtmgr)
 WINE_CONFIG_DLL(rtutils,,[implib])
 WINE_CONFIG_DLL(samlib)
 WINE_CONFIG_DLL(sane.ds,,[clean])
+WINE_CONFIG_DLL(sapi,,[clean])
+WINE_CONFIG_TEST(dlls/sapi/tests)
 WINE_CONFIG_DLL(scarddlg)
 WINE_CONFIG_DLL(sccbase)
 WINE_CONFIG_DLL(schannel)
@@ -3495,7 +3542,7 @@ WINE_CONFIG_DLL(tdi.sys)
 WINE_CONFIG_DLL(toolhelp.dll16,enable_win16)
 WINE_CONFIG_DLL(traffic)
 WINE_CONFIG_DLL(twain.dll16,enable_win16)
-WINE_CONFIG_DLL(twain_32)
+WINE_CONFIG_DLL(twain_32,,[clean])
 WINE_CONFIG_TEST(dlls/twain_32/tests)
 WINE_CONFIG_DLL(typelib.dll16,enable_win16)
 WINE_CONFIG_DLL(ucrtbase,,[implib])
@@ -3573,7 +3620,6 @@ WINE_CONFIG_DLL(winehid.sys)
 WINE_CONFIG_DLL(winejoystick.drv)
 WINE_CONFIG_DLL(winemac.drv,,[clean])
 WINE_CONFIG_DLL(winemapi)
-WINE_CONFIG_DLL(winemp3.acm)
 WINE_CONFIG_DLL(wineoss.drv)
 WINE_CONFIG_DLL(wineps.drv,,[clean])
 WINE_CONFIG_DLL(wineps16.drv16,enable_win16)
@@ -3611,6 +3657,7 @@ WINE_CONFIG_DLL(wmiutils,,[clean])
 WINE_CONFIG_TEST(dlls/wmiutils/tests)
 WINE_CONFIG_DLL(wmp,,[clean])
 WINE_CONFIG_TEST(dlls/wmp/tests)
+WINE_CONFIG_DLL(wmphoto,,[clean])
 WINE_CONFIG_DLL(wmvcore,,[implib])
 WINE_CONFIG_TEST(dlls/wmvcore/tests)
 WINE_CONFIG_DLL(wnaspi32,,[implib])

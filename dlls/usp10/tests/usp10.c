@@ -53,12 +53,15 @@ typedef struct _shapeTest_glyph {
     SCRIPT_GLYPHPROP GlyphProp;
 } shapeTest_glyph;
 
+typedef struct _font_fingerprint {
+    WCHAR check[10];
+    WORD result[10];
+} font_fingerprint;
+
 /* Uniscribe 1.6 calls */
 static HRESULT (WINAPI *pScriptItemizeOpenType)( const WCHAR *pwcInChars, int cInChars, int cMaxItems, const SCRIPT_CONTROL *psControl, const SCRIPT_STATE *psState, SCRIPT_ITEM *pItems, ULONG *pScriptTags, int *pcItems);
 
 static HRESULT (WINAPI *pScriptShapeOpenType)( HDC hdc, SCRIPT_CACHE *psc, SCRIPT_ANALYSIS *psa, OPENTYPE_TAG tagScript, OPENTYPE_TAG tagLangSys, int *rcRangeChars, TEXTRANGE_PROPERTIES **rpRangeProperties, int cRanges, const WCHAR *pwcChars, int cChars, int cMaxGlyphs, WORD *pwLogClust, SCRIPT_CHARPROP *pCharProps, WORD *pwOutGlyphs, SCRIPT_GLYPHPROP *pOutGlyphProps, int *pcGlyphs);
-
-static DWORD (WINAPI *pGetGlyphIndicesW)(HDC hdc, LPCWSTR lpstr, INT count, LPWORD pgi, DWORD flags);
 
 static HRESULT (WINAPI *pScriptGetFontScriptTags)( HDC hdc, SCRIPT_CACHE *psc, SCRIPT_ANALYSIS *psa, int cMaxTags, OPENTYPE_TAG *pScriptTags, int *pcTags);
 static HRESULT (WINAPI *pScriptGetFontLanguageTags)( HDC hdc, SCRIPT_CACHE *psc, SCRIPT_ANALYSIS *psa, OPENTYPE_TAG tagScript, int cMaxTags, OPENTYPE_TAG *pLangSysTags, int *pcTags);
@@ -228,7 +231,7 @@ static void test_ScriptItemize( void )
     static const itemTest t2d2[6] = {{{0,0,0,0,0,0},0,0,0,0,0,latn_tag,FALSE},{{0,0,0,0,0,0},3,0,0,0,0,0,FALSE},{{0,0,0,0,0,0},4,0,0,0,0,latn_tag,FALSE},{{0,0,0,0,0,0},7,1,1,1,0,arab_tag,FALSE},{{0,0,0,0,0,0},10,0,0,0,0,0,FALSE},{{0,0,0,0,0,0},11,0,0,0,0,-1,FALSE}};
     static const itemTest t2d3[5] = {{{0,0,0,0,0,0},0,0,0,2,0,latn_tag,FALSE},{{0,0,0,0,0,0},3,0,0,2,0,0,FALSE},{{0,0,0,0,0,0},4,0,0,2,0,latn_tag,FALSE},{{0,0,0,0,0,0},7,1,1,1,0,arab_tag,FALSE},{{0,0,0,0,0,0},11,0,0,0,0,-1,FALSE}};
     static const itemTest t2d4[3] = {{{0,0,0,0,0,0},0,0,0,2,0,latn_tag,FALSE},{{0,0,0,0,0,0},7,1,1,1,0,arab_tag,FALSE},{{0,0,0,0,0,0},11,0,0,0,0,-1,FALSE}};
-static const itemTest t2d5[5] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
+    static const itemTest t2d5[5] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
                                 {{0,0,0,0,0,0},3,0,0,0,1,0,FALSE},
                                 {{0,0,0,0,0,0},4,0,0,0,1,latn_tag,FALSE},
                                 {{0,0,0,0,0,0},7,0,0,0,1,arab_tag,FALSE},
@@ -252,11 +255,10 @@ static const itemTest t2d5[5] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     static const int b43[2] = {4,4};
 
     /* Arabic */
-    static const WCHAR test5[]  =
-{0x0627,0x0644,0x0635,0x0651,0x0650,0x062d,0x0629,0x064f,' ',0x062a,0x064e,
-0x0627,0x062c,0x064c,' ',0x0639,0x064e,0x0644,0x0649,' ',
-0x0631,0x064f,0x0624,0x0648,0x0633,0x0650,' ',0x0627,0x0644
-,0x0623,0x0635,0x0650,0x062d,0x0651,0x064e,0x0627,0x0621,0x0650,0};
+    static const WCHAR test5[] = {0x0627,0x0644,0x0635,0x0651,0x0650,0x062d,0x0629,0x064f,' ',0x062a,0x064e,
+                                  0x0627,0x062c,0x064c,' ',0x0639,0x064e,0x0644,0x0649,' ',
+                                  0x0631,0x064f,0x0624,0x0648,0x0633,0x0650,' ',0x0627,0x0644,
+                                  0x0623,0x0635,0x0650,0x062d,0x0651,0x064e,0x0627,0x0621,0x0650,0};
     static const itemTest t51[2] = {{{0,0,0,0,0,0},0,1,1,1,0,arab_tag,FALSE},{{0,0,0,0,0,0},38,0,0,0,0,-1,FALSE}};
     static const itemTest t52[2] = {{{0,0,0,0,0,0},0,0,0,0,1,arab_tag,FALSE},
                                     {{0,0,0,0,0,0},38,0,0,0,0,-1,FALSE}};
@@ -267,7 +269,7 @@ static const itemTest t2d5[5] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     static const itemTest t61[3] = {{{0,0,0,0,0,0},0,1,1,1,0,hebr_tag,TRUE,{-1,0,0,0,-1,-1}},{{0,0,0,0,0,0},4,0,0,0,0,0,FALSE},{{0,0,0,0,0,0},5,0,0,0,0,-1,FALSE}};
     static const itemTest t62[3] = {{{0,0,0,0,0,0},0,1,1,1,0,hebr_tag,FALSE},{{0,0,0,0,0,0},4,1,1,1,0,0,FALSE},{{0,0,0,0,0,0},5,0,0,0,0,-1,FALSE}};
     static const itemTest t63[2] = {{{0,0,0,0,0,0},0,1,1,1,0,hebr_tag,FALSE},{{0,0,0,0,0,0},5,0,0,0,0,-1,FALSE}};
-static const itemTest t64[3] = {{{0,0,0,0,0,0},0,0,0,0,1,hebr_tag,FALSE},
+    static const itemTest t64[3] = {{{0,0,0,0,0,0},0,0,0,0,1,hebr_tag,FALSE},
                                 {{0,0,0,0,0,0},4,0,0,0,1,0,FALSE},
                                 {{0,0,0,0,0,0},5,0,0,0,0,-1,FALSE}};
 
@@ -276,7 +278,7 @@ static const itemTest t64[3] = {{{0,0,0,0,0,0},0,0,0,0,1,hebr_tag,FALSE},
     static const itemTest t71[4] = {{{0,0,0,0,0,0},0,0,0,0,0,latn_tag,FALSE},{{0,0,0,0,0,0},9,1,1,1,0,hebr_tag,TRUE,{-1,0,0,0,-1,-1}},{{0,0,0,0,0,0},19,0,0,0,0,latn_tag,FALSE},{{0,0,0,0,0,0},29,0,0,0,0,-1,FALSE}};
     static const itemTest t72[4] = {{{0,0,0,0,0,0},0,0,0,0,0,latn_tag,FALSE},{{0,0,0,0,0,0},9,1,1,1,0,hebr_tag,FALSE},{{0,0,0,0,0,0},18,0,0,0,0,latn_tag,FALSE},{{0,0,0,0,0,0},29,0,0,0,0,-1,FALSE}};
     static const itemTest t73[4] = {{{0,0,0,0,0,0},0,0,0,2,0,latn_tag,FALSE},{{0,0,0,0,0,0},8,1,1,1,0,hebr_tag,FALSE},{{0,0,0,0,0,0},19,0,0,2,0,latn_tag,FALSE},{{0,0,0,0,0,0},29,0,0,0,0,-1,FALSE}};
-static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
+    static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
                                 {{0,0,0,0,0,0},9,0,0,0,1,hebr_tag,FALSE},
                                 {{0,0,0,0,0,0},19,0,0,0,1,latn_tag,FALSE},
                                 {{0,0,0,0,0,0},29,0,0,0,0,-1,FALSE}};
@@ -599,14 +601,7 @@ static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     SCRIPT_CONTROL  Control;
     SCRIPT_STATE    State;
     HRESULT hr;
-    HMODULE usp10;
     int nItems;
-
-    usp10 = LoadLibraryA("usp10.dll");
-    ok (usp10 != 0,"Unable to LoadLibrary on usp10.dll\n");
-    pScriptItemizeOpenType = (void*)GetProcAddress(usp10, "ScriptItemizeOpenType");
-    pScriptShapeOpenType = (void*)GetProcAddress(usp10, "ScriptShapeOpenType");
-    pGetGlyphIndicesW = (void*)GetProcAddress(GetModuleHandleA("gdi32.dll"), "GetGlyphIndicesW");
 
     memset(&Control, 0, sizeof(Control));
     memset(&State, 0, sizeof(State));
@@ -927,6 +922,47 @@ static const itemTest t74[4] = {{{0,0,0,0,0,0},0,0,0,0,1,latn_tag,FALSE},
     test_items_ok(test58,13,&Control,&State,1,t582,FALSE,0);
 }
 
+static void make_surrogate(DWORD i, WORD out[2])
+{
+    static const DWORD mask = (1 << 10) - 1;
+
+    if (i <= 0xffff)
+    {
+        out[0] = i;
+        out[1] = 0;
+    }
+    else
+    {
+        i -= 0x010000;
+        out[0] = ((i >> 10) & mask) + 0xd800;
+        out[1] = (i & mask) + 0xdc00;
+    }
+}
+
+static void test_ScriptItemize_surrogates(void)
+{
+    HRESULT hr;
+    WCHAR surrogate[2];
+    WORD Script_Surrogates;
+    SCRIPT_ITEM items[2];
+    int num;
+
+    /* Find Script_Surrogates */
+    surrogate[0] = 0xd800;
+    hr = ScriptItemize( surrogate, 1, 2, NULL, NULL, items, &num );
+    ok( hr == S_OK, "got %08x\n", hr );
+    ok( num == 1, "got %d\n", num );
+    ok( items[0].a.eScript != SCRIPT_UNDEFINED, "got script %x\n", items[0].a.eScript );
+    Script_Surrogates = items[0].a.eScript;
+
+    /* Show that an invalid character has script Script_Surrogates */
+    make_surrogate( 0x01ffff, surrogate );
+    hr = ScriptItemize( surrogate, 2, 2, NULL, NULL, items, &num );
+    ok( hr == S_OK, "got %08x\n", hr );
+    ok( num == 1, "got %d\n", num );
+    ok( items[0].a.eScript == Script_Surrogates, "got script %x\n", items[0].a.eScript );
+}
+
 static inline void _test_shape_ok(int valid, HDC hdc, LPCWSTR string,
                          DWORD cchString, SCRIPT_CONTROL *Control,
                          SCRIPT_STATE *State, DWORD item, DWORD nGlyphs,
@@ -952,14 +988,6 @@ static inline void _test_shape_ok(int valid, HDC hdc, LPCWSTR string,
     winetest_ok(SUCCEEDED(hr), "Failed to get script properties, hr %#x.\n", hr);
 
     hr = pScriptItemizeOpenType(string, cchString, 15, Control, State, outpItems, tags, &outnItems);
-    if (hr == USP_E_SCRIPT_NOT_IN_FONT)
-    {
-        if (valid > 0)
-            winetest_win_skip("Select font does not support script\n");
-        else
-            winetest_trace("Select font does not support script\n");
-        return;
-    }
     if (valid > 0)
         winetest_ok(hr == S_OK, "ScriptItemizeOpenType should return S_OK not %08x\n", hr);
     else if (hr != S_OK)
@@ -1243,7 +1271,7 @@ static int CALLBACK enumFontProc( const LOGFONTA *lpelfe, const TEXTMETRICA *lpn
     return 1;
 }
 
-static int _find_font_for_range(HDC hdc, const CHAR *recommended, BYTE range, const WCHAR check, HFONT *hfont, HFONT *origFont)
+static int _find_font_for_range(HDC hdc, const CHAR *recommended, BYTE range, const WCHAR check, HFONT *hfont, HFONT *origFont, const font_fingerprint *fingerprint)
 {
     int rc = 0;
     fontEnumParam lParam;
@@ -1261,7 +1289,26 @@ static int _find_font_for_range(HDC hdc, const CHAR *recommended, BYTE range, co
             if (*hfont)
             {
                 winetest_trace("using font %s\n",lParam.lf.lfFaceName);
-                rc = 1;
+                *origFont = SelectObject(hdc,*hfont);
+                if (fingerprint)
+                {
+                    WORD output[10];
+                    int i;
+                    if (GetGlyphIndicesW(hdc, fingerprint->check, 10, output, 0) != GDI_ERROR)
+                    {
+                        for (i=0; i < 10; i++)
+                            if (output[i] != fingerprint->result[i])
+                            {
+                                winetest_trace("found font does not match fingerprint\n");
+                                SelectObject(hdc,*origFont);
+                                DeleteObject(*hfont);
+                                *hfont = NULL;
+                                break;
+                            }
+                        if (i == 10) rc = 1;
+                    }
+                }
+                else rc = 1;
             }
         }
         if (!rc)
@@ -1286,7 +1333,7 @@ static int _find_font_for_range(HDC hdc, const CHAR *recommended, BYTE range, co
         WORD glyph = 0;
 
         *origFont = SelectObject(hdc,*hfont);
-        if (pGetGlyphIndicesW && (pGetGlyphIndicesW(hdc, &check, 1, &glyph, 0) == GDI_ERROR || glyph ==0))
+        if (GetGlyphIndicesW(hdc, &check, 1, &glyph, 0) == GDI_ERROR || glyph == 0)
         {
             winetest_trace("    Font fails to contain required glyphs\n");
             SelectObject(hdc,*origFont);
@@ -1303,7 +1350,7 @@ static int _find_font_for_range(HDC hdc, const CHAR *recommended, BYTE range, co
     return rc;
 }
 
-#define find_font_for_range(a,b,c,d,e,f) (winetest_set_location(__FILE__,__LINE__), 0) ? 0 : _find_font_for_range(a,b,c,d,e,f)
+#define find_font_for_range(a,b,c,d,e,f,g) (winetest_set_location(__FILE__,__LINE__), 0) ? 0 : _find_font_for_range(a,b,c,d,e,f,g)
 
 static void test_ScriptShapeOpenType(HDC hdc)
 {
@@ -1585,6 +1632,11 @@ static void test_ScriptShapeOpenType(HDC hdc)
                             {1,{{SCRIPT_JUSTIFY_NONE,1,0,0,0,0},0}},
                             {1,{{SCRIPT_JUSTIFY_NONE,0,0,0,0,0},0}} };
 
+    static const font_fingerprint fingerprint_estrangelo = {
+        {'A','a','B','b','C','c','D','d',0,0},
+        {284,310,285,311,286,312,287,313,0,0}};
+
+
     if (!pScriptItemizeOpenType || !pScriptShapeOpenType)
     {
         win_skip("ScriptShapeOpenType not available on this platform\n");
@@ -1627,7 +1679,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
 
     test_shape_ok(hdc, test2, 4, &Control, &State, 1, 4, t2_c, glyph_test);
 
-    test_valid = find_font_for_range(hdc, "Calibri", 0, test3[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Calibri", 0, test3[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test3, 6, &Control, &State, 0, 2, t3_c, t3_g);
@@ -1635,7 +1687,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Microsoft Sans Serif", 11, test_hebrew[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Microsoft Sans Serif", 11, test_hebrew[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_hebrew, 4, &Control, &State, 0, 4, hebrew_c, hebrew_g);
@@ -1643,7 +1695,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Microsoft Sans Serif", 13, test_arabic[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Microsoft Sans Serif", 13, test_arabic[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_arabic, 4, &Control, &State, 0, 3, arabic_c, arabic_g);
@@ -1651,7 +1703,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Microsoft Sans Serif", 24, test_thai[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Microsoft Sans Serif", 24, test_thai[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_thai, 10, &Control, &State, 0, 10, thai_c, thai_g);
@@ -1659,7 +1711,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Estrangelo Edessa", 71, test_syriac[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Estrangelo Edessa", 71, test_syriac[0], &hfont, &hfont_orig, &fingerprint_estrangelo);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_syriac, 8, &Control, &State, 0, 7, syriac_c, syriac_g);
@@ -1667,7 +1719,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "MV Boli", 72, test_thaana[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "MV Boli", 72, test_thaana[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_thaana, 13, &Control, &State, 0, 13, thaana_c, thaana_g);
@@ -1675,7 +1727,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Microsoft PhagsPa", 53, test_phagspa[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Microsoft PhagsPa", 53, test_phagspa[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid_props2(test_valid, hdc, test_phagspa, 11, &Control, &State, 0, 11,
@@ -1684,7 +1736,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "DokChampa", 25, test_lao[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "DokChampa", 25, test_lao[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_lao, 9, &Control, &State, 0, 9, lao_c, lao_g);
@@ -1692,7 +1744,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Microsoft Himalaya", 70, test_tibetan[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Microsoft Himalaya", 70, test_tibetan[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid_props2(test_valid, hdc, test_tibetan, 17, &Control, &State, 0, 17,
@@ -1701,7 +1753,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Mangal", 15, test_devanagari[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Mangal", 15, test_devanagari[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_devanagari, 8, &Control, &State, 0, 8, devanagari_c, devanagari_g);
@@ -1709,7 +1761,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Vrinda", 16, test_bengali[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Vrinda", 16, test_bengali[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_bengali, 5, &Control, &State, 0, 5, bengali_c, bengali_g);
@@ -1717,7 +1769,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Raavi", 17, test_gurmukhi[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Raavi", 17, test_gurmukhi[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_gurmukhi, 7, &Control, &State, 0, 7, gurmukhi_c, gurmukhi_g);
@@ -1725,7 +1777,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Shruti", 18, test_gujarati[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Shruti", 18, test_gujarati[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_gujarati, 7, &Control, &State, 0, 7, gujarati_c, gujarati_g);
@@ -1733,7 +1785,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Kalinga", 19, test_oriya[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Kalinga", 19, test_oriya[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_oriya, 5, &Control, &State, 0, 4, oriya_c, oriya_g);
@@ -1741,7 +1793,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Latha", 20, test_tamil[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Latha", 20, test_tamil[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_tamil, 5, &Control, &State, 0, 4, tamil_c, tamil_g);
@@ -1749,7 +1801,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Gautami", 21, test_telugu[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Gautami", 21, test_telugu[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_telugu, 6, &Control, &State, 0, 6, telugu_c, telugu_g);
@@ -1757,7 +1809,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Kartika", 23, test_malayalam[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Kartika", 23, test_malayalam[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_malayalam, 6, &Control, &State, 0, 6, malayalam_c, malayalam_g);
@@ -1765,7 +1817,7 @@ static void test_ScriptShapeOpenType(HDC hdc)
         DeleteObject(hfont);
     }
 
-    test_valid = find_font_for_range(hdc, "Tunga", 22, test_kannada[0], &hfont, &hfont_orig);
+    test_valid = find_font_for_range(hdc, "Tunga", 22, test_kannada[0], &hfont, &hfont_orig, NULL);
     if (hfont != NULL)
     {
         test_shape_ok_valid(test_valid, hdc, test_kannada, 5, &Control, &State, 0, 4, kannada_c, kannada_g);
@@ -1778,6 +1830,7 @@ static void test_ScriptShape(HDC hdc)
 {
     static const WCHAR test1[] = {'w', 'i', 'n', 'e',0};
     static const WCHAR test2[] = {0x202B, 'i', 'n', 0x202C,0};
+    static const WCHAR test3[] = {0x30b7};
     HRESULT hr;
     SCRIPT_CACHE sc = NULL;
     WORD glyphs[4], glyphs2[4], logclust[4], glyphs3[4];
@@ -2009,6 +2062,23 @@ static void test_ScriptShape(HDC hdc)
             DeleteObject(SelectObject(hdc, oldfont));
         ScriptFreeCache(&sc);
     }
+
+    /* Text does not support this range. */
+    memset(items, 0, sizeof(items));
+    nb = 0;
+    hr = ScriptItemize(test3, sizeof(test3)/sizeof(test3[0]), sizeof(items)/sizeof(items[0]), NULL, NULL, items, &nb);
+    ok(hr == S_OK, "ScriptItemize failed, hr %#x.\n", hr);
+    ok(items[0].a.eScript > 0, "Expected script id.\n");
+    ok(nb == 1, "Unexpected number of items.\n");
+
+    memset(glyphs, 0xff, sizeof(glyphs));
+    nb = 0;
+    hr = ScriptShape(hdc, &sc, test3, sizeof(test3)/sizeof(test3[0]), sizeof(glyphs)/sizeof(glyphs[0]), &items[0].a,
+        glyphs, logclust, attrs, &nb);
+    ok(hr == S_OK, "ScriptShape failed, hr %#x.\n", hr);
+    ok(nb == 1, "Unexpected glyph count %u\n", nb);
+    ok(glyphs[0] == 0, "Unexpected glyph id\n");
+    ScriptFreeCache(&sc);
 }
 
 static void test_ScriptPlace(HDC hdc)
@@ -2474,6 +2544,7 @@ static void test_ScriptGetFontProperties(HDC hdc)
     hr = ScriptGetFontProperties(hdc,&psc,&sfp);
     ok( hr == E_INVALIDARG, "(hdc,&psc,&sfp) invalid, expected E_INVALIDARG, got %08x\n", hr);
     ok( psc != NULL, "Expected a pointer in psc, got NULL\n");
+    ok( sfp.cBytes == sizeof(SCRIPT_FONTPROPERTIES) - 1, "Unexpected cBytes.\n");
     ScriptFreeCache(&psc);
     ok( psc == NULL, "Expected psc to be NULL, got %p\n", psc);
 
@@ -2493,12 +2564,6 @@ static void test_ScriptGetFontProperties(HDC hdc)
     ScriptFreeCache(&psc);
     ok( psc == NULL, "Expected psc to be NULL, got %p\n", psc);
 
-    pGetGlyphIndicesW = (void*)GetProcAddress(GetModuleHandleA("gdi32.dll"), "GetGlyphIndicesW");
-    if (!pGetGlyphIndicesW)
-    {
-        win_skip("Skip on WINNT4\n");
-        return;
-    }
     memset(&lf, 0, sizeof(lf));
     lf.lfCharSet = DEFAULT_CHARSET;
     efnd.total = 0;
@@ -2532,7 +2597,7 @@ static void test_ScriptGetFontProperties(HDC hdc)
         ret = GetTextMetricsA(hdc, &tmA);
         ok(ret != 0, "GetTextMetricsA failed!\n");
 
-        ret = pGetGlyphIndicesW(hdc, invalids, 1, gi, GGI_MARK_NONEXISTING_GLYPHS);
+        ret = GetGlyphIndicesW(hdc, invalids, 1, gi, GGI_MARK_NONEXISTING_GLYPHS);
         ok(ret != GDI_ERROR, "GetGlyphIndicesW failed!\n");
 
         ok(sfp.wgBlank == tmA.tmBreakChar || sfp.wgBlank == gi[0], "bitmap font %s wgBlank %04x tmBreakChar %04x Space %04x\n", lf.lfFaceName, sfp.wgBlank, tmA.tmBreakChar, gi[0]);
@@ -2578,13 +2643,13 @@ static void test_ScriptGetFontProperties(HDC hdc)
         }
 
         str[0] = 0x0020; /* U+0020: numeric space */
-        ret = pGetGlyphIndicesW(hdc, str, 1, gi, 0);
+        ret = GetGlyphIndicesW(hdc, str, 1, gi, 0);
         ok(ret != GDI_ERROR, "GetGlyphIndicesW failed!\n");
         ok(sfp.wgBlank == gi[0], "truetype font %s wgBlank %04x gi[0] %04x\n", lf.lfFaceName, sfp.wgBlank, gi[0]);
 
         ok(sfp.wgDefault == 0 || broken(is_arabic), "truetype font %s wgDefault %04x\n", lf.lfFaceName, sfp.wgDefault);
 
-        ret = pGetGlyphIndicesW(hdc, invalids, 3, gi, GGI_MARK_NONEXISTING_GLYPHS);
+        ret = GetGlyphIndicesW(hdc, invalids, 3, gi, GGI_MARK_NONEXISTING_GLYPHS);
         ok(ret != GDI_ERROR, "GetGlyphIndicesW failed!\n");
         if (gi[2] != 0xFFFF) /* index of default non exist char */
             ok(sfp.wgInvalid == gi[2], "truetype font %s wgInvalid %04x gi[2] %04x\n", lf.lfFaceName, sfp.wgInvalid, gi[2]);
@@ -2596,7 +2661,7 @@ static void test_ScriptGetFontProperties(HDC hdc)
             ok(sfp.wgInvalid == 0, "truetype font %s wgInvalid %04x expect 0\n", lf.lfFaceName, sfp.wgInvalid);
 
         str[0] = 0x0640; /* U+0640: kashida */
-        ret = pGetGlyphIndicesW(hdc, str, 1, gi, GGI_MARK_NONEXISTING_GLYPHS);
+        ret = GetGlyphIndicesW(hdc, str, 1, gi, GGI_MARK_NONEXISTING_GLYPHS);
         ok(ret != GDI_ERROR, "GetGlyphIndicesW failed!\n");
         is_arial = !lstrcmpA(lf.lfFaceName, "Arial");
         is_times_new_roman= !lstrcmpA(lf.lfFaceName, "Times New Roman");
@@ -3137,7 +3202,7 @@ static void test_ScriptString(HDC hdc)
  * This set of tests are for the string functions of uniscribe.  The ScriptStringAnalyse
  * function allocates memory pointed to by the SCRIPT_STRING_ANALYSIS ssa pointer.  This
  * memory is freed by ScriptStringFree.  There needs to be a valid hdc for this as
- * ScriptStringAnalyse calls ScriptSItemize, ScriptShape and ScriptPlace which require it.
+ * ScriptStringAnalyse calls ScriptItemize, ScriptShape and ScriptPlace which require it.
  *
  */
 
@@ -3405,11 +3470,27 @@ static void test_ScriptStringXtoCP_CPtoX(HDC hdc)
     }
 }
 
+static HWND create_test_window(void)
+{
+    HWND hwnd = CreateWindowExA(0, "Static", "", WS_POPUP, 0, 0, 100, 100, 0, 0, 0, NULL);
+    ok(hwnd != NULL, "Failed to create test window.\n");
+
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+
+    return hwnd;
+}
+
 static void test_ScriptCacheGetHeight(HDC hdc)
 {
-    HRESULT hr;
+    HFONT hfont, prev_hfont;
     SCRIPT_CACHE sc = NULL;
-    LONG height;
+    LONG height, height2;
+    TEXTMETRICW tm;
+    LOGFONTA lf;
+    HRESULT hr;
+    HWND hwnd;
+    HDC hdc2;
 
     hr = ScriptCacheGetHeight(NULL, NULL, NULL);
     ok(hr == E_INVALIDARG, "expected E_INVALIDARG, got 0x%08x\n", hr);
@@ -3420,11 +3501,54 @@ static void test_ScriptCacheGetHeight(HDC hdc)
     hr = ScriptCacheGetHeight(NULL, &sc, &height);
     ok(hr == E_PENDING, "expected E_PENDING, got 0x%08x\n", hr);
 
-    height = 0;
+    height = 123;
+    hr = ScriptCacheGetHeight(hdc, NULL, &height);
+    ok(hr == E_INVALIDARG, "Uexpected hr %#x.\n", hr);
+    ok(height == 123, "Unexpected height.\n");
 
+    memset(&tm, 0, sizeof(tm));
+    GetTextMetricsW(hdc, &tm);
+    ok(tm.tmHeight > 0, "Unexpected tmHeight %u.\n", tm.tmHeight);
+
+    height = 0;
     hr = ScriptCacheGetHeight(hdc, &sc, &height);
     ok(hr == S_OK, "expected S_OK, got 0x%08x\n", hr);
-    ok(height > 0, "expected height > 0\n");
+    ok(height == tm.tmHeight, "expected height > 0\n");
+
+    /* Try again with NULL dc. */
+    height2 = 0;
+    hr = ScriptCacheGetHeight(NULL, &sc, &height2);
+    ok(hr == S_OK, "Failed to get cached height, hr %#x.\n", hr);
+    ok(height2 == height, "Unexpected height %u.\n", height2);
+
+    hwnd = create_test_window();
+
+    hdc2 = GetDC(hwnd);
+    ok(hdc2 != NULL, "Failed to get window dc.\n");
+
+    memset(&lf, 0, sizeof(LOGFONTA));
+    lstrcpyA(lf.lfFaceName, "Tahoma");
+    lf.lfHeight = -32;
+
+    hfont = CreateFontIndirectA(&lf);
+    ok(hfont != NULL, "Failed to create font.\n");
+
+    prev_hfont = SelectObject(hdc2, hfont);
+
+    memset(&tm, 0, sizeof(tm));
+    GetTextMetricsW(hdc2, &tm);
+    ok(tm.tmHeight > height, "Unexpected tmHeight %u.\n", tm.tmHeight);
+
+    height2 = 0;
+    hr = ScriptCacheGetHeight(hdc2, &sc, &height2);
+    ok(hr == S_OK, "Failed to get cached height, hr %#x.\n", hr);
+    ok(height2 == height, "Unexpected height.\n");
+
+    SelectObject(hdc2, prev_hfont);
+    DeleteObject(hfont);
+
+    ReleaseDC(hwnd, hdc2);
+    DestroyWindow(hwnd);
 
     ScriptFreeCache(&sc);
 }
@@ -3604,27 +3728,10 @@ static void test_digit_substitution(void)
         LGRPID_GEORGIAN,
         LGRPID_ARMENIAN
     };
-    HMODULE hKernel32;
-    static BOOL (WINAPI * pEnumLanguageGroupLocalesA)(LANGGROUPLOCALE_ENUMPROCA,LGRPID,DWORD,LONG_PTR);
-
-    hKernel32 = GetModuleHandleA("kernel32.dll");
-    pEnumLanguageGroupLocalesA = (void*)GetProcAddress(hKernel32, "EnumLanguageGroupLocalesA");
-
-    if (!pEnumLanguageGroupLocalesA)
-    {
-        win_skip("EnumLanguageGroupLocalesA not available on this platform\n");
-        return;
-    }
 
     for (i = 0; i < sizeof(groups)/sizeof(groups[0]); i++)
     {
-        ret = pEnumLanguageGroupLocalesA(enum_proc, groups[i], 0, 0);
-        if (!ret && GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)
-        {
-            win_skip("EnumLanguageGroupLocalesA not implemented on this platform\n");
-            break;
-        }
-        
+        ret = EnumLanguageGroupLocalesA(enum_proc, groups[i], 0, 0);
         ok(ret, "EnumLanguageGroupLocalesA failed unexpectedly: %u\n", GetLastError());
     }
 }
@@ -3745,9 +3852,6 @@ static void test_newlines(void)
 static void test_ScriptGetFontFunctions(HDC hdc)
 {
     HRESULT hr;
-    pScriptGetFontScriptTags = (void*)GetProcAddress(GetModuleHandleA("usp10.dll"), "ScriptGetFontScriptTags");
-    pScriptGetFontLanguageTags = (void*)GetProcAddress(GetModuleHandleA("usp10.dll"), "ScriptGetFontLanguageTags");
-    pScriptGetFontFeatureTags = (void*)GetProcAddress(GetModuleHandleA("usp10.dll"), "ScriptGetFontFeatureTags");
     if (!pScriptGetFontScriptTags || !pScriptGetFontLanguageTags || !pScriptGetFontFeatureTags)
     {
         win_skip("ScriptGetFontScriptTags,ScriptGetFontLanguageTags or ScriptGetFontFeatureTags not available on this platform\n");
@@ -3973,6 +4077,49 @@ static void test_ScriptIsComplex(void)
     ok(hr == S_FALSE, "got 0x%08x\n", hr);
 }
 
+static void test_ScriptString_pSize(HDC hdc)
+{
+    static const WCHAR textW[] = {'A',0};
+    SCRIPT_STRING_ANALYSIS ssa;
+    const SIZE *size;
+    TEXTMETRICW tm;
+    HRESULT hr;
+    ABC abc;
+
+    hr = ScriptStringAnalyse(hdc, textW, 1, 16, -1, SSA_GLYPHS, 0, NULL, NULL, NULL, NULL, NULL, &ssa);
+    ok(hr == S_OK, "ScriptStringAnalyse failed, hr %#x.\n", hr);
+
+    size = ScriptString_pSize(NULL);
+    ok(size == NULL || broken(size != NULL) /* <win7 */, "Unexpected size pointer.\n");
+
+    GetCharABCWidthsW(hdc, textW[0], textW[0], &abc);
+
+    memset(&tm, 0, sizeof(tm));
+    GetTextMetricsW(hdc, &tm);
+    ok(tm.tmHeight > 0, "Unexpected tmHeight.\n");
+
+    size = ScriptString_pSize(ssa);
+    ok(size != NULL, "Unexpected size pointer.\n");
+    ok(size->cx == abc.abcA + abc.abcB + abc.abcC, "Unexpected cx size %d.\n", size->cx);
+    ok(size->cy == tm.tmHeight, "Unexpected cy size %d.\n", size->cy);
+
+    hr = ScriptStringFree(&ssa);
+    ok(hr == S_OK, "Failed to free ssa, hr %#x.\n", hr);
+}
+
+static void init_tests(void)
+{
+    HMODULE module = GetModuleHandleA("usp10.dll");
+
+    ok(module != 0, "Expected usp10.dll to be loaded.\n");
+
+    pScriptItemizeOpenType = (void *)GetProcAddress(module, "ScriptItemizeOpenType");
+    pScriptShapeOpenType = (void *)GetProcAddress(module, "ScriptShapeOpenType");
+    pScriptGetFontScriptTags = (void *)GetProcAddress(module, "ScriptGetFontScriptTags");
+    pScriptGetFontLanguageTags = (void *)GetProcAddress(module, "ScriptGetFontLanguageTags");
+    pScriptGetFontFeatureTags = (void *)GetProcAddress(module, "ScriptGetFontFeatureTags");
+}
+
 START_TEST(usp10)
 {
     HWND            hwnd;
@@ -4002,7 +4149,10 @@ START_TEST(usp10)
     hfont = SelectObject(hdc, CreateFontIndirectA(&lf));
     ok(hfont != NULL, "SelectObject failed: %p\n", hfont);
 
+    init_tests();
+
     test_ScriptItemize();
+    test_ScriptItemize_surrogates();
     test_ScriptItemIzeShapePlace(hdc,pwOutGlyphs);
     test_ScriptGetCMap(hdc, pwOutGlyphs);
     test_ScriptCacheGetHeight(hdc);
@@ -4018,6 +4168,7 @@ START_TEST(usp10)
     test_ScriptXtoX();
     test_ScriptString(hdc);
     test_ScriptStringXtoCP_CPtoX(hdc);
+    test_ScriptString_pSize(hdc);
 
     test_ScriptLayout();
     test_digit_substitution();

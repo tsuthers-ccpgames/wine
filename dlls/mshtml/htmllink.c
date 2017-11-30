@@ -302,7 +302,7 @@ static HRESULT WINAPI HTMLLinkElement_get_disabled(IHTMLLinkElement *iface, VARI
     if(NS_FAILED(nsres))
         return E_FAIL;
 
-    *p = ret ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(ret);
     return S_OK;
 }
 
@@ -429,7 +429,6 @@ static const NodeImplVtbl HTMLLinkElementImplVtbl = {
     HTMLElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col,
-    NULL,
     NULL,
     HTMLLinkElementImpl_put_disabled,
     HTMLLinkElementImpl_get_disabled,

@@ -159,7 +159,6 @@ MAKE_FUNCPTR(FT_Outline_Get_CBox);
 MAKE_FUNCPTR(FT_Outline_Transform);
 MAKE_FUNCPTR(FT_Outline_Translate);
 MAKE_FUNCPTR(FT_Render_Glyph);
-MAKE_FUNCPTR(FT_Select_Charmap);
 MAKE_FUNCPTR(FT_Set_Charmap);
 MAKE_FUNCPTR(FT_Set_Pixel_Sizes);
 MAKE_FUNCPTR(FT_Vector_Length);
@@ -1028,7 +1027,7 @@ static Face *find_face_from_filename(const WCHAR *file_name, const WCHAR *face_n
     LIST_FOR_EACH_ENTRY(family, &font_list, Family, entry)
     {
         const struct list *face_list;
-        if(face_name && strcmpiW(face_name, family->FamilyName))
+        if(face_name && strncmpiW(face_name, family->FamilyName, LF_FACESIZE - 1))
             continue;
         face_list = get_face_list_from_family(family);
         LIST_FOR_EACH_ENTRY(face, face_list, Face, entry)
@@ -1054,7 +1053,7 @@ static Family *find_family_from_name(const WCHAR *name)
 
     LIST_FOR_EACH_ENTRY(family, &font_list, Family, entry)
     {
-        if(!strcmpiW(family->FamilyName, name))
+        if(!strncmpiW(family->FamilyName, name, LF_FACESIZE -1))
             return family;
     }
 
@@ -1067,9 +1066,9 @@ static Family *find_family_from_any_name(const WCHAR *name)
 
     LIST_FOR_EACH_ENTRY(family, &font_list, Family, entry)
     {
-        if(!strcmpiW(family->FamilyName, name))
+        if(!strncmpiW(family->FamilyName, name, LF_FACESIZE - 1))
             return family;
-        if(family->EnglishName && !strcmpiW(family->EnglishName, name))
+        if(family->EnglishName && !strncmpiW(family->EnglishName, name, LF_FACESIZE - 1))
             return family;
     }
 
@@ -2142,13 +2141,6 @@ static void AddFaceToList(FT_Face ft_face, const char *file, void *font_data_ptr
 
     face = create_face( ft_face, face_index, file, font_data_ptr, font_data_size, flags );
     family = get_family( ft_face, flags & ADDFONT_VERTICAL_FONT );
-    if (strlenW(family->FamilyName) >= LF_FACESIZE)
-    {
-        WARN("Ignoring %s because name is too long\n", debugstr_w(family->FamilyName));
-        release_face( face );
-        release_family( family );
-        return;
-    }
 
     if (insert_face_in_family_list( face, family ))
     {
@@ -2472,7 +2464,7 @@ static SYSTEM_LINKS *find_font_link(const WCHAR *name)
 
     LIST_FOR_EACH_ENTRY(font_link, &system_links, SYSTEM_LINKS, entry)
     {
-        if(!strcmpiW(font_link->font_name, name))
+        if(!strncmpiW(font_link->font_name, name, LF_FACESIZE - 1))
             return font_link;
     }
 
@@ -4139,7 +4131,6 @@ static BOOL init_freetype(void)
     LOAD_FUNCPTR(FT_Outline_Transform)
     LOAD_FUNCPTR(FT_Outline_Translate)
     LOAD_FUNCPTR(FT_Render_Glyph)
-    LOAD_FUNCPTR(FT_Select_Charmap)
     LOAD_FUNCPTR(FT_Set_Charmap)
     LOAD_FUNCPTR(FT_Set_Pixel_Sizes)
     LOAD_FUNCPTR(FT_Vector_Length)
@@ -4322,7 +4313,7 @@ static BOOL move_to_front(const WCHAR *name)
     Family *family, *cursor2;
     LIST_FOR_EACH_ENTRY_SAFE(family, cursor2, &font_list, Family, entry)
     {
-        if(!strcmpiW(family->FamilyName, name))
+        if(!strncmpiW(family->FamilyName, name, LF_FACESIZE - 1))
         {
             list_remove(&family->entry);
             list_add_head(&font_list, &family->entry);
@@ -5059,56 +5050,51 @@ static BOOL create_child_font_list(GdiFont *font)
 static BOOL select_charmap(FT_Face ft_face, FT_Encoding encoding)
 {
     FT_Error ft_err = FT_Err_Invalid_CharMap_Handle;
+    FT_CharMap cmap0, cmap1, cmap2, cmap3, cmap_def;
+    FT_Int i;
 
-    if (pFT_Set_Charmap)
+    cmap0 = cmap1 = cmap2 = cmap3 = cmap_def = NULL;
+
+    for (i = 0; i < ft_face->num_charmaps; i++)
     {
-        FT_Int i;
-        FT_CharMap cmap0, cmap1, cmap2, cmap3, cmap_def;
-
-        cmap0 = cmap1 = cmap2 = cmap3 = cmap_def = NULL;
-
-        for (i = 0; i < ft_face->num_charmaps; i++)
+        if (ft_face->charmaps[i]->encoding == encoding)
         {
-            if (ft_face->charmaps[i]->encoding == encoding)
+            TRACE("found cmap with platform_id %u, encoding_id %u\n",
+                   ft_face->charmaps[i]->platform_id, ft_face->charmaps[i]->encoding_id);
+
+            switch (ft_face->charmaps[i]->platform_id)
             {
-                TRACE("found cmap with platform_id %u, encoding_id %u\n",
-                       ft_face->charmaps[i]->platform_id, ft_face->charmaps[i]->encoding_id);
-
-                switch (ft_face->charmaps[i]->platform_id)
-                {
-                    default:
-                        cmap_def = ft_face->charmaps[i];
-                        break;
-                    case 0: /* Apple Unicode */
-                        cmap0 = ft_face->charmaps[i];
-                        break;
-                    case 1: /* Macintosh */
-                        cmap1 = ft_face->charmaps[i];
-                        break;
-                    case 2: /* ISO */
-                        cmap2 = ft_face->charmaps[i];
-                        break;
-                    case 3: /* Microsoft */
-                        cmap3 = ft_face->charmaps[i];
-                        break;
-                }
+                default:
+                    cmap_def = ft_face->charmaps[i];
+                    break;
+                case 0: /* Apple Unicode */
+                    cmap0 = ft_face->charmaps[i];
+                    break;
+                case 1: /* Macintosh */
+                    cmap1 = ft_face->charmaps[i];
+                    break;
+                case 2: /* ISO */
+                    cmap2 = ft_face->charmaps[i];
+                    break;
+                case 3: /* Microsoft */
+                    cmap3 = ft_face->charmaps[i];
+                    break;
             }
-
-            if (cmap3) /* prefer Microsoft cmap table */
-                ft_err = pFT_Set_Charmap(ft_face, cmap3);
-            else if (cmap1)
-                ft_err = pFT_Set_Charmap(ft_face, cmap1);
-            else if (cmap2)
-                ft_err = pFT_Set_Charmap(ft_face, cmap2);
-            else if (cmap0)
-                ft_err = pFT_Set_Charmap(ft_face, cmap0);
-            else if (cmap_def)
-                ft_err = pFT_Set_Charmap(ft_face, cmap_def);
         }
-        return ft_err == FT_Err_Ok;
+
+        if (cmap3) /* prefer Microsoft cmap table */
+            ft_err = pFT_Set_Charmap(ft_face, cmap3);
+        else if (cmap1)
+            ft_err = pFT_Set_Charmap(ft_face, cmap1);
+        else if (cmap2)
+            ft_err = pFT_Set_Charmap(ft_face, cmap2);
+        else if (cmap0)
+            ft_err = pFT_Set_Charmap(ft_face, cmap0);
+        else if (cmap_def)
+            ft_err = pFT_Set_Charmap(ft_face, cmap_def);
     }
 
-    return pFT_Select_Charmap(ft_face, encoding) == FT_Err_Ok;
+    return ft_err == FT_Err_Ok;
 }
 
 
@@ -5150,6 +5136,13 @@ static FT_Encoding pick_charmap( FT_Face face, int charset )
         if (select_charmap( face, *encs )) break;
         encs++;
     }
+
+    if (!face->charmap && face->num_charmaps)
+    {
+        if (!pFT_Set_Charmap(face, face->charmaps[0]))
+            return face->charmap->encoding;
+    }
+
     return *encs;
 }
 
@@ -5476,8 +5469,8 @@ static HFONT freetype_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
 	   or if that's unavailable the first charset that the font supports.
 	*/
         LIST_FOR_EACH_ENTRY( family, &font_list, Family, entry ) {
-            if (!strcmpiW(family->FamilyName, FaceName) ||
-                (psub && !strcmpiW(family->FamilyName, psub->to.name)))
+            if (!strncmpiW(family->FamilyName, FaceName, LF_FACESIZE - 1) ||
+                (psub && !strncmpiW(family->FamilyName, psub->to.name, LF_FACESIZE - 1)))
             {
                 font_link = find_font_link(family->FamilyName);
                 face_list = get_face_list_from_family(family);
@@ -5499,7 +5492,7 @@ static HFONT freetype_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
         LIST_FOR_EACH_ENTRY( family, &font_list, Family, entry ) {
             face_list = get_face_list_from_family(family);
             LIST_FOR_EACH_ENTRY( face, face_list, Face, entry ) {
-                if(face->FullName && !strcmpiW(face->FullName, FaceName) &&
+                if(face->FullName && !strncmpiW(face->FullName, FaceName, LF_FACESIZE - 1) &&
                    (face->scalable || can_use_bitmap))
                 {
                     if (csi.fs.fsCsb[0] & face->fs.fsCsb[0] || !csi.fs.fsCsb[0])
@@ -5518,8 +5511,8 @@ static HFONT freetype_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
          */
         LIST_FOR_EACH_ENTRY(font_link, &system_links, SYSTEM_LINKS, entry)
         {
-            if(!strcmpiW(font_link->font_name, FaceName) ||
-               (psub && !strcmpiW(font_link->font_name,psub->to.name)))
+            if(!strncmpiW(font_link->font_name, FaceName, LF_FACESIZE - 1) ||
+               (psub && !strncmpiW(font_link->font_name,psub->to.name, LF_FACESIZE - 1)))
             {
                 TRACE("found entry in system list\n");
                 LIST_FOR_EACH_ENTRY(font_link_entry, &font_link->links, CHILD_FONT, entry)
@@ -5569,7 +5562,7 @@ static HFONT freetype_SelectFont( PHYSDEV dev, HFONT hfont, UINT *aa_flags )
     else
         strcpyW(lf.lfFaceName, defSans);
     LIST_FOR_EACH_ENTRY( family, &font_list, Family, entry ) {
-        if(!strcmpiW(family->FamilyName, lf.lfFaceName)) {
+        if(!strncmpiW(family->FamilyName, lf.lfFaceName, LF_FACESIZE - 1)) {
             font_link = find_font_link(family->FamilyName);
             face_list = get_face_list_from_family(family);
             LIST_FOR_EACH_ENTRY( face, face_list, Face, entry ) {
@@ -6037,20 +6030,20 @@ static BOOL family_matches(Family *family, const WCHAR *face_name)
     Face *face;
     const struct list *face_list;
 
-    if (!strcmpiW(face_name, family->FamilyName)) return TRUE;
+    if (!strncmpiW(face_name, family->FamilyName, LF_FACESIZE - 1)) return TRUE;
 
     face_list = get_face_list_from_family(family);
     LIST_FOR_EACH_ENTRY(face, face_list, Face, entry)
-        if (face->FullName && !strcmpiW(face_name, face->FullName)) return TRUE;
+        if (face->FullName && !strncmpiW(face_name, face->FullName, LF_FACESIZE - 1)) return TRUE;
 
     return FALSE;
 }
 
 static BOOL face_matches(const WCHAR *family_name, Face *face, const WCHAR *face_name)
 {
-    if (!strcmpiW(face_name, family_name)) return TRUE;
+    if (!strncmpiW(face_name, family_name, LF_FACESIZE - 1)) return TRUE;
 
-    return (face->FullName && !strcmpiW(face_name, face->FullName));
+    return (face->FullName && !strncmpiW(face_name, face->FullName, LF_FACESIZE - 1));
 }
 
 static BOOL enum_face_charsets(const Family *family, Face *face, struct enum_charset_list *list,
@@ -6082,11 +6075,11 @@ static BOOL enum_face_charsets(const Family *family, Face *face, struct enum_cha
         /* Font Replacement */
         if (family != face->family)
         {
-            strcpyW(elf.elfLogFont.lfFaceName, family->FamilyName);
+            lstrcpynW(elf.elfLogFont.lfFaceName, family->FamilyName, LF_FACESIZE);
             if (face->FullName)
-                strcpyW(elf.elfFullName, face->FullName);
+                lstrcpynW(elf.elfFullName, face->FullName, LF_FULLFACESIZE);
             else
-                strcpyW(elf.elfFullName, family->FamilyName);
+                lstrcpynW(elf.elfFullName, family->FamilyName, LF_FULLFACESIZE);
         }
         if (subst)
             strcpyW(elf.elfLogFont.lfFaceName, subst);

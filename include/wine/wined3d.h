@@ -1342,6 +1342,7 @@ enum wined3d_shader_byte_code_format
 #define WINED3D_BLT_SRC_CKEY_OVERRIDE                           0x00010000
 #define WINED3D_BLT_WAIT                                        0x01000000
 #define WINED3D_BLT_DO_NOT_WAIT                                 0x08000000
+#define WINED3D_BLT_RAW                                         0x20000000
 #define WINED3D_BLT_SYNCHRONOUS                                 0x40000000
 #define WINED3D_BLT_ALPHA_TEST                                  0x80000000
 #define WINED3D_BLT_MASK                                        0x0901e800
@@ -2217,12 +2218,18 @@ HRESULT __cdecl wined3d_device_create(struct wined3d *wined3d, UINT adapter_idx,
 ULONG __cdecl wined3d_device_decref(struct wined3d_device *device);
 void __cdecl wined3d_device_dispatch_compute(struct wined3d_device *device,
         unsigned int group_count_x, unsigned int group_count_y, unsigned int group_count_z);
+void __cdecl wined3d_device_dispatch_compute_indirect(struct wined3d_device *device,
+        struct wined3d_buffer *buffer, unsigned int offset);
 HRESULT __cdecl wined3d_device_draw_indexed_primitive(struct wined3d_device *device, UINT start_idx, UINT index_count);
 void __cdecl wined3d_device_draw_indexed_primitive_instanced(struct wined3d_device *device,
         UINT start_idx, UINT index_count, UINT start_instance, UINT instance_count);
+void __cdecl wined3d_device_draw_indexed_primitive_instanced_indirect(struct wined3d_device *device,
+        struct wined3d_buffer *buffer, unsigned int offset);
 HRESULT __cdecl wined3d_device_draw_primitive(struct wined3d_device *device, UINT start_vertex, UINT vertex_count);
 void __cdecl wined3d_device_draw_primitive_instanced(struct wined3d_device *device,
         UINT start_vertex, UINT vertex_count, UINT start_instance, UINT instance_count);
+void __cdecl wined3d_device_draw_primitive_instanced_indirect(struct wined3d_device *device,
+        struct wined3d_buffer *buffer, unsigned int offset);
 HRESULT __cdecl wined3d_device_end_scene(struct wined3d_device *device);
 HRESULT __cdecl wined3d_device_end_stateblock(struct wined3d_device *device, struct wined3d_stateblock **stateblock);
 void __cdecl wined3d_device_evict_managed_resources(struct wined3d_device *device);

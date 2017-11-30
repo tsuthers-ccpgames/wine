@@ -49,7 +49,6 @@ WINE_DECLARE_DEBUG_CHANNEL(relay);
 WINE_DECLARE_DEBUG_CHANNEL(snoop);
 WINE_DECLARE_DEBUG_CHANNEL(loaddll);
 WINE_DECLARE_DEBUG_CHANNEL(imports);
-WINE_DECLARE_DEBUG_CHANNEL(pid);
 
 #ifdef _WIN64
 #define DEFAULT_SECURITY_COOKIE_64  (((ULONGLONG)0x00002b99 << 32) | 0x2ddfa232)
@@ -64,6 +63,7 @@ WINE_DECLARE_DEBUG_CHANNEL(pid);
 typedef DWORD (CALLBACK *DLLENTRYPROC)(HMODULE,DWORD,LPVOID);
 typedef void  (CALLBACK *LDRENUMPROC)(LDR_MODULE *, void *, BOOLEAN *);
 
+static BOOL imports_fixup_done = FALSE;  /* set once the imports have been fixed up, before attaching them */
 static BOOL process_detaching = FALSE;  /* set on process detach to avoid deadlocks with thread detach */
 static int free_lib_count;   /* recursion depth of LdrUnloadDll calls */
 
@@ -99,12 +99,6 @@ struct builtin_load_info
 
 static struct builtin_load_info default_load_info;
 static struct builtin_load_info *builtin_load_info = &default_load_info;
-
-struct start_params
-{
-    void                   *kernel_start;
-    LPTHREAD_START_ROUTINE  entry;
-};
 
 static HANDLE main_exe_file;
 static UINT tls_module_count;      /* number of modules with TLS directory */
@@ -478,7 +472,21 @@ static FARPROC find_forwarded_export( HMODULE module, const char *forward, LPCWS
         if (load_dll( load_path, mod_name, 0, &wm ) == STATUS_SUCCESS &&
             !(wm->ldr.Flags & LDR_DONT_RESOLVE_REFS))
         {
-            if (process_attach( wm, NULL ) != STATUS_SUCCESS)
+            if (!imports_fixup_done && current_modref)
+            {
+                WINE_MODREF **deps;
+                if (current_modref->nDeps)
+                    deps = RtlReAllocateHeap( GetProcessHeap(), 0, current_modref->deps,
+                                              (current_modref->nDeps + 1) * sizeof(*deps) );
+                else
+                    deps = RtlAllocateHeap( GetProcessHeap(), 0, sizeof(*deps) );
+                if (deps)
+                {
+                    deps[current_modref->nDeps++] = wm;
+                    current_modref->deps = deps;
+                }
+            }
+            else if (process_attach( wm, NULL ) != STATUS_SUCCESS)
             {
                 LdrUnloadDll( wm->ldr.BaseAddress );
                 wm = NULL;
@@ -911,7 +919,7 @@ static NTSTATUS fixup_imports( WINE_MODREF *wm, LPCWSTR load_path )
 {
     int i, nb_imports;
     const IMAGE_IMPORT_DESCRIPTOR *imports;
-    WINE_MODREF *prev;
+    WINE_MODREF *prev, *imp;
     DWORD size;
     NTSTATUS status;
     ULONG_PTR cookie;
@@ -945,11 +953,12 @@ static NTSTATUS fixup_imports( WINE_MODREF *wm, LPCWSTR load_path )
     status = STATUS_SUCCESS;
     for (i = 0; i < nb_imports; i++)
     {
-        if (!import_dll( wm->ldr.BaseAddress, &imports[i], load_path, &wm->deps[i] ))
+        if (!import_dll( wm->ldr.BaseAddress, &imports[i], load_path, &imp ))
         {
-            wm->deps[i] = NULL;
+            imp = NULL;
             status = STATUS_DLL_NOT_FOUND;
         }
+        wm->deps[i] = imp;
     }
     current_modref = prev;
     if (wm->ldr.ActivationContext) RtlDeactivateActivationContext( 0, cookie );
@@ -1077,36 +1086,21 @@ static void call_tls_callbacks( HMODULE module, UINT reason )
 
     for (callback = (const PIMAGE_TLS_CALLBACK *)dir->AddressOfCallBacks; *callback; callback++)
     {
-        if (TRACE_ON(relay))
-        {
-            if (TRACE_ON(pid))
-                DPRINTF( "%04x:", GetCurrentProcessId() );
-            DPRINTF("%04x:Call TLS callback (proc=%p,module=%p,reason=%s,reserved=0)\n",
-                    GetCurrentThreadId(), *callback, module, reason_names[reason] );
-        }
+        TRACE_(relay)("\1Call TLS callback (proc=%p,module=%p,reason=%s,reserved=0)\n",
+                      *callback, module, reason_names[reason] );
         __TRY
         {
             call_dll_entry_point( (DLLENTRYPROC)*callback, module, reason, NULL );
         }
         __EXCEPT_ALL
         {
-            if (TRACE_ON(relay))
-            {
-                if (TRACE_ON(pid))
-                    DPRINTF( "%04x:", GetCurrentProcessId() );
-                DPRINTF("%04x:exception in TLS callback (proc=%p,module=%p,reason=%s,reserved=0)\n",
-                        GetCurrentThreadId(), callback, module, reason_names[reason] );
-            }
+            TRACE_(relay)("\1exception in TLS callback (proc=%p,module=%p,reason=%s,reserved=0)\n",
+                          callback, module, reason_names[reason] );
             return;
         }
         __ENDTRY
-        if (TRACE_ON(relay))
-        {
-            if (TRACE_ON(pid))
-                DPRINTF( "%04x:", GetCurrentProcessId() );
-            DPRINTF("%04x:Ret  TLS callback (proc=%p,module=%p,reason=%s,reserved=0)\n",
-                    GetCurrentThreadId(), *callback, module, reason_names[reason] );
-        }
+        TRACE_(relay)("\1Ret  TLS callback (proc=%p,module=%p,reason=%s,reserved=0)\n",
+                      *callback, module, reason_names[reason] );
     }
 }
 
@@ -1133,11 +1127,8 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
         size_t len = min( wm->ldr.BaseDllName.Length, sizeof(mod_name)-sizeof(WCHAR) );
         memcpy( mod_name, wm->ldr.BaseDllName.Buffer, len );
         mod_name[len / sizeof(WCHAR)] = 0;
-        if (TRACE_ON(pid))
-            DPRINTF( "%04x:", GetCurrentProcessId() );
-        DPRINTF("%04x:Call PE DLL (proc=%p,module=%p %s,reason=%s,res=%p)\n",
-                GetCurrentThreadId(), entry, module, debugstr_w(mod_name),
-                reason_names[reason], lpReserved );
+        TRACE_(relay)("\1Call PE DLL (proc=%p,module=%p %s,reason=%s,res=%p)\n",
+                      entry, module, debugstr_w(mod_name), reason_names[reason], lpReserved );
     }
     else TRACE("(%p %s,%s,%p) - CALL\n", module, debugstr_w(wm->ldr.BaseDllName.Buffer),
                reason_names[reason], lpReserved );
@@ -1150,13 +1141,8 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
     }
     __EXCEPT_ALL
     {
-        if (TRACE_ON(relay))
-        {
-            if (TRACE_ON(pid))
-                DPRINTF( "%04x:", GetCurrentProcessId() );
-            DPRINTF("%04x:exception in PE entry point (proc=%p,module=%p,reason=%s,res=%p)\n",
-                    GetCurrentThreadId(), entry, module, reason_names[reason], lpReserved );
-        }
+        TRACE_(relay)("\1exception in PE entry point (proc=%p,module=%p,reason=%s,res=%p)\n",
+                      entry, module, reason_names[reason], lpReserved );
         status = GetExceptionCode();
     }
     __ENDTRY
@@ -1165,14 +1151,10 @@ static NTSTATUS MODULE_InitDLL( WINE_MODREF *wm, UINT reason, LPVOID lpReserved 
        to the dll. We cannot assume that this module has not been
        deleted.  */
     if (TRACE_ON(relay))
-    {
-        if (TRACE_ON(pid))
-            DPRINTF( "%04x:", GetCurrentProcessId() );
-        DPRINTF("%04x:Ret  PE DLL (proc=%p,module=%p %s,reason=%s,res=%p) retval=%x\n",
-                GetCurrentThreadId(), entry, module, debugstr_w(mod_name),
-                reason_names[reason], lpReserved, retv );
-    }
-    else TRACE("(%p,%s,%p) - RETURN %d\n", module, reason_names[reason], lpReserved, retv );
+        TRACE_(relay)("\1Ret  PE DLL (proc=%p,module=%p %s,reason=%s,res=%p) retval=%x\n",
+                      entry, module, debugstr_w(mod_name), reason_names[reason], lpReserved, retv );
+    else
+        TRACE("(%p,%s,%p) - RETURN %d\n", module, reason_names[reason], lpReserved, retv );
 
     return status;
 }
@@ -1332,28 +1314,16 @@ static void process_detach(void)
 }
 
 /*************************************************************************
- *		MODULE_DllThreadAttach
+ *		thread_attach
  *
  * Send DLL thread attach notifications. These are sent in the
  * reverse sequence of process detach notification.
- *
+ * The loader_section must be locked while calling this function.
  */
-NTSTATUS MODULE_DllThreadAttach( LPVOID lpReserved )
+static void thread_attach(void)
 {
     PLIST_ENTRY mark, entry;
     PLDR_MODULE mod;
-    NTSTATUS    status;
-
-    /* don't do any attach calls if process is exiting */
-    if (process_detaching) return STATUS_SUCCESS;
-
-    RtlEnterCriticalSection( &loader_section );
-
-    RtlAcquirePebLock();
-    InsertHeadList( &tls_links, &NtCurrentTeb()->TlsLinks );
-    RtlReleasePebLock();
-
-    if ((status = alloc_thread_tls()) != STATUS_SUCCESS) goto done;
 
     mark = &NtCurrentTeb()->Peb->LdrData->InInitializationOrderModuleList;
     for (entry = mark->Flink; entry != mark; entry = entry->Flink)
@@ -1365,13 +1335,8 @@ NTSTATUS MODULE_DllThreadAttach( LPVOID lpReserved )
         if ( mod->Flags & LDR_NO_DLL_CALLS )
             continue;
 
-        MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr),
-                        DLL_THREAD_ATTACH, lpReserved );
+        MODULE_InitDLL( CONTAINING_RECORD(mod, WINE_MODREF, ldr), DLL_THREAD_ATTACH, NULL );
     }
-
-done:
-    RtlLeaveCriticalSection( &loader_section );
-    return status;
 }
 
 /******************************************************************
@@ -1683,9 +1648,7 @@ static void load_builtin_callback( void *module, const char *filename )
 
     SERVER_START_REQ( load_dll )
     {
-        req->mapping    = 0;
         req->base       = wine_server_client_ptr( module );
-        req->size       = nt->OptionalHeader.SizeOfImage;
         req->dbg_offset = nt->FileHeader.PointerToSymbolTable;
         req->dbg_size   = nt->FileHeader.NumberOfSymbols;
         req->name       = wine_server_client_ptr( &wm->ldr.FullDllName.Buffer );
@@ -1842,7 +1805,8 @@ static NTSTATUS load_native_dll( LPCWSTR load_path, LPCWSTR name, HANDLE file,
     TRACE("Trying native dll %s\n", debugstr_w(name));
 
     size.QuadPart = 0;
-    status = NtCreateSection( &mapping, STANDARD_RIGHTS_REQUIRED | SECTION_QUERY | SECTION_MAP_READ,
+    status = NtCreateSection( &mapping, STANDARD_RIGHTS_REQUIRED | SECTION_QUERY |
+                              SECTION_MAP_READ | SECTION_MAP_EXECUTE,
                               NULL, &size, PAGE_EXECUTE_READ, SEC_IMAGE, file );
     if (status != STATUS_SUCCESS) return status;
 
@@ -1900,9 +1864,7 @@ static NTSTATUS load_native_dll( LPCWSTR load_path, LPCWSTR name, HANDLE file,
 
     SERVER_START_REQ( load_dll )
     {
-        req->mapping    = wine_server_obj_handle( mapping );
         req->base       = wine_server_client_ptr( module );
-        req->size       = nt->OptionalHeader.SizeOfImage;
         req->dbg_offset = nt->FileHeader.PointerToSymbolTable;
         req->dbg_size   = nt->FileHeader.NumberOfSymbols;
         req->name       = wine_server_client_ptr( &wm->ldr.FullDllName.Buffer );
@@ -3023,25 +2985,58 @@ PIMAGE_NT_HEADERS WINAPI RtlImageNtHeader(HMODULE hModule)
 
 
 /***********************************************************************
- *           attach_process_dlls
+ *           attach_dlls
  *
- * Initial attach to all the dlls loaded by the process.
+ * Attach to all the loaded dlls.
+ * If this is the first time, perform the full process initialization.
  */
-static NTSTATUS attach_process_dlls( void *wm )
+NTSTATUS attach_dlls( void *reserved )
 {
     NTSTATUS status;
+    WINE_MODREF *wm;
+    LPCWSTR load_path = NtCurrentTeb()->Peb->ProcessParameters->DllPath.Buffer;
 
     pthread_sigmask( SIG_UNBLOCK, &server_block_set, NULL );
 
+    if (process_detaching) return STATUS_SUCCESS;
+
     RtlEnterCriticalSection( &loader_section );
-    if ((status = process_attach( wm, (LPVOID)1 )) != STATUS_SUCCESS)
+
+    wm = get_modref( NtCurrentTeb()->Peb->ImageBaseAddress );
+    assert( wm );
+
+    if (!imports_fixup_done)
     {
-        if (last_failed_modref)
-            ERR( "%s failed to initialize, aborting\n",
-                 debugstr_w(last_failed_modref->ldr.BaseDllName.Buffer) + 1 );
-        return status;
+        actctx_init();
+        if ((status = fixup_imports( wm, load_path )) != STATUS_SUCCESS) goto done;
+        imports_fixup_done = TRUE;
     }
-    attach_implicitly_loaded_dlls( (LPVOID)1 );
+
+    RtlAcquirePebLock();
+    InsertHeadList( &tls_links, &NtCurrentTeb()->TlsLinks );
+    RtlReleasePebLock();
+
+    if ((status = alloc_thread_tls()) != STATUS_SUCCESS) goto done;
+
+    if (!(wm->ldr.Flags & LDR_PROCESS_ATTACHED))  /* first time around */
+    {
+        if ((status = process_attach( wm, reserved )) != STATUS_SUCCESS)
+        {
+            if (last_failed_modref)
+                ERR( "%s failed to initialize, aborting\n",
+                     debugstr_w(last_failed_modref->ldr.BaseDllName.Buffer) + 1 );
+            goto done;
+        }
+        attach_implicitly_loaded_dlls( reserved );
+        virtual_release_address_space();
+    }
+    else
+    {
+        thread_attach();
+        status = STATUS_SUCCESS;
+    }
+
+done:
     RtlLeaveCriticalSection( &loader_section );
     return status;
 }
@@ -3100,15 +3095,6 @@ static void load_global_options(void)
 }
 
 
-/***********************************************************************
- *           start_process
- */
-static void start_process( void *arg )
-{
-    struct start_params *start_params = (struct start_params *)arg;
-    call_thread_entry_point( start_params->kernel_start, start_params->entry );
-}
-
 /******************************************************************
  *		LdrInitializeThunk (NTDLL.@)
  *
@@ -3119,10 +3105,9 @@ void WINAPI LdrInitializeThunk( void *kernel_start, ULONG_PTR unknown2,
     static const WCHAR globalflagW[] = {'G','l','o','b','a','l','F','l','a','g',0};
     NTSTATUS status;
     WINE_MODREF *wm;
-    LPCWSTR load_path;
     PEB *peb = NtCurrentTeb()->Peb;
-    struct start_params start_params;
 
+    kernel32_start_process = kernel_start;
     if (main_exe_file) NtClose( main_exe_file );  /* at this point the main module is created */
 
     /* allocate the modref for the main exe (if not already done) */
@@ -3143,6 +3128,7 @@ void WINAPI LdrInitializeThunk( void *kernel_start, ULONG_PTR unknown2,
 
     LdrQueryImageFileExecutionOptions( &peb->ProcessParameters->ImagePathName, globalflagW,
                                        REG_DWORD, &peb->NtGlobalFlag, sizeof(peb->NtGlobalFlag), NULL );
+    heap_set_debug_flags( GetProcessHeap() );
 
     /* the main exe needs to be the first in the load order list */
     RemoveEntryList( &wm->ldr.InLoadOrderModuleList );
@@ -3150,24 +3136,8 @@ void WINAPI LdrInitializeThunk( void *kernel_start, ULONG_PTR unknown2,
     RemoveEntryList( &wm->ldr.InMemoryOrderModuleList );
     InsertHeadList( &peb->LdrData->InMemoryOrderModuleList, &wm->ldr.InMemoryOrderModuleList );
 
-    if ((status = virtual_alloc_thread_stack( NtCurrentTeb(), 0, 0 )) != STATUS_SUCCESS) goto error;
-    if ((status = server_init_process_done()) != STATUS_SUCCESS) goto error;
-
-    actctx_init();
-    load_path = NtCurrentTeb()->Peb->ProcessParameters->DllPath.Buffer;
-    if ((status = fixup_imports( wm, load_path )) != STATUS_SUCCESS) goto error;
-    heap_set_debug_flags( GetProcessHeap() );
-
-    /* Store original entrypoint (in case it gets corrupted) */
-    start_params.kernel_start = kernel_start;
-    start_params.entry = wm->ldr.EntryPoint;
-
-    status = wine_call_on_stack( attach_process_dlls, wm, NtCurrentTeb()->Tib.StackBase );
-    if (status != STATUS_SUCCESS) goto error;
-
-    virtual_release_address_space();
-    virtual_clear_thread_stack();
-    wine_switch_to_stack( start_process, &start_params, NtCurrentTeb()->Tib.StackBase );
+    if ((status = virtual_alloc_thread_stack( NtCurrentTeb(), 0, 0, 0 )) != STATUS_SUCCESS) goto error;
+    status = server_init_process_done();
 
 error:
     ERR( "Main exe initialization for %s failed, status %x\n",

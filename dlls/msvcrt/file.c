@@ -581,30 +581,57 @@ void msvcrt_init_io(void)
   fdinfo = get_ioinfo_alloc_fd(MSVCRT_STDIN_FILENO);
   if (!(fdinfo->wxflag & WX_OPEN) || fdinfo->handle == INVALID_HANDLE_VALUE) {
     HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD flags = WX_OPEN | WX_TEXT;
     DWORD type = GetFileType(h);
 
-    msvcrt_set_fd(fdinfo, h, WX_OPEN|WX_TEXT|((type&0xf)==FILE_TYPE_CHAR ? WX_TTY : 0)
-            |((type&0xf)==FILE_TYPE_PIPE ? WX_PIPE : 0));
+    if (type == FILE_TYPE_UNKNOWN) {
+        h = MSVCRT_NO_CONSOLE;
+        flags |= WX_TTY;
+    } else if ((type & 0xf) == FILE_TYPE_CHAR) {
+        flags |= WX_TTY;
+    } else if ((type & 0xf) == FILE_TYPE_PIPE) {
+        flags |= WX_PIPE;
+    }
+
+    msvcrt_set_fd(fdinfo, h, flags);
   }
   release_ioinfo(fdinfo);
 
   fdinfo = get_ioinfo_alloc_fd(MSVCRT_STDOUT_FILENO);
   if (!(fdinfo->wxflag & WX_OPEN) || fdinfo->handle == INVALID_HANDLE_VALUE) {
     HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD flags = WX_OPEN | WX_TEXT;
     DWORD type = GetFileType(h);
 
-    msvcrt_set_fd(fdinfo, h, WX_OPEN|WX_TEXT|((type&0xf)==FILE_TYPE_CHAR ? WX_TTY : 0)
-            |((type&0xf)==FILE_TYPE_PIPE ? WX_PIPE : 0));
+    if (type == FILE_TYPE_UNKNOWN) {
+        h = MSVCRT_NO_CONSOLE;
+        flags |= WX_TTY;
+    } else if ((type & 0xf) == FILE_TYPE_CHAR) {
+        flags |= WX_TTY;
+    } else if ((type & 0xf) == FILE_TYPE_PIPE) {
+        flags |= WX_PIPE;
+    }
+
+    msvcrt_set_fd(fdinfo, h, flags);
   }
   release_ioinfo(fdinfo);
 
   fdinfo = get_ioinfo_alloc_fd(MSVCRT_STDERR_FILENO);
   if (!(fdinfo->wxflag & WX_OPEN) || fdinfo->handle == INVALID_HANDLE_VALUE) {
     HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+    DWORD flags = WX_OPEN | WX_TEXT;
     DWORD type = GetFileType(h);
 
-    msvcrt_set_fd(fdinfo, h, WX_OPEN|WX_TEXT|((type&0xf)==FILE_TYPE_CHAR ? WX_TTY : 0)
-            |((type&0xf)==FILE_TYPE_PIPE ? WX_PIPE : 0));
+    if (type == FILE_TYPE_UNKNOWN) {
+        h = MSVCRT_NO_CONSOLE;
+        flags |= WX_TTY;
+    } else if ((type & 0xf) == FILE_TYPE_CHAR) {
+        flags |= WX_TTY;
+    } else if ((type & 0xf) == FILE_TYPE_PIPE) {
+        flags |= WX_PIPE;
+    }
+
+    msvcrt_set_fd(fdinfo, h, flags);
   }
   release_ioinfo(fdinfo);
 
@@ -616,7 +643,8 @@ void msvcrt_init_io(void)
   for (i = 0; i < 3; i++)
   {
     /* FILE structs for stdin/out/err are static and never deleted */
-    MSVCRT__iob[i]._file = i;
+    MSVCRT__iob[i]._file = get_ioinfo_nolock(i)->handle == MSVCRT_NO_CONSOLE ?
+        MSVCRT_NO_CONSOLE_FD : i;
     MSVCRT__iob[i]._tmpfname = NULL;
     MSVCRT__iob[i]._flag = (i == 0) ? MSVCRT__IOREAD : MSVCRT__IOWRT;
   }
@@ -1019,7 +1047,11 @@ int CDECL MSVCRT__close(int fd)
   int ret;
 
   TRACE(":fd (%d) handle (%p)\n", fd, info->handle);
-  if (!(info->wxflag & WX_OPEN)) {
+
+  if (fd == MSVCRT_NO_CONSOLE_FD) {
+    *MSVCRT__errno() = MSVCRT_EBADF;
+    ret = -1;
+  } else if (!MSVCRT_CHECK_PMT_ERR(info->wxflag & WX_OPEN, MSVCRT_EBADF)) {
     ret = -1;
   } else if (fd == MSVCRT_STDOUT_FILENO &&
           info->handle == get_ioinfo_nolock(MSVCRT_STDERR_FILENO)->handle) {
@@ -1464,6 +1496,21 @@ void CDECL MSVCRT_clearerr(MSVCRT_FILE* file)
   MSVCRT__lock_file(file);
   file->_flag &= ~(MSVCRT__IOERR | MSVCRT__IOEOF);
   MSVCRT__unlock_file(file);
+}
+
+/*********************************************************************
+ *		clearerr_s (MSVCRT.@)
+ */
+int CDECL MSVCRT_clearerr_s(MSVCRT_FILE* file)
+{
+  TRACE(":file (%p)\n",file);
+
+  if (!MSVCRT_CHECK_PMT(file != NULL)) return MSVCRT_EINVAL;
+
+  MSVCRT__lock_file(file);
+  file->_flag &= ~(MSVCRT__IOERR | MSVCRT__IOEOF);
+  MSVCRT__unlock_file(file);
+  return 0;
 }
 
 /*********************************************************************
@@ -2319,7 +2366,7 @@ int CDECL MSVCRT__wsopen_s( int *fd, const MSVCRT_wchar_t* path, int oflags, int
 /*********************************************************************
  *              _wsopen (MSVCRT.@)
  */
-int CDECL MSVCRT__wsopen( const MSVCRT_wchar_t *path, int oflags, int shflags, ... )
+int WINAPIV MSVCRT__wsopen( const MSVCRT_wchar_t *path, int oflags, int shflags, ... )
 {
   int pmode;
   int fd;
@@ -2370,7 +2417,7 @@ int CDECL MSVCRT__sopen_s( int *fd, const char *path, int oflags, int shflags, i
 /*********************************************************************
  *              _sopen (MSVCRT.@)
  */
-int CDECL MSVCRT__sopen( const char *path, int oflags, int shflags, ... )
+int WINAPIV MSVCRT__sopen( const char *path, int oflags, int shflags, ... )
 {
   int pmode;
   int fd;
@@ -2392,7 +2439,7 @@ int CDECL MSVCRT__sopen( const char *path, int oflags, int shflags, ... )
 /*********************************************************************
  *              _open (MSVCRT.@)
  */
-int CDECL MSVCRT__open( const char *path, int flags, ... )
+int WINAPIV MSVCRT__open( const char *path, int flags, ... )
 {
   __ms_va_list ap;
 
@@ -2411,7 +2458,7 @@ int CDECL MSVCRT__open( const char *path, int flags, ... )
 /*********************************************************************
  *              _wopen (MSVCRT.@)
  */
-int CDECL MSVCRT__wopen(const MSVCRT_wchar_t *path,int flags,...)
+int WINAPIV MSVCRT__wopen(const MSVCRT_wchar_t *path,int flags,...)
 {
   __ms_va_list ap;
 
@@ -2845,6 +2892,7 @@ static int read_i(int fd, ioinfo *fdinfo, void *buf, unsigned int count)
         else
         {
             TRACE(":failed-last error (%d)\n",GetLastError());
+            msvcrt_set_errno(GetLastError());
             return -1;
         }
     }
@@ -2859,8 +2907,16 @@ static int read_i(int fd, ioinfo *fdinfo, void *buf, unsigned int count)
  */
 int CDECL MSVCRT__read(int fd, void *buf, unsigned int count)
 {
-    ioinfo *info = get_ioinfo(fd);
-    int num_read = read_i(fd, info, buf, count);
+    ioinfo *info;
+    int num_read;
+
+    if(fd == MSVCRT_NO_CONSOLE_FD) {
+        *MSVCRT__errno() = MSVCRT_EBADF;
+        return -1;
+    }
+
+    info = get_ioinfo(fd);
+    num_read = read_i(fd, info, buf, count);
     release_ioinfo(info);
     return num_read;
 }
@@ -3367,7 +3423,7 @@ int CDECL MSVCRT__write(int fd, const void* buf, unsigned int count)
     if (count > 32)
         TRACE(":fd (%d) handle (%d) buf (%p) len (%d)\n",fd,hand,buf,count);
 #endif
-    if (hand == INVALID_HANDLE_VALUE)
+    if (hand == INVALID_HANDLE_VALUE || fd == MSVCRT_NO_CONSOLE_FD)
     {
         *MSVCRT__errno() = MSVCRT_EBADF;
         release_ioinfo(info);
@@ -3395,14 +3451,14 @@ int CDECL MSVCRT__write(int fd, const void* buf, unsigned int count)
         }
         TRACE("WriteFile (fd %d, hand %p) failed-last error (%d)\n", fd,
                 hand, GetLastError());
-        *MSVCRT__errno() = MSVCRT_ENOSPC;
+        msvcrt_set_errno(GetLastError());
     }
     else
     {
         unsigned int i, j, nr_lf, size;
         char *p = NULL;
         const char *q;
-        const char *s = buf, *buf_start = buf;
+        const char *s = buf;
 
         if (!(info->exflag & (EF_UTF8|EF_UTF16)))
         {
@@ -3521,8 +3577,8 @@ int CDECL MSVCRT__write(int fd, const void* buf, unsigned int count)
         {
             TRACE("WriteFile (fd %d, hand %p) failed-last error (%d), num_written %d\n",
                     fd, hand, GetLastError(), num_written);
-            *MSVCRT__errno() = MSVCRT_ENOSPC;
-            return s - buf_start;
+            msvcrt_set_errno(GetLastError());
+            return -1;
         }
         return count;
     }
@@ -3871,6 +3927,7 @@ int CDECL MSVCRT__flsbuf(int c, MSVCRT_FILE* file)
     if(!(file->_flag & MSVCRT__IOWRT)) {
         if(!(file->_flag & MSVCRT__IORW)) {
             file->_flag |= MSVCRT__IOERR;
+            *MSVCRT__errno() = MSVCRT_EBADF;
             return MSVCRT_EOF;
         }
         file->_flag |= MSVCRT__IOWRT;
@@ -4244,9 +4301,12 @@ MSVCRT_size_t CDECL MSVCRT__fread_nolock(void *ptr, MSVCRT_size_t size, MSVCRT_s
   {
     int i;
     if (!file->_cnt && rcnt<MSVCRT_BUFSIZ && (file->_flag & (MSVCRT__IOMYBUF | MSVCRT__USERBUF))) {
-      file->_cnt = MSVCRT__read(file->_file, file->_base, file->_bufsiz);
+      i = MSVCRT__read(file->_file, file->_base, file->_bufsiz);
       file->_ptr = file->_base;
-      i = (file->_cnt<rcnt) ? file->_cnt : rcnt;
+      if (i != -1) {
+          file->_cnt = i;
+          if (i > rcnt) i = rcnt;
+      }
       /* If the buffer fill reaches eof but fread wouldn't, clear eof. */
       if (i > 0 && i < file->_cnt) {
         get_ioinfo_nolock(file->_file)->wxflag &= ~WX_ATEOF;
@@ -5033,21 +5093,94 @@ static int puts_clbk_file_w(void *file, int len, const MSVCRT_wchar_t *str)
     return len;
 }
 
+static int vfprintf_helper(DWORD options, MSVCRT_FILE* file, const char *format,
+        MSVCRT__locale_t locale, __ms_va_list valist)
+{
+    printf_arg args_ctx[MSVCRT__ARGMAX+1];
+    BOOL tmp_buf;
+    int ret;
+
+    if(!MSVCRT_CHECK_PMT( file != NULL )) return -1;
+    if(!MSVCRT_CHECK_PMT( format != NULL )) return -1;
+
+    if(options & MSVCRT_PRINTF_POSITIONAL_PARAMS) {
+        memset(args_ctx, 0, sizeof(args_ctx));
+        ret = create_positional_ctx_a(args_ctx, format, valist);
+        if(ret < 0) {
+            MSVCRT__invalid_parameter(NULL, NULL, NULL, 0, 0);
+            *MSVCRT__errno() = MSVCRT_EINVAL;
+            return ret;
+        } else if(!ret)
+            options &= ~MSVCRT_PRINTF_POSITIONAL_PARAMS;
+    }
+
+    MSVCRT__lock_file(file);
+    tmp_buf = add_std_buffer(file);
+    ret = pf_printf_a(puts_clbk_file_a, file, format, locale, options,
+            options & MSVCRT_PRINTF_POSITIONAL_PARAMS ? arg_clbk_positional : arg_clbk_valist,
+            options & MSVCRT_PRINTF_POSITIONAL_PARAMS ? args_ctx : NULL, &valist);
+    if(tmp_buf) remove_std_buffer(file);
+    MSVCRT__unlock_file(file);
+
+    return ret;
+}
+
+static int vfwprintf_helper(DWORD options, MSVCRT_FILE* file, const MSVCRT_wchar_t *format,
+        MSVCRT__locale_t locale, __ms_va_list valist)
+{
+    printf_arg args_ctx[MSVCRT__ARGMAX+1];
+    BOOL tmp_buf;
+    int ret;
+
+    if(!MSVCRT_CHECK_PMT( file != NULL )) return -1;
+    if(!MSVCRT_CHECK_PMT( format != NULL )) return -1;
+
+    if(options & MSVCRT_PRINTF_POSITIONAL_PARAMS) {
+        memset(args_ctx, 0, sizeof(args_ctx));
+        ret = create_positional_ctx_w(args_ctx, format, valist);
+        if(ret < 0) {
+            MSVCRT__invalid_parameter(NULL, NULL, NULL, 0, 0);
+            *MSVCRT__errno() = MSVCRT_EINVAL;
+            return ret;
+        } else if(!ret)
+            options &= ~MSVCRT_PRINTF_POSITIONAL_PARAMS;
+    }
+
+    MSVCRT__lock_file(file);
+    tmp_buf = add_std_buffer(file);
+    ret = pf_printf_w(puts_clbk_file_w, file, format, locale, options,
+            options & MSVCRT_PRINTF_POSITIONAL_PARAMS ? arg_clbk_positional : arg_clbk_valist,
+            options & MSVCRT_PRINTF_POSITIONAL_PARAMS ? args_ctx : NULL, &valist);
+    if(tmp_buf) remove_std_buffer(file);
+    MSVCRT__unlock_file(file);
+
+    return ret;
+}
+
+/*********************************************************************
+ *    _vfprintf_s_l (MSVCRT.@)
+ */
+int CDECL MSVCRT__vfprintf_s_l(MSVCRT_FILE* file, const char *format,
+        MSVCRT__locale_t locale, __ms_va_list valist)
+{
+    return vfprintf_helper(MSVCRT_PRINTF_INVOKE_INVALID_PARAM_HANDLER, file, format, locale, valist);
+}
+
+/*********************************************************************
+ *    _vfwprintf_s_l (MSVCRT.@)
+ */
+int CDECL MSVCRT__vfwprintf_s_l(MSVCRT_FILE* file, const MSVCRT_wchar_t *format,
+        MSVCRT__locale_t locale, __ms_va_list valist)
+{
+    return vfwprintf_helper(MSVCRT_PRINTF_INVOKE_INVALID_PARAM_HANDLER, file, format, locale, valist);
+}
+
 /*********************************************************************
  *		vfprintf (MSVCRT.@)
  */
 int CDECL MSVCRT_vfprintf(MSVCRT_FILE* file, const char *format, __ms_va_list valist)
 {
-    BOOL tmp_buf;
-    int ret;
-
-    MSVCRT__lock_file(file);
-    tmp_buf = add_std_buffer(file);
-    ret = pf_printf_a(puts_clbk_file_a, file, format, NULL, 0, arg_clbk_valist, NULL, &valist);
-    if(tmp_buf) remove_std_buffer(file);
-    MSVCRT__unlock_file(file);
-
-    return ret;
+    return vfprintf_helper(0, file, format, NULL, valist);
 }
 
 /*********************************************************************
@@ -5055,19 +5188,7 @@ int CDECL MSVCRT_vfprintf(MSVCRT_FILE* file, const char *format, __ms_va_list va
  */
 int CDECL MSVCRT_vfprintf_s(MSVCRT_FILE* file, const char *format, __ms_va_list valist)
 {
-    BOOL tmp_buf;
-    int ret;
-
-    if(!MSVCRT_CHECK_PMT(file != NULL)) return -1;
-
-    MSVCRT__lock_file(file);
-    tmp_buf = add_std_buffer(file);
-    ret = pf_printf_a(puts_clbk_file_a, file, format, NULL,
-            MSVCRT_PRINTF_INVOKE_INVALID_PARAM_HANDLER, arg_clbk_valist, NULL, &valist);
-    if(tmp_buf) remove_std_buffer(file);
-    MSVCRT__unlock_file(file);
-
-    return ret;
+    return MSVCRT__vfprintf_s_l(file, format, NULL, valist);
 }
 
 /*********************************************************************
@@ -5075,16 +5196,7 @@ int CDECL MSVCRT_vfprintf_s(MSVCRT_FILE* file, const char *format, __ms_va_list 
  */
 int CDECL MSVCRT_vfwprintf(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, __ms_va_list valist)
 {
-    BOOL tmp_buf;
-    int ret;
-
-    MSVCRT__lock_file(file);
-    tmp_buf = add_std_buffer(file);
-    ret = pf_printf_w(puts_clbk_file_w, file, format, NULL, 0, arg_clbk_valist, NULL, &valist);
-    if(tmp_buf) remove_std_buffer(file);
-    MSVCRT__unlock_file(file);
-
-    return ret;
+    return vfwprintf_helper(0, file, format, NULL, valist);
 }
 
 /*********************************************************************
@@ -5092,72 +5204,67 @@ int CDECL MSVCRT_vfwprintf(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, __ms
  */
 int CDECL MSVCRT_vfwprintf_s(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, __ms_va_list valist)
 {
-    BOOL tmp_buf;
-    int ret;
-
-    if (!MSVCRT_CHECK_PMT( file != NULL )) return -1;
-
-    MSVCRT__lock_file(file);
-    tmp_buf = add_std_buffer(file);
-    ret = pf_printf_w(puts_clbk_file_w, file, format, NULL,
-            MSVCRT_PRINTF_INVOKE_INVALID_PARAM_HANDLER, arg_clbk_valist, NULL, &valist);
-    if(tmp_buf) remove_std_buffer(file);
-    MSVCRT__unlock_file(file);
-
-    return ret;
+    return MSVCRT__vfwprintf_s_l(file, format, NULL, valist);
 }
 
 /*********************************************************************
- *              __stdio_common_vfprintf (MSVCRT.@)
+ *              __stdio_common_vfprintf (UCRTBASE.@)
  */
 int CDECL MSVCRT__stdio_common_vfprintf(unsigned __int64 options, MSVCRT_FILE *file, const char *format,
                                         MSVCRT__locale_t locale, __ms_va_list valist)
 {
-    BOOL tmp_buf;
-    int ret;
-
-    if (!MSVCRT_CHECK_PMT( file != NULL )) return -1;
-
-    MSVCRT__lock_file(file);
-    tmp_buf = add_std_buffer(file);
-
     if (options & ~UCRTBASE_PRINTF_MASK)
         FIXME("options %s not handled\n", wine_dbgstr_longlong(options));
-    ret = pf_printf_a(puts_clbk_file_a, file, format, locale,
-            options & UCRTBASE_PRINTF_MASK, arg_clbk_valist, NULL, &valist);
-    if(tmp_buf) remove_std_buffer(file);
-    MSVCRT__unlock_file(file);
 
-    return ret;
+    return vfprintf_helper(options & UCRTBASE_PRINTF_MASK, file, format, locale, valist);
 }
 
 /*********************************************************************
- *		__stdio_common_vfwprintf (MSVCRT.@)
+ *              __stdio_common_vfprintf_s (UCRTBASE.@)
+ */
+int CDECL MSVCRT__stdio_common_vfprintf_s(unsigned __int64 options, MSVCRT_FILE *file, const char *format,
+                                          MSVCRT__locale_t locale, __ms_va_list valist)
+{
+    if (options & ~UCRTBASE_PRINTF_MASK)
+        FIXME("options %s not handled\n", wine_dbgstr_longlong(options));
+
+    return vfprintf_helper((options & UCRTBASE_PRINTF_MASK) | MSVCRT_PRINTF_INVOKE_INVALID_PARAM_HANDLER,
+            file, format, locale, valist);
+}
+
+/*********************************************************************
+ *              __stdio_common_vfwprintf (UCRTBASE.@)
  */
 int CDECL MSVCRT__stdio_common_vfwprintf(unsigned __int64 options, MSVCRT_FILE *file, const MSVCRT_wchar_t *format,
                                          MSVCRT__locale_t locale, __ms_va_list valist)
 {
-    BOOL tmp_buf;
-    int ret;
-
-    if (!MSVCRT_CHECK_PMT( file != NULL )) return -1;
-    if (!MSVCRT_CHECK_PMT( format != NULL )) return -1;
-
-    MSVCRT__lock_file(file);
-    tmp_buf = add_std_buffer(file);
-
     if (options & ~UCRTBASE_PRINTF_MASK)
         FIXME("options %s not handled\n", wine_dbgstr_longlong(options));
 
-    ret = pf_printf_w(puts_clbk_file_w, file, format, locale,
-            options & UCRTBASE_PRINTF_MASK, arg_clbk_valist, NULL, &valist);
-
-    if(tmp_buf) remove_std_buffer(file);
-    MSVCRT__unlock_file(file);
-
-    return ret;
+    return vfwprintf_helper(options & UCRTBASE_PRINTF_MASK, file, format, locale, valist);
 }
 
+/*********************************************************************
+ *              __stdio_common_vfwprintf_s (UCRTBASE.@)
+ */
+int CDECL MSVCRT__stdio_common_vfwprintf_s(unsigned __int64 options, MSVCRT_FILE *file, const MSVCRT_wchar_t *format,
+                                           MSVCRT__locale_t locale, __ms_va_list valist)
+{
+    if (options & ~UCRTBASE_PRINTF_MASK)
+        FIXME("options %s not handled\n", wine_dbgstr_longlong(options));
+
+    return vfwprintf_helper((options & UCRTBASE_PRINTF_MASK) | MSVCRT_PRINTF_INVOKE_INVALID_PARAM_HANDLER,
+            file, format, locale, valist);
+}
+
+/*********************************************************************
+ *    _vfprintf_l (MSVCRT.@)
+ */
+int CDECL MSVCRT__vfprintf_l(MSVCRT_FILE* file, const char *format,
+        MSVCRT__locale_t locale, __ms_va_list valist)
+{
+    return vfprintf_helper(0, file, format, locale, valist);
+}
 
 /*********************************************************************
  *              _vfwprintf_l (MSVCRT.@)
@@ -5165,18 +5272,43 @@ int CDECL MSVCRT__stdio_common_vfwprintf(unsigned __int64 options, MSVCRT_FILE *
 int CDECL MSVCRT__vfwprintf_l(MSVCRT_FILE* file, const MSVCRT_wchar_t *format,
         MSVCRT__locale_t locale, __ms_va_list valist)
 {
-    BOOL tmp_buf;
-    int ret;
+    return vfwprintf_helper(0, file, format, locale, valist);
+}
 
-    if (!MSVCRT_CHECK_PMT( file != NULL )) return -1;
+/*********************************************************************
+ *    _vfprintf_p_l (MSVCRT.@)
+ */
+int CDECL MSVCRT__vfprintf_p_l(MSVCRT_FILE* file, const char *format,
+        MSVCRT__locale_t locale, __ms_va_list valist)
+{
+    return vfprintf_helper(MSVCRT_PRINTF_POSITIONAL_PARAMS | MSVCRT_PRINTF_INVOKE_INVALID_PARAM_HANDLER,
+            file, format, locale, valist);
+}
 
-    MSVCRT__lock_file(file);
-    tmp_buf = add_std_buffer(file);
-    ret = pf_printf_w(puts_clbk_file_w, file, format, locale, 0, arg_clbk_valist, NULL, &valist);
-    if(tmp_buf) remove_std_buffer(file);
-    MSVCRT__unlock_file(file);
+/*********************************************************************
+ *    _vfprintf_p (MSVCRT.@)
+ */
+int CDECL MSVCRT__vfprintf_p(MSVCRT_FILE* file, const char *format, __ms_va_list valist)
+{
+    return MSVCRT__vfprintf_p_l(file, format, NULL, valist);
+}
 
-    return ret;
+/*********************************************************************
+ *    _vfwprintf_p_l (MSVCRT.@)
+ */
+int CDECL MSVCRT__vfwprintf_p_l(MSVCRT_FILE* file, const MSVCRT_wchar_t *format,
+        MSVCRT__locale_t locale, __ms_va_list valist)
+{
+    return vfwprintf_helper(MSVCRT_PRINTF_POSITIONAL_PARAMS | MSVCRT_PRINTF_INVOKE_INVALID_PARAM_HANDLER,
+            file, format, locale, valist);
+}
+
+/*********************************************************************
+ *    _vfwprintf_p (MSVCRT.@)
+ */
+int CDECL MSVCRT__vfwprintf_p(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, __ms_va_list valist)
+{
+    return MSVCRT__vfwprintf_p_l(file, format, NULL, valist);
 }
 
 /*********************************************************************
@@ -5214,7 +5346,7 @@ int CDECL MSVCRT_vwprintf_s(const MSVCRT_wchar_t *format, __ms_va_list valist)
 /*********************************************************************
  *		fprintf (MSVCRT.@)
  */
-int CDECL MSVCRT_fprintf(MSVCRT_FILE* file, const char *format, ...)
+int WINAPIV MSVCRT_fprintf(MSVCRT_FILE* file, const char *format, ...)
 {
     __ms_va_list valist;
     int res;
@@ -5227,7 +5359,7 @@ int CDECL MSVCRT_fprintf(MSVCRT_FILE* file, const char *format, ...)
 /*********************************************************************
  *		fprintf_s (MSVCRT.@)
  */
-int CDECL MSVCRT_fprintf_s(MSVCRT_FILE* file, const char *format, ...)
+int WINAPIV MSVCRT_fprintf_s(MSVCRT_FILE* file, const char *format, ...)
 {
     __ms_va_list valist;
     int res;
@@ -5240,7 +5372,7 @@ int CDECL MSVCRT_fprintf_s(MSVCRT_FILE* file, const char *format, ...)
 /*********************************************************************
  *		fwprintf (MSVCRT.@)
  */
-int CDECL MSVCRT_fwprintf(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, ...)
+int WINAPIV MSVCRT_fwprintf(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, ...)
 {
     __ms_va_list valist;
     int res;
@@ -5253,7 +5385,7 @@ int CDECL MSVCRT_fwprintf(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, ...)
 /*********************************************************************
  *		fwprintf_s (MSVCRT.@)
  */
-int CDECL MSVCRT_fwprintf_s(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, ...)
+int WINAPIV MSVCRT_fwprintf_s(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, ...)
 {
     __ms_va_list valist;
     int res;
@@ -5266,7 +5398,7 @@ int CDECL MSVCRT_fwprintf_s(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, ...
 /*********************************************************************
  *              _fwprintf_l (MSVCRT.@)
  */
-int CDECL MSVCRT__fwprintf_l(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, MSVCRT__locale_t locale, ...)
+int WINAPIV MSVCRT__fwprintf_l(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, MSVCRT__locale_t locale, ...)
 {
     __ms_va_list valist;
     int res;
@@ -5279,7 +5411,7 @@ int CDECL MSVCRT__fwprintf_l(MSVCRT_FILE* file, const MSVCRT_wchar_t *format, MS
 /*********************************************************************
  *		printf (MSVCRT.@)
  */
-int CDECL MSVCRT_printf(const char *format, ...)
+int WINAPIV MSVCRT_printf(const char *format, ...)
 {
     __ms_va_list valist;
     int res;
@@ -5292,7 +5424,7 @@ int CDECL MSVCRT_printf(const char *format, ...)
 /*********************************************************************
  *		printf_s (MSVCRT.@)
  */
-int CDECL MSVCRT_printf_s(const char *format, ...)
+int WINAPIV MSVCRT_printf_s(const char *format, ...)
 {
     __ms_va_list valist;
     int res;
@@ -5409,7 +5541,7 @@ MSVCRT_wint_t CDECL MSVCRT__ungetwc_nolock(MSVCRT_wint_t wc, MSVCRT_FILE * file)
 /*********************************************************************
  *		wprintf (MSVCRT.@)
  */
-int CDECL MSVCRT_wprintf(const MSVCRT_wchar_t *format, ...)
+int WINAPIV MSVCRT_wprintf(const MSVCRT_wchar_t *format, ...)
 {
     __ms_va_list valist;
     int res;
@@ -5422,7 +5554,7 @@ int CDECL MSVCRT_wprintf(const MSVCRT_wchar_t *format, ...)
 /*********************************************************************
  *		wprintf_s (MSVCRT.@)
  */
-int CDECL MSVCRT_wprintf_s(const MSVCRT_wchar_t *format, ...)
+int WINAPIV MSVCRT_wprintf_s(const MSVCRT_wchar_t *format, ...)
 {
     __ms_va_list valist;
     int res;

@@ -23,8 +23,6 @@
 #include <wine/debug.h>
 #include "reg.h"
 
-#define ARRAY_SIZE(A) (sizeof(A)/sizeof(*A))
-
 WINE_DEFAULT_DEBUG_CHANNEL(reg);
 
 static const WCHAR short_hklm[] = {'H','K','L','M',0};
@@ -79,7 +77,7 @@ type_rels[] =
     {REG_MULTI_SZ, type_multi_sz},
 };
 
-static void *heap_xalloc(size_t size)
+void *heap_xalloc(size_t size)
 {
     void *buf = HeapAlloc(GetProcessHeap(), 0, size);
     if (!buf)
@@ -90,7 +88,7 @@ static void *heap_xalloc(size_t size)
     return buf;
 }
 
-static void *heap_xrealloc(void *buf, size_t size)
+void *heap_xrealloc(void *buf, size_t size)
 {
     void *new_buf;
 
@@ -108,7 +106,7 @@ static void *heap_xrealloc(void *buf, size_t size)
     return new_buf;
 }
 
-static BOOL heap_free(void *buf)
+BOOL heap_free(void *buf)
 {
     return HeapFree(GetProcessHeap(), 0, buf);
 }
@@ -153,7 +151,7 @@ static void output_formatstring(const WCHAR *fmt, __ms_va_list va_args)
     LocalFree(str);
 }
 
-static void __cdecl output_message(unsigned int id, ...)
+void WINAPIV output_message(unsigned int id, ...)
 {
     WCHAR fmt[1024];
     __ms_va_list va_args;
@@ -168,7 +166,7 @@ static void __cdecl output_message(unsigned int id, ...)
     __ms_va_end(va_args);
 }
 
-static void __cdecl output_string(const WCHAR *fmt, ...)
+static void WINAPIV output_string(const WCHAR *fmt, ...)
 {
     __ms_va_list va_args;
 
@@ -216,7 +214,7 @@ static inline BOOL path_rootname_cmp(const WCHAR *input_path, const WCHAR *rootk
             (input_path[length] == 0 || input_path[length] == '\\'));
 }
 
-static HKEY path_get_rootkey(const WCHAR *path)
+HKEY path_get_rootkey(const WCHAR *path)
 {
     DWORD i;
 
@@ -284,8 +282,8 @@ static LPBYTE get_regdata(const WCHAR *data, DWORD reg_type, WCHAR separator, DW
         {
             LPWSTR rest;
             unsigned long val;
-            val = strtoulW(data, &rest, (tolowerW(data[1]) == 'x') ? 16 : 10);
-            if (*rest || data[0] == '-' || (val == ~0u && errno == ERANGE) || val > ~0u) {
+            val = wcstoul(data, &rest, (tolowerW(data[1]) == 'x') ? 16 : 10);
+            if (*rest || data[0] == '-' || (val == ~0u && errno == ERANGE)) {
                 output_message(STRING_MISSING_INTEGER);
                 break;
             }
@@ -543,7 +541,7 @@ static WCHAR *reg_data_to_wchar(DWORD type, const BYTE *src, DWORD size_bytes)
         case REG_BINARY:
         {
             WCHAR *ptr;
-            WCHAR fmt[] = {'%','0','2','X',0};
+            static const WCHAR fmt[] = {'%','0','2','X',0};
 
             buffer = heap_xalloc((size_bytes * 2 + 1) * sizeof(WCHAR));
             ptr = buffer;
@@ -556,7 +554,7 @@ static WCHAR *reg_data_to_wchar(DWORD type, const BYTE *src, DWORD size_bytes)
         case REG_DWORD_BIG_ENDIAN:
         {
             const int zero_x_dword = 10;
-            WCHAR fmt[] = {'0','x','%','x',0};
+            static const WCHAR fmt[] = {'0','x','%','x',0};
 
             buffer = heap_xalloc((zero_x_dword + 1) * sizeof(WCHAR));
             sprintfW(buffer, fmt, *(DWORD *)src);
@@ -611,10 +609,10 @@ static const WCHAR *reg_type_to_wchar(DWORD type)
 
 static void output_value(const WCHAR *value_name, DWORD type, BYTE *data, DWORD data_size)
 {
-    WCHAR fmt[] = {' ',' ',' ',' ','%','1',0};
+    static const WCHAR fmt[] = {' ',' ',' ',' ','%','1',0};
+    static const WCHAR newlineW[] = {'\n',0};
     WCHAR defval[32];
     WCHAR *reg_data;
-    WCHAR newlineW[] = {'\n',0};
 
     if (value_name && value_name[0])
         output_string(fmt, value_name);
@@ -642,7 +640,7 @@ static void output_value(const WCHAR *value_name, DWORD type, BYTE *data, DWORD 
 static WCHAR *build_subkey_path(WCHAR *path, DWORD path_len, WCHAR *subkey_name, DWORD subkey_len)
 {
     WCHAR *subkey_path;
-    WCHAR fmt[] = {'%','s','\\','%','s',0};
+    static const WCHAR fmt[] = {'%','s','\\','%','s',0};
 
     subkey_path = heap_xalloc((path_len + subkey_len + 2) * sizeof(WCHAR));
     sprintfW(subkey_path, fmt, path, subkey_name);
@@ -909,32 +907,38 @@ static BOOL is_help_switch(const WCHAR *s)
 enum operations {
     REG_ADD,
     REG_DELETE,
+    REG_IMPORT,
     REG_QUERY,
     REG_INVALID
 };
 
-static const WCHAR addW[] = {'a','d','d',0};
-static const WCHAR deleteW[] = {'d','e','l','e','t','e',0};
-static const WCHAR queryW[] = {'q','u','e','r','y',0};
-
 static enum operations get_operation(const WCHAR *str, int *op_help)
 {
-    if (!lstrcmpiW(str, addW))
-    {
-        *op_help = STRING_ADD_USAGE;
-        return REG_ADD;
-    }
+    struct op_info { const WCHAR *op; int id; int help_id; };
 
-    if (!lstrcmpiW(str, deleteW))
-    {
-        *op_help = STRING_DELETE_USAGE;
-        return REG_DELETE;
-    }
+    static const WCHAR add[] = {'a','d','d',0};
+    static const WCHAR delete[] = {'d','e','l','e','t','e',0};
+    static const WCHAR import[] = {'i','m','p','o','r','t',0};
+    static const WCHAR query[] = {'q','u','e','r','y',0};
 
-    if (!lstrcmpiW(str, queryW))
+    static const struct op_info op_array[] =
     {
-        *op_help = STRING_QUERY_USAGE;
-        return REG_QUERY;
+        { add,     REG_ADD,     STRING_ADD_USAGE },
+        { delete,  REG_DELETE,  STRING_DELETE_USAGE },
+        { import,  REG_IMPORT,  STRING_IMPORT_USAGE },
+        { query,   REG_QUERY,   STRING_QUERY_USAGE },
+        { NULL,    -1,          0 }
+    };
+
+    const struct op_info *ptr;
+
+    for (ptr = op_array; ptr->op; ptr++)
+    {
+        if (!lstrcmpiW(str, ptr->op))
+        {
+            *op_help = ptr->help_id;
+            return ptr->id;
+        }
     }
 
     return REG_INVALID;
@@ -975,7 +979,7 @@ int wmain(int argc, WCHAR *argvW[])
     if (argc > 2)
         show_op_help = is_help_switch(argvW[2]);
 
-    if (argc == 2 || (show_op_help && argc > 3))
+    if (argc == 2 || ((show_op_help || op == REG_IMPORT) && argc > 3))
     {
         output_message(STRING_INVALID_SYNTAX);
         output_message(STRING_FUNC_HELP, struprW(argvW[1]));
@@ -986,6 +990,9 @@ int wmain(int argc, WCHAR *argvW[])
         output_message(op_help);
         return 0;
     }
+
+    if (op == REG_IMPORT)
+        return reg_import(argvW[2]);
 
     if (!parse_registry_key(argvW[2], &root, &path, &key_name))
         return 1;
@@ -1070,7 +1077,7 @@ int wmain(int argc, WCHAR *argvW[])
         ret = reg_add(root, path, value_name, value_empty, type, separator, data, force);
     else if (op == REG_DELETE)
         ret = reg_delete(root, path, key_name, value_name, value_empty, value_all, force);
-    else if (op == REG_QUERY)
+    else
         ret = reg_query(root, path, key_name, value_name, value_empty, recurse);
     return ret;
 }

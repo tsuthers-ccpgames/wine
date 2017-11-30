@@ -318,9 +318,11 @@ float CDECL MSVCRT_log10f( float x )
  */
 float CDECL MSVCRT_powf( float x, float y )
 {
-  /* FIXME: If x < 0 and y is not integral, set EDOM */
   float z = powf(x,y);
-  if (!finitef(z)) math_error(_DOMAIN, "powf", x, 0, z);
+  if (x < 0 && y != floorf(y)) math_error(_DOMAIN, "powf", x, y, z);
+  else if (!x && finitef(y) && y < 0) math_error(_SING, "powf", x, y, z);
+  else if (finitef(x) && finitef(y) && !finitef(z)) math_error(_OVERFLOW, "powf", x, y, z);
+  else if (x && finitef(x) && finitef(y) && !z) math_error(_UNDERFLOW, "powf", x, y, z);
   return z;
 }
 
@@ -530,9 +532,11 @@ double CDECL MSVCRT_log10( double x )
  */
 double CDECL MSVCRT_pow( double x, double y )
 {
-  /* FIXME: If x < 0 and y is not integral, set EDOM */
   double z = pow(x,y);
-  if (!isfinite(z)) math_error(_DOMAIN, "pow", x, y, z);
+  if (x < 0 && y != floor(y)) math_error(_DOMAIN, "pow", x, y, z);
+  else if (!x && isfinite(y) && y < 0) math_error(_SING, "pow", x, y, z);
+  else if (isfinite(x) && isfinite(y) && !isfinite(z)) math_error(_OVERFLOW, "pow", x, y, z);
+  else if (x && isfinite(x) && isfinite(y) && !z) math_error(_UNDERFLOW, "pow", x, y, z);
   return z;
 }
 
@@ -589,164 +593,117 @@ double CDECL MSVCRT_tanh( double x )
 
 #if defined(__GNUC__) && defined(__i386__)
 
-#define FPU_DOUBLE(var) double var; \
-  __asm__ __volatile__( "fstpl %0;fwait" : "=m" (var) : )
-#define FPU_DOUBLES(var1,var2) double var1,var2; \
-  __asm__ __volatile__( "fstpl %0;fwait" : "=m" (var2) : ); \
-  __asm__ __volatile__( "fstpl %0;fwait" : "=m" (var1) : )
+#define CREATE_FPU_FUNC1(name, call) \
+    __ASM_GLOBAL_FUNC(name, \
+            "pushl   %ebp\n\t" \
+            __ASM_CFI(".cfi_adjust_cfa_offset 4\n\t") \
+            __ASM_CFI(".cfi_rel_offset %ebp,0\n\t") \
+            "movl    %esp, %ebp\n\t" \
+            __ASM_CFI(".cfi_def_cfa_register %ebp\n\t") \
+            "subl    $68, %esp\n\t" /* sizeof(double)*8 + sizeof(int) */ \
+            "fstpl   (%esp)\n\t"    /* store function argument */ \
+            "fwait\n\t" \
+            "movl    $1, %ecx\n\t"  /* empty FPU stack */ \
+            "1:\n\t" \
+            "fxam\n\t" \
+            "fstsw   %ax\n\t" \
+            "and     $0x4500, %ax\n\t" \
+            "cmp     $0x4100, %ax\n\t" \
+            "je      2f\n\t" \
+            "fstpl    (%esp,%ecx,8)\n\t" \
+            "fwait\n\t" \
+            "incl    %ecx\n\t" \
+            "jmp     1b\n\t" \
+            "2:\n\t" \
+            "movl    %ecx, -4(%ebp)\n\t" \
+            "call    " __ASM_NAME( #call ) "\n\t" \
+            "movl    -4(%ebp), %ecx\n\t" \
+            "fstpl   (%esp)\n\t"    /* save result */ \
+            "3:\n\t"                /* restore FPU stack */ \
+            "decl    %ecx\n\t" \
+            "fldl    (%esp,%ecx,8)\n\t" \
+            "cmpl    $0, %ecx\n\t" \
+            "jne     3b\n\t" \
+            "leave\n\t" \
+            __ASM_CFI(".cfi_def_cfa %esp,4\n\t") \
+            __ASM_CFI(".cfi_same_value %ebp\n\t") \
+            "ret")
 
-/*********************************************************************
- *		_CIacos (MSVCRT.@)
- */
-double CDECL _CIacos(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_acos(x);
-}
+#define CREATE_FPU_FUNC2(name, call) \
+    __ASM_GLOBAL_FUNC(name, \
+            "pushl   %ebp\n\t" \
+            __ASM_CFI(".cfi_adjust_cfa_offset 4\n\t") \
+            __ASM_CFI(".cfi_rel_offset %ebp,0\n\t") \
+            "movl    %esp, %ebp\n\t" \
+            __ASM_CFI(".cfi_def_cfa_register %ebp\n\t") \
+            "subl    $68, %esp\n\t" /* sizeof(double)*8 + sizeof(int) */ \
+            "fstpl   8(%esp)\n\t"   /* store function argument */ \
+            "fwait\n\t" \
+            "fstpl   (%esp)\n\t" \
+            "fwait\n\t" \
+            "movl    $2, %ecx\n\t"  /* empty FPU stack */ \
+            "1:\n\t" \
+            "fxam\n\t" \
+            "fstsw   %ax\n\t" \
+            "and     $0x4500, %ax\n\t" \
+            "cmp     $0x4100, %ax\n\t" \
+            "je      2f\n\t" \
+            "fstpl    (%esp,%ecx,8)\n\t" \
+            "fwait\n\t" \
+            "incl    %ecx\n\t" \
+            "jmp     1b\n\t" \
+            "2:\n\t" \
+            "movl    %ecx, -4(%ebp)\n\t" \
+            "call    " __ASM_NAME( #call ) "\n\t" \
+            "movl    -4(%ebp), %ecx\n\t" \
+            "fstpl   8(%esp)\n\t"   /* save result */ \
+            "3:\n\t"                /* restore FPU stack */ \
+            "decl    %ecx\n\t" \
+            "fldl    (%esp,%ecx,8)\n\t" \
+            "cmpl    $1, %ecx\n\t" \
+            "jne     3b\n\t" \
+            "leave\n\t" \
+            __ASM_CFI(".cfi_def_cfa %esp,4\n\t") \
+            __ASM_CFI(".cfi_same_value %ebp\n\t") \
+            "ret")
 
-/*********************************************************************
- *		_CIasin (MSVCRT.@)
- */
-double CDECL _CIasin(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_asin(x);
-}
+CREATE_FPU_FUNC1(_CIacos, MSVCRT_acos)
+CREATE_FPU_FUNC1(_CIasin, MSVCRT_asin)
+CREATE_FPU_FUNC1(_CIatan, MSVCRT_atan)
+CREATE_FPU_FUNC2(_CIatan2, MSVCRT_atan2)
+CREATE_FPU_FUNC1(_CIcos, MSVCRT_cos)
+CREATE_FPU_FUNC1(_CIcosh, MSVCRT_cosh)
+CREATE_FPU_FUNC1(_CIexp, MSVCRT_exp)
+CREATE_FPU_FUNC2(_CIfmod, MSVCRT_fmod)
+CREATE_FPU_FUNC1(_CIlog, MSVCRT_log)
+CREATE_FPU_FUNC1(_CIlog10, MSVCRT_log10)
+CREATE_FPU_FUNC2(_CIpow, MSVCRT_pow)
+CREATE_FPU_FUNC1(_CIsin, MSVCRT_sin)
+CREATE_FPU_FUNC1(_CIsinh, MSVCRT_sinh)
+CREATE_FPU_FUNC1(_CIsqrt, MSVCRT_sqrt)
+CREATE_FPU_FUNC1(_CItan, MSVCRT_tan)
+CREATE_FPU_FUNC1(_CItanh, MSVCRT_tanh)
 
-/*********************************************************************
- *		_CIatan (MSVCRT.@)
- */
-double CDECL _CIatan(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_atan(x);
-}
-
-/*********************************************************************
- *		_CIatan2 (MSVCRT.@)
- */
-double CDECL _CIatan2(void)
-{
-  FPU_DOUBLES(x,y);
-  return MSVCRT_atan2(x,y);
-}
-
-/*********************************************************************
- *		_CIcos (MSVCRT.@)
- */
-double CDECL _CIcos(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_cos(x);
-}
-
-/*********************************************************************
- *		_CIcosh (MSVCRT.@)
- */
-double CDECL _CIcosh(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_cosh(x);
-}
-
-/*********************************************************************
- *		_CIexp (MSVCRT.@)
- */
-double CDECL _CIexp(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_exp(x);
-}
-
-/*********************************************************************
- *		_CIfmod (MSVCRT.@)
- */
-double CDECL _CIfmod(void)
-{
-  FPU_DOUBLES(x,y);
-  return MSVCRT_fmod(x,y);
-}
-
-/*********************************************************************
- *		_CIlog (MSVCRT.@)
- */
-double CDECL _CIlog(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_log(x);
-}
-
-/*********************************************************************
- *		_CIlog10 (MSVCRT.@)
- */
-double CDECL _CIlog10(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_log10(x);
-}
-
-/*********************************************************************
- *		_CIpow (MSVCRT.@)
- */
-double CDECL _CIpow(void)
-{
-  FPU_DOUBLES(x,y);
-  return MSVCRT_pow(x,y);
-}
-
-/*********************************************************************
- *		_CIsin (MSVCRT.@)
- */
-double CDECL _CIsin(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_sin(x);
-}
-
-/*********************************************************************
- *		_CIsinh (MSVCRT.@)
- */
-double CDECL _CIsinh(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_sinh(x);
-}
-
-/*********************************************************************
- *		_CIsqrt (MSVCRT.@)
- */
-double CDECL _CIsqrt(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_sqrt(x);
-}
-
-/*********************************************************************
- *		_CItan (MSVCRT.@)
- */
-double CDECL _CItan(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_tan(x);
-}
-
-/*********************************************************************
- *		_CItanh (MSVCRT.@)
- */
-double CDECL _CItanh(void)
-{
-  FPU_DOUBLE(x);
-  return MSVCRT_tanh(x);
-}
-
-/*********************************************************************
- *                  _ftol   (MSVCRT.@)
- */
-LONGLONG CDECL MSVCRT__ftol(void)
-{
-    FPU_DOUBLE(x);
-    return (LONGLONG)x;
-}
+__ASM_GLOBAL_FUNC(MSVCRT__ftol,
+        "pushl   %ebp\n\t"
+        __ASM_CFI(".cfi_adjust_cfa_offset 4\n\t")
+        __ASM_CFI(".cfi_rel_offset %ebp,0\n\t")
+        "movl    %esp, %ebp\n\t"
+        __ASM_CFI(".cfi_def_cfa_register %ebp\n\t")
+        "subl    $12, %esp\n\t"     /* sizeof(LONGLONG) + 2*sizeof(WORD) */
+        "fnstcw  (%esp)\n\t"
+        "mov     (%esp), %ax\n\t"
+        "or      $0xc, %ax\n\t"
+        "mov     %ax, 2(%esp)\n\t"
+        "fldcw   2(%esp)\n\t"
+        "fistpq  4(%esp)\n\t"
+        "fldcw   (%esp)\n\t"
+        "movl    4(%esp), %eax\n\t"
+        "movl    8(%esp), %edx\n\t"
+        "leave\n\t"
+        __ASM_CFI(".cfi_def_cfa %esp,4\n\t")
+        __ASM_CFI(".cfi_same_value %ebp\n\t")
+        "ret")
 
 #endif /* defined(__GNUC__) && defined(__i386__) */
 
@@ -2600,11 +2557,7 @@ LDOUBLE CDECL MSVCR120_log2l(LDOUBLE x)
  */
 double CDECL MSVCR120_rint(double x)
 {
-#ifdef HAVE_RINT
     return rint(x);
-#else
-    return x >= 0 ? floor(x + 0.5) : ceil(x - 0.5);
-#endif
 }
 
 /*********************************************************************
@@ -2612,11 +2565,7 @@ double CDECL MSVCR120_rint(double x)
  */
 float CDECL MSVCR120_rintf(float x)
 {
-#ifdef HAVE_RINTF
     return rintf(x);
-#else
-    return MSVCR120_rint(x);
-#endif
 }
 
 /*********************************************************************
@@ -2632,11 +2581,7 @@ LDOUBLE CDECL MSVCR120_rintl(LDOUBLE x)
  */
 MSVCRT_long CDECL MSVCR120_lrint(double x)
 {
-#ifdef HAVE_LRINT
     return lrint(x);
-#else
-    return MSVCR120_rint(x);
-#endif
 }
 
 /*********************************************************************
@@ -2644,11 +2589,7 @@ MSVCRT_long CDECL MSVCR120_lrint(double x)
  */
 MSVCRT_long CDECL MSVCR120_lrintf(float x)
 {
-#ifdef HAVE_LRINTF
     return lrintf(x);
-#else
-    return MSVCR120_lrint(x);
-#endif
 }
 
 /*********************************************************************
@@ -2664,11 +2605,7 @@ MSVCRT_long CDECL MSVCR120_lrintl(LDOUBLE x)
  */
 MSVCRT_longlong CDECL MSVCR120_llrint(double x)
 {
-#ifdef HAVE_LLRINT
     return llrint(x);
-#else
-    return MSVCR120_rint(x);
-#endif
 }
 
 /*********************************************************************
@@ -2676,11 +2613,7 @@ MSVCRT_longlong CDECL MSVCR120_llrint(double x)
  */
 MSVCRT_longlong CDECL MSVCR120_llrintf(float x)
 {
-#ifdef HAVE_LLRINTF
     return llrintf(x);
-#else
-    return MSVCR120_llrint(x);
-#endif
 }
 
 /*********************************************************************

@@ -59,6 +59,7 @@
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(seh);
+WINE_DECLARE_DEBUG_CHANNEL(relay);
 
 static pthread_key_t teb_key;
 
@@ -1023,14 +1024,8 @@ NTSTATUS signal_alloc_thread( TEB **teb )
  */
 void signal_free_thread( TEB *teb )
 {
-    SIZE_T size;
+    SIZE_T size = 0;
 
-    if (teb->DeallocationStack)
-    {
-        size = 0;
-        NtFreeVirtualMemory( GetCurrentProcess(), &teb->DeallocationStack, &size, MEM_RELEASE );
-    }
-    size = 0;
     NtFreeVirtualMemory( NtCurrentProcess(), (void **)&teb, &size, MEM_RELEASE );
 }
 
@@ -1088,6 +1083,68 @@ void signal_init_process(void)
  error:
     perror("sigaction");
     exit(1);
+}
+
+
+struct startup_info
+{
+    LPTHREAD_START_ROUTINE entry;
+    void                  *arg;
+};
+
+static void thread_startup( void *param )
+{
+    struct startup_info *info = param;
+    call_thread_entry_point( info->entry, info->arg );
+}
+
+
+/***********************************************************************
+ *           signal_start_thread
+ */
+NTSTATUS signal_start_thread( LPTHREAD_START_ROUTINE entry, void *arg )
+{
+    NTSTATUS status;
+    struct startup_info info = { entry, arg };
+
+    if (!(status = wine_call_on_stack( attach_dlls, (void *)1, NtCurrentTeb()->Tib.StackBase )))
+    {
+        TRACE_(relay)( "\1Starting thread proc %p (arg=%p)\n", entry, arg );
+        wine_switch_to_stack( thread_startup, &info, NtCurrentTeb()->Tib.StackBase );
+    }
+    return status;
+}
+
+
+/***********************************************************************
+ *           start_process
+ */
+static void start_process( void *arg )
+{
+    CONTEXT *context = arg;
+    call_thread_entry_point( (LPTHREAD_START_ROUTINE)context->Gpr3, (void *)context->Gpr4 );
+}
+
+/**********************************************************************
+ *		signal_start_process
+ */
+NTSTATUS signal_start_process( LPTHREAD_START_ROUTINE entry, BOOL suspend )
+{
+    CONTEXT context = { 0 };
+    NTSTATUS status;
+
+    /* build the initial context */
+    context.ContextFlags = CONTEXT_FULL;
+    context.Gpr1 = (DWORD)NtCurrentTeb()->Tib.StackBase;
+    context.Gpr3 = (DWORD)kernel32_start_process;
+    context.Gpr4 = (DWORD)entry;
+    context.Iar  = (DWORD)call_thread_entry_point;
+
+    if (suspend) wait_suspend( &context );
+
+    if (!(wine_call_on_stack( attach_dlls, (void *)1, (void *)context.Gpr1 )))
+        wine_switch_to_stack( start_process, &context, (void *)context.Gpr1 );
+    return status;
 }
 
 

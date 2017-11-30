@@ -49,22 +49,16 @@ static HRESULT PROPVAR_ConvertFILETIME(const FILETIME *ft, PROPVARIANT *ppropvar
     switch (vt)
     {
         case VT_LPSTR:
-        {
-            static const char format[] = "%04d/%02d/%02d:%02d:%02d:%02d.%03d";
-
-            ppropvarDest->u.pszVal = HeapAlloc(GetProcessHeap(), 0,
-                                             sizeof(format));
+            ppropvarDest->u.pszVal = HeapAlloc(GetProcessHeap(), 0, 64);
             if (!ppropvarDest->u.pszVal)
                 return E_OUTOFMEMORY;
 
-            snprintf( ppropvarDest->u.pszVal, sizeof(format),
-                      format,
+            sprintf( ppropvarDest->u.pszVal, "%04d/%02d/%02d:%02d:%02d:%02d.%03d",
                       time.wYear, time.wMonth, time.wDay,
                       time.wHour, time.wMinute, time.wSecond,
                       time.wMilliseconds );
 
             return S_OK;
-        }
 
         default:
             FIXME("Unhandled target type: %d\n", vt);
@@ -230,6 +224,66 @@ HRESULT WINAPI PropVariantToUInt64(REFPROPVARIANT propvarIn, ULONGLONG *ret)
 
     hr = PROPVAR_ConvertNumber(propvarIn, 64, FALSE, &res);
     if (SUCCEEDED(hr)) *ret = (ULONGLONG)res;
+    return hr;
+}
+
+HRESULT WINAPI PropVariantToBoolean(REFPROPVARIANT propvarIn, BOOL *ret)
+{
+    static const WCHAR trueW[] = {'t','r','u','e',0};
+    static const WCHAR falseW[] = {'f','a','l','s','e',0};
+    static const WCHAR true2W[] = {'#','T','R','U','E','#',0};
+    static const WCHAR false2W[] = {'#','F','A','L','S','E','#',0};
+    LONGLONG res;
+    HRESULT hr;
+
+    TRACE("%p,%p\n", propvarIn, ret);
+
+    *ret = FALSE;
+
+    switch (propvarIn->vt)
+    {
+        case VT_BOOL:
+            *ret = propvarIn->u.boolVal == VARIANT_TRUE;
+            return S_OK;
+
+        case VT_LPWSTR:
+        case VT_BSTR:
+            if (!propvarIn->u.pwszVal)
+                return DISP_E_TYPEMISMATCH;
+
+            if (!lstrcmpiW(propvarIn->u.pwszVal, trueW) || !lstrcmpW(propvarIn->u.pwszVal, true2W))
+            {
+                *ret = TRUE;
+                return S_OK;
+            }
+
+            if (!lstrcmpiW(propvarIn->u.pwszVal, falseW) || !lstrcmpW(propvarIn->u.pwszVal, false2W))
+            {
+                *ret = FALSE;
+                return S_OK;
+            }
+            break;
+
+         case VT_LPSTR:
+            if (!propvarIn->u.pszVal)
+                return DISP_E_TYPEMISMATCH;
+
+            if (!lstrcmpiA(propvarIn->u.pszVal, "true") || !lstrcmpA(propvarIn->u.pszVal, "#TRUE#"))
+            {
+                *ret = TRUE;
+                return S_OK;
+            }
+
+            if (!lstrcmpiA(propvarIn->u.pszVal, "false") || !lstrcmpA(propvarIn->u.pszVal, "#FALSE#"))
+            {
+                *ret = FALSE;
+                return S_OK;
+            }
+            break;
+    }
+
+    hr = PROPVAR_ConvertNumber(propvarIn, 64, TRUE, &res);
+    *ret = !!res;
     return hr;
 }
 

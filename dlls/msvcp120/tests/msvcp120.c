@@ -276,6 +276,8 @@ static void (__cdecl *p_threads__Mtx_unlock)(void *mtx);
 
 static BOOLEAN (WINAPI *pCreateSymbolicLinkA)(LPCSTR,LPCSTR,DWORD);
 
+static size_t (__cdecl *p_vector_base_v4__Segment_index_of)(size_t);
+
 static HMODULE msvcp;
 #define SETNOFAIL(x,y) x = (void*)GetProcAddress(msvcp,y)
 #define SET(x,y) do { SETNOFAIL(x,y); ok(x != NULL, "Export '%s' not found\n", y); } while(0)
@@ -391,6 +393,8 @@ static BOOL init(void)
                 "?_Mtx_lock@threads@stdext@@YAXPEAX@Z");
         SET(p_threads__Mtx_unlock,
                 "?_Mtx_unlock@threads@stdext@@YAXPEAX@Z");
+        SET(p_vector_base_v4__Segment_index_of,
+                "?_Segment_index_of@_Concurrent_vector_base_v4@details@Concurrency@@KA_K_K@Z");
     } else {
         SET(p_tr2_sys__File_size,
                 "?_File_size@sys@tr2@std@@YA_KPBD@Z");
@@ -460,6 +464,8 @@ static BOOL init(void)
                 "?_Mtx_lock@threads@stdext@@YAXPAX@Z");
         SET(p_threads__Mtx_unlock,
                 "?_Mtx_unlock@threads@stdext@@YAXPAX@Z");
+        SET(p_vector_base_v4__Segment_index_of,
+                "?_Segment_index_of@_Concurrent_vector_base_v4@details@Concurrency@@KAII@Z");
 #ifdef __i386__
         SET(p_i386_Thrd_current,
                 "_Thrd_current");
@@ -570,6 +576,15 @@ static void test__Xtime_diff_to_millis2(void)
         {0, 0, 0, 1234000001, 1235},
         {0, 0, 0, 1234000009, 1235},
         {0, 0, -1, 0, 0},
+        {1, 0, 0, 0, 0},
+        {0, 1000000000, 0, 0, 0},
+        {0x7FFFFFFF / 1000, 0, 0, 0, 0},
+        {2147484, 0, 0, 0, 0}, /* ceil(0x80000000 / 1000) */
+        {2147485, 0, 0, 0, 0}, /* ceil(0x80000000 / 1000) + 1*/
+        {0, 0, 0x7FFFFFFF / 1000, 0, 2147483000},
+        {0, 0, 0x7FFFFFFF / 1000, 647000000, 0x7FFFFFFF}, /* max */
+        {0, 0, 0x7FFFFFFF / 1000, 647000001, -2147483648}, /* overflow. */
+        {0, 0, 2147484, 0, -2147483296}, /* ceil(0x80000000 / 1000), overflow*/
         {0, 0, 0, -10000000, 0},
         {0, 0, -1, -100000000, 0},
         {-1, 0, 0, 0, 1000},
@@ -577,7 +592,18 @@ static void test__Xtime_diff_to_millis2(void)
         {-1, -100000000, 0, 0, 1100},
         {0, 0, -1, 2000000000, 1000},
         {0, 0, -2, 2000000000, 0},
-        {0, 0, -2, 2100000000, 100}
+        {0, 0, -2, 2100000000, 100},
+        {0, 0, _I64_MAX / 1000, 0, -808}, /* Still fits in a signed 64 bit number */
+        {0, 0, _I64_MAX / 1000, 1000000000, 192}, /* Overflows a signed 64 bit number */
+        {0, 0, (((ULONGLONG)0x80000000 << 32) | 0x1000) / 1000, 1000000000, 4192}, /* 64 bit overflow */
+        {_I64_MAX - 2, 0, _I64_MAX, 0, 2000}, /* Not an overflow */
+        {_I64_MAX, 0, _I64_MAX - 2, 0, 0}, /* Not an overflow */
+
+        /* October 11th 2017, 12:34:59 UTC */
+        {1507725144, 983274000, 0, 0, 0},
+        {0, 0, 1507725144, 983274000, 191624088},
+        {1507725144, 983274000, 1507725145, 983274000, 1000},
+        {1507725145, 983274000, 1507725145, 983274000, 0},
     };
     int i;
     MSVCRT_long ret;
@@ -2093,6 +2119,35 @@ static void test_threads__Mtx(void)
     p_threads__Mtx_delete(mtx);
 }
 
+static void test_vector_base_v4__Segment_index_of(void)
+{
+    size_t i;
+    size_t ret;
+    struct {
+        size_t x;
+        size_t expect;
+    } tests[] = {
+        {0, 0},
+        {1, 0},
+        {2, 1},
+        {3, 1},
+        {4, 2},
+        {7, 2},
+        {8, 3},
+        {15, 3},
+        {16, 4},
+        {31, 4},
+        {32, 5},
+        {~0, 8*sizeof(void*)-1}
+    };
+
+    for(i=0; i<sizeof(tests) / sizeof(tests[0]); i++) {
+        ret = p_vector_base_v4__Segment_index_of(tests[i].x);
+        ok(ret == tests[i].expect, "expected %ld, got %ld for %ld\n",
+            (long)tests[i].expect, (long)ret, (long)tests[i].x);
+    }
+}
+
 START_TEST(msvcp120)
 {
     if(!init()) return;
@@ -2125,6 +2180,8 @@ START_TEST(msvcp120)
     test_cnd();
     test__Pad();
     test_threads__Mtx();
+
+    test_vector_base_v4__Segment_index_of();
 
     test_vbtable_size_exports();
 

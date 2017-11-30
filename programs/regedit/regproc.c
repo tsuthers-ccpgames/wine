@@ -518,16 +518,27 @@ static void prepare_hex_string_data(struct parser *parser)
 {
     if (parser->data_type == REG_EXPAND_SZ || parser->data_type == REG_MULTI_SZ)
     {
-        BYTE *data = parser->data;
-
-        if (data[parser->data_size - 1] != 0)
+        if (parser->is_unicode)
         {
-            data[parser->data_size] = 0;
-            parser->data_size++;
+            WCHAR *data = parser->data;
+            DWORD len = parser->data_size / sizeof(WCHAR);
+
+            if (data[len - 1] != 0)
+            {
+                data[len] = 0;
+                parser->data_size += sizeof(WCHAR);
+            }
         }
-
-        if (!parser->is_unicode)
+        else
         {
+            BYTE *data = parser->data;
+
+            if (data[parser->data_size - 1] != 0)
+            {
+                data[parser->data_size] = 0;
+                parser->data_size++;
+            }
+
             parser->data = GetWideStringN(parser->data, parser->data_size, &parser->data_size);
             parser->data_size *= sizeof(WCHAR);
             heap_free(data);
@@ -708,6 +719,8 @@ static WCHAR *delete_key_state(struct parser *parser, WCHAR *pos)
 {
     WCHAR *p = pos;
 
+    close_key(parser);
+
     if (*p == 'H' || *p == 'h')
         delete_registry_key(p);
 
@@ -748,7 +761,7 @@ static WCHAR *quoted_value_name_state(struct parser *parser, WCHAR *pos)
 
 invalid:
     set_state(parser, LINE_START);
-    return p;
+    return val_name;
 }
 
 /* handler for parser DATA_START state */
@@ -872,6 +885,9 @@ static WCHAR *hex_data_state(struct parser *parser, WCHAR *pos)
 {
     WCHAR *line = pos;
 
+    if (!*line)
+        goto set_value;
+
     if (!convert_hex_csv_to_hex(parser, &line))
         goto invalid;
 
@@ -883,6 +899,7 @@ static WCHAR *hex_data_state(struct parser *parser, WCHAR *pos)
 
     prepare_hex_string_data(parser);
 
+set_value:
     set_state(parser, SET_VALUE);
     return line;
 
@@ -1230,11 +1247,12 @@ static size_t export_value_name(FILE *fp, WCHAR *name, size_t len, BOOL unicode)
 
 static void export_string_data(WCHAR **buf, WCHAR *data, size_t size)
 {
-    size_t len, line_len;
+    size_t len = 0, line_len;
     WCHAR *str;
     static const WCHAR fmt[] = {'"','%','s','"',0};
 
-    len = size / sizeof(WCHAR) - 1;
+    if (size)
+        len = size / sizeof(WCHAR) - 1;
     str = REGPROC_escape_string(data, len, &line_len);
     *buf = heap_xalloc((line_len + 3) * sizeof(WCHAR));
     sprintfW(*buf, fmt, str);
@@ -1282,6 +1300,8 @@ static void export_hex_data(FILE *fp, WCHAR **buf, DWORD type, DWORD line_len,
 
     line_len += export_hex_data_type(fp, type, unicode);
 
+    if (!size) return;
+
     if (!unicode && (type == REG_EXPAND_SZ || type == REG_MULTI_SZ))
         data = GetMultiByteStringN(data, size / sizeof(WCHAR), &size);
 
@@ -1325,8 +1345,12 @@ static void export_data(FILE *fp, WCHAR *value_name, DWORD value_len, DWORD type
         export_string_data(&buf, data, size);
         break;
     case REG_DWORD:
-        export_dword_data(&buf, data);
-        break;
+        if (size)
+        {
+            export_dword_data(&buf, data);
+            break;
+        }
+        /* fall through */
     case REG_NONE:
     case REG_EXPAND_SZ:
     case REG_BINARY:
@@ -1336,8 +1360,12 @@ static void export_data(FILE *fp, WCHAR *value_name, DWORD value_len, DWORD type
         break;
     }
 
-    REGPROC_write_line(fp, buf, unicode);
-    heap_free(buf);
+    if (size || type == REG_SZ)
+    {
+        REGPROC_write_line(fp, buf, unicode);
+        heap_free(buf);
+    }
+
     export_newline(fp, unicode);
 }
 

@@ -171,6 +171,7 @@ enum wined3d_sm4_opcode
     WINED3D_SM4_OP_MOVC                             = 0x37,
     WINED3D_SM4_OP_MUL                              = 0x38,
     WINED3D_SM4_OP_NE                               = 0x39,
+    WINED3D_SM4_OP_NOP                              = 0x3a,
     WINED3D_SM4_OP_NOT                              = 0x3b,
     WINED3D_SM4_OP_OR                               = 0x3c,
     WINED3D_SM4_OP_RESINFO                          = 0x3d,
@@ -332,6 +333,8 @@ enum wined3d_sm4_register_type
     WINED3D_SM5_RT_COVERAGE                = 0x23,
     WINED3D_SM5_RT_LOCAL_THREAD_INDEX      = 0x24,
     WINED3D_SM5_RT_GS_INSTANCE_ID          = 0x25,
+    WINED3D_SM5_RT_DEPTHOUT_GREATER_EQUAL  = 0x26,
+    WINED3D_SM5_RT_DEPTHOUT_LESS_EQUAL     = 0x27,
 };
 
 enum wined3d_sm4_output_primitive_type
@@ -937,6 +940,7 @@ static const struct wined3d_sm4_opcode_info opcode_table[] =
     {WINED3D_SM4_OP_MOVC,                             WINED3DSIH_MOVC,                             "f",    "uff"},
     {WINED3D_SM4_OP_MUL,                              WINED3DSIH_MUL,                              "f",    "ff"},
     {WINED3D_SM4_OP_NE,                               WINED3DSIH_NE,                               "u",    "ff"},
+    {WINED3D_SM4_OP_NOP,                              WINED3DSIH_NOP,                              "",     ""},
     {WINED3D_SM4_OP_NOT,                              WINED3DSIH_NOT,                              "u",    "u"},
     {WINED3D_SM4_OP_OR,                               WINED3DSIH_OR,                               "u",    "uu"},
     {WINED3D_SM4_OP_RESINFO,                          WINED3DSIH_RESINFO,                          "f",    "iR"},
@@ -1146,13 +1150,15 @@ static const enum wined3d_shader_register_type register_type_table[] =
     /* WINED3D_SM5_RT_COVERAGE */                WINED3DSPR_COVERAGE,
     /* WINED3D_SM5_RT_LOCAL_THREAD_INDEX */      WINED3DSPR_LOCALTHREADINDEX,
     /* WINED3D_SM5_RT_GS_INSTANCE_ID */          WINED3DSPR_GSINSTID,
+    /* WINED3D_SM5_RT_DEPTHOUT_GREATER_EQUAL */  WINED3DSPR_DEPTHOUTGE,
+    /* WINED3D_SM5_RT_DEPTHOUT_LESS_EQUAL */     WINED3DSPR_DEPTHOUTLE,
 };
 
 static const struct wined3d_sm4_opcode_info *get_opcode_info(enum wined3d_sm4_opcode opcode)
 {
     unsigned int i;
 
-    for (i = 0; i < sizeof(opcode_table) / sizeof(*opcode_table); ++i)
+    for (i = 0; i < ARRAY_SIZE(opcode_table); ++i)
     {
         if (opcode == opcode_table[i].opcode) return &opcode_table[i];
     }
@@ -1380,7 +1386,7 @@ static BOOL shader_sm4_read_param(struct wined3d_sm4_data *priv, const DWORD **p
     token = *(*ptr)++;
 
     register_type = (token & WINED3D_SM4_REGISTER_TYPE_MASK) >> WINED3D_SM4_REGISTER_TYPE_SHIFT;
-    if (register_type >= sizeof(register_type_table) / sizeof(*register_type_table)
+    if (register_type >= ARRAY_SIZE(register_type_table)
             || register_type_table[register_type] == ~0u)
     {
         FIXME("Unhandled register type %#x.\n", register_type);

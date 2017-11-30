@@ -41,6 +41,8 @@
 static INT (WINAPI *pLCIDToLocaleName)(LCID,LPWSTR,INT,DWORD);
 static LANGID (WINAPI *pGetUserDefaultUILanguage)(void);
 
+static BOOL is_ie9plus;
+
 static const char doc_blank[] = "<html></html>";
 static const char doc_str1[] = "<html><body>test</body></html>";
 static const char range_test_str[] =
@@ -1091,15 +1093,26 @@ static IHTMLDOMAttribute2 *_get_attr2_iface(unsigned line, IUnknown *unk)
 static void _test_node_name(unsigned line, IUnknown *unk, const char *exname)
 {
     IHTMLDOMNode *node = _get_node_iface(line, unk);
+    IHTMLElement6 *elem;
     BSTR name;
     HRESULT hres;
 
     hres = IHTMLDOMNode_get_nodeName(node, &name);
-    IHTMLDOMNode_Release(node);
     ok_(__FILE__, line) (hres == S_OK, "get_nodeName failed: %08x\n", hres);
     ok_(__FILE__, line) (!strcmp_wa(name, exname), "got name: %s, expected %s\n", wine_dbgstr_w(name), exname);
-
     SysFreeString(name);
+
+    hres = IHTMLDOMNode_QueryInterface(node, &IID_IHTMLElement6, (void**)&elem);
+    if(SUCCEEDED(hres)) {
+        hres = IHTMLElement6_get_nodeName(elem, &name);
+        ok_(__FILE__, line) (hres == S_OK, "(elem) get_nodeName failed: %08x\n", hres);
+        ok_(__FILE__, line) (!strcmp_wa(name, exname), "(elem) got name: %s, expected %s\n",
+                             wine_dbgstr_w(name), exname);
+        SysFreeString(name);
+        IHTMLElement6_Release(elem);
+    }
+
+    IHTMLDOMNode_Release(node);
 }
 
 #define get_owner_doc(u) _get_owner_doc(__LINE__,u)
@@ -1157,15 +1170,26 @@ static IHTMLDOMNode *_clone_node(unsigned line, IUnknown *unk, VARIANT_BOOL deep
 static void _test_elem_tag(unsigned line, IUnknown *unk, const char *extag)
 {
     IHTMLElement *elem = _get_elem_iface(line, unk);
+    IHTMLElement6 *elem6;
     BSTR tag;
     HRESULT hres;
 
     hres = IHTMLElement_get_tagName(elem, &tag);
-    IHTMLElement_Release(elem);
     ok_(__FILE__, line) (hres == S_OK, "get_tagName failed: %08x\n", hres);
     ok_(__FILE__, line) (!strcmp_wa(tag, extag), "got tag: %s, expected %s\n", wine_dbgstr_w(tag), extag);
-
     SysFreeString(tag);
+
+    hres = IHTMLElement_QueryInterface(elem, &IID_IHTMLElement6, (void**)&elem6);
+    if(SUCCEEDED(hres)) {
+        hres = IHTMLElement6_get_tagName(elem6, &tag);
+        ok_(__FILE__, line)(hres == S_OK, "(elem6) get_tagName failed: %08x\n", hres);
+        ok_(__FILE__, line)(!strcmp_wa(tag, extag), "(elem6) got tag: %s, expected %s\n",
+                            wine_dbgstr_w(tag), extag);
+        SysFreeString(tag);
+        IHTMLElement6_Release(elem6);
+    }
+
+    IHTMLElement_Release(elem);
 }
 
 #define test_elem_type(ifc,t) _test_elem_type(__LINE__,ifc,t)
@@ -6670,7 +6694,8 @@ static void test_xmlhttprequest(IHTMLWindow5 *window)
     hres = IHTMLXMLHttpRequestFactory_create(factory, &xml);
     ok(hres == S_OK, "create failed: %08x\n", hres);
     ok(xml != NULL, "xml == NULL\n");
-    test_disp((IUnknown*)xml, &DIID_DispHTMLXMLHttpRequest, &CLSID_HTMLXMLHttpRequest, "[object]");
+    if(is_ie9plus)
+        test_disp((IUnknown*)xml, &DIID_DispHTMLXMLHttpRequest, &CLSID_HTMLXMLHttpRequest, "[object]");
 
     IHTMLXMLHttpRequest_Release(xml);
     IHTMLXMLHttpRequestFactory_Release(factory);
@@ -6703,10 +6728,12 @@ static void test_window(IHTMLDocument2 *doc)
     ok(hres == S_OK, "get_document failed: %08x\n", hres);
     ok(doc2 != NULL, "doc2 == NULL\n");
 
-    test_ifaces((IUnknown*)doc2, doc_node_iids);
+    if(is_ie9plus)
+        test_ifaces((IUnknown*)doc2, doc_node_iids);
     test_disp((IUnknown*)doc2, &DIID_DispHTMLDocument, &CLSID_HTMLDocument, "[object]");
 
-    test_ifaces((IUnknown*)doc, doc_obj_iids);
+    if(is_ie9plus)
+        test_ifaces((IUnknown*)doc, doc_obj_iids);
     test_disp((IUnknown*)doc, &DIID_DispHTMLDocument, &CLSID_HTMLDocument, "[object]");
 
     unk = (void*)0xdeadbeef;
@@ -7715,7 +7742,8 @@ static void doc_write(IHTMLDocument2 *doc, BOOL ln, const char *text)
     dim.lLbound = 0;
     dim.cElements = 1;
     sa = SafeArrayCreate(VT_VARIANT, 1, &dim);
-    SafeArrayAccessData(sa, (void**)&var);
+    hres = SafeArrayAccessData(sa, (void**)&var);
+    ok(hres == S_OK, "Failed to access array data: %08x\n", hres);
     V_VT(var) = VT_BSTR;
     V_BSTR(var) = a2bstr(text);
     SafeArrayUnaccessData(sa);
@@ -7737,7 +7765,8 @@ static void doc_complex_write(IHTMLDocument2 *doc)
     HRESULT hres;
 
     sa = SafeArrayCreate(VT_VARIANT, 1, &dim);
-    SafeArrayAccessData(sa, (void**)&args);
+    hres = SafeArrayAccessData(sa, (void**)&args);
+    ok(hres == S_OK, "Failed to access array data: %08x\n", hres);
 
     V_VT(args) = VT_BSTR;
     V_BSTR(args) = a2bstr("<body i4val=\"");
@@ -9446,6 +9475,8 @@ static void test_create_elems(IHTMLDocument2 *doc)
             test_comment_text((IUnknown*)node2, "<!--testing-->");
             IHTMLDOMNode_Release(node2);
 
+            test_elem_getelembytag((IUnknown*)comment, ET_COMMENT, 0, NULL);
+
             IHTMLDOMNode_Release(comment);
         }
 
@@ -9857,6 +9888,7 @@ static void test_frameset(IHTMLDocument2 *doc)
 {
     IHTMLWindow2 *window;
     IHTMLFramesCollection2 *frames;
+    IHTMLDocument6 *doc6;
     IHTMLElement *elem;
     HRESULT hres;
 
@@ -9886,6 +9918,29 @@ static void test_frameset(IHTMLDocument2 *doc)
     /* getElementById with node name attributes */
     elem = get_doc_elem_by_id(doc, "nm1");
     test_elem_id((IUnknown*)elem, "fr1");
+
+    hres = IHTMLDocument2_QueryInterface(doc, &IID_IHTMLDocument6, (void**)&doc6);
+    if(SUCCEEDED(hres)) {
+        IHTMLElement2 *elem2;
+        BSTR str;
+
+        str = a2bstr("nm1");
+        hres = IHTMLDocument6_getElementById(doc6, str, &elem2);
+        ok(hres == S_OK, "getElementById failed: %08x\n", hres);
+        ok(!elem2, "elem = %p\n", elem2);
+        SysFreeString(str);
+
+        str = a2bstr("fr1");
+        hres = IHTMLDocument6_getElementById(doc6, str, &elem2);
+        ok(hres == S_OK, "getElementById failed: %08x\n", hres);
+        ok(elem2 != NULL, "elem2 is NULL\n");
+        test_elem_id((IUnknown*)elem2, "fr1");
+        SysFreeString(str);
+
+        IHTMLDocument6_Release(doc6);
+    }else {
+        win_skip("IHTMLDocument6 not supported\n");
+    }
 
     test_framebase((IUnknown*)elem);
     test_framebase_name(elem, "nm1");
@@ -10530,12 +10585,107 @@ static void run_domtest(const char *str, domtest_t test)
        "ref = %d\n", ref);
 }
 
+static float expected_document_mode;
+
+static void test_document_mode(IHTMLDocument2 *doc2)
+{
+    IEventTarget *event_target;
+    IHTMLDocument2 *doc_node;
+    IHTMLDocument6 *doc;
+    IHTMLElement *body;
+    VARIANT v;
+    HRESULT hres;
+
+    hres = IHTMLDocument2_QueryInterface(doc2, &IID_IHTMLDocument6, (void**)&doc);
+    ok(hres == S_OK, "Could not get IHTMLDocument6 interface: %08x\n", hres);
+
+    V_VT(&v) = VT_EMPTY;
+    hres = IHTMLDocument6_get_documentMode(doc, &v);
+    ok(hres == S_OK, "get_documentMode failed: %08x\n", hres);
+    ok(V_VT(&v) == VT_R4, "V_VT(documentMode) = %u\n", V_VT(&v));
+    ok(V_R4(&v) == expected_document_mode, "documentMode = %f\n", V_R4(&v));
+    IHTMLDocument6_Release(doc);
+
+    doc_node = get_doc_node(doc2);
+
+    hres = IHTMLDocument2_QueryInterface(doc_node, &IID_IEventTarget, (void**)&event_target);
+    if(expected_document_mode >= 9) {
+        ok(hres == S_OK, "Could not get IEventTarget interface: %08x\n", hres);
+        IEventTarget_Release(event_target);
+    }else {
+        ok(hres == E_NOINTERFACE, "QI(IEventTarget) returned %08x\n", hres);
+    }
+
+    IHTMLDocument2_Release(doc_node);
+
+
+    body = doc_get_body(doc2);
+
+    hres = IHTMLElement_QueryInterface(body, &IID_IEventTarget, (void**)&event_target);
+    if(expected_document_mode >= 9) {
+        ok(hres == S_OK, "Could not get IEventTarget interface: %08x\n", hres);
+        IEventTarget_Release(event_target);
+    }else {
+        ok(hres == E_NOINTERFACE, "QI(IEventTarget) returned %08x\n", hres);
+    }
+
+    IHTMLElement_Release(body);
+}
+
 static void test_quirks_mode(void)
 {
     run_domtest("<html></html>", check_quirks_mode);
     run_domtest("<!DOCTYPE html>\n<html></html>", check_strict_mode);
     run_domtest("<!-- comment --><!DOCTYPE html>\n<html></html>", check_quirks_mode);
     run_domtest("<html><body></body></html>", test_quirks_mode_offsetHeight);
+
+    expected_document_mode = 5;
+    run_domtest("<html><body></body></html>", test_document_mode);
+
+    if(!is_ie9plus)
+        return;
+
+    expected_document_mode = 9;
+    run_domtest("<!DOCTYPE html>\n"
+                "<html>"
+                " <head>"
+                "  <meta http-equiv=\"x-ua-compatible\" content=\"IE=9\" />"
+                " </head>"
+                " <body>"
+                " </body>"
+                "</html>", test_document_mode);
+
+    expected_document_mode = 8;
+    run_domtest("<!DOCTYPE html>\n"
+                "<html>"
+                " <head>"
+                "  <meta http-equiv=\"x-ua-compatible\" content=\"IE=8\" />"
+                "  <meta http-equiv=\"x-ua-compatible\" content=\"IE=9\" />"
+                " </head>"
+                " <body>"
+                " </body>"
+                "</html>", test_document_mode);
+}
+
+static void check_ie(void)
+{
+    IHTMLDocument2 *doc;
+    IHTMLDocument7 *doc7;
+    HRESULT hres;
+
+    doc = create_document();
+    if(!doc)
+        return;
+
+    hres = IHTMLDocument2_QueryInterface(doc, &IID_IHTMLDocument7, (void**)&doc7);
+    if(SUCCEEDED(hres)) {
+        is_ie9plus = TRUE;
+        IHTMLDocument7_Release(doc7);
+    }
+
+    trace("is_ie9plus %x\n", is_ie9plus);
+
+    IHTMLDocument2_Release(doc);
 }
 
 START_TEST(dom)
@@ -10547,6 +10697,8 @@ START_TEST(dom)
     CoInitialize(NULL);
     container_hwnd = CreateWindowA("static", NULL, WS_POPUP|WS_VISIBLE,
             CW_USEDEFAULT, CW_USEDEFAULT, 500, 500, NULL, NULL, NULL, NULL);
+
+    check_ie();
 
     run_domtest(doc_str1, test_doc_elem);
     run_domtest(doc_str1, test_get_set_attr);

@@ -238,15 +238,13 @@ static LRESULT call_window_proc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRES
     USER_CheckNotLock();
 
     hwnd = WIN_GetFullHandle( hwnd );
-    if (TRACE_ON(relay))
-        DPRINTF( "%04x:Call window proc %p (hwnd=%p,msg=%s,wp=%08lx,lp=%08lx)\n",
-                 GetCurrentThreadId(), proc, hwnd, SPY_GetMsgName(msg, hwnd), wp, lp );
+    TRACE_(relay)( "\1Call window proc %p (hwnd=%p,msg=%s,wp=%08lx,lp=%08lx)\n",
+                   proc, hwnd, SPY_GetMsgName(msg, hwnd), wp, lp );
 
     *result = WINPROC_wrapper( proc, hwnd, msg, wp, lp );
 
-    if (TRACE_ON(relay))
-        DPRINTF( "%04x:Ret  window proc %p (hwnd=%p,msg=%s,wp=%08lx,lp=%08lx) retval=%08lx\n",
-                 GetCurrentThreadId(), proc, hwnd, SPY_GetMsgName(msg, hwnd), wp, lp, *result );
+    TRACE_(relay)( "\1Ret  window proc %p (hwnd=%p,msg=%s,wp=%08lx,lp=%08lx) retval=%08lx\n",
+                   proc, hwnd, SPY_GetMsgName(msg, hwnd), wp, lp, *result );
     return *result;
 }
 
@@ -259,16 +257,14 @@ static LRESULT call_dialog_proc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRES
     USER_CheckNotLock();
 
     hwnd = WIN_GetFullHandle( hwnd );
-    if (TRACE_ON(relay))
-        DPRINTF( "%04x:Call dialog proc %p (hwnd=%p,msg=%s,wp=%08lx,lp=%08lx)\n",
-                 GetCurrentThreadId(), proc, hwnd, SPY_GetMsgName(msg, hwnd), wp, lp );
+    TRACE_(relay)( "\1Call dialog proc %p (hwnd=%p,msg=%s,wp=%08lx,lp=%08lx)\n",
+                   proc, hwnd, SPY_GetMsgName(msg, hwnd), wp, lp );
 
     ret = WINPROC_wrapper( proc, hwnd, msg, wp, lp );
     *result = GetWindowLongPtrW( hwnd, DWLP_MSGRESULT );
 
-    if (TRACE_ON(relay))
-        DPRINTF( "%04x:Ret  dialog proc %p (hwnd=%p,msg=%s,wp=%08lx,lp=%08lx) retval=%08lx result=%08lx\n",
-                 GetCurrentThreadId(), proc, hwnd, SPY_GetMsgName(msg, hwnd), wp, lp, ret, *result );
+    TRACE_(relay)( "\1Ret  dialog proc %p (hwnd=%p,msg=%s,wp=%08lx,lp=%08lx) retval=%08lx result=%08lx\n",
+                   proc, hwnd, SPY_GetMsgName(msg, hwnd), wp, lp, ret, *result );
     return ret;
 }
 
@@ -460,7 +456,7 @@ LRESULT WINPROC_CallProcAtoW( winproc_callback_t callback, HWND hwnd, UINT msg, 
             {
                 len = 0;
                 if (*result)
-                    RtlUnicodeToMultiByteN( str, wParam - 1, &len, ptr, strlenW(ptr) * sizeof(WCHAR) );
+                    RtlUnicodeToMultiByteN( str, wParam - 1, &len, ptr, ret * sizeof(WCHAR) );
                 str[len] = 0;
                 *result = len;
             }
@@ -682,7 +678,7 @@ static LRESULT WINPROC_CallProcWtoA( winproc_callback_t callback, HWND hwnd, UIN
             {
                 if (*result)
                 {
-                    RtlMultiByteToUnicodeN( (LPWSTR)lParam, wParam*sizeof(WCHAR), &len, ptr, strlen(ptr)+1 );
+                    RtlMultiByteToUnicodeN( (LPWSTR)lParam, wParam*sizeof(WCHAR), &len, ptr, ret + 1 );
                     *result = len/sizeof(WCHAR) - 1;  /* do not count terminating null */
                 }
                 ((LPWSTR)lParam)[*result] = 0;

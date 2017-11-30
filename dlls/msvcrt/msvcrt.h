@@ -539,6 +539,28 @@ struct MSVCRT___JUMP_BUFFER
     unsigned long Fpscr;
     unsigned long long D[8];
 };
+#elif defined(__aarch64__)
+struct MSVCRT___JUMP_BUFFER
+{
+    unsigned __int64 Frame;
+    unsigned __int64 Reserved;
+    unsigned __int64 X19;
+    unsigned __int64 X20;
+    unsigned __int64 X21;
+    unsigned __int64 X22;
+    unsigned __int64 X23;
+    unsigned __int64 X24;
+    unsigned __int64 X25;
+    unsigned __int64 X26;
+    unsigned __int64 X27;
+    unsigned __int64 X28;
+    unsigned __int64 Fp;
+    unsigned __int64 Lr;
+    unsigned __int64 Sp;
+    unsigned long Fpcr;
+    unsigned long Fpsr;
+    double D[8];
+};
 #endif /* __i386__ */
 
 struct MSVCRT__diskfree_t {
@@ -719,6 +741,9 @@ struct MSVCRT__stat64 {
 #define MSVCRT_SEEK_SET  0
 #define MSVCRT_SEEK_CUR  1
 #define MSVCRT_SEEK_END  2
+
+#define MSVCRT_NO_CONSOLE_FD (-2)
+#define MSVCRT_NO_CONSOLE ((HANDLE)MSVCRT_NO_CONSOLE_FD)
 
 #define MSVCRT_STDIN_FILENO  0
 #define MSVCRT_STDOUT_FILENO 1
@@ -1047,10 +1072,10 @@ MSVCRT_FILE*   __cdecl MSVCRT__wfdopen(int, const MSVCRT_wchar_t *);
 int            __cdecl MSVCRT_vsnprintf(char *str, MSVCRT_size_t len, const char *format, __ms_va_list valist);
 int            __cdecl MSVCRT_vsnwprintf(MSVCRT_wchar_t *str, MSVCRT_size_t len,
                                        const MSVCRT_wchar_t *format, __ms_va_list valist );
-int            __cdecl MSVCRT__snwprintf(MSVCRT_wchar_t*, unsigned int, const MSVCRT_wchar_t*, ...);
-int            __cdecl MSVCRT_sprintf(char*,const char*,...);
-int            __cdecl MSVCRT__snprintf(char*,unsigned int,const char*,...);
-int            __cdecl MSVCRT__scprintf(const char*,...);
+int            WINAPIV MSVCRT__snwprintf(MSVCRT_wchar_t*, unsigned int, const MSVCRT_wchar_t*, ...);
+int            WINAPIV MSVCRT_sprintf(char*,const char*,...);
+int            WINAPIV MSVCRT__snprintf(char*,unsigned int,const char*,...);
+int            WINAPIV MSVCRT__scprintf(const char*,...);
 int            __cdecl MSVCRT_raise(int sig);
 int            __cdecl MSVCRT__set_printf_count_output(int);
 
@@ -1088,12 +1113,14 @@ char* __cdecl    MSVCRT__strnset(char*,int,MSVCRT_size_t);
 char* __cdecl    _strset(char*,int);
 int __cdecl      _ungetch(int);
 int __cdecl      _cputs(const char*);
-int __cdecl      _cprintf(const char*,...);
-int __cdecl      _cwprintf(const MSVCRT_wchar_t*,...);
+int WINAPIV      _cprintf(const char*,...);
+int WINAPIV      _cwprintf(const MSVCRT_wchar_t*,...);
 char*** __cdecl  MSVCRT___p__environ(void);
 int*    __cdecl  __p___mb_cur_max(void);
 unsigned int*  __cdecl __p__fmode(void);
 MSVCRT_wchar_t* __cdecl MSVCRT__wcsdup(const MSVCRT_wchar_t*);
+MSVCRT_size_t __cdecl MSVCRT_strnlen(const char *,MSVCRT_size_t);
+MSVCRT_size_t __cdecl MSVCRT_wcsnlen(const MSVCRT_wchar_t*,MSVCRT_size_t);
 MSVCRT_wchar_t*** __cdecl MSVCRT___p__wenviron(void);
 INT     __cdecl MSVCRT_wctomb(char*,MSVCRT_wchar_t);
 char*   __cdecl MSVCRT__strdate(char* date);
@@ -1143,7 +1170,10 @@ int pf_printf_a(puts_clbk_a, void*, const char*, MSVCRT__locale_t,
         DWORD, args_clbk, void*, __ms_va_list*) DECLSPEC_HIDDEN;
 int pf_printf_w(puts_clbk_w, void*, const MSVCRT_wchar_t*, MSVCRT__locale_t,
         DWORD, args_clbk, void*, __ms_va_list*) DECLSPEC_HIDDEN;
+int create_positional_ctx_a(void*, const char*, __ms_va_list) DECLSPEC_HIDDEN;
+int create_positional_ctx_w(void*, const MSVCRT_wchar_t*, __ms_va_list) DECLSPEC_HIDDEN;
 printf_arg arg_clbk_valist(void*, int, int, __ms_va_list*) DECLSPEC_HIDDEN;
+printf_arg arg_clbk_positional(void*, int, int, __ms_va_list*) DECLSPEC_HIDDEN;
 
 #define MSVCRT_FLT_MIN 1.175494351e-38F
 #define MSVCRT_DBL_MIN 2.2250738585072014e-308

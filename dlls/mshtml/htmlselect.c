@@ -198,7 +198,7 @@ static HRESULT WINAPI HTMLSelectElement_get_multiple(IHTMLSelectElement *iface, 
     nsres = nsIDOMHTMLSelectElement_GetMultiple(This->nsselect, &val);
     assert(nsres == NS_OK);
 
-    *p = val ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(val);
     return S_OK;
 }
 
@@ -364,7 +364,7 @@ static HRESULT WINAPI HTMLSelectElement_get_disabled(IHTMLSelectElement *iface, 
         return E_FAIL;
     }
 
-    *p = disabled ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(disabled);
     return S_OK;
 }
 
@@ -696,7 +696,6 @@ static const NodeImplVtbl HTMLSelectElementImplVtbl = {
     HTMLElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col,
-    NULL,
     NULL,
     HTMLSelectElementImpl_put_disabled,
     HTMLSelectElementImpl_get_disabled,

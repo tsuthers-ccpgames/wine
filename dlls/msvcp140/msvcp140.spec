@@ -1921,9 +1921,9 @@
 @ cdecl -arch=win64 ?do_get@?$num_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@MEBA?AV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@0AEAVios_base@2@AEAHAEA_J@Z(ptr ptr ptr ptr ptr ptr ptr) num_get_wchar_do_get_int64
 @ cdecl -arch=win64 ?do_get@?$num_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@MEBA?AV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@0AEAVios_base@2@AEAHAEA_K@Z(ptr ptr ptr ptr ptr ptr ptr) num_get_wchar_do_get_uint64
 @ cdecl -arch=win64 ?do_get@?$num_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@MEBA?AV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@0AEAVios_base@2@AEAHAEA_N@Z(ptr ptr ptr ptr ptr ptr ptr) num_get_wchar_do_get_bool
-@ stub -arch=arm ?do_get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@MBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z
-@ stub -arch=i386 ?do_get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@MBE?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z
-@ stub -arch=win64 ?do_get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@MEBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AEAVios_base@2@AEAHPEAUtm@@DD@Z
+@ cdecl -arch=arm ?do_get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@MBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z(ptr ptr ptr long ptr long ptr ptr ptr long long) time_get_char_do_get
+@ thiscall -arch=i386 ?do_get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@MBE?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z(ptr ptr ptr long ptr long ptr ptr ptr long long) time_get_char_do_get
+@ cdecl -arch=win64 ?do_get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@MEBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AEAVios_base@2@AEAHPEAUtm@@DD@Z(ptr ptr ptr ptr ptr ptr ptr long long) time_get_char_do_get
 @ stub -arch=arm ?do_get@?$time_get@GV?$istreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@MBA?AV?$istreambuf_iterator@GU?$char_traits@G@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z
 @ stub -arch=i386 ?do_get@?$time_get@GV?$istreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@MBE?AV?$istreambuf_iterator@GU?$char_traits@G@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z
 @ stub -arch=win64 ?do_get@?$time_get@GV?$istreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@MEBA?AV?$istreambuf_iterator@GU?$char_traits@G@std@@@2@V32@0AEAVios_base@2@AEAHPEAUtm@@DD@Z
@@ -2486,12 +2486,12 @@
 @ cdecl -arch=win64 ?get@?$num_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QEBA?AV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@0AEAVios_base@2@AEAHAEA_J@Z(ptr ptr ptr ptr ptr ptr ptr) num_get_wchar_get_int64
 @ cdecl -arch=win64 ?get@?$num_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QEBA?AV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@0AEAVios_base@2@AEAHAEA_K@Z(ptr ptr ptr ptr ptr ptr ptr) num_get_wchar_get_uint64
 @ cdecl -arch=win64 ?get@?$num_get@_WV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@QEBA?AV?$istreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@0AEAVios_base@2@AEAHAEA_N@Z(ptr ptr ptr ptr ptr ptr ptr) num_get_wchar_get_bool
-@ stub -arch=arm ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z
-@ stub -arch=arm ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@PBD4@Z
-@ stub -arch=i386 ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QBE?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z
-@ stub -arch=i386 ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QBE?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@PBD4@Z
-@ stub -arch=win64 ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QEBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AEAVios_base@2@AEAHPEAUtm@@DD@Z
-@ stub -arch=win64 ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QEBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AEAVios_base@2@AEAHPEAUtm@@PEBD4@Z
+@ cdecl -arch=arm ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z(ptr ptr ptr long ptr long ptr ptr ptr long long) time_get_char_get
+@ cdecl -arch=arm ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@PBD4@Z(ptr ptr ptr long ptr long ptr ptr ptr ptr ptr) time_get_char_get_fmt
+@ thiscall -arch=i386 ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QBE?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z(ptr ptr ptr long ptr long ptr ptr ptr long long) time_get_char_get
+@ thiscall -arch=i386 ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QBE?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@PBD4@Z(ptr ptr ptr long ptr long ptr ptr ptr ptr ptr) time_get_char_get_fmt
+@ cdecl -arch=win64 ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QEBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AEAVios_base@2@AEAHPEAUtm@@DD@Z(ptr ptr ptr long ptr long ptr ptr ptr long long) time_get_char_get
+@ cdecl -arch=win64 ?get@?$time_get@DV?$istreambuf_iterator@DU?$char_traits@D@std@@@std@@@std@@QEBA?AV?$istreambuf_iterator@DU?$char_traits@D@std@@@2@V32@0AEAVios_base@2@AEAHPEAUtm@@PEBD4@Z(ptr ptr ptr ptr ptr ptr ptr ptr ptr) time_get_char_get_fmt
 @ stub -arch=arm ?get@?$time_get@GV?$istreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@QBA?AV?$istreambuf_iterator@GU?$char_traits@G@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z
 @ stub -arch=arm ?get@?$time_get@GV?$istreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@QBA?AV?$istreambuf_iterator@GU?$char_traits@G@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@PBG4@Z
 @ stub -arch=i386 ?get@?$time_get@GV?$istreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@QBE?AV?$istreambuf_iterator@GU?$char_traits@G@std@@@2@V32@0AAVios_base@2@AAHPAUtm@@DD@Z
@@ -3667,7 +3667,7 @@
 @ stub _LSinh
 @ extern _LSnan _LSnan
 @ stub _Last_write_time
-@ stub _Link
+@ cdecl _Link(wstr wstr) tr2_sys__Link_wchar
 @ cdecl _Lock_shared_ptr_spin_lock()
 @ cdecl _Lstat(wstr ptr)
 @ cdecl _Make_dir(wstr) tr2_sys__Make_dir_wchar
@@ -3693,7 +3693,7 @@
 @ cdecl -ret64 _Query_perf_counter()
 @ cdecl -ret64 _Query_perf_frequency()
 @ cdecl _Read_dir(ptr ptr ptr) tr2_sys__Read_dir_wchar
-@ stub _Remove_dir
+@ cdecl _Remove_dir(wstr) tr2_sys__Remove_dir_wchar
 @ stub _Rename
 @ stub _Resize
 @ stub _Set_last_write_time
@@ -3716,7 +3716,7 @@
 @ cdecl _Stoulx(ptr ptr long ptr) _Stoulx
 @ cdecl _Strcoll(ptr ptr ptr ptr ptr) _Strcoll
 @ stub _Strxfrm
-@ stub _Symlink
+@ cdecl _Symlink(wstr wstr) tr2_sys__Symlink_wchar
 @ stub _Symlink_get
 @ stub _Temp_get
 @ stub _Thrd_abort
@@ -3737,7 +3737,7 @@
 @ cdecl _Toupper(long ptr) _Toupper
 @ cdecl _Towlower(long ptr) _Towlower
 @ cdecl _Towupper(long ptr) _Towupper
-@ stub _Unlink
+@ cdecl _Unlink(wstr) tr2_sys__Unlink_wchar
 @ cdecl _Unlock_shared_ptr_spin_lock()
 @ stub _WStod
 @ stub _WStodx

@@ -278,6 +278,19 @@ static inline unsigned int wait_reply( struct __server_request_info *req )
 
 
 /***********************************************************************
+ *           server_call_unlocked
+ */
+unsigned int server_call_unlocked( void *req_ptr )
+{
+    struct __server_request_info * const req = req_ptr;
+    unsigned int ret;
+
+    if ((ret = send_request( req ))) return ret;
+    return wait_reply( req );
+}
+
+
+/***********************************************************************
  *           wine_server_call (NTDLL.@)
  *
  * Perform a server call.
@@ -301,13 +314,11 @@ static inline unsigned int wait_reply( struct __server_request_info *req )
  */
 unsigned int wine_server_call( void *req_ptr )
 {
-    struct __server_request_info * const req = req_ptr;
     sigset_t old_set;
     unsigned int ret;
 
     pthread_sigmask( SIG_BLOCK, &server_block_set, &old_set );
-    ret = send_request( req );
-    if (!ret) ret = wait_reply( req );
+    ret = server_call_unlocked( req_ptr );
     pthread_sigmask( SIG_SETMASK, &old_set, NULL );
     return ret;
 }
@@ -797,7 +808,6 @@ static int receive_fd( obj_handle_t *handle )
 /***********************************************************************/
 /* fd cache support */
 
-#include "pshpack1.h"
 union fd_cache_entry
 {
     LONG64 data;
@@ -809,7 +819,6 @@ union fd_cache_entry
         unsigned int        options : 24;
     } s;
 };
-#include "poppack.h"
 
 C_ASSERT( sizeof(union fd_cache_entry) == sizeof(LONG64) );
 
@@ -1425,7 +1434,9 @@ NTSTATUS server_init_process_done(void)
 {
     PEB *peb = NtCurrentTeb()->Peb;
     IMAGE_NT_HEADERS *nt = RtlImageNtHeader( peb->ImageBaseAddress );
+    void *entry = (char *)peb->ImageBaseAddress + nt->OptionalHeader.AddressOfEntryPoint;
     NTSTATUS status;
+    int suspend;
 
     /* Install signal handlers; this cannot be done earlier, since we cannot
      * send exceptions to the debugger before the create process event that
@@ -1442,12 +1453,14 @@ NTSTATUS server_init_process_done(void)
 #ifdef __i386__
         req->ldt_copy = wine_server_client_ptr( &wine_ldt_copy );
 #endif
-        req->entry    = wine_server_client_ptr( (char *)peb->ImageBaseAddress + nt->OptionalHeader.AddressOfEntryPoint );
+        req->entry    = wine_server_client_ptr( entry );
         req->gui      = (nt->OptionalHeader.Subsystem != IMAGE_SUBSYSTEM_WINDOWS_CUI);
         status = wine_server_call( req );
+        suspend = reply->suspend;
     }
     SERVER_END_REQ;
 
+    if (!status) status = signal_start_process( entry, suspend );
     return status;
 }
 

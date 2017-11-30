@@ -77,6 +77,8 @@ function test_textContent() {
     ok(div.textContent === "", "div.textContent = " + div.textContent);
     ok(div.childNodes.length === 0, "div.childNodes.length = " + div.childNodes.length);
 
+    ok(document.textContent === null, "document.textContent = " + document.textContent);
+
     next_test();
 }
 
@@ -94,8 +96,88 @@ function test_ElementTraversal() {
     next_test();
 }
 
+function test_head() {
+    var h = document.head;
+    ok(h.tagName === "HEAD", "h.tagName = " + h.tagName);
+    ok(h === document.getElementsByTagName("head")[0], "unexpected head element");
+
+    next_test();
+}
+
+function test_getElementsByClassName() {
+    var elems;
+
+    document.body.innerHTML = '<div class="class1">'
+        + '<div class="class1"></div>'
+        + '<a id="class1" class="class2"></a>'
+        + '</div>'
+        + '<script class="class1"></script>';
+
+    elems = document.getElementsByClassName("class1");
+    ok(elems.length === 3, "elems.length = " + elems.length);
+    ok(elems[0].tagName === "DIV", "elems[0].tagName = " + elems[0].tagName);
+    ok(elems[1].tagName === "DIV", "elems[1].tagName = " + elems[1].tagName);
+    ok(elems[2].tagName === "SCRIPT", "elems[2].tagName = " + elems[2].tagName);
+
+    elems = document.getElementsByClassName("class2");
+    ok(elems.length === 1, "elems.length = " + elems.length);
+    ok(elems[0].tagName === "A", "elems[0].tagName = " + elems[0].tagName);
+
+    elems = document.getElementsByClassName("classnotfound");
+    ok(elems.length == 0, "elems.length = " + elems.length);
+
+    next_test();
+}
+
+function test_query_selector() {
+    document.body.innerHTML = '<div class="class1">'
+        + '<div class="class1"></div>'
+        + '<a id="class1" class="class2"></a>'
+        + '</div>'
+        + '<script class="class1"></script>';
+
+    var e = document.querySelector("nomatch");
+    ok(e === null, "e = " + e);
+
+    e = document.querySelector(".class1");
+    ok(e.tagName === "DIV", "e.tagName = " + e.tagName);
+
+    e = document.querySelector("a");
+    ok(e.tagName === "A", "e.tagName = " + e.tagName);
+
+    next_test();
+}
+
+function test_compare_position() {
+    document.body.innerHTML = '<div><div></div><div></div></div>';
+
+    var parent = document.body.firstChild;
+    var child1 = parent.firstChild;
+    var child2 = child1.nextSibling;
+    var elem = document.createElement("div");
+
+    function compare_position(node1, node2, expected_result, ignore_mask) {
+        var cmp = node1.compareDocumentPosition(node2);
+        ok((cmp & ~ignore_mask) == expected_result,
+           "compareDocumentPosition returned " + cmp + " expected " + expected_result);
+    }
+
+    compare_position(child1, child2, 4);
+    compare_position(child2, child1, 2);
+    compare_position(parent, child1, 0x14);
+    compare_position(parent, child2, 0x14);
+    compare_position(parent, elem, 0x21, 6);
+    compare_position(elem, parent, 0x21, 6);
+
+    next_test();
+}
+
 var tests = [
     test_input_selection,
     test_textContent,
-    test_ElementTraversal
+    test_ElementTraversal,
+    test_getElementsByClassName,
+    test_head,
+    test_query_selector,
+    test_compare_position
 ];

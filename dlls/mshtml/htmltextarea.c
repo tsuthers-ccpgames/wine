@@ -318,7 +318,7 @@ static HRESULT WINAPI HTMLTextAreaElement_get_readOnly(IHTMLTextAreaElement *ifa
         return E_FAIL;
     }
 
-    *p = b ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(b);
     return S_OK;
 }
 
@@ -483,7 +483,6 @@ static const NodeImplVtbl HTMLTextAreaElementImplVtbl = {
     HTMLElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col,
-    NULL,
     NULL,
     HTMLTextAreaElementImpl_put_disabled,
     HTMLTextAreaElementImpl_get_disabled,

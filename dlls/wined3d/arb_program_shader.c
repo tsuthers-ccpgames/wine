@@ -30,7 +30,6 @@
 #include "config.h"
 #include "wine/port.h"
 
-#include <math.h>
 #include <stdio.h>
 
 #include "wined3d_private.h"
@@ -878,7 +877,7 @@ static void shader_generate_arb_declarations(const struct wined3d_shader *shader
     /* After subtracting privately used constants from the hardware limit(they are loaded as
      * local constants), make sure the shader doesn't violate the env constant limit
      */
-    if(pshader)
+    if (pshader)
     {
         max_constantsF = min(max_constantsF, gl_info->limits.arb_ps_float_constants);
     }
@@ -906,10 +905,7 @@ static void shader_generate_arb_declarations(const struct wined3d_shader *shader
     {
         for (i = 0; i < max_constantsF; ++i)
         {
-            DWORD idx, mask;
-            idx = i >> 5;
-            mask = 1u << (i & 0x1fu);
-            if (!shader_constant_is_local(shader, i) && (reg_maps->constf[idx] & mask))
+            if (!shader_constant_is_local(shader, i) && wined3d_extract_bits(reg_maps->constf, i, 1))
             {
                 shader_addline(buffer, "PARAM C%d = program.env[%d];\n",i, i);
             }
@@ -4494,7 +4490,7 @@ static void find_arb_vs_compile_args(const struct wined3d_state *state,
     int i;
     WORD int_skip;
 
-    find_vs_compile_args(state, shader, context->stream_info.swizzle_map, &args->super, d3d_info);
+    find_vs_compile_args(state, shader, context->stream_info.swizzle_map, &args->super, context);
 
     args->clip.boolclip_compare = 0;
     if (use_ps(state))
@@ -7709,6 +7705,14 @@ static BOOL arbfp_blit_supported(const struct wined3d_gl_info *gl_info,
     if (!gl_info->supported[ARB_FRAGMENT_PROGRAM])
         return FALSE;
 
+    if (blit_op == WINED3D_BLIT_OP_RAW_BLIT && dst_format->id == src_format->id)
+    {
+        if (dst_format->flags[WINED3D_GL_RES_TYPE_TEX_2D] & (WINED3DFMT_FLAG_DEPTH | WINED3DFMT_FLAG_STENCIL))
+            blit_op = WINED3D_BLIT_OP_DEPTH_BLIT;
+        else
+            blit_op = WINED3D_BLIT_OP_COLOR_BLIT;
+    }
+
     switch (blit_op)
     {
         case WINED3D_BLIT_OP_COLOR_BLIT_CKEY:
@@ -7782,7 +7786,7 @@ static BOOL arbfp_blit_supported(const struct wined3d_gl_info *gl_info,
     }
 }
 
-static void arbfp_blitter_blit(struct wined3d_blitter *blitter, enum wined3d_blit_op op,
+static DWORD arbfp_blitter_blit(struct wined3d_blitter *blitter, enum wined3d_blit_op op,
         struct wined3d_context *context, struct wined3d_surface *src_surface, DWORD src_location,
         const RECT *src_rect, struct wined3d_surface *dst_surface, DWORD dst_location, const RECT *dst_rect,
         const struct wined3d_color_key *color_key, enum wined3d_texture_filter_type filter)
@@ -7800,9 +7804,8 @@ static void arbfp_blitter_blit(struct wined3d_blitter *blitter, enum wined3d_bli
             dst_texture->resource.pool, dst_texture->resource.format, dst_location))
     {
         if ((next = blitter->next))
-            next->ops->blitter_blit(next, op, context, src_surface, src_location,
+            return next->ops->blitter_blit(next, op, context, src_surface, src_location,
                     src_rect, dst_surface, dst_location, dst_rect, color_key, filter);
-        return;
     }
 
     arbfp_blitter = CONTAINING_RECORD(blitter, struct wined3d_arbfp_blitter, blitter);
@@ -7877,6 +7880,8 @@ static void arbfp_blitter_blit(struct wined3d_blitter *blitter, enum wined3d_bli
     if (wined3d_settings.strict_draw_ordering
             || (dst_texture->swapchain && (dst_texture->swapchain->front_buffer == dst_texture)))
         context->gl_info->gl_ops.gl.p_glFlush(); /* Flush to ensure ordering across contexts. */
+
+    return dst_location;
 }
 
 static void arbfp_blitter_clear(struct wined3d_blitter *blitter, struct wined3d_device *device,
@@ -7907,6 +7912,9 @@ void wined3d_arbfp_blitter_create(struct wined3d_blitter **next, const struct wi
         return;
 
     if (!gl_info->supported[ARB_FRAGMENT_PROGRAM])
+        return;
+
+    if (!gl_info->supported[WINED3D_GL_LEGACY_CONTEXT])
         return;
 
     if (!(blitter = HeapAlloc(GetProcessHeap(), 0, sizeof(*blitter))))

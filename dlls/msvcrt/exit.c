@@ -41,6 +41,18 @@ typedef struct MSVCRT__onexit_table_t
     MSVCRT__onexit_t *_end;
 } MSVCRT__onexit_table_t;
 
+typedef void (__stdcall *_tls_callback_type)(void*,ULONG,void*);
+static _tls_callback_type tls_atexit_callback;
+
+static CRITICAL_SECTION MSVCRT_onexit_cs;
+static CRITICAL_SECTION_DEBUG MSVCRT_onexit_cs_debug =
+{
+    0, 0, &MSVCRT_onexit_cs,
+    { &MSVCRT_onexit_cs_debug.ProcessLocksList, &MSVCRT_onexit_cs_debug.ProcessLocksList },
+      0, 0, { (DWORD_PTR)(__FILE__ ": MSVCRT_onexit_cs") }
+};
+static CRITICAL_SECTION MSVCRT_onexit_cs = { &MSVCRT_onexit_cs_debug, -1, 0, 0, 0, 0 };
+
 extern int MSVCRT_app_type;
 extern MSVCRT_wchar_t *MSVCRT__wpgmptr;
 
@@ -54,6 +66,7 @@ static void __MSVCRT__call_atexit(void)
 {
   /* Note: should only be called with the exit lock held */
   TRACE("%d atext functions to call\n", MSVCRT_atexit_registered);
+  if (tls_atexit_callback) tls_atexit_callback(NULL, DLL_PROCESS_DETACH, NULL);
   /* Last registered gets executed first */
   while (MSVCRT_atexit_registered > 0)
   {
@@ -368,12 +381,14 @@ int CDECL MSVCRT__register_onexit_function(MSVCRT__onexit_table_t *table, MSVCRT
     if (!table)
         return -1;
 
+    EnterCriticalSection(&MSVCRT_onexit_cs);
     if (!table->_first)
     {
         table->_first = MSVCRT_calloc(32, sizeof(void *));
         if (!table->_first)
         {
             WARN("failed to allocate initial table.\n");
+            LeaveCriticalSection(&MSVCRT_onexit_cs);
             return -1;
         }
         table->_last = table->_first;
@@ -388,6 +403,7 @@ int CDECL MSVCRT__register_onexit_function(MSVCRT__onexit_table_t *table, MSVCRT
         if (!tmp)
         {
             WARN("failed to grow table.\n");
+            LeaveCriticalSection(&MSVCRT_onexit_cs);
             return -1;
         }
         table->_first = tmp;
@@ -397,6 +413,7 @@ int CDECL MSVCRT__register_onexit_function(MSVCRT__onexit_table_t *table, MSVCRT
 
     *table->_last = func;
     table->_last++;
+    LeaveCriticalSection(&MSVCRT_onexit_cs);
     return 0;
 }
 
@@ -406,25 +423,43 @@ int CDECL MSVCRT__register_onexit_function(MSVCRT__onexit_table_t *table, MSVCRT
 int CDECL MSVCRT__execute_onexit_table(MSVCRT__onexit_table_t *table)
 {
     MSVCRT__onexit_t *func;
+    MSVCRT__onexit_table_t copy;
 
     TRACE("(%p)\n", table);
 
     if (!table)
         return -1;
 
+    EnterCriticalSection(&MSVCRT_onexit_cs);
     if (!table->_first || table->_first >= table->_last)
+    {
+        LeaveCriticalSection(&MSVCRT_onexit_cs);
         return 0;
+    }
+    copy._first = table->_first;
+    copy._last  = table->_last;
+    copy._end   = table->_end;
+    memset(table, 0, sizeof(*table));
+    MSVCRT__initialize_onexit_table(table);
+    LeaveCriticalSection(&MSVCRT_onexit_cs);
 
-    for (func = table->_last - 1; func >= table->_first; func--)
+    for (func = copy._last - 1; func >= copy._first; func--)
     {
         if (*func)
            (*func)();
     }
 
-    MSVCRT_free(table->_first);
-    memset(table, 0, sizeof(*table));
-    MSVCRT__initialize_onexit_table(table);
+    MSVCRT_free(copy._first);
     return 0;
+}
+
+/*********************************************************************
+ *		_register_thread_local_exe_atexit_callback (UCRTBASE.@)
+ */
+void CDECL _register_thread_local_exe_atexit_callback(_tls_callback_type callback)
+{
+    TRACE("(%p)\n", callback);
+    tls_atexit_callback = callback;
 }
 
 /*********************************************************************
@@ -437,6 +472,15 @@ MSVCRT_purecall_handler CDECL _set_purecall_handler(MSVCRT_purecall_handler func
     TRACE("(%p)\n", function);
     purecall_handler = function;
     return ret;
+}
+
+/*********************************************************************
+ *		_get_purecall_handler
+ */
+MSVCRT_purecall_handler CDECL _get_purecall_handler(void)
+{
+    TRACE("\n");
+    return purecall_handler;
 }
 
 /*********************************************************************

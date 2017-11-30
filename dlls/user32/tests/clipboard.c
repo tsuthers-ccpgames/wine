@@ -385,6 +385,9 @@ static void test_RegisterClipboardFormatA(void)
     ok(len == lstrlenA("my_cool_clipboard_format"), "wrong format name length %d\n", len);
     ok(!lstrcmpA(buf, "my_cool_clipboard_format"), "wrong format name \"%s\"\n", buf);
 
+    len = GetClipboardFormatNameA(format_id, NULL, 0);
+    ok(len == 0, "wrong format name length %d\n", len);
+
     lstrcpyA(buf, "foo");
     SetLastError(0xdeadbeef);
     len = GetAtomNameA((ATOM)format_id, buf, 256);
@@ -1759,10 +1762,8 @@ static void test_handles( HWND hwnd )
     h = SetClipboardData( 0xdeadbeef, hfixed );
     ok( h == hfixed, "got %p\n", h );
     ok( is_fixed( h ), "expected fixed mem %p\n", h );
-#ifndef _WIN64
-    /* testing if hfixed2 is freed triggers an exception on Win64 */
-    ok( is_freed( hfixed2 ) || broken( !is_freed( hfixed2 )) /* < Vista */, "expected freed mem %p\n", hfixed2 );
-#endif
+    if (0) /* this test is unreliable / crashes */
+        ok( is_freed( hfixed2 ), "expected freed mem %p\n", hfixed2 );
 
     r = CloseClipboard();
     ok( r, "gle %d\n", GetLastError() );

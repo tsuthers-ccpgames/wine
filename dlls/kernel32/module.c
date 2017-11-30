@@ -40,6 +40,7 @@
 #include "psapi.h"
 
 #include "wine/exception.h"
+#include "wine/list.h"
 #include "wine/debug.h"
 #include "wine/unicode.h"
 
@@ -47,7 +48,15 @@ WINE_DEFAULT_DEBUG_CHANNEL(module);
 
 #define NE_FFLAGS_LIBMODULE 0x8000
 
+struct dll_dir_entry
+{
+    struct list entry;
+    WCHAR       dir[1];
+};
+
+static struct list dll_dir_list = LIST_INIT( dll_dir_list );  /* extra dirs from AddDllDirectory */
 static WCHAR *dll_directory;  /* extra path for SetDllDirectoryW */
+static DWORD default_search_flags;  /* default flags set by SetDefaultDllDirectories */
 
 static CRITICAL_SECTION dlldir_section;
 static CRITICAL_SECTION_DEBUG critsect_debug =
@@ -57,7 +66,6 @@ static CRITICAL_SECTION_DEBUG critsect_debug =
       0, 0, { (DWORD_PTR)(__FILE__ ": dlldir_section") }
 };
 static CRITICAL_SECTION dlldir_section = { &critsect_debug, -1, 0, 0, 0, 0 };
-
 
 /****************************************************************************
  *              GetDllDirectoryA   (KERNEL32.@)
@@ -144,6 +152,73 @@ BOOL WINAPI SetDllDirectoryW( LPCWSTR dir )
     HeapFree( GetProcessHeap(), 0, dll_directory );
     dll_directory = newdir;
     RtlLeaveCriticalSection( &dlldir_section );
+    return TRUE;
+}
+
+
+/****************************************************************************
+ *              AddDllDirectory   (KERNEL32.@)
+ */
+DLL_DIRECTORY_COOKIE WINAPI AddDllDirectory( const WCHAR *dir )
+{
+    WCHAR path[MAX_PATH];
+    DWORD len;
+    struct dll_dir_entry *ptr;
+    DOS_PATHNAME_TYPE type = RtlDetermineDosPathNameType_U( dir );
+
+    if (type != ABSOLUTE_PATH && type != ABSOLUTE_DRIVE_PATH)
+    {
+        SetLastError( ERROR_INVALID_PARAMETER );
+        return NULL;
+    }
+    if (!(len = GetFullPathNameW( dir, MAX_PATH, path, NULL ))) return NULL;
+    if (GetFileAttributesW( path ) == INVALID_FILE_ATTRIBUTES) return NULL;
+
+    if (!(ptr = HeapAlloc( GetProcessHeap(), 0, offsetof(struct dll_dir_entry, dir[++len] )))) return NULL;
+    memcpy( ptr->dir, path, len * sizeof(WCHAR) );
+    TRACE( "%s\n", debugstr_w( ptr->dir ));
+
+    RtlEnterCriticalSection( &dlldir_section );
+    list_add_head( &dll_dir_list, &ptr->entry );
+    RtlLeaveCriticalSection( &dlldir_section );
+    return ptr;
+}
+
+
+/****************************************************************************
+ *              RemoveDllDirectory   (KERNEL32.@)
+ */
+BOOL WINAPI RemoveDllDirectory( DLL_DIRECTORY_COOKIE cookie )
+{
+    struct dll_dir_entry *ptr = cookie;
+
+    TRACE( "%s\n", debugstr_w( ptr->dir ));
+
+    RtlEnterCriticalSection( &dlldir_section );
+    list_remove( &ptr->entry );
+    HeapFree( GetProcessHeap(), 0, ptr );
+    RtlLeaveCriticalSection( &dlldir_section );
+    return TRUE;
+}
+
+
+/*************************************************************************
+ *           SetDefaultDllDirectories   (KERNEL32.@)
+ */
+BOOL WINAPI SetDefaultDllDirectories( DWORD flags )
+{
+    /* LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR doesn't make sense in default dirs */
+    const DWORD load_library_search_flags = (LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
+                                             LOAD_LIBRARY_SEARCH_USER_DIRS |
+                                             LOAD_LIBRARY_SEARCH_SYSTEM32 |
+                                             LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+
+    if (!flags || (flags & ~load_library_search_flags))
+    {
+        SetLastError( ERROR_INVALID_PARAMETER );
+        return FALSE;
+    }
+    default_search_flags = flags;
     return TRUE;
 }
 
@@ -319,6 +394,7 @@ void MODULE_get_binary_info( HANDLE hfile, struct binary_info *info )
         {
             IMAGE_OS2_HEADER os2;
             IMAGE_NT_HEADERS32 nt;
+            IMAGE_NT_HEADERS64 nt64;
         } ext_header;
 
         /* We do have a DOS image so we will now try to seek into
@@ -347,16 +423,17 @@ void MODULE_get_binary_info( HANDLE hfile, struct binary_info *info )
                 info->arch = ext_header.nt.FileHeader.Machine;
                 if (ext_header.nt.FileHeader.Characteristics & IMAGE_FILE_DLL)
                     info->flags |= BINARY_FLAG_DLL;
-                if (len < sizeof(ext_header.nt))  /* clear remaining part of header if missing */
-                    memset( (char *)&ext_header.nt + len, 0, sizeof(ext_header.nt) - len );
+                if (len < sizeof(ext_header))  /* clear remaining part of header if missing */
+                    memset( (char *)&ext_header + len, 0, sizeof(ext_header) - len );
                 switch (ext_header.nt.OptionalHeader.Magic)
                 {
                 case IMAGE_NT_OPTIONAL_HDR32_MAGIC:
-                    info->res_start = (void *)(ULONG_PTR)ext_header.nt.OptionalHeader.ImageBase;
-                    info->res_end = (void *)((ULONG_PTR)ext_header.nt.OptionalHeader.ImageBase +
-                                                     ext_header.nt.OptionalHeader.SizeOfImage);
+                    info->res_start = ext_header.nt.OptionalHeader.ImageBase;
+                    info->res_end = info->res_start + ext_header.nt.OptionalHeader.SizeOfImage;
                     break;
                 case IMAGE_NT_OPTIONAL_HDR64_MAGIC:
+                    info->res_start = ext_header.nt64.OptionalHeader.ImageBase;
+                    info->res_end = info->res_start + ext_header.nt64.OptionalHeader.SizeOfImage;
                     info->flags |= BINARY_FLAG_64BIT;
                     break;
                 }
@@ -728,13 +805,11 @@ static const WCHAR *get_dll_system_path(void)
     if (!cached_path)
     {
         WCHAR *p, *path;
-        int len = 3;
+        int len = 1;
 
         len += 2 * GetSystemDirectoryW( NULL, 0 );
         len += GetWindowsDirectoryW( NULL, 0 );
         p = path = HeapAlloc( GetProcessHeap(), 0, len * sizeof(WCHAR) );
-        *p++ = '.';
-        *p++ = ';';
         GetSystemDirectoryW( p, path + len - p);
         p += strlenW(p);
         /* if system directory ends in "32" add 16-bit version too */
@@ -749,6 +824,52 @@ static const WCHAR *get_dll_system_path(void)
         cached_path = path;
     }
     return cached_path;
+}
+
+/***********************************************************************
+ *           get_dll_safe_mode
+ */
+static BOOL get_dll_safe_mode(void)
+{
+    static const WCHAR keyW[] = {'\\','R','e','g','i','s','t','r','y','\\',
+                                 'M','a','c','h','i','n','e','\\',
+                                 'S','y','s','t','e','m','\\',
+                                 'C','u','r','r','e','n','t','C','o','n','t','r','o','l','S','e','t','\\',
+                                 'C','o','n','t','r','o','l','\\',
+                                 'S','e','s','s','i','o','n',' ','M','a','n','a','g','e','r',0};
+    static const WCHAR valueW[] = {'S','a','f','e','D','l','l','S','e','a','r','c','h','M','o','d','e',0};
+
+    static int safe_mode = -1;
+
+    if (safe_mode == -1)
+    {
+        char buffer[offsetof(KEY_VALUE_PARTIAL_INFORMATION, Data[sizeof(DWORD)])];
+        KEY_VALUE_PARTIAL_INFORMATION *info = (KEY_VALUE_PARTIAL_INFORMATION *)buffer;
+        OBJECT_ATTRIBUTES attr;
+        UNICODE_STRING nameW;
+        HANDLE hkey;
+        DWORD size = sizeof(buffer);
+
+        attr.Length = sizeof(attr);
+        attr.RootDirectory = 0;
+        attr.ObjectName = &nameW;
+        attr.Attributes = 0;
+        attr.SecurityDescriptor = NULL;
+        attr.SecurityQualityOfService = NULL;
+
+        safe_mode = 1;
+        RtlInitUnicodeString( &nameW, keyW );
+        if (!NtOpenKey( &hkey, KEY_READ, &attr ))
+        {
+            RtlInitUnicodeString( &nameW, valueW );
+            if (!NtQueryValueKey( hkey, &nameW, KeyValuePartialInformation, buffer, size, &size ) &&
+                info->Type == REG_DWORD && info->DataLength == sizeof(DWORD))
+                safe_mode = !!*(DWORD *)info->Data;
+            NtClose( hkey );
+        }
+        if (!safe_mode) TRACE( "SafeDllSearchMode disabled through the registry\n" );
+    }
+    return safe_mode;
 }
 
 /******************************************************************
@@ -770,15 +891,42 @@ static inline const WCHAR *get_module_path_end(const WCHAR *module)
     return mod_end;
 }
 
+
+/******************************************************************
+ *		append_path_len
+ *
+ * Append a counted string to the load path. Helper for MODULE_get_dll_load_path.
+ */
+static inline WCHAR *append_path_len( WCHAR *p, const WCHAR *str, DWORD len )
+{
+    if (!len) return p;
+    memcpy( p, str, len * sizeof(WCHAR) );
+    p[len] = ';';
+    return p + len + 1;
+}
+
+
+/******************************************************************
+ *		append_path
+ *
+ * Append a string to the load path. Helper for MODULE_get_dll_load_path.
+ */
+static inline WCHAR *append_path( WCHAR *p, const WCHAR *str )
+{
+    return append_path_len( p, str, strlenW(str) );
+}
+
+
 /******************************************************************
  *		MODULE_get_dll_load_path
  *
  * Compute the load path to use for a given dll.
  * Returned pointer must be freed by caller.
  */
-WCHAR *MODULE_get_dll_load_path( LPCWSTR module )
+WCHAR *MODULE_get_dll_load_path( LPCWSTR module, int safe_mode )
 {
     static const WCHAR pathW[] = {'P','A','T','H',0};
+    static const WCHAR dotW[] = {'.',0};
 
     const WCHAR *system_path = get_dll_system_path();
     const WCHAR *mod_end = NULL;
@@ -811,28 +959,23 @@ WCHAR *MODULE_get_dll_load_path( LPCWSTR module )
         path_len = value.Length;
 
     RtlEnterCriticalSection( &dlldir_section );
+    if (safe_mode == -1) safe_mode = get_dll_safe_mode();
     if (dll_directory) len += strlenW(dll_directory) + 1;
+    else len += 2;  /* current directory */
     if ((p = ret = HeapAlloc( GetProcessHeap(), 0, path_len + len * sizeof(WCHAR) )))
     {
-        if (module)
-        {
-            memcpy( ret, module, (mod_end - module) * sizeof(WCHAR) );
-            p += (mod_end - module);
-            *p++ = ';';
-        }
-        if (dll_directory)
-        {
-            strcpyW( p, dll_directory );
-            p += strlenW(p);
-            *p++ = ';';
-        }
+        if (module) p = append_path_len( p, module, mod_end - module );
+
+        if (dll_directory) p = append_path( p, dll_directory );
+        else if (!safe_mode) p = append_path( p, dotW );
+
+        p = append_path( p, system_path );
+
+        if (!dll_directory && safe_mode) p = append_path( p, dotW );
     }
     RtlLeaveCriticalSection( &dlldir_section );
     if (!ret) return NULL;
 
-    strcpyW( p, system_path );
-    p += strlenW(p);
-    *p++ = ';';
     value.Buffer = p;
     value.MaximumLength = path_len;
 
@@ -857,9 +1000,78 @@ WCHAR *MODULE_get_dll_load_path( LPCWSTR module )
 
 
 /******************************************************************
+ *		get_dll_load_path_search_flags
+ */
+static WCHAR *get_dll_load_path_search_flags( LPCWSTR module, DWORD flags )
+{
+    const WCHAR *image = NULL, *mod_end, *image_end;
+    struct dll_dir_entry *dir;
+    WCHAR *p, *ret;
+    int len = 1;
+
+    if (flags & LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)
+        flags |= (LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
+                  LOAD_LIBRARY_SEARCH_USER_DIRS |
+                  LOAD_LIBRARY_SEARCH_SYSTEM32);
+
+    if (flags & LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR)
+    {
+        DWORD type = RtlDetermineDosPathNameType_U( module );
+        if (type != ABSOLUTE_DRIVE_PATH && type != ABSOLUTE_PATH)
+        {
+            SetLastError( ERROR_INVALID_PARAMETER );
+            return NULL;
+        }
+        mod_end = get_module_path_end( module );
+        len += (mod_end - module) + 1;
+    }
+    else module = NULL;
+
+    RtlEnterCriticalSection( &dlldir_section );
+
+    if (flags & LOAD_LIBRARY_SEARCH_APPLICATION_DIR)
+    {
+        image = NtCurrentTeb()->Peb->ProcessParameters->ImagePathName.Buffer;
+        image_end = get_module_path_end( image );
+        len += (image_end - image) + 1;
+    }
+
+    if (flags & LOAD_LIBRARY_SEARCH_USER_DIRS)
+    {
+        LIST_FOR_EACH_ENTRY( dir, &dll_dir_list, struct dll_dir_entry, entry )
+            len += strlenW( dir->dir ) + 1;
+        if (dll_directory) len += strlenW(dll_directory) + 1;
+    }
+
+    if (flags & LOAD_LIBRARY_SEARCH_SYSTEM32) len += GetSystemDirectoryW( NULL, 0 );
+
+    if ((p = ret = HeapAlloc( GetProcessHeap(), 0, len * sizeof(WCHAR) )))
+    {
+        if (module) p = append_path_len( p, module, mod_end - module );
+        if (image) p = append_path_len( p, image, image_end - image );
+        if (flags & LOAD_LIBRARY_SEARCH_USER_DIRS)
+        {
+            LIST_FOR_EACH_ENTRY( dir, &dll_dir_list, struct dll_dir_entry, entry )
+                p = append_path( p, dir->dir );
+            if (dll_directory) p = append_path( p, dll_directory );
+        }
+        if (flags & LOAD_LIBRARY_SEARCH_SYSTEM32) GetSystemDirectoryW( p, ret + len - p );
+        else
+        {
+            if (p > ret) p--;
+            *p = 0;
+        }
+    }
+
+    RtlLeaveCriticalSection( &dlldir_section );
+    return ret;
+}
+
+
+/******************************************************************
  *		load_library_as_datafile
  */
-static BOOL load_library_as_datafile( LPCWSTR name, HMODULE* hmod)
+static BOOL load_library_as_datafile( LPCWSTR name, HMODULE *hmod, DWORD flags )
 {
     static const WCHAR dotDLL[] = {'.','d','l','l',0};
 
@@ -867,14 +1079,16 @@ static BOOL load_library_as_datafile( LPCWSTR name, HMODULE* hmod)
     HANDLE hFile = INVALID_HANDLE_VALUE;
     HANDLE mapping;
     HMODULE module;
+    DWORD sharing = FILE_SHARE_READ;
 
     *hmod = 0;
+
+    if (!(flags & LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE)) sharing |= FILE_SHARE_WRITE;
 
     if (SearchPathW( NULL, name, dotDLL, sizeof(filenameW) / sizeof(filenameW[0]),
                      filenameW, NULL ))
     {
-        hFile = CreateFileW( filenameW, GENERIC_READ, FILE_SHARE_READ,
-                             NULL, OPEN_EXISTING, 0, 0 );
+        hFile = CreateFileW( filenameW, GENERIC_READ, sharing, NULL, OPEN_EXISTING, 0, 0 );
     }
     if (hFile == INVALID_HANDLE_VALUE) return FALSE;
 
@@ -907,23 +1121,27 @@ static HMODULE load_library( const UNICODE_STRING *libname, DWORD flags )
     NTSTATUS nts;
     HMODULE hModule;
     WCHAR *load_path;
-    static const DWORD unsupported_flags = 
-        LOAD_IGNORE_CODE_AUTHZ_LEVEL |
-        LOAD_LIBRARY_AS_IMAGE_RESOURCE |
-        LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE |
-        LOAD_LIBRARY_REQUIRE_SIGNED_TARGET |
-        LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
-        LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
-        LOAD_LIBRARY_SEARCH_USER_DIRS |
-        LOAD_LIBRARY_SEARCH_SYSTEM32 |
-        LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
+    const DWORD load_library_search_flags = (LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
+                                             LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
+                                             LOAD_LIBRARY_SEARCH_USER_DIRS |
+                                             LOAD_LIBRARY_SEARCH_SYSTEM32 |
+                                             LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+    const DWORD unsupported_flags = (LOAD_IGNORE_CODE_AUTHZ_LEVEL |
+                                     LOAD_LIBRARY_AS_IMAGE_RESOURCE |
+                                     LOAD_LIBRARY_REQUIRE_SIGNED_TARGET);
+
+    if (!(flags & load_library_search_flags)) flags |= default_search_flags;
 
     if( flags & unsupported_flags)
         FIXME("unsupported flag(s) used (flags: 0x%08x)\n", flags);
 
-    load_path = MODULE_get_dll_load_path( flags & LOAD_WITH_ALTERED_SEARCH_PATH ? libname->Buffer : NULL );
+    if (flags & load_library_search_flags)
+        load_path = get_dll_load_path_search_flags( libname->Buffer, flags );
+    else
+        load_path = MODULE_get_dll_load_path( flags & LOAD_WITH_ALTERED_SEARCH_PATH ? libname->Buffer : NULL, -1 );
+    if (!load_path) return 0;
 
-    if (flags & LOAD_LIBRARY_AS_DATAFILE)
+    if (flags & (LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE))
     {
         ULONG_PTR magic;
 
@@ -939,7 +1157,7 @@ static HMODULE load_library( const UNICODE_STRING *libname, DWORD flags )
         /* The method in load_library_as_datafile allows searching for the
          * 'native' libraries only
          */
-        if (load_library_as_datafile( libname->Buffer, &hModule )) goto done;
+        if (load_library_as_datafile( libname->Buffer, &hModule, flags )) goto done;
         flags |= DONT_RESOLVE_DLL_REFERENCES; /* Just in case */
         /* Fallback to normal behaviour */
     }

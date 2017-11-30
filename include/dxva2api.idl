@@ -86,7 +86,10 @@ cpp_quote("#define DXVA2_ModeVC1_VLD           DXVA2_ModeVC1_D")
 /* Encryption */
 cpp_quote("DEFINE_GUID(DXVA_NoEncrypt,         0x1b81bed0, 0xa0c7,0x11d3, 0xb9,0x84,0x00,0xc0,0x4f,0x2e,0x73,0xc5);")
 
+cpp_quote("#ifndef REFERENCE_TIME_DEFINED")
+cpp_quote("#define REFERENCE_TIME_DEFINED")
 typedef LONGLONG REFERENCE_TIME;
+cpp_quote("#endif")
 
 enum
 {
@@ -291,6 +294,13 @@ typedef struct _DXVA2_VideoSample
     DXVA2_Fixed32 PlanarAlpha;
     DWORD SampleData;
 } DXVA2_VideoSample;
+
+typedef enum
+{
+    DXVA2_SurfaceType_DecoderRenderTarget,
+    DXVA2_SurfaceType_ProcessorRenderTarget,
+    DXVA2_SurfaceType_D3DRenderTargetTexture,
+} DXVA2_SurfaceType;
 
 interface IDirectXVideoDecoder;
 interface IDirectXVideoProcessor;
@@ -525,3 +535,21 @@ interface IDirectXVideoProcessor : IUnknown
         [in] UINT NumSamples,
         [out] HANDLE* pHandleCompleteIDirect3DDeviceManager9);
 };
+
+/*****************************************************************************
+ * IDirectXVideoMemoryConfiguration interface
+ */
+[
+    object,
+    uuid(b7f916dd-db3b-49c1-84d7-e45ef99ec726),
+    local
+]
+interface IDirectXVideoMemoryConfiguration : IUnknown
+{
+    HRESULT GetAvailableSurfaceTypeByIndex(
+        [in] DWORD wTypeIndex,
+        [out] DXVA2_SurfaceType *pdwType);
+
+    HRESULT SetSurfaceType(
+        [in] DXVA2_SurfaceType dwType);
+}

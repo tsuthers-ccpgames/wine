@@ -275,7 +275,7 @@ static HRESULT WINAPI HTMLInputElement_get_disabled(IHTMLInputElement *iface, VA
 
     nsIDOMHTMLInputElement_GetDisabled(This->nsinput, &disabled);
 
-    *p = disabled ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(disabled);
     return S_OK;
 }
 
@@ -474,7 +474,8 @@ static HRESULT WINAPI HTMLInputElement_get_readOnly(IHTMLInputElement *iface, VA
         ERR("Get ReadOnly Failed: %08x\n", nsres);
         return E_FAIL;
     }
-    *p = b ? VARIANT_TRUE : VARIANT_FALSE;
+
+    *p = variant_bool(b);
     return S_OK;
 }
 
@@ -529,7 +530,7 @@ static HRESULT WINAPI HTMLInputElement_get_defaultChecked(IHTMLInputElement *ifa
         return E_FAIL;
     }
 
-    *p = default_checked ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(default_checked);
     return S_OK;
 }
 
@@ -563,7 +564,7 @@ static HRESULT WINAPI HTMLInputElement_get_checked(IHTMLInputElement *iface, VAR
         return E_FAIL;
     }
 
-    *p = checked ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(checked);
     TRACE("checked=%x\n", *p);
     return S_OK;
 }
@@ -1397,25 +1398,6 @@ static HRESULT HTMLInputElement_QI(HTMLDOMNode *iface, REFIID riid, void **ppv)
     return HTMLElement_QI(&This->element.node, riid, ppv);
 }
 
-static HRESULT HTMLInputElementImpl_fire_event(HTMLDOMNode *iface, eventid_t eid, BOOL *handled)
-{
-    HTMLInputElement *This = impl_from_HTMLDOMNode(iface);
-
-    if(eid == EVENTID_CLICK) {
-        nsresult nsres;
-
-        *handled = TRUE;
-
-        nsres = nsIDOMHTMLElement_Click(This->element.nselem);
-        if(NS_FAILED(nsres)) {
-            ERR("Click failed: %08x\n", nsres);
-            return E_FAIL;
-        }
-    }
-
-    return S_OK;
-}
-
 static HRESULT HTMLInputElementImpl_put_disabled(HTMLDOMNode *iface, VARIANT_BOOL v)
 {
     HTMLInputElement *This = impl_from_HTMLDOMNode(iface);
@@ -1483,7 +1465,6 @@ static const NodeImplVtbl HTMLInputElementImplVtbl = {
     HTMLElement_handle_event,
     HTMLElement_get_attr_col,
     NULL,
-    HTMLInputElementImpl_fire_event,
     HTMLInputElementImpl_put_disabled,
     HTMLInputElementImpl_get_disabled,
     NULL,
@@ -1911,7 +1892,7 @@ static HRESULT WINAPI HTMLButtonElement_get_disabled(IHTMLButtonElement *iface, 
         return E_FAIL;
     }
 
-    *p = disabled ? VARIANT_TRUE : VARIANT_FALSE;
+    *p = variant_bool(disabled);
     return S_OK;
 }
 
@@ -2030,7 +2011,6 @@ static const NodeImplVtbl HTMLButtonElementImplVtbl = {
     HTMLElement_clone,
     HTMLElement_handle_event,
     HTMLElement_get_attr_col,
-    NULL,
     NULL,
     HTMLButtonElementImpl_put_disabled,
     HTMLButtonElementImpl_get_disabled,

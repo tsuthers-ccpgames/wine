@@ -1382,7 +1382,7 @@ static  void    test_SuspendFlag(void)
     ok(CreateProcessA(NULL, buffer, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &startup, &info), "CreateProcess\n");
 
     ok(GetExitCodeThread(info.hThread, &exit_status) && exit_status == STILL_ACTIVE, "thread still running\n");
-    Sleep(8000);
+    Sleep(1000);
     ok(GetExitCodeThread(info.hThread, &exit_status) && exit_status == STILL_ACTIVE, "thread still running\n");
     ok(ResumeThread(info.hThread) == 1, "Resuming thread\n");
 
@@ -1651,6 +1651,9 @@ static void test_Console(void)
     memset(buffer, 0, sizeof(buffer));
     ok(ReadFile(hParentIn, buffer, sizeof(buffer), &w, NULL), "Reading from child\n");
     ok(strcmp(buffer, msg) == 0, "Should have received '%s'\n", msg);
+
+    /* the child may also send the final "n tests executed" string, so read it to avoid a deadlock */
+    ReadFile(hParentIn, buffer, sizeof(buffer), &w, NULL);
 
     /* wait for child to terminate */
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
@@ -2941,6 +2944,335 @@ static void test_DetachConsoleHandles(void)
 #endif
 }
 
+#if defined(__i386__) || defined(__x86_64__)
+static BOOL read_nt_header(HANDLE process_handle, MEMORY_BASIC_INFORMATION *mbi,
+                           IMAGE_NT_HEADERS *nt_header)
+{
+    IMAGE_DOS_HEADER dos_header;
+
+    if (!ReadProcessMemory(process_handle, mbi->BaseAddress, &dos_header, sizeof(dos_header), NULL))
+        return FALSE;
+
+    if ((dos_header.e_magic != IMAGE_DOS_SIGNATURE) ||
+        ((ULONG)dos_header.e_lfanew > mbi->RegionSize) ||
+        (dos_header.e_lfanew < sizeof(dos_header)))
+        return FALSE;
+
+    if (!ReadProcessMemory(process_handle, (char *)mbi->BaseAddress + dos_header.e_lfanew,
+                           nt_header, sizeof(*nt_header), NULL))
+        return FALSE;
+
+    return (nt_header->Signature == IMAGE_NT_SIGNATURE);
+}
+
+static PVOID get_process_exe(HANDLE process_handle, IMAGE_NT_HEADERS *nt_header)
+{
+    PVOID exe_base, address;
+    MEMORY_BASIC_INFORMATION mbi;
+
+    /* Find the EXE base in the new process */
+    exe_base = NULL;
+    for (address = NULL ;
+         VirtualQueryEx(process_handle, address, &mbi, sizeof(mbi)) ;
+         address = (char *)mbi.BaseAddress + mbi.RegionSize) {
+        if ((mbi.Type == SEC_IMAGE) &&
+            read_nt_header(process_handle, &mbi, nt_header) &&
+            !(nt_header->FileHeader.Characteristics & IMAGE_FILE_DLL)) {
+            exe_base = mbi.BaseAddress;
+            break;
+        }
+    }
+
+    return exe_base;
+}
+
+static BOOL are_imports_resolved(HANDLE process_handle, PVOID module_base, IMAGE_NT_HEADERS *nt_header)
+{
+    BOOL ret;
+    IMAGE_IMPORT_DESCRIPTOR iid;
+    ULONG_PTR orig_iat_entry_value, iat_entry_value;
+
+    ok(nt_header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress, "Import table VA is zero\n");
+    ok(nt_header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size, "Import table Size is zero\n");
+
+    if (!nt_header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress ||
+        !nt_header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size)
+        return FALSE;
+
+    /* Read the first IID */
+    ret = ReadProcessMemory(process_handle,
+                            (char *)module_base + nt_header->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress,
+                            &iid, sizeof(iid), NULL);
+    ok(ret, "Failed to read remote module IID (%d)\n", GetLastError());
+
+    /* Validate the IID is present and not a bound import, and that we have
+       an OriginalFirstThunk to compare with */
+    ok(iid.Name, "Module first IID does not have a Name\n");
+    ok(iid.FirstThunk, "Module first IID does not have a FirstThunk\n");
+    ok(!iid.TimeDateStamp, "Module first IID is a bound import (UNSUPPORTED for current test)\n");
+    ok(iid.OriginalFirstThunk, "Module first IID does not have an OriginalFirstThunk (UNSUPPORTED for current test)\n");
+
+    /* Read a single IAT entry from the FirstThunk */
+    ret = ReadProcessMemory(process_handle, (char *)module_base + iid.FirstThunk,
+                            &iat_entry_value, sizeof(iat_entry_value), NULL);
+    ok(ret, "Failed to read IAT entry from FirstThunk (%d)\n", GetLastError());
+    ok(iat_entry_value, "IAT entry in FirstThunk is NULL\n");
+
+    /* Read a single IAT entry from the OriginalFirstThunk */
+    ret = ReadProcessMemory(process_handle, (char *)module_base + iid.OriginalFirstThunk,
+                            &orig_iat_entry_value, sizeof(orig_iat_entry_value), NULL);
+    ok(ret, "Failed to read IAT entry from OriginalFirstThunk (%d)\n", GetLastError());
+    ok(orig_iat_entry_value, "IAT entry in OriginalFirstThunk is NULL\n");
+
+    return iat_entry_value != orig_iat_entry_value;
+}
+
+static void test_SuspendProcessNewThread(void)
+{
+    BOOL ret;
+    STARTUPINFOA si = {0};
+    PROCESS_INFORMATION pi = {0};
+    PVOID exe_base, exit_thread_ptr;
+    IMAGE_NT_HEADERS nt_header;
+    HANDLE thread_handle = NULL;
+    DWORD exit_code = 0;
+
+    exit_thread_ptr = GetProcAddress(hkernel32, "ExitThread");
+    ok(exit_thread_ptr != NULL, "GetProcAddress ExitThread failed\n");
+
+    si.cb = sizeof(si);
+    ret = CreateProcessA(NULL, selfname, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+    ok(ret, "Failed to create process (%d)\n", GetLastError());
+
+    exe_base = get_process_exe(pi.hProcess, &nt_header);
+    ok(exe_base != NULL, "Could not find EXE in remote process\n");
+
+    ret = are_imports_resolved(pi.hProcess, exe_base, &nt_header);
+    ok(!ret, "IAT entry resolved prematurely\n");
+
+    thread_handle = CreateRemoteThread(pi.hProcess, NULL, 0,
+                                       (LPTHREAD_START_ROUTINE)exit_thread_ptr,
+                                       (PVOID)(ULONG_PTR)0x1234, 0, NULL);
+    ok(thread_handle != NULL, "Could not create remote thread (%d)\n", GetLastError());
+
+    ok(WaitForSingleObject(thread_handle, 60000) == WAIT_OBJECT_0, "Waiting for remote thread failed (%d)\n", GetLastError());
+    ok(GetExitCodeThread(thread_handle, &exit_code), "Failed to retrieve remote thread exit code (%d)\n", GetLastError());
+    ok(exit_code == 0x1234, "Invalid remote thread exit code\n");
+
+    ret = are_imports_resolved(pi.hProcess, exe_base, &nt_header);
+    ok(ret, "EXE IAT entry not resolved\n");
+
+    if (thread_handle)
+        CloseHandle(thread_handle);
+
+    TerminateProcess(pi.hProcess, 0);
+    WaitForSingleObject(pi.hProcess, 10000);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+}
+
+static void test_SuspendProcessState(void)
+{
+    struct pipe_params
+    {
+        ULONG pipe_write_buf;
+        ULONG pipe_read_buf;
+        ULONG bytes_returned;
+        CHAR pipe_name[MAX_PATH];
+    };
+
+#ifdef __x86_64__
+    struct remote_rop_chain
+    {
+        void     *exit_process_ptr;
+        ULONG_PTR home_rcx;
+        ULONG_PTR home_rdx;
+        ULONG_PTR home_r8;
+        ULONG_PTR home_r9;
+        ULONG_PTR pipe_read_buf_size;
+        ULONG_PTR bytes_returned;
+        ULONG_PTR timeout;
+    };
+#else
+    struct remote_rop_chain
+    {
+        void     *exit_process_ptr;
+        ULONG_PTR pipe_name;
+        ULONG_PTR pipe_write_buf;
+        ULONG_PTR pipe_write_buf_size;
+        ULONG_PTR pipe_read_buf;
+        ULONG_PTR pipe_read_buf_size;
+        ULONG_PTR bytes_returned;
+        ULONG_PTR timeout;
+        void     *unreached_ret;
+        ULONG_PTR exit_code;
+    };
+#endif
+
+    static const char pipe_name[] = "\\\\.\\pipe\\TestPipe";
+    static const ULONG pipe_write_magic = 0x454e4957;
+    STARTUPINFOA si = {0};
+    PROCESS_INFORMATION pi = {0};
+    PVOID exe_base, remote_pipe_params, exit_process_ptr,
+          call_named_pipe_a;
+    IMAGE_NT_HEADERS nt_header;
+    struct pipe_params pipe_params;
+    struct remote_rop_chain rop_chain;
+    CONTEXT ctx;
+    HANDLE server_pipe_handle;
+    BOOL pipe_connected;
+    ULONG pipe_magic, numb;
+    BOOL ret;
+    void *entry_ptr, *peb_ptr;
+    PEB child_peb;
+
+    exit_process_ptr = GetProcAddress(hkernel32, "ExitProcess");
+    ok(exit_process_ptr != NULL, "GetProcAddress ExitProcess failed\n");
+
+    call_named_pipe_a = GetProcAddress(hkernel32, "CallNamedPipeA");
+    ok(call_named_pipe_a != NULL, "GetProcAddress CallNamedPipeA failed\n");
+
+    si.cb = sizeof(si);
+    ret = CreateProcessA(NULL, selfname, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+    ok(ret, "Failed to create process (%d)\n", GetLastError());
+
+    exe_base = get_process_exe(pi.hProcess, &nt_header);
+    /* Make sure we found the EXE in the new process */
+    ok(exe_base != NULL, "Could not find EXE in remote process\n");
+
+    ret = are_imports_resolved(pi.hProcess, exe_base, &nt_header);
+    ok(!ret, "IAT entry resolved prematurely\n");
+
+    server_pipe_handle = CreateNamedPipeA(pipe_name, PIPE_ACCESS_DUPLEX | FILE_FLAG_WRITE_THROUGH,
+                                        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE, 1, 0x20000, 0x20000,
+                                        0, NULL);
+    ok(server_pipe_handle != INVALID_HANDLE_VALUE, "Failed to create communication pipe (%d)\n", GetLastError());
+
+    /* Setup the remote process enviornment */
+    ctx.ContextFlags = CONTEXT_FULL;
+    ret = GetThreadContext(pi.hThread, &ctx);
+    ok(ret, "Failed retrieving remote thread context (%d)\n", GetLastError());
+
+    remote_pipe_params = VirtualAllocEx(pi.hProcess, NULL, sizeof(pipe_params), MEM_COMMIT, PAGE_READWRITE);
+    ok(remote_pipe_params != NULL, "Failed allocating memory in remote process (%d)\n", GetLastError());
+
+    pipe_params.pipe_write_buf = pipe_write_magic;
+    pipe_params.pipe_read_buf = 0;
+    pipe_params.bytes_returned = 0;
+    strcpy(pipe_params.pipe_name, pipe_name);
+
+    ret = WriteProcessMemory(pi.hProcess, remote_pipe_params,
+                             &pipe_params, sizeof(pipe_params), NULL);
+    ok(ret, "Failed to write to remote process memory (%d)\n", GetLastError());
+
+#ifdef __x86_64__
+    ok( ctx.ContextFlags == CONTEXT_FULL, "wrong flags %x\n", ctx.ContextFlags );
+    ok( !ctx.Rax, "rax is not zero %lx\n", ctx.Rax );
+    ok( !ctx.Rbx, "rbx is not zero %lx\n", ctx.Rbx );
+    ok( !ctx.Rsi, "rsi is not zero %lx\n", ctx.Rsi );
+    ok( !ctx.Rdi, "rdi is not zero %lx\n", ctx.Rdi );
+    ok( !ctx.Rbp, "rbp is not zero %lx\n", ctx.Rbp );
+    ok( !ctx.R8, "r8 is not zero %lx\n", ctx.R8 );
+    ok( !ctx.R9, "r9 is not zero %lx\n", ctx.R9 );
+    ok( !ctx.R10, "r10 is not zero %lx\n", ctx.R10 );
+    ok( !ctx.R11, "r11 is not zero %lx\n", ctx.R11 );
+    ok( !ctx.R12, "r12 is not zero %lx\n", ctx.R12 );
+    ok( !ctx.R13, "r13 is not zero %lx\n", ctx.R13 );
+    ok( !ctx.R14, "r14 is not zero %lx\n", ctx.R14 );
+    ok( !ctx.R15, "r15 is not zero %lx\n", ctx.R15 );
+    ok( !((ctx.Rsp + 0x28) & 0xfff), "rsp is not at top of stack page %lx\n", ctx.Rsp );
+    entry_ptr = (void *)ctx.Rcx;
+    peb_ptr = (void *)ctx.Rdx;
+
+    rop_chain.exit_process_ptr = exit_process_ptr;
+    ctx.Rcx = (ULONG_PTR)remote_pipe_params + offsetof(struct pipe_params, pipe_name);
+    ctx.Rdx = (ULONG_PTR)remote_pipe_params + offsetof(struct pipe_params, pipe_write_buf);
+    ctx.R8 = sizeof(pipe_params.pipe_write_buf);
+    ctx.R9 = (ULONG_PTR)remote_pipe_params + offsetof(struct pipe_params, pipe_read_buf);
+    rop_chain.pipe_read_buf_size = sizeof(pipe_params.pipe_read_buf);
+    rop_chain.bytes_returned = (ULONG_PTR)remote_pipe_params + offsetof(struct pipe_params, bytes_returned);
+    rop_chain.timeout = 10000;
+
+    ctx.Rip = (ULONG_PTR)call_named_pipe_a;
+    ctx.Rsp -= sizeof(rop_chain);
+    ret = WriteProcessMemory(pi.hProcess, (void *)ctx.Rsp, &rop_chain, sizeof(rop_chain), NULL);
+    ok(ret, "Failed to write to remote process thread stack (%d)\n", GetLastError());
+#else
+    ok( ctx.ContextFlags == CONTEXT_FULL, "wrong flags %x\n", ctx.ContextFlags );
+    ok( !ctx.Ebp || broken(ctx.Ebp), /* winxp */ "ebp is not zero %08x\n", ctx.Ebp );
+    if (!ctx.Ebp)  /* winxp is completely different */
+    {
+        ok( !ctx.Ecx, "ecx is not zero %08x\n", ctx.Ecx );
+        ok( !ctx.Edx, "edx is not zero %08x\n", ctx.Edx );
+        ok( !ctx.Esi, "esi is not zero %08x\n", ctx.Esi );
+        ok( !ctx.Edi, "edi is not zero %08x\n", ctx.Edi );
+    }
+    ok( !((ctx.Esp + 0x10) & 0xfff) || broken( !((ctx.Esp + 4) & 0xfff) ), /* winxp, w2k3 */
+        "esp is not at top of stack page or properly aligned: %08x\n", ctx.Esp );
+    entry_ptr = (void *)ctx.Eax;
+    peb_ptr = (void *)ctx.Ebx;
+
+    rop_chain.exit_process_ptr = exit_process_ptr;
+    rop_chain.pipe_name = (ULONG_PTR)remote_pipe_params + offsetof(struct pipe_params, pipe_name);
+    rop_chain.pipe_write_buf = (ULONG_PTR)remote_pipe_params + offsetof(struct pipe_params, pipe_write_buf);
+    rop_chain.pipe_write_buf_size = sizeof(pipe_params.pipe_write_buf);
+    rop_chain.pipe_read_buf = (ULONG_PTR)remote_pipe_params + offsetof(struct pipe_params, pipe_read_buf);
+    rop_chain.pipe_read_buf_size = sizeof(pipe_params.pipe_read_buf);
+    rop_chain.bytes_returned = (ULONG_PTR)remote_pipe_params + offsetof(struct pipe_params, bytes_returned);
+    rop_chain.timeout = 10000;
+    rop_chain.exit_code = 0;
+
+    ctx.Eip = (ULONG_PTR)call_named_pipe_a;
+    ctx.Esp -= sizeof(rop_chain);
+    ret = WriteProcessMemory(pi.hProcess, (void *)ctx.Esp, &rop_chain, sizeof(rop_chain), NULL);
+    ok(ret, "Failed to write to remote process thread stack (%d)\n", GetLastError());
+#endif
+
+    ret = ReadProcessMemory( pi.hProcess, peb_ptr, &child_peb, sizeof(child_peb), NULL );
+    ok( ret, "Failed to read PEB (%u)\n", GetLastError() );
+    ok( child_peb.ImageBaseAddress == exe_base, "wrong base %p/%p\n",
+        child_peb.ImageBaseAddress, exe_base );
+    ok( entry_ptr == (char *)exe_base + nt_header.OptionalHeader.AddressOfEntryPoint,
+        "wrong entry point %p/%p\n", entry_ptr,
+        (char *)exe_base + nt_header.OptionalHeader.AddressOfEntryPoint );
+
+    ret = SetThreadContext(pi.hThread, &ctx);
+    ok(ret, "Failed to set remote thread context (%d)\n", GetLastError());
+
+    ResumeThread(pi.hThread);
+
+    pipe_connected = ConnectNamedPipe(server_pipe_handle, NULL) || (GetLastError() == ERROR_PIPE_CONNECTED);
+    ok(pipe_connected, "Pipe did not connect\n");
+
+    ret = ReadFile(server_pipe_handle, &pipe_magic, sizeof(pipe_magic), &numb, NULL);
+    ok(ret, "Failed to read buffer from pipe (%d)\n", GetLastError());
+
+    ok(pipe_magic == pipe_write_magic, "Did not get the correct magic from the remote process\n");
+
+    /* Validate the Imports, at this point the thread in the new process should have
+       initialized the EXE module imports and call each dll DllMain notifying it on
+       the new thread in the process. */
+    ret = are_imports_resolved(pi.hProcess, exe_base, &nt_header);
+    ok(ret, "EXE IAT is not resolved\n");
+
+    ret = WriteFile(server_pipe_handle, &pipe_magic, sizeof(pipe_magic), &numb, NULL);
+    ok(ret, "Failed to write the magic back to the pipe (%d)\n", GetLastError());
+
+    CloseHandle(server_pipe_handle);
+    TerminateProcess(pi.hProcess, 0);
+    WaitForSingleObject(pi.hProcess, 10000);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+}
+#else
+static void test_SuspendProcessNewThread(void)
+{
+}
+static void test_SuspendProcessState(void)
+{
+}
+#endif
+
 static void test_DetachStdHandles(void)
 {
 #ifndef _WIN64
@@ -3341,7 +3673,7 @@ static void test_ProcThreadAttributeList(void)
     ok(GetLastError() == ERROR_OBJECT_NAME_EXISTS, "got %d\n", GetLastError());
 
     ret = pUpdateProcThreadAttribute(&list, 0, PROC_THREAD_ATTRIBUTE_IDEAL_PROCESSOR, handles, sizeof(PROCESSOR_NUMBER), NULL, NULL);
-    ok(ret || (!ret && GetLastError() == ERROR_NOT_SUPPORTED), "got %d gle %d\n", ret, GetLastError());
+    ok(ret || GetLastError() == ERROR_NOT_SUPPORTED, "got %d gle %d\n", ret, GetLastError());
 
     if (ret)
     {
@@ -3433,6 +3765,8 @@ START_TEST(process)
     test_GetLogicalProcessorInformationEx();
     test_largepages();
     test_ProcThreadAttributeList();
+    test_SuspendProcessState();
+    test_SuspendProcessNewThread();
 
     /* things that can be tested:
      *  lookup:         check the way program to be executed is searched

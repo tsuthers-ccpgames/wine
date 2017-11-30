@@ -488,7 +488,7 @@ ULONG CDECL wined3d_device_decref(struct wined3d_device *device)
 
         state_cleanup(&device->state);
 
-        for (i = 0; i < sizeof(device->multistate_funcs) / sizeof(device->multistate_funcs[0]); ++i)
+        for (i = 0; i < ARRAY_SIZE(device->multistate_funcs); ++i)
         {
             HeapFree(GetProcessHeap(), 0, device->multistate_funcs[i]);
             device->multistate_funcs[i] = NULL;
@@ -1030,6 +1030,7 @@ static void wined3d_device_create_primary_opengl_context_cs(void *object)
     wined3d_ffp_blitter_create(&device->blitter, &device->adapter->gl_info);
     wined3d_arbfp_blitter_create(&device->blitter, device);
     wined3d_fbo_blitter_create(&device->blitter, &device->adapter->gl_info);
+    wined3d_raw_blitter_create(&device->blitter, &device->adapter->gl_info);
 
     swapchain = device->swapchains[0];
     target = swapchain->back_buffers ? swapchain->back_buffers[0] : swapchain->front_buffer;
@@ -2032,7 +2033,7 @@ void CDECL wined3d_device_set_sampler_state(struct wined3d_device *device,
     if (sampler_idx >= WINED3DVERTEXTEXTURESAMPLER0 && sampler_idx <= WINED3DVERTEXTEXTURESAMPLER3)
         sampler_idx -= (WINED3DVERTEXTEXTURESAMPLER0 - MAX_FRAGMENT_SAMPLERS);
 
-    if (sampler_idx >= sizeof(device->state.sampler_states) / sizeof(*device->state.sampler_states))
+    if (sampler_idx >= ARRAY_SIZE(device->state.sampler_states))
     {
         WARN("Invalid sampler %u.\n", sampler_idx);
         return; /* Windows accepts overflowing this array ... we do not. */
@@ -2067,7 +2068,7 @@ DWORD CDECL wined3d_device_get_sampler_state(const struct wined3d_device *device
     if (sampler_idx >= WINED3DVERTEXTEXTURESAMPLER0 && sampler_idx <= WINED3DVERTEXTEXTURESAMPLER3)
         sampler_idx -= (WINED3DVERTEXTEXTURESAMPLER0 - MAX_FRAGMENT_SAMPLERS);
 
-    if (sampler_idx >= sizeof(device->state.sampler_states) / sizeof(*device->state.sampler_states))
+    if (sampler_idx >= ARRAY_SIZE(device->state.sampler_states))
     {
         WARN("Invalid sampler %u.\n", sampler_idx);
         return 0; /* Windows accepts overflowing this array ... we do not. */
@@ -3423,7 +3424,7 @@ HRESULT CDECL wined3d_device_set_texture(struct wined3d_device *device,
         stage -= (WINED3DVERTEXTEXTURESAMPLER0 - MAX_FRAGMENT_SAMPLERS);
 
     /* Windows accepts overflowing this array... we do not. */
-    if (stage >= sizeof(device->state.textures) / sizeof(*device->state.textures))
+    if (stage >= ARRAY_SIZE(device->state.textures))
     {
         WARN("Ignoring invalid stage %u.\n", stage);
         return WINED3D_OK;
@@ -3467,7 +3468,7 @@ struct wined3d_texture * CDECL wined3d_device_get_texture(const struct wined3d_d
     if (stage >= WINED3DVERTEXTEXTURESAMPLER0 && stage <= WINED3DVERTEXTEXTURESAMPLER3)
         stage -= (WINED3DVERTEXTEXTURESAMPLER0 - MAX_FRAGMENT_SAMPLERS);
 
-    if (stage >= sizeof(device->state.textures) / sizeof(*device->state.textures))
+    if (stage >= ARRAY_SIZE(device->state.textures))
     {
         WARN("Ignoring invalid stage %u.\n", stage);
         return NULL; /* Windows accepts overflowing this array ... we do not. */
@@ -3652,6 +3653,14 @@ void CDECL wined3d_device_dispatch_compute(struct wined3d_device *device,
     wined3d_cs_emit_dispatch(device->cs, group_count_x, group_count_y, group_count_z);
 }
 
+void CDECL wined3d_device_dispatch_compute_indirect(struct wined3d_device *device,
+        struct wined3d_buffer *buffer, unsigned int offset)
+{
+    TRACE("device %p, buffer %p, offset %u.\n", device, buffer, offset);
+
+    wined3d_cs_emit_dispatch_indirect(device->cs, buffer, offset);
+}
+
 void CDECL wined3d_device_set_primitive_type(struct wined3d_device *device,
         enum wined3d_primitive_type primitive_type, unsigned int patch_vertex_count)
 {
@@ -3695,6 +3704,15 @@ void CDECL wined3d_device_draw_primitive_instanced(struct wined3d_device *device
             0, start_vertex, vertex_count, start_instance, instance_count, FALSE);
 }
 
+void CDECL wined3d_device_draw_primitive_instanced_indirect(struct wined3d_device *device,
+        struct wined3d_buffer *buffer, unsigned int offset)
+{
+    TRACE("device %p, buffer %p, offset %u.\n", device, buffer, offset);
+
+    wined3d_cs_emit_draw_indirect(device->cs, device->state.gl_primitive_type, device->state.gl_patch_vertices,
+            buffer, offset, FALSE);
+}
+
 HRESULT CDECL wined3d_device_draw_indexed_primitive(struct wined3d_device *device, UINT start_idx, UINT index_count)
 {
     TRACE("device %p, start_idx %u, index_count %u.\n", device, start_idx, index_count);
@@ -3723,6 +3741,15 @@ void CDECL wined3d_device_draw_indexed_primitive_instanced(struct wined3d_device
 
     wined3d_cs_emit_draw(device->cs, device->state.gl_primitive_type, device->state.gl_patch_vertices,
             device->state.base_vertex_index, start_idx, index_count, start_instance, instance_count, TRUE);
+}
+
+void CDECL wined3d_device_draw_indexed_primitive_instanced_indirect(struct wined3d_device *device,
+        struct wined3d_buffer *buffer, unsigned int offset)
+{
+    TRACE("device %p, buffer %p, offset %u.\n", device, buffer, offset);
+
+    wined3d_cs_emit_draw_indirect(device->cs, device->state.gl_primitive_type, device->state.gl_patch_vertices,
+            buffer, offset, TRUE);
 }
 
 HRESULT CDECL wined3d_device_update_texture(struct wined3d_device *device,
@@ -4002,9 +4029,10 @@ void CDECL wined3d_device_copy_resource(struct wined3d_device *device,
         return;
     }
 
-    if (src_resource->format->id != dst_resource->format->id)
+    if (src_resource->format->typeless_id != dst_resource->format->typeless_id
+            || (!src_resource->format->typeless_id && src_resource->format->id != dst_resource->format->id))
     {
-        WARN("Resource formats (%s / %s) don't match.\n",
+        WARN("Resource formats %s and %s are incompatible.\n",
                 debug_d3dformat(dst_resource->format->id),
                 debug_d3dformat(src_resource->format->id));
         return;
@@ -4014,7 +4042,7 @@ void CDECL wined3d_device_copy_resource(struct wined3d_device *device,
     {
         wined3d_box_set(&box, 0, 0, src_resource->size, 1, 0, 1);
         wined3d_cs_emit_blt_sub_resource(device->cs, dst_resource, 0, &box,
-                src_resource, 0, &box, 0, NULL, WINED3D_TEXF_POINT);
+                src_resource, 0, &box, WINED3D_BLT_RAW, NULL, WINED3D_TEXF_POINT);
         return;
     }
 
@@ -4041,7 +4069,7 @@ void CDECL wined3d_device_copy_resource(struct wined3d_device *device,
             unsigned int idx = j * dst_texture->level_count + i;
 
             wined3d_cs_emit_blt_sub_resource(device->cs, dst_resource, idx, &box,
-                    src_resource, idx, &box, 0, NULL, WINED3D_TEXF_POINT);
+                    src_resource, idx, &box, WINED3D_BLT_RAW, NULL, WINED3D_TEXF_POINT);
         }
     }
 }
@@ -4072,9 +4100,10 @@ HRESULT CDECL wined3d_device_copy_sub_resource_region(struct wined3d_device *dev
         return WINED3DERR_INVALIDCALL;
     }
 
-    if (src_resource->format->id != dst_resource->format->id)
+    if (src_resource->format->typeless_id != dst_resource->format->typeless_id
+            || (!src_resource->format->typeless_id && src_resource->format->id != dst_resource->format->id))
     {
-        WARN("Resource formats (%s / %s) don't match.\n",
+        WARN("Resource formats %s and %s are incompatible.\n",
                 debug_d3dformat(dst_resource->format->id),
                 debug_d3dformat(src_resource->format->id));
         return WINED3DERR_INVALIDCALL;
@@ -4096,7 +4125,10 @@ HRESULT CDECL wined3d_device_copy_sub_resource_region(struct wined3d_device *dev
 
         if (!src_box)
         {
-            wined3d_box_set(&b, 0, 0, src_resource->size, 1, 0, 1);
+            unsigned int dst_w;
+
+            dst_w = dst_resource->size - dst_x;
+            wined3d_box_set(&b, 0, 0, min(src_resource->size, dst_w), 1, 0, 1);
             src_box = &b;
         }
         else if ((src_box->left >= src_box->right
@@ -4149,8 +4181,16 @@ HRESULT CDECL wined3d_device_copy_sub_resource_region(struct wined3d_device *dev
 
         if (!src_box)
         {
-            wined3d_box_set(&b, 0, 0, wined3d_texture_get_level_width(src_texture, src_level),
-                    wined3d_texture_get_level_height(src_texture, src_level), 0, 1);
+            unsigned int src_w, src_h, dst_w, dst_h, dst_level;
+
+            src_w = wined3d_texture_get_level_width(src_texture, src_level);
+            src_h = wined3d_texture_get_level_height(src_texture, src_level);
+
+            dst_level = dst_sub_resource_idx % dst_texture->level_count;
+            dst_w = wined3d_texture_get_level_width(dst_texture, dst_level) - dst_x;
+            dst_h = wined3d_texture_get_level_height(dst_texture, dst_level) - dst_y;
+
+            wined3d_box_set(&b, 0, 0, min(src_w, dst_w), min(src_h, dst_h), 0, 1);
             src_box = &b;
         }
         else if (FAILED(wined3d_texture_check_box_dimensions(src_texture, src_level, src_box)))
@@ -4175,7 +4215,7 @@ HRESULT CDECL wined3d_device_copy_sub_resource_region(struct wined3d_device *dev
     }
 
     wined3d_cs_emit_blt_sub_resource(device->cs, dst_resource, dst_sub_resource_idx, &dst_box,
-            src_resource, src_sub_resource_idx, src_box, 0, NULL, WINED3D_TEXF_POINT);
+            src_resource, src_sub_resource_idx, src_box, WINED3D_BLT_RAW, NULL, WINED3D_TEXF_POINT);
 
     return WINED3D_OK;
 }
@@ -5098,7 +5138,7 @@ HRESULT device_init(struct wined3d_device *device, struct wined3d *wined3d,
     return WINED3D_OK;
 
 err:
-    for (i = 0; i < sizeof(device->multistate_funcs) / sizeof(device->multistate_funcs[0]); ++i)
+    for (i = 0; i < ARRAY_SIZE(device->multistate_funcs); ++i)
     {
         HeapFree(GetProcessHeap(), 0, device->multistate_funcs[i]);
     }

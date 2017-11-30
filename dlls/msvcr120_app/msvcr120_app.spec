@@ -851,14 +851,14 @@
 @ stub __BuildCatchObject
 @ stub __BuildCatchObjectHelper
 @ stdcall -arch=x86_64 __C_specific_handler(ptr long ptr ptr) msvcr120.__C_specific_handler
-@ cdecl -arch=i386,x86_64,arm __CppXcptFilter(long ptr) msvcr120.__CppXcptFilter
-@ cdecl -arch=i386,x86_64,arm __CxxDetectRethrow(ptr) msvcr120.__CxxDetectRethrow
-@ cdecl -arch=i386,x86_64,arm __CxxExceptionFilter(ptr ptr long ptr) msvcr120.__CxxExceptionFilter
-@ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler(ptr ptr ptr ptr) msvcr120.__CxxFrameHandler
-@ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler2(ptr ptr ptr ptr) msvcr120.__CxxFrameHandler2
-@ cdecl -arch=i386,x86_64,arm -norelay __CxxFrameHandler3(ptr ptr ptr ptr) msvcr120.__CxxFrameHandler3
+@ cdecl -arch=i386,x86_64,arm,arm64 __CppXcptFilter(long ptr) msvcr120.__CppXcptFilter
+@ cdecl -arch=i386,x86_64,arm,arm64 __CxxDetectRethrow(ptr) msvcr120.__CxxDetectRethrow
+@ cdecl -arch=i386,x86_64,arm,arm64 __CxxExceptionFilter(ptr ptr long ptr) msvcr120.__CxxExceptionFilter
+@ cdecl -arch=i386,x86_64,arm,arm64 -norelay __CxxFrameHandler(ptr ptr ptr ptr) msvcr120.__CxxFrameHandler
+@ cdecl -arch=i386,x86_64,arm,arm64 -norelay __CxxFrameHandler2(ptr ptr ptr ptr) msvcr120.__CxxFrameHandler2
+@ cdecl -arch=i386,x86_64,arm,arm64 -norelay __CxxFrameHandler3(ptr ptr ptr ptr) msvcr120.__CxxFrameHandler3
 @ stdcall -arch=i386 __CxxLongjmpUnwind(ptr) msvcr120.__CxxLongjmpUnwind
-@ cdecl -arch=i386,x86_64,arm __CxxQueryExceptionSize() msvcr120.__CxxQueryExceptionSize
+@ cdecl -arch=i386,x86_64,arm,arm64 __CxxQueryExceptionSize() msvcr120.__CxxQueryExceptionSize
 @ cdecl __CxxRegisterExceptionObject(ptr ptr) msvcr120.__CxxRegisterExceptionObject
 @ cdecl __CxxUnregisterExceptionObject(ptr long) msvcr120.__CxxUnregisterExceptionObject
 @ cdecl __DestructExceptionObject(ptr) msvcr120.__DestructExceptionObject
@@ -1100,7 +1100,7 @@
 @ extern _fmode msvcr120._fmode
 @ cdecl _fpclass(double) msvcr120._fpclass
 # stub -arch=x86_64 _fpclassf
-@ cdecl -arch=i386,x86_64,arm _fpieee_flt(long ptr ptr) msvcr120._fpieee_flt
+@ cdecl -arch=i386,x86_64,arm,arm64 _fpieee_flt(long ptr ptr) msvcr120._fpieee_flt
 @ cdecl _fpreset() msvcr120._fpreset
 @ stub _fprintf_l
 @ stub _fprintf_p
@@ -1158,7 +1158,7 @@
 @ cdecl _get_output_format() msvcr120._get_output_format
 @ cdecl _get_pgmptr(ptr) msvcr120._get_pgmptr
 @ cdecl _get_printf_count_output() msvcr120._get_printf_count_output
-@ stub _get_purecall_handler
+@ cdecl _get_purecall_handler() msvcr120._get_purecall_handler
 @ cdecl _get_terminate() msvcr120._get_terminate
 @ cdecl _get_timezone(ptr) msvcr120._get_timezone
 @ cdecl _get_tzname(ptr str long long) msvcr120._get_tzname
@@ -1310,7 +1310,7 @@
 @ cdecl _mbtowc_l(ptr str long ptr) msvcr120._mbtowc_l
 @ cdecl _memccpy(ptr ptr long long) msvcr120._memccpy
 @ cdecl _memicmp(str str long) msvcr120._memicmp
-@ stub _memicmp_l
+@ cdecl _memicmp_l(str str long ptr) msvcr120._memicmp_l
 @ cdecl _mkdir(str) msvcr120._mkdir
 @ cdecl _mkgmtime32(ptr) msvcr120._mkgmtime32
 @ cdecl _mkgmtime64(ptr) msvcr120._mkgmtime64
@@ -1373,7 +1373,7 @@
 @ cdecl _set_output_format(long) msvcr120._set_output_format
 @ cdecl _set_printf_count_output(long) msvcr120._set_printf_count_output
 @ cdecl _set_purecall_handler(ptr) msvcr120._set_purecall_handler
-@ cdecl -arch=i386,x86_64,arm -norelay _setjmp(ptr) msvcr120._setjmp
+@ cdecl -arch=i386,x86_64,arm,arm64 -norelay _setjmp(ptr) msvcr120._setjmp
 @ cdecl -arch=i386 -norelay _setjmp3(ptr long) msvcr120._setjmp3
 @ cdecl -arch=x86_64,arm -norelay _setjmpex(ptr ptr) msvcr120._setjmpex
 @ cdecl _setmaxstdio(long) msvcr120._setmaxstdio
@@ -1502,14 +1502,14 @@
 @ cdecl _utime32(str ptr) msvcr120._utime32
 @ cdecl _utime64(str ptr) msvcr120._utime64
 @ cdecl _vacopy(ptr ptr) msvcr120._vacopy
-@ stub _vfprintf_l
-@ stub _vfprintf_p
-@ stub _vfprintf_p_l
-@ stub _vfprintf_s_l
+@ cdecl _vfprintf_l(ptr str ptr ptr) msvcr120._vfprintf_l
+@ cdecl _vfprintf_p(ptr str ptr) msvcr120._vfprintf_p
+@ cdecl _vfprintf_p_l(ptr str ptr ptr) msvcr120._vfprintf_p_l
+@ cdecl _vfprintf_s_l(ptr str ptr ptr) msvcr120._vfprintf_s_l
 @ cdecl _vfwprintf_l(ptr wstr ptr ptr) msvcr120._vfwprintf_l
-@ stub _vfwprintf_p
-@ stub _vfwprintf_p_l
-@ stub _vfwprintf_s_l
+@ cdecl _vfwprintf_p(ptr wstr ptr) msvcr120._vfwprintf_p
+@ cdecl _vfwprintf_p_l(ptr wstr ptr ptr) msvcr120._vfwprintf_p_l
+@ cdecl _vfwprintf_s_l(ptr wstr ptr ptr) msvcr120._vfwprintf_s_l
 @ stub _vprintf_l
 @ stub _vprintf_p
 @ stub _vprintf_p_l
@@ -1745,7 +1745,7 @@
 @ stub cimagf
 @ stub cimagl
 @ cdecl clearerr(ptr) msvcr120.clearerr
-@ stub clearerr_s
+@ cdecl clearerr_s(ptr) msvcr120.clearerr_s
 @ cdecl clock() msvcr120.clock
 @ stub clog
 @ stub clog10
@@ -1931,7 +1931,7 @@
 @ stub logb
 @ stub logbf
 @ stub logbl
-@ cdecl -arch=i386,x86_64,arm longjmp(ptr long) msvcr120.longjmp
+@ cdecl -arch=i386,x86_64,arm,arm64 longjmp(ptr long) msvcr120.longjmp
 @ cdecl lrint(double) msvcr120.lrint
 @ cdecl lrintf(float) msvcr120.lrintf
 @ cdecl lrintl(double) msvcr120.lrintl
@@ -2098,10 +2098,10 @@
 @ stub vscanf_s
 @ cdecl vsprintf(ptr str ptr) msvcr120.vsprintf
 @ cdecl vsprintf_s(ptr long str ptr) msvcr120.vsprintf_s
-@ stub vsscanf
+@ cdecl vsscanf(ptr str ptr) msvcr120.vsscanf
 @ stub vsscanf_s
 @ cdecl vswprintf_s(ptr long wstr ptr) msvcr120.vswprintf_s
-@ stub vswscanf
+@ cdecl vswscanf(ptr wstr ptr) msvcr120.vswscanf
 @ stub vswscanf_s
 @ cdecl vwprintf(wstr ptr) msvcr120.vwprintf
 @ cdecl vwprintf_s(wstr ptr) msvcr120.vwprintf_s

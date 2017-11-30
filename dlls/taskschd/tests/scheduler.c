@@ -890,7 +890,6 @@ todo_wine
     ok(vbool == VARIANT_FALSE, "expected VARIANT_FALSE, got %d\n", vbool);
 
     hr = IRegisteredTask_put_Enabled(task1, VARIANT_TRUE);
-todo_wine
     ok(hr == S_OK, "put_Enabled error %#x\n", hr);
     hr = IRegisteredTask_get_State(task1, &state);
     ok(hr == S_OK, "get_State error %#x\n", hr);
@@ -1103,14 +1102,7 @@ static void change_settings(ITaskDefinition *taskdef, struct settings *test)
         hr = ITaskSettings_put_RestartInterval(set, NULL);
     else
         hr = ITaskSettings_put_RestartInterval(set, test->restart_interval);
-todo_wine
     ok(hr == S_OK, "expected S_OK, got %#x\n", hr);
-    /* FIXME: Remove once implemented */
-    if (hr != S_OK)
-    {
-        ITaskSettings_Release(set);
-        return;
-    }
 
     hr = ITaskSettings_put_RestartCount(set, test->restart_count);
     ok(hr == S_OK, "expected S_OK, got %#x\n", hr);

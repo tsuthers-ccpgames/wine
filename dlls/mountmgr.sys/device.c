@@ -1085,6 +1085,7 @@ static void create_port_devices( DRIVER_OBJECT *driver )
 #ifdef linux
         "/dev/ttyS%u",
         "/dev/ttyUSB%u",
+        "/dev/ttyACM%u",
 #elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
         "/dev/cuau%u",
 #elif defined(__DragonFly__)
@@ -1136,7 +1137,8 @@ static void create_port_devices( DRIVER_OBJECT *driver )
     }
     p += 3;
 
-    RegOpenKeyExW( HKEY_LOCAL_MACHINE, ports_keyW, 0, KEY_QUERY_VALUE, &wine_ports_key );
+    RegCreateKeyExW( HKEY_LOCAL_MACHINE, ports_keyW, 0, NULL, 0,
+                     KEY_QUERY_VALUE, NULL, &wine_ports_key, NULL );
     RegCreateKeyExW( HKEY_LOCAL_MACHINE, windows_ports_key_name, 0, NULL, REG_OPTION_VOLATILE,
                      KEY_ALL_ACCESS, NULL, &windows_ports_key, NULL );
 

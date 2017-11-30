@@ -25,6 +25,8 @@ struct xmlbuf
     SIZE_T                       size;
     WS_XML_WRITER_ENCODING_TYPE  encoding;
     WS_CHARSET                   charset;
+    const WS_XML_DICTIONARY     *dict_static;
+    WS_XML_DICTIONARY           *dict;
 };
 
 void *ws_alloc( WS_HEAP *, SIZE_T ) DECLSPEC_HIDDEN;
@@ -32,7 +34,8 @@ void *ws_alloc_zero( WS_HEAP *, SIZE_T ) DECLSPEC_HIDDEN;
 void *ws_realloc( WS_HEAP *, void *, SIZE_T, SIZE_T ) DECLSPEC_HIDDEN;
 void *ws_realloc_zero( WS_HEAP *, void *, SIZE_T, SIZE_T ) DECLSPEC_HIDDEN;
 void ws_free( WS_HEAP *, void *, SIZE_T ) DECLSPEC_HIDDEN;
-struct xmlbuf *alloc_xmlbuf( WS_HEAP *, WS_XML_WRITER_ENCODING_TYPE, WS_CHARSET ) DECLSPEC_HIDDEN;
+struct xmlbuf *alloc_xmlbuf( WS_HEAP *, SIZE_T, WS_XML_WRITER_ENCODING_TYPE, WS_CHARSET,
+                             const WS_XML_DICTIONARY *, WS_XML_DICTIONARY * ) DECLSPEC_HIDDEN;
 void free_xmlbuf( struct xmlbuf * ) DECLSPEC_HIDDEN;
 
 struct dictionary
@@ -45,13 +48,13 @@ struct dictionary dict_builtin DECLSPEC_HIDDEN;
 const struct dictionary dict_builtin_static DECLSPEC_HIDDEN;
 
 int find_string( const struct dictionary *, const unsigned char *, ULONG, ULONG * ) DECLSPEC_HIDDEN;
-BOOL insert_string( struct dictionary *, unsigned char *, ULONG, int, ULONG * ) DECLSPEC_HIDDEN;
-HRESULT CALLBACK insert_string_cb( void *, const WS_XML_STRING *, BOOL *, ULONG *, WS_ERROR * ) DECLSPEC_HIDDEN;
+HRESULT insert_string( struct dictionary *, unsigned char *, ULONG, int, ULONG * ) DECLSPEC_HIDDEN;
 void clear_dict( struct dictionary * ) DECLSPEC_HIDDEN;
+HRESULT writer_enable_lookup( WS_XML_WRITER * ) DECLSPEC_HIDDEN;
 
 const char *debugstr_xmlstr( const WS_XML_STRING * ) DECLSPEC_HIDDEN;
 WS_XML_STRING *alloc_xml_string( const unsigned char *, ULONG ) DECLSPEC_HIDDEN;
-WS_XML_STRING *dup_xml_string( const WS_XML_STRING * ) DECLSPEC_HIDDEN;
+WS_XML_STRING *dup_xml_string( const WS_XML_STRING *, BOOL ) DECLSPEC_HIDDEN;
 HRESULT add_xml_string( WS_XML_STRING * ) DECLSPEC_HIDDEN;
 void free_xml_string( WS_XML_STRING * ) DECLSPEC_HIDDEN;
 HRESULT append_attribute( WS_XML_ELEMENT_NODE *, WS_XML_ATTRIBUTE * ) DECLSPEC_HIDDEN;
@@ -62,9 +65,9 @@ void restore_fpword( unsigned short ) DECLSPEC_HIDDEN;
 ULONG get_type_size( WS_TYPE, const void * ) DECLSPEC_HIDDEN;
 HRESULT read_header( WS_XML_READER *, const WS_XML_STRING *, const WS_XML_STRING *, WS_TYPE,
                      const void *, WS_READ_OPTION, WS_HEAP *, void *, ULONG ) DECLSPEC_HIDDEN;
+HRESULT create_header_buffer( WS_XML_READER *, WS_HEAP *, WS_XML_BUFFER ** ) DECLSPEC_HIDDEN;
 
 WS_XML_UTF8_TEXT *alloc_utf8_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
-WS_XML_UTF16_TEXT *alloc_utf16_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
 WS_XML_BASE64_TEXT *alloc_base64_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
 WS_XML_BOOL_TEXT *alloc_bool_text( BOOL ) DECLSPEC_HIDDEN;
 WS_XML_INT32_TEXT *alloc_int32_text( INT32 ) DECLSPEC_HIDDEN;
@@ -143,6 +146,8 @@ HRESULT prop_set( const struct prop *, ULONG, ULONG, const void *, ULONG ) DECLS
 HRESULT prop_get( const struct prop *, ULONG, ULONG, void *, ULONG ) DECLSPEC_HIDDEN;
 
 HRESULT message_set_action( WS_MESSAGE *, const WS_XML_STRING * ) DECLSPEC_HIDDEN;
+HRESULT message_get_id( WS_MESSAGE *, GUID * ) DECLSPEC_HIDDEN;
+HRESULT message_set_request_id( WS_MESSAGE *, const GUID * ) DECLSPEC_HIDDEN;
 void message_set_send_context( WS_MESSAGE *, const WS_PROXY_MESSAGE_CALLBACK_CONTEXT * ) DECLSPEC_HIDDEN;
 void message_set_receive_context( WS_MESSAGE *, const WS_PROXY_MESSAGE_CALLBACK_CONTEXT * ) DECLSPEC_HIDDEN;
 void message_do_send_callback( WS_MESSAGE * ) DECLSPEC_HIDDEN;

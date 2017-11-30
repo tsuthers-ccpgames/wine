@@ -99,6 +99,7 @@ static void session_destroy( object_header_t *hdr )
     TRACE("%p\n", session);
 
     if (session->unload_event) SetEvent( session->unload_event );
+    if (session->cred_handle_initialized) FreeCredentialsHandle( &session->cred_handle );
 
     LIST_FOR_EACH_SAFE( item, next, &session->cookie_cache )
     {
@@ -181,6 +182,17 @@ static BOOL session_set_option( object_header_t *hdr, DWORD option, LPVOID buffe
         policy = *(DWORD *)buffer;
         TRACE("0x%x\n", policy);
         hdr->redirect_policy = policy;
+        return TRUE;
+    }
+    case WINHTTP_OPTION_SECURE_PROTOCOLS:
+    {
+        if (buflen != sizeof(session->secure_protocols))
+        {
+            set_last_error( ERROR_INSUFFICIENT_BUFFER );
+            return FALSE;
+        }
+        session->secure_protocols = *(DWORD *)buffer;
+        TRACE("0x%x\n", session->secure_protocols);
         return TRUE;
     }
     case WINHTTP_OPTION_DISABLE_FEATURE:

@@ -283,6 +283,7 @@ static BOOL DIALOG_CreateControls32( HWND hwnd, LPCSTR template, const DLG_TEMPL
             WARN("control %s %s creation failed\n", debugstr_w(info.className),
                  debugstr_w(info.windowName));
             if (dlgTemplate->style & DS_NOFAILCREATE) continue;
+            SetLastError(0);
             return FALSE;
         }
 
@@ -835,11 +836,12 @@ INT_PTR WINAPI DialogBoxParamA( HINSTANCE hInst, LPCSTR name,
     HRSRC hrsrc;
     LPCDLGTEMPLATEA ptr;
 
+    if (owner && !IsWindow(owner)) return 0;
+
     if (!(hrsrc = FindResourceA( hInst, name, (LPSTR)RT_DIALOG ))) return -1;
     if (!(ptr = LoadResource(hInst, hrsrc))) return -1;
-    hwnd = DIALOG_CreateIndirect( hInst, ptr, owner, dlgProc, param, FALSE, &owner );
-    if (hwnd) return DIALOG_DoDialogBox( hwnd, owner );
-    return 0;
+    if (!(hwnd = DIALOG_CreateIndirect( hInst, ptr, owner, dlgProc, param, FALSE, &owner ))) return -1;
+    return DIALOG_DoDialogBox( hwnd, owner );
 }
 
 
@@ -853,11 +855,12 @@ INT_PTR WINAPI DialogBoxParamW( HINSTANCE hInst, LPCWSTR name,
     HRSRC hrsrc;
     LPCDLGTEMPLATEW ptr;
 
+    if (owner && !IsWindow(owner)) return 0;
+
     if (!(hrsrc = FindResourceW( hInst, name, (LPWSTR)RT_DIALOG ))) return -1;
     if (!(ptr = LoadResource(hInst, hrsrc))) return -1;
-    hwnd = DIALOG_CreateIndirect( hInst, ptr, owner, dlgProc, param, TRUE, &owner );
-    if (hwnd) return DIALOG_DoDialogBox( hwnd, owner );
-    return 0;
+    if (!(hwnd = DIALOG_CreateIndirect( hInst, ptr, owner, dlgProc, param, TRUE, &owner ))) return -1;
+    return DIALOG_DoDialogBox( hwnd, owner );
 }
 
 

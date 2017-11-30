@@ -926,6 +926,9 @@ static int queue_apc( struct process *process, struct thread *thread, struct thr
 {
     struct list *queue;
 
+    if (thread && thread->state == TERMINATED && process)
+        thread = NULL;
+
     if (!thread)  /* find a suitable thread inside the process */
     {
         struct thread *candidate;
@@ -977,14 +980,14 @@ static int queue_apc( struct process *process, struct thread *thread, struct thr
 }
 
 /* queue an async procedure call */
-int thread_queue_apc( struct thread *thread, struct object *owner, const apc_call_t *call_data )
+int thread_queue_apc( struct process *process, struct thread *thread, struct object *owner, const apc_call_t *call_data )
 {
     struct thread_apc *apc;
     int ret = 0;
 
     if ((apc = create_apc( owner, call_data )))
     {
-        ret = queue_apc( NULL, thread, apc );
+        ret = queue_apc( process, thread, apc );
         release_object( apc );
     }
     return ret;
@@ -1653,7 +1656,7 @@ DECL_HANDLER(get_thread_context)
         memset( context, 0, sizeof(context_t) );
         context->cpu = thread->process->cpu;
         if (thread->context) copy_context( context, thread->context, req->flags & ~flags );
-        if (flags) get_thread_context( thread, context, flags );
+        if (req->flags & flags) get_thread_context( thread, context, req->flags & flags );
     }
     release_object( thread );
 }
