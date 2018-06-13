@@ -1489,7 +1489,7 @@ interface ICommDlgBrowser3 : ICommDlgBrowser2
         [out, string, size_is(cchFileSpec)] LPWSTR pszFileSpec,
         [in] int cchFileSpec);
 
-    HRESULT OnPreviewCreated(
+    HRESULT OnPreViewCreated(
         [in] IShellView *ppshv);
 }
 
@@ -1512,7 +1512,7 @@ interface IDockingWindow : IOleWindow
         [in] LPCRECT prcBorder,
         [in] IUnknown *punkToolbarSite,
         [in] BOOL fReserved);
-};
+}
 
 
 /*****************************************************************************
@@ -1900,7 +1900,7 @@ interface ISearchContext : IUnknown
     HRESULT GetSearchText(
                 [in] BSTR *pbstrSearchText);
     HRESULT GetSearchStyle(
-                [in] BSTR *pdwSearchStyle);
+                [in] DWORD *pdwSearchStyle);
 }
 
 
@@ -2695,6 +2695,7 @@ interface INameSpaceTreeControlCustomDraw : IUnknown
     HRESULT ItemPrePaint(
         [in] HDC hdc,
         [in] RECT *prc,
+        [in] NSTCCUSTOMDRAW *pnstccdItem,
         [in, out] COLORREF *pclrText,
         [in, out] COLORREF *pclrTextBk,
         [out] LRESULT *plres);
@@ -3239,7 +3240,7 @@ interface IFileDialogControlEvents : IUnknown
 
     HRESULT OnCheckButtonToggled(
         [in] IFileDialogCustomize *pfdc,
-        [in] BOOL dwIDCtl,
+        [in] DWORD dwIDCtl,
         [in] BOOL bChecked);
 
     HRESULT OnControlActivating(
@@ -3557,7 +3558,7 @@ interface ITransferAdviseSink : IUnknown
     HRESULT ConfirmOverwrite([in] IShellItem *source,
                              [in] IShellItem *dest_parent,
                              [in, string] LPCWSTR name);
-    HRESULT ConfirmEncryptLoss([in] IShellItem *source);
+    HRESULT ConfirmEncryptionLoss([in] IShellItem *source);
     HRESULT FileFailure([in] IShellItem *item,
                         [in, unique, string] LPCWSTR itemname,
                         [in] HRESULT hr,
@@ -3698,6 +3699,49 @@ typedef enum ASSOC_FILTER
 } ASSOC_FILTER;
 cpp_quote("HRESULT WINAPI SHAssocEnumHandlers(PCWSTR extra, ASSOC_FILTER filter, IEnumAssocHandlers **handlersenum);")
 
+[
+    uuid(1df0d7f1-b267-4d28-8b10-12e23202a5c4),
+]
+interface IItemNameLimits : IUnknown
+{
+    HRESULT GetValidCharacters(
+        [out, string] LPWSTR *validchars,
+        [out, string] LPWSTR *invalidchars);
+
+    HRESULT GetMaxLength(
+        [in, string] LPCWSTR name,
+        [out] int *max_length);
+}
+
+typedef [v1_enum] enum ACTIVATEOPTIONS
+{
+    AO_NONE             = 0x00000000,
+    AO_DESIGNMODE       = 0x00000001,
+    AO_NOERRORUI        = 0x00000002,
+    AO_NOSPLASHSCREEN   = 0x00000004,
+    AO_PRELAUNCH        = 0x02000000
+} ACTIVATEOPTIONS;
+
+[
+    uuid(2e941141-7f97-4756-ba1d-9decde894a3d),
+    object,
+    pointer_default(unique)
+]
+interface IApplicationActivationManager : IUnknown
+{
+    HRESULT ActivateApplication([in] LPCWSTR appusermodelid,
+                                [in, unique] LPCWSTR arguments,
+                                [in] ACTIVATEOPTIONS options,
+                                [out] DWORD *processid);
+    HRESULT ActivateForFile([in] LPCWSTR appusermodelid,
+                            [in] IShellItemArray *itemarray,
+                            [in, unique] LPCWSTR verb,
+                            [out] DWORD *processid);
+    HRESULT ActivateForProtocol([in] LPCWSTR appusermodelid,
+                                [in] IShellItemArray *itemarray,
+                                [out] DWORD *processid);
+}
+
 /*****************************************************************************
  * ShellObjects typelibrary
  */
@@ -3801,5 +3845,13 @@ library ShellObjects
     coclass QueryCancelAutoPlay
     {
         interface IQueryCancelAutoPlay;
+    }
+
+    [
+        uuid(45ba127d-10a8-46ea-8ab7-56ea9078943c)
+    ]
+    coclass ApplicationActivationManager
+    {
+        interface IApplicationActivationManager;
     }
 }

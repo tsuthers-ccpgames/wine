@@ -977,7 +977,10 @@ static void wave_out_test_device(UINT_PTR device)
        "waveOutGetDevCapsA(%s): MMSYSERR_NOERROR expected, got %s\n",
        dev_name(device),wave_out_error(rc));
     if (rc!=MMSYSERR_NOERROR)
+    {
+        HeapFree(GetProcessHeap(), 0, nameA);
         return;
+    }
 
     trace("  %s: \"%s\" (%s) %d.%d (%d:%d)\n",dev_name(device),capsA.szPname,
           (nameA?nameA:"failed"),capsA.vDriverVersion >> 8,
@@ -1436,6 +1439,16 @@ static void wave_out_tests(void)
     if(rc != MMSYSERR_NOTSUPPORTED)
         ok((ndev == 0 && (preferred == -1 || broken(preferred != -1))) ||
                 preferred < ndev, "Got invalid preferred device: 0x%x\n", preferred);
+
+    rc = waveOutMessage((HWAVEOUT)WAVE_MAPPER, DRVM_MAPPER_PREFERRED_GET,
+         (DWORD_PTR)-1  , 0);
+    ok(rc == MMSYSERR_INVALPARAM || rc == MMSYSERR_BADDEVICEID, /* w2008+wvista */
+       "waveOutMessage(DRVM_MAPPER_PREFERRED_GET) failed: %u\n", rc);
+
+    rc = waveOutMessage((HWAVEOUT)WAVE_MAPPER, DRVM_MAPPER_PREFERRED_GET,
+         0, (DWORD_PTR)&status);
+    ok(rc == MMSYSERR_INVALPARAM || rc == MMSYSERR_BADDEVICEID, /* w2008+wvista */
+       "waveOutMessage(DRVM_MAPPER_PREFERRED_GET) failed: %u\n", rc);
 
     rc=waveOutGetDevCapsA(ndev+1,&capsA,sizeof(capsA));
     ok(rc==MMSYSERR_BADDEVICEID,

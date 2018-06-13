@@ -17,15 +17,6 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  *
- * NOTES
- *
- * This code was audited for completeness against the documented features
- * of Comctl32.dll version 6.0 on Oct. 9, 2004, by Dimitrie O. Paun.
- * 
- * Unless otherwise noted, we believe this code to be complete, as per
- * the specification mentioned above.
- * If you discover missing features, or bugs, please note them below.
- *
  * TODO:
  *    - LBS_NODATA
  */
@@ -1547,7 +1538,7 @@ static LRESULT LISTBOX_InsertItem( LB_DESCR *descr, INT index,
         RtlMoveMemory( item + 1, item,
                        (descr->nb_items - index) * sizeof(LB_ITEMDATA) );
     item->str      = str;
-    item->data     = data;
+    item->data     = HAS_STRINGS(descr) ? 0 : data;
     item->height   = 0;
     item->selected = FALSE;
     descr->nb_items++;
@@ -1562,7 +1553,7 @@ static LRESULT LISTBOX_InsertItem( LB_DESCR *descr, INT index,
         mis.CtlType    = ODT_LISTBOX;
         mis.CtlID      = id;
         mis.itemID     = index;
-        mis.itemData   = descr->items[index].data;
+        mis.itemData   = data;
         mis.itemHeight = descr->item_height;
         SendMessageW( descr->owner, WM_MEASUREITEM, id, (LPARAM)&mis );
         item->height = mis.itemHeight ? mis.itemHeight : 1;
@@ -1603,7 +1594,6 @@ static LRESULT LISTBOX_InsertItem( LB_DESCR *descr, INT index,
 static LRESULT LISTBOX_InsertString( LB_DESCR *descr, INT index, LPCWSTR str )
 {
     LPWSTR new_str = NULL;
-    ULONG_PTR data = 0;
     LRESULT ret;
 
     if (HAS_STRINGS(descr))
@@ -1617,10 +1607,9 @@ static LRESULT LISTBOX_InsertString( LB_DESCR *descr, INT index, LPCWSTR str )
         }
         strcpyW(new_str, str);
     }
-    else data = (ULONG_PTR)str;
 
     if (index == -1) index = descr->nb_items;
-    if ((ret = LISTBOX_InsertItem( descr, index, new_str, data )) != 0)
+    if ((ret = LISTBOX_InsertItem( descr, index, new_str, (ULONG_PTR)str )) != 0)
     {
         HeapFree( GetProcessHeap(), 0, new_str );
         return ret;

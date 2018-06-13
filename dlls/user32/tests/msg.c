@@ -6466,15 +6466,13 @@ static void test_button_messages(void)
         prevfont = SelectObject(hdc, hfont2);
         ok(prevfont == GetStockObject(SYSTEM_FONT), "Unexpected default font\n");
         SendMessageA(hwnd, WM_PRINTCLIENT, (WPARAM)hdc, 0);
-    todo_wine
-        ok(GetStockObject(SYSTEM_FONT) == GetCurrentObject(hdc, OBJ_FONT), "button[%u]: unexpected font selected after WM_PRINTCLIENT\n", i);
+        ok(hfont2 != GetCurrentObject(hdc, OBJ_FONT), "button[%u]: unexpected font selected after WM_PRINTCLIENT\n", i);
         SelectObject(hdc, prevfont);
 
         prevfont = SelectObject(hdc, hfont2);
         ok(prevfont == GetStockObject(SYSTEM_FONT), "Unexpected default font\n");
         SendMessageA(hwnd, WM_PAINT, (WPARAM)hdc, 0);
-    todo_wine
-        ok(GetStockObject(SYSTEM_FONT) == GetCurrentObject(hdc, OBJ_FONT), "button[%u]: unexpected font selected after WM_PAINT\n", i);
+        ok(hfont2 != GetCurrentObject(hdc, OBJ_FONT), "button[%u]: unexpected font selected after WM_PAINT\n", i);
         SelectObject(hdc, prevfont);
 
         DeleteDC(hdc);
@@ -6502,6 +6500,121 @@ static void test_button_messages(void)
 
     DestroyWindow(hwnd);
     DestroyWindow(parent);
+}
+
+static void test_button_bm_get_set_image(void)
+{
+    HWND hwnd;
+    HDC hdc;
+    HBITMAP hbmp1x1;
+    HBITMAP hbmp2x2;
+    HBITMAP hmask2x2;
+    ICONINFO icon_info2x2;
+    HICON hicon2x2;
+    HBITMAP hbmp;
+    HICON hicon;
+    ICONINFO icon_info;
+    BITMAP bm;
+    DWORD default_style = BS_PUSHBUTTON | WS_TABSTOP | WS_POPUP | WS_VISIBLE;
+    LRESULT ret;
+
+    hdc = GetDC(0);
+    hbmp1x1 = CreateCompatibleBitmap(hdc, 1, 1);
+    hbmp2x2 = CreateCompatibleBitmap(hdc, 2, 2);
+    ZeroMemory(&bm, sizeof(bm));
+    ok(GetObjectW(hbmp1x1, sizeof(bm), &bm), "Expect GetObjectW() success\n");
+    ok(bm.bmWidth == 1 && bm.bmHeight == 1, "Expect bitmap size: %d,%d, got: %d,%d\n", 1, 1,
+       bm.bmWidth, bm.bmHeight);
+    ZeroMemory(&bm, sizeof(bm));
+    ok(GetObjectW(hbmp2x2, sizeof(bm), &bm), "Expect GetObjectW() success\n");
+    ok(bm.bmWidth == 2 && bm.bmHeight == 2, "Expect bitmap size: %d,%d, got: %d,%d\n", 2, 2,
+       bm.bmWidth, bm.bmHeight);
+
+    hmask2x2 = CreateCompatibleBitmap(hdc, 2, 2);
+    ZeroMemory(&icon_info2x2, sizeof(icon_info2x2));
+    icon_info2x2.fIcon = TRUE;
+    icon_info2x2.hbmMask = hmask2x2;
+    icon_info2x2.hbmColor = hbmp2x2;
+    hicon2x2 = CreateIconIndirect(&icon_info2x2);
+
+    ZeroMemory(&icon_info, sizeof(icon_info));
+    ok(GetIconInfo(hicon2x2, &icon_info), "Expect GetIconInfo() success\n");
+    ZeroMemory(&bm, sizeof(bm));
+    ok(GetObjectW(icon_info.hbmColor, sizeof(bm), &bm), "Expect GetObjectW() success\n");
+    ok(bm.bmWidth == 2 && bm.bmHeight == 2, "Expect bitmap size: %d,%d, got: %d,%d\n", 2, 2,
+       bm.bmWidth, bm.bmHeight);
+    DeleteObject(icon_info.hbmColor);
+    DeleteObject(icon_info.hbmMask);
+
+    /* Set bitmap with BS_BITMAP */
+    hwnd = CreateWindowA("Button", "test", default_style | BS_BITMAP, 0, 0, 100, 100, 0, 0, 0, 0);
+    ok(hwnd != NULL, "Expect hwnd not NULL\n");
+    SendMessageA(hwnd, BM_SETIMAGE, (WPARAM)IMAGE_BITMAP, (LPARAM)hbmp1x1);
+    hbmp = (HBITMAP)SendMessageA(hwnd, BM_GETIMAGE, (WPARAM)IMAGE_BITMAP, 0);
+    ok(hbmp != 0, "Expect hbmp not 0\n");
+    ZeroMemory(&bm, sizeof(bm));
+    ok(GetObjectW(hbmp, sizeof(bm), &bm), "Expect GetObjectW() success\n");
+    ok(bm.bmWidth == 1 && bm.bmHeight == 1, "Expect bitmap size: %d,%d, got: %d,%d\n", 1, 1,
+       bm.bmWidth, bm.bmHeight);
+    DestroyWindow(hwnd);
+
+    /* Set bitmap without BS_BITMAP */
+    hwnd = CreateWindowA("Button", "test", default_style, 0, 0, 100, 100, 0, 0, 0, 0);
+    ok(hwnd != NULL, "Expect hwnd not NULL\n");
+    ret = SendMessageA(hwnd, BM_SETIMAGE, (WPARAM)IMAGE_BITMAP, (LPARAM)hbmp1x1);
+    ok(ret == 0, "Expect ret to be 0\n");
+    hbmp = (HBITMAP)SendMessageA(hwnd, BM_GETIMAGE, (WPARAM)IMAGE_BITMAP, 0);
+    ok(hbmp == NULL, "Expect hbmp to be NULL\n");
+    DestroyWindow(hwnd);
+
+    /* Set icon with BS_ICON */
+    hwnd = CreateWindowA("Button", "test", default_style | BS_ICON, 0, 0, 100, 100, 0, 0, 0, 0);
+    ok(hwnd != NULL, "Expect hwnd not NULL\n");
+    SendMessageA(hwnd, BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hicon2x2);
+    hicon = (HICON)SendMessageA(hwnd, BM_GETIMAGE, (WPARAM)IMAGE_ICON, 0);
+    ok(hicon != NULL, "Expect hicon not NULL\n");
+    ZeroMemory(&icon_info, sizeof(icon_info));
+    ok(GetIconInfo(hicon, &icon_info), "Expect GetIconInfo() success\n");
+    ZeroMemory(&bm, sizeof(bm));
+    ok(GetObjectW(icon_info.hbmColor, sizeof(bm), &bm), "Expect GetObjectW() success\n");
+    ok(bm.bmWidth == 2 && bm.bmHeight == 2, "Expect bitmap size: %d,%d, got: %d,%d\n", 2, 2,
+       bm.bmWidth, bm.bmHeight);
+    DeleteObject(icon_info.hbmColor);
+    DeleteObject(icon_info.hbmMask);
+    DestroyWindow(hwnd);
+
+    /* Set icon without BS_ICON */
+    hwnd = CreateWindowA("Button", "test", default_style, 0, 0, 100, 100, 0, 0, 0, 0);
+    ok(hwnd != NULL, "Expect hwnd not NULL\n");
+    ret = SendMessageA(hwnd, BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hicon2x2);
+    ok(ret == 0, "Expect ret to be 0\n");
+    hicon = (HICON)SendMessageA(hwnd, BM_GETIMAGE, (WPARAM)IMAGE_ICON, 0);
+    ok(hicon == NULL, "Expect hicon to be NULL\n");
+    DestroyWindow(hwnd);
+
+    /* Set icon with BS_BITMAP */
+    hwnd = CreateWindowA("Button", "test", default_style | BS_BITMAP, 0, 0, 100, 100, 0, 0, 0, 0);
+    ok(hwnd != NULL, "Expect hwnd to be not NULL\n");
+    ret = SendMessageA(hwnd, BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hicon2x2);
+    ok(ret == 0, "Expect ret to be 0\n");
+    hicon = (HICON)SendMessageA(hwnd, BM_GETIMAGE, (WPARAM)IMAGE_ICON, 0);
+    ok(hicon == NULL, "Expect hicon to be NULL\n");
+    DestroyWindow(hwnd);
+
+    /* Set bitmap with BS_ICON */
+    hwnd = CreateWindowA("Button", "test", default_style | BS_ICON, 0, 0, 100, 100, 0, 0, 0, 0);
+    ok(hwnd != NULL, "Expect hwnd to be not NULL\n");
+    ret = SendMessageA(hwnd, BM_SETIMAGE, (WPARAM)IMAGE_BITMAP, (LPARAM)hbmp1x1);
+    ok(ret == 0, "Expect ret to be 0\n");
+    hbmp = (HBITMAP)SendMessageA(hwnd, BM_GETIMAGE, (WPARAM)IMAGE_BITMAP, 0);
+    ok(hbmp == NULL, "Expect hbmp to be NULL\n");
+    DestroyWindow(hwnd);
+
+    DestroyIcon(hicon2x2);
+    DeleteObject(hmask2x2);
+    DeleteObject(hbmp2x2);
+    DeleteObject(hbmp1x1);
+    ReleaseDC(0, hdc);
 }
 
 /****************** static message test *************************/
@@ -6622,6 +6735,14 @@ static const struct message SetCurSelComboSeq2[] =
     { LB_GETTEXTLEN, sent|wparam|lparam, 0, 0 },
     { LB_GETTEXTLEN, sent|wparam|lparam|optional, 0, 0 }, /* TODO: it's sent on all Windows versions */
     { LB_GETTEXT, sent|wparam, 0 },
+    { 0 }
+};
+
+static const struct message SetCurSelComboSeq_edit[] =
+{
+    { CB_SETCURSEL, sent|wparam|lparam, 0, 0 },
+    { WM_SETTEXT, sent|wparam, 0 },
+    { EM_SETSEL, sent|wparam|lparam, 0, INT_MAX },
     { 0 }
 };
 
@@ -6826,7 +6947,6 @@ static void test_combobox_messages(void)
 {
     HWND parent, combo, button, edit, lbox;
     LRESULT ret;
-    BOOL (WINAPI *pGetComboBoxInfo)(HWND, PCOMBOBOXINFO);
     COMBOBOXINFO cbInfo;
     BOOL res;
 
@@ -6871,13 +6991,6 @@ static void test_combobox_messages(void)
     DestroyWindow(parent);
 
     /* Start again. Test combobox text selection when getting and losing focus */
-    pGetComboBoxInfo = (void *)GetProcAddress(GetModuleHandleA("user32.dll"), "GetComboBoxInfo");
-    if (!pGetComboBoxInfo)
-    {
-        win_skip("GetComboBoxInfo is not available\n");
-        return;
-    }
-
     parent = CreateWindowExA(0, "TestParentClass", "Parent", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                              10, 10, 300, 300, NULL, NULL, NULL, NULL);
     ok(parent != 0, "Failed to create parent window\n");
@@ -6888,7 +7001,7 @@ static void test_combobox_messages(void)
 
     cbInfo.cbSize = sizeof(COMBOBOXINFO);
     SetLastError(0xdeadbeef);
-    res = pGetComboBoxInfo(combo, &cbInfo);
+    res = GetComboBoxInfo(combo, &cbInfo);
     ok(res, "Failed to get COMBOBOXINFO structure; LastError: %u\n", GetLastError());
     edit = cbInfo.hwndItem;
 
@@ -6926,6 +7039,14 @@ static void test_combobox_messages(void)
     log_all_parent_messages--;
     ok_sequence(SetFocusButtonSeq2, "SetFocus on a Button (2)", TRUE);
 
+    SetFocus(combo);
+    SendMessageA(combo, WM_SETREDRAW, FALSE, 0);
+    flush_sequence();
+    log_all_parent_messages++;
+    SendMessageA(combo, CB_SETCURSEL, 0, 0);
+    log_all_parent_messages--;
+    ok_sequence(SetCurSelComboSeq_edit, "CB_SETCURSEL on a ComboBox with edit control", FALSE);
+
     DestroyWindow(button);
     DestroyWindow(combo);
 
@@ -6939,7 +7060,7 @@ static void test_combobox_messages(void)
 
     cbInfo.cbSize = sizeof(COMBOBOXINFO);
     SetLastError(0xdeadbeef);
-    res = pGetComboBoxInfo(combo, &cbInfo);
+    res = GetComboBoxInfo(combo, &cbInfo);
     ok(res, "Failed to get COMBOBOXINFO structure; LastError: %u\n", GetLastError());
     lbox = cbInfo.hwndList;
     lbox_window_proc = (WNDPROC)SetWindowLongPtrA(lbox, GWLP_WNDPROC,
@@ -15312,7 +15433,7 @@ static void test_SetParent(void)
 
     SetParent(child, parent2);
     flush_events();
-    ok_sequence(WmSetParentSeq_1, "SetParent() visible WS_CHILD", TRUE);
+    ok_sequence(WmSetParentSeq_1, "SetParent() visible WS_CHILD", FALSE);
 
     ok(GetWindowLongA(child, GWL_STYLE) & WS_VISIBLE, "WS_VISIBLE should be set\n");
     ok(!IsWindowVisible(child), "IsWindowVisible() should return FALSE\n");
@@ -16715,6 +16836,7 @@ START_TEST(msg)
     invisible_parent_tests();
     test_mdi_messages();
     test_button_messages();
+    test_button_bm_get_set_image();
     test_static_messages();
     test_listbox_messages();
     test_combobox_messages();

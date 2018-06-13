@@ -51,7 +51,6 @@ static const unsigned int win_formats[][4] = {
     {48000,  8, 1},   {48000,  8, 2},   {48000, 16, 1},   {48000, 16, 2},
     {96000,  8, 1},   {96000,  8, 2},   {96000, 16, 1},   {96000, 16, 2}
 };
-#define NB_WIN_FORMATS (sizeof(win_formats)/sizeof(*win_formats))
 
 #define NULL_PTR_ERR MAKE_HRESULT(SEVERITY_ERROR, FACILITY_WIN32, RPC_X_NULL_REF_POINTER)
 
@@ -323,11 +322,7 @@ static void test_audioclient(void)
     hr = IAudioClient_Initialize(ac, AUDCLNT_SHAREMODE_SHARED, 0, 5000000, 0, pwfx, NULL);
     ok(hr == S_OK, "Valid Initialize returns %08x\n", hr);
     if (hr != S_OK)
-    {
-        IAudioClient_Release(ac);
-        CoTaskMemFree(pwfx);
-        return;
-    }
+        goto cleanup;
 
     hr = IAudioClient_GetStreamLatency(ac, NULL);
     ok(hr == E_POINTER, "GetStreamLatency(NULL) call returns %08x\n", hr);
@@ -372,8 +367,8 @@ static void test_audioclient(void)
     hr = IAudioClient_Start(ac);
     ok(hr == AUDCLNT_E_NOT_STOPPED, "Start twice returns %08x\n", hr);
 
+cleanup:
     IAudioClient_Release(ac);
-
     CloseHandle(handle);
     CoTaskMemFree(pwfx);
 }
@@ -388,7 +383,7 @@ static void test_formats(AUDCLNT_SHAREMODE mode)
     fmt.wFormatTag = WAVE_FORMAT_PCM;
     fmt.cbSize = 0;
 
-    for(i = 0; i < NB_WIN_FORMATS; i++) {
+    for(i = 0; i < ARRAY_SIZE(win_formats); i++) {
         hr = IMMDevice_Activate(dev, &IID_IAudioClient, CLSCTX_INPROC_SERVER,
                 NULL, (void**)&ac);
         ok(hr == S_OK, "Activation failed with %08x\n", hr);

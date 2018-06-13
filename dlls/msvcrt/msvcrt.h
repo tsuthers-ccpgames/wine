@@ -214,11 +214,11 @@ typedef struct
 {
     frame_info frame_info;
     EXCEPTION_RECORD *rec;
-    void *unk;
+    CONTEXT *context;
 } cxx_frame_info;
 
 frame_info* __cdecl _CreateFrameInfo(frame_info *fi, void *obj);
-BOOL __cdecl __CxxRegisterExceptionObject(EXCEPTION_RECORD**, cxx_frame_info*);
+BOOL __cdecl __CxxRegisterExceptionObject(EXCEPTION_POINTERS*, cxx_frame_info*);
 void __cdecl __CxxUnregisterExceptionObject(cxx_frame_info*, BOOL);
 void CDECL __DestructExceptionObject(EXCEPTION_RECORD*);
 
@@ -259,10 +259,13 @@ struct __thread_data {
     void                           *unk6[3];
     int                             unk7;
     EXCEPTION_RECORD               *exc_record;
+    CONTEXT                        *ctx_record;
+    int                             processing_throw;
     frame_info                     *frame_info_head;
     void                           *unk8[6];
     LCID                            cached_lcid;
-    int                             unk9[3];
+    BOOL                            cached_sname;
+    int                             unk9[2];
     DWORD                           cached_cp;
     char                            cached_locale[131];
     void                           *unk10[100];
@@ -275,7 +278,7 @@ typedef struct __thread_data thread_data_t;
 
 extern thread_data_t *msvcrt_get_thread_data(void) DECLSPEC_HIDDEN;
 
-LCID MSVCRT_locale_to_LCID(const char*, unsigned short*) DECLSPEC_HIDDEN;
+LCID MSVCRT_locale_to_LCID(const char*, unsigned short*, BOOL*) DECLSPEC_HIDDEN;
 extern MSVCRT__locale_t MSVCRT_locale DECLSPEC_HIDDEN;
 extern unsigned int MSVCRT___lc_codepage;
 extern int MSVCRT___lc_collate_cp;
@@ -1428,21 +1431,6 @@ typedef struct {
     _FPIEEE_VALUE Operand2;
     _FPIEEE_VALUE Result;
 } _FPIEEE_RECORD, *_PFPIEEE_RECORD;
-
-static inline void* __WINE_ALLOC_SIZE(1) heap_alloc(size_t len)
-{
-    return HeapAlloc(GetProcessHeap(), 0, len);
-}
-
-static inline void* __WINE_ALLOC_SIZE(1) heap_alloc_zero(size_t len)
-{
-    return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, len);
-}
-
-static inline BOOL heap_free(void *mem)
-{
-    return HeapFree(GetProcessHeap(), 0, mem);
-}
 
 #define INHERIT_THREAD_PRIORITY 0xF000
 #endif /* __WINE_MSVCRT_H */

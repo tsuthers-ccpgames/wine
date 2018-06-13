@@ -26,6 +26,8 @@
 #include "shlobj.h"
 #include "shlwapi.h"
 #include "winsvc.h"
+
+#include "wine/heap.h"
 #include "wine/test.h"
 
 #include "initguid.h"
@@ -276,7 +278,7 @@ static void test_namespace(void)
     GetFullPathNameW(winetestW, MAX_PATH, tempW, NULL);
 
     len = GetLongPathNameW(tempW, NULL, 0);
-    long_pathW = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
+    long_pathW = heap_alloc(len * sizeof(WCHAR));
     GetLongPathNameW(tempW, long_pathW, len);
 
     V_VT(&var) = VT_BSTR;
@@ -348,7 +350,7 @@ static void test_namespace(void)
         SysFreeString(V_BSTR(&var));
     }
 
-    HeapFree(GetProcessHeap(), 0, long_pathW);
+    heap_free(long_pathW);
     RemoveDirectoryW(winetestW);
     SetCurrentDirectoryW(curW);
     IShellDispatch_Release(sd);
@@ -387,6 +389,7 @@ static void test_items(void)
     HANDLE file;
     BSTR bstr;
     char cstr[64];
+    BOOL ret;
     int i;
 
     r = CoCreateInstance(&CLSID_Shell, NULL, CLSCTX_INPROC_SERVER, &IID_IShellDispatch, (void**)&sd);
@@ -397,7 +400,8 @@ static void test_items(void)
     GetTempPathW(MAX_PATH, path);
     GetCurrentDirectoryW(MAX_PATH, orig_dir);
     SetCurrentDirectoryW(path);
-    ok(CreateDirectoryW(winetestW, NULL), "CreateDirectory failed: %08x\n", GetLastError());
+    ret = CreateDirectoryW(winetestW, NULL);
+    ok(ret, "CreateDirectory failed: %08x\n", GetLastError());
     GetFullPathNameW(winetestW, MAX_PATH, path, NULL);
     V_VT(&var) = VT_BSTR;
     V_BSTR(&var) = SysAllocString(path);
@@ -673,7 +677,8 @@ static void test_items(void)
             VariantClear(&str_index2);
 
             /* delete the file in the subdirectory */
-            ok(DeleteFileA(cstr), "file_defs[%d]: DeleteFile failed: %08x\n", i, GetLastError());
+            ret = DeleteFileA(cstr);
+            ok(ret, "file_defs[%d]: DeleteFile failed: %08x\n", i, GetLastError());
 
             /* test that getting an item object via a relative path fails */
             strcpy(cstr, file_defs[i].name);
@@ -690,11 +695,13 @@ static void test_items(void)
             VariantClear(&str_index2);
 
             /* remove the directory */
-            ok(RemoveDirectoryA(file_defs[i].name), "file_defs[%d]: RemoveDirectory failed: %08x\n", i, GetLastError());
+            ret = RemoveDirectoryA(file_defs[i].name);
+            ok(ret, "file_defs[%d]: RemoveDirectory failed: %08x\n", i, GetLastError());
         }
         else
         {
-            ok(DeleteFileA(file_defs[i].name), "file_defs[%d]: DeleteFile failed: %08x\n", i, GetLastError());
+            ret = DeleteFileA(file_defs[i].name);
+            ok(ret, "file_defs[%d]: DeleteFile failed: %08x\n", i, GetLastError());
         }
 
         /* test that the folder item is still accessible by integer index */
@@ -789,7 +796,8 @@ todo_wine
     /* remove the temporary directory and restore the original working directory */
     GetTempPathW(MAX_PATH, path);
     SetCurrentDirectoryW(path);
-    ok(RemoveDirectoryW(winetestW), "RemoveDirectory failed: %08x\n", GetLastError());
+    ret = RemoveDirectoryW(winetestW);
+    ok(ret, "RemoveDirectory failed: %08x\n", GetLastError());
     SetCurrentDirectoryW(orig_dir);
 
     /* test that everything stops working after the directory has been removed */

@@ -552,6 +552,27 @@ NTSTATUS WINAPI NtQueryInformationToken(
             *(DWORD*)tokeninfo = 0;
             break;
         }
+    case TokenLogonSid:
+        SERVER_START_REQ( get_token_sid )
+        {
+            TOKEN_GROUPS * groups = tokeninfo;
+            PSID sid = groups + 1;
+            DWORD sid_len = tokeninfolength < sizeof(TOKEN_GROUPS) ? 0 : tokeninfolength - sizeof(TOKEN_GROUPS);
+
+            req->handle = wine_server_obj_handle( token );
+            req->which_sid = tokeninfoclass;
+            wine_server_set_reply( req, sid, sid_len );
+            status = wine_server_call( req );
+            if (retlen) *retlen = reply->sid_len + sizeof(TOKEN_GROUPS);
+            if (status == STATUS_SUCCESS)
+            {
+                groups->GroupCount = 1;
+                groups->Groups[0].Sid = sid;
+                groups->Groups[0].Attributes = 0;
+            }
+        }
+        SERVER_END_REQ;
+        break;
     default:
         {
             ERR("Unhandled Token Information class %d!\n", tokeninfoclass);
@@ -602,6 +623,24 @@ NTSTATUS WINAPI NtSetInformationToken(
             ret = wine_server_call( req );
         }
         SERVER_END_REQ;
+        break;
+    case TokenSessionId:
+        if (TokenInformationLength < sizeof(DWORD))
+        {
+            ret = STATUS_INFO_LENGTH_MISMATCH;
+            break;
+        }
+        if (!TokenInformation)
+        {
+            ret = STATUS_ACCESS_VIOLATION;
+            break;
+        }
+        FIXME("TokenSessionId stub!\n");
+        ret = STATUS_SUCCESS;
+        break;
+    case TokenIntegrityLevel:
+        FIXME("TokenIntegrityLevel stub!\n");
+        ret = STATUS_SUCCESS;
         break;
     default:
         FIXME("unimplemented class %u\n", TokenInformationClass);
@@ -1476,7 +1515,7 @@ static inline BOOL logical_proc_info_add_group(SYSTEM_LOGICAL_PROCESSOR_INFORMAT
 static NTSTATUS create_logical_proc_info(SYSTEM_LOGICAL_PROCESSOR_INFORMATION **data,
         SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX **dataex, DWORD *max_len)
 {
-    static const char core_info[] = "/sys/devices/system/cpu/cpu%u/%s";
+    static const char core_info[] = "/sys/devices/system/cpu/cpu%u/topology/%s";
     static const char cache_info[] = "/sys/devices/system/cpu/cpu%u/cache/index%u/%s";
     static const char numa_info[] = "/sys/devices/system/node/node%u/cpumap";
 

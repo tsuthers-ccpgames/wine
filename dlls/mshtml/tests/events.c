@@ -384,7 +384,7 @@ static void _test_event_args(unsigned line, const IID *dispiid, DISPID id, WORD 
     if(pdp->cArgs > 1)
         ok_(__FILE__,line) (V_VT(pdp->rgvarg+1) == VT_DISPATCH, "V_VT(rgvarg) = %d\n", V_VT(pdp->rgvarg+1));
     ok_(__FILE__,line) (pvarRes != NULL, "pvarRes == NULL\n");
-    ok_(__FILE__,line) (pei != NULL, "pei == NULL");
+    ok_(__FILE__,line) (pei != NULL, "pei == NULL\n");
     ok_(__FILE__,line) (!pspCaller, "pspCaller != NULL\n");
 
     if(dispiid)
@@ -2578,7 +2578,7 @@ static IHTMLWindow2 *get_iframe_window(IHTMLIFrameElement *iframe)
     ok(hres == S_OK, "get_contentWindow failed: %08x\n", hres);
     ok(window != NULL, "window == NULL\n");
 
-    if(base) IHTMLFrameBase2_Release(base);
+    IHTMLFrameBase2_Release(base);
     return window;
 }
 
@@ -2666,8 +2666,14 @@ static void test_iframe_connections(IHTMLDocument2 *doc)
 
 static void test_create_event(IHTMLDocument2 *doc)
 {
+    IDOMKeyboardEvent *keyboard_event;
+    IDOMMouseEvent *mouse_event;
     IDocumentEvent *doc_event;
+    IEventTarget *event_target;
+    IDOMUIEvent *ui_event;
+    IHTMLElement *elem;
     IDOMEvent *event;
+    VARIANT_BOOL b;
     USHORT phase;
     BSTR str;
     HRESULT hres;
@@ -2692,6 +2698,76 @@ static void test_create_event(IHTMLDocument2 *doc)
 
     hres = IDOMEvent_stopPropagation(event);
     ok(hres == S_OK, "stopPropagation failed: %08x\n", hres);
+
+    str = (void*)0xdeadbeef;
+    hres = IDOMEvent_get_type(event, &str);
+    ok(hres == S_OK, "get_type failed: %08x\n", hres);
+    ok(!str, "type = %s\n", wine_dbgstr_w(str));
+
+    b = 0xdead;
+    hres = IDOMEvent_get_bubbles(event, &b);
+    ok(hres == S_OK, "get_bubbles failed: %08x\n", hres);
+    ok(!b, "bubbles = %x\n", b);
+
+    b = 0xdead;
+    hres = IDOMEvent_get_cancelable(event, &b);
+    ok(hres == S_OK, "get_cancelable failed: %08x\n", hres);
+    ok(!b, "cancelable = %x\n", b);
+
+    elem = doc_get_body(doc);
+    hres = IHTMLElement_QueryInterface(elem, &IID_IEventTarget, (void**)&event_target);
+    IHTMLElement_Release(elem);
+
+    hres = IEventTarget_dispatchEvent(event_target, NULL, &b);
+    ok(hres == E_INVALIDARG, "dispatchEvent failed: %08x\n", hres);
+
+    IEventTarget_Release(event_target);
+
+    hres = IDOMEvent_QueryInterface(event, &IID_IDOMUIEvent, (void**)&ui_event);
+    ok(hres == E_NOINTERFACE, "QueryInterface(IID_IDOMUIEvent returned %08x\n", hres);
+    hres = IDOMEvent_QueryInterface(event, &IID_IDOMMouseEvent, (void**)&mouse_event);
+    ok(hres == E_NOINTERFACE, "QueryInterface(IID_IDOMMouseEvent returned %08x\n", hres);
+
+    IDOMEvent_Release(event);
+
+    str = a2bstr("MouseEvent");
+    hres = IDocumentEvent_createEvent(doc_event, str, &event);
+    SysFreeString(str);
+    ok(hres == S_OK, "createEvent failed: %08x\n", hres);
+
+    hres = IDOMEvent_QueryInterface(event, &IID_IDOMUIEvent, (void**)&ui_event);
+    ok(hres == S_OK, "QueryInterface(IID_IDOMUIEvent returned %08x\n", hres);
+    IDOMUIEvent_Release(ui_event);
+    hres = IDOMEvent_QueryInterface(event, &IID_IDOMMouseEvent, (void**)&mouse_event);
+    ok(hres == S_OK, "QueryInterface(IID_IDOMMouseEvent returned %08x\n", hres);
+    IDOMMouseEvent_Release(mouse_event);
+
+    IDOMEvent_Release(event);
+
+    str = a2bstr("UIEvent");
+    hres = IDocumentEvent_createEvent(doc_event, str, &event);
+    SysFreeString(str);
+    ok(hres == S_OK, "createEvent failed: %08x\n", hres);
+
+    hres = IDOMEvent_QueryInterface(event, &IID_IDOMUIEvent, (void**)&ui_event);
+    ok(hres == S_OK, "QueryInterface(IID_IDOMUIEvent returned %08x\n", hres);
+    IDOMUIEvent_Release(ui_event);
+    hres = IDOMEvent_QueryInterface(event, &IID_IDOMMouseEvent, (void**)&mouse_event);
+    ok(hres == E_NOINTERFACE, "QueryInterface(IID_IDOMMouseEvent returned %08x\n", hres);
+
+    IDOMEvent_Release(event);
+
+    str = a2bstr("KeyboardEvent");
+    hres = IDocumentEvent_createEvent(doc_event, str, &event);
+    SysFreeString(str);
+    ok(hres == S_OK, "createEvent failed: %08x\n", hres);
+
+    hres = IDOMEvent_QueryInterface(event, &IID_IDOMUIEvent, (void**)&ui_event);
+    ok(hres == S_OK, "QueryInterface(IID_IDOMUIEvent returned %08x\n", hres);
+    IDOMUIEvent_Release(ui_event);
+    hres = IDOMEvent_QueryInterface(event, &IID_IDOMKeyboardEvent, (void**)&keyboard_event);
+    ok(hres == S_OK, "QueryInterface(IID_IDOMKeyboardEvent returned %08x\n", hres);
+    IDOMKeyboardEvent_Release(keyboard_event);
 
     IDOMEvent_Release(event);
 

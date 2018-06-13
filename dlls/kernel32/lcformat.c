@@ -560,7 +560,7 @@ static INT NLS_GetDateTimeFormatW(LCID lcid, DWORD dwFlags,
                 ++format;
               }
               /* Only numeric day form matters */
-              if (*format && *format == 'd')
+              if (*format == 'd')
               {
                 INT dcount = 1;
                 while (*++format == 'd') dcount++;
@@ -1755,6 +1755,19 @@ error:
   SetLastError(lpFormat && dwFlags ? ERROR_INVALID_FLAGS : ERROR_INVALID_PARAMETER);
   return 0;
 }
+
+/***********************************************************************
+ *            GetCurrencyFormatEx (KERNEL32.@)
+ */
+int WINAPI GetCurrencyFormatEx(LPCWSTR localename, DWORD flags, LPCWSTR value,
+                                const CURRENCYFMTW *format, LPWSTR str, int len)
+{
+    TRACE("(%s,0x%08x,%s,%p,%p,%d)\n", debugstr_w(localename), flags,
+            debugstr_w(value), format, str, len);
+
+    return GetCurrencyFormatW( LocaleNameToLCID(localename, 0), flags, value, format, str, len);
+}
+
 
 /* FIXME: Everything below here needs to move somewhere else along with the
  *        other EnumXXX functions, when a method for storing resources for

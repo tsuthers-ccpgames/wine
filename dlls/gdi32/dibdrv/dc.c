@@ -168,13 +168,6 @@ BOOL init_dib_info_from_bitmapobj(dib_info *dib, BITMAPOBJ *bmp)
         BITMAPINFO info;
 
         get_ddb_bitmapinfo( bmp, &info );
-        if (!bmp->dib.dsBm.bmBits)
-        {
-            int width_bytes = get_dib_stride( bmp->dib.dsBm.bmWidth, bmp->dib.dsBm.bmBitsPixel );
-            bmp->dib.dsBm.bmBits = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY,
-                                              bmp->dib.dsBm.bmHeight * width_bytes );
-            if (!bmp->dib.dsBm.bmBits) return FALSE;
-        }
         init_dib_info_from_bitmapinfo( dib, &info, bmp->dib.dsBm.bmBits );
     }
     else init_dib_info( dib, &bmp->dib.dsBmih, bmp->dib.dsBm.bmWidthBytes,
@@ -247,16 +240,20 @@ DWORD convert_bitmapinfo( const BITMAPINFO *src_info, void *src_bits, struct bit
     return ERROR_SUCCESS;
 }
 
+int get_dib_rect( const dib_info *dib, RECT *rc )
+{
+    rc->left   = max( 0, -dib->rect.left );
+    rc->top    = max( 0, -dib->rect.top );
+    rc->right  = min( dib->rect.right, dib->width ) - dib->rect.left;
+    rc->bottom = min( dib->rect.bottom, dib->height ) - dib->rect.top;
+    return !is_rect_empty( rc );
+}
+
 int clip_rect_to_dib( const dib_info *dib, RECT *rc )
 {
     RECT rect;
 
-    rect.left   = max( 0, -dib->rect.left );
-    rect.top    = max( 0, -dib->rect.top );
-    rect.right  = min( dib->rect.right, dib->width ) - dib->rect.left;
-    rect.bottom = min( dib->rect.bottom, dib->height ) - dib->rect.top;
-    if (is_rect_empty( &rect )) return 0;
-    return intersect_rect( rc, &rect, rc );
+    return get_dib_rect( dib, &rect ) && intersect_rect( rc, &rect, rc );
 }
 
 int get_clipped_rects( const dib_info *dib, const RECT *rc, HRGN clip, struct clipped_rects *clip_rects )
@@ -267,11 +264,7 @@ int get_clipped_rects( const dib_info *dib, const RECT *rc, HRGN clip, struct cl
 
     init_clipped_rects( clip_rects );
 
-    rect.left   = max( 0, -dib->rect.left );
-    rect.top    = max( 0, -dib->rect.top );
-    rect.right  = min( dib->rect.right, dib->width ) - dib->rect.left;
-    rect.bottom = min( dib->rect.bottom, dib->height ) - dib->rect.top;
-    if (is_rect_empty( &rect )) return 0;
+    if (!get_dib_rect( dib, &rect )) return 0;
     if (rc && !intersect_rect( &rect, &rect, rc )) return 0;
 
     if (!clip)
@@ -527,6 +520,7 @@ const struct gdi_dc_funcs dib_driver =
     NULL,                               /* pUnrealizePalette */
     NULL,                               /* pWidenPath */
     dibdrv_wine_get_wgl_driver,         /* wine_get_wgl_driver */
+    NULL,                               /* wine_get_vulkan_driver */
     GDI_PRIORITY_DIB_DRV                /* priority */
 };
 
@@ -1153,5 +1147,6 @@ static const struct gdi_dc_funcs window_driver =
     NULL,                               /* pUnrealizePalette */
     NULL,                               /* pWidenPath */
     windrv_wine_get_wgl_driver,         /* wine_get_wgl_driver */
+    NULL,                               /* wine_get_vulkan_driver */
     GDI_PRIORITY_DIB_DRV + 10           /* priority */
 };

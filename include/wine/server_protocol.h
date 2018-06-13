@@ -155,12 +155,16 @@ typedef struct
                  unsigned char regs[80]; } i386_regs;
         struct { struct { unsigned __int64 low, high; } fpregs[32]; } x86_64_regs;
         struct { double fpr[32], fpscr; } powerpc_regs;
+        struct { unsigned __int64 d[32]; unsigned int fpscr; } arm_regs;
+        struct { unsigned __int64 d[64]; unsigned int fpcr, fpsr; } arm64_regs;
     } fp;
     union
     {
         struct { unsigned int dr0, dr1, dr2, dr3, dr6, dr7; } i386_regs;
         struct { unsigned __int64 dr0, dr1, dr2, dr3, dr6, dr7; } x86_64_regs;
         struct { unsigned int dr[8]; } powerpc_regs;
+        struct { unsigned int bvr[8], bcr[8], wvr[1], wcr[1]; } arm_regs;
+        struct { unsigned __int64 bvr[8], wvr[2]; unsigned int bcr[8], wcr[2]; } arm64_regs;
     } debug;
     union
     {
@@ -697,6 +701,11 @@ typedef struct
     unsigned int   file_size;
     unsigned int   checksum;
 } pe_image_info_t;
+#define IMAGE_FLAGS_ComPlusNativeReady        0x01
+#define IMAGE_FLAGS_ComPlusILOnly             0x02
+#define IMAGE_FLAGS_ImageDynamicallyRelocated 0x04
+#define IMAGE_FLAGS_ImageMappedFlat           0x08
+#define IMAGE_FLAGS_BaseBelow4gb              0x10
 
 struct rawinput_device
 {
@@ -827,7 +836,7 @@ struct init_thread_reply
     data_size_t  info_size;
     int          version;
     unsigned int all_cpus;
-    char __pad_36[4];
+    int          suspend;
 };
 
 
@@ -1533,6 +1542,20 @@ struct flush_reply
     struct reply_header __header;
     obj_handle_t event;
     char __pad_12[4];
+};
+
+
+struct get_file_info_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+    unsigned int info_class;
+    char __pad_20[4];
+};
+struct get_file_info_reply
+{
+    struct reply_header __header;
+    /* VARARG(data,bytes); */
 };
 
 
@@ -3420,6 +3443,8 @@ struct create_window_request
     user_handle_t  owner;
     atom_t         atom;
     mod_handle_t   instance;
+    int            dpi;
+    int            awareness;
     /* VARARG(class,unicode_str); */
 };
 struct create_window_reply
@@ -3430,6 +3455,8 @@ struct create_window_reply
     user_handle_t  owner;
     int            extra;
     client_ptr_t   class_ptr;
+    int            dpi;
+    int            awareness;
 };
 
 
@@ -3490,6 +3517,8 @@ struct get_window_info_reply
     thread_id_t    tid;
     atom_t         atom;
     int            is_unicode;
+    int            dpi;
+    int            awareness;
 };
 
 
@@ -3542,6 +3571,8 @@ struct set_parent_reply
     struct reply_header __header;
     user_handle_t  old_parent;
     user_handle_t  full_parent;
+    int            dpi;
+    int            awareness;
 };
 
 
@@ -3651,7 +3682,6 @@ struct get_window_rectangles_reply
 {
     struct reply_header __header;
     rectangle_t    window;
-    rectangle_t    visible;
     rectangle_t    client;
 };
 enum coords_relative
@@ -3672,7 +3702,9 @@ struct get_window_text_request
 struct get_window_text_reply
 {
     struct reply_header __header;
+    data_size_t    length;
     /* VARARG(text,unicode_str); */
+    char __pad_12[4];
 };
 
 
@@ -4448,7 +4480,9 @@ struct create_class_request
     int            extra;
     int            win_extra;
     client_ptr_t   client_ptr;
+    data_size_t    name_offset;
     /* VARARG(name,unicode_str); */
+    char __pad_52[4];
 };
 struct create_class_reply
 {
@@ -5645,6 +5679,7 @@ enum request
     REQ_get_handle_fd,
     REQ_get_directory_cache_entry,
     REQ_flush,
+    REQ_get_file_info,
     REQ_get_volume_info,
     REQ_lock_file,
     REQ_unlock_file,
@@ -5940,6 +5975,7 @@ union generic_request
     struct get_handle_fd_request get_handle_fd_request;
     struct get_directory_cache_entry_request get_directory_cache_entry_request;
     struct flush_request flush_request;
+    struct get_file_info_request get_file_info_request;
     struct get_volume_info_request get_volume_info_request;
     struct lock_file_request lock_file_request;
     struct unlock_file_request unlock_file_request;
@@ -6233,6 +6269,7 @@ union generic_reply
     struct get_handle_fd_reply get_handle_fd_reply;
     struct get_directory_cache_entry_reply get_directory_cache_entry_reply;
     struct flush_reply flush_reply;
+    struct get_file_info_reply get_file_info_reply;
     struct get_volume_info_reply get_volume_info_reply;
     struct lock_file_reply lock_file_reply;
     struct unlock_file_reply unlock_file_reply;
@@ -6475,6 +6512,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 543
+#define SERVER_PROTOCOL_VERSION 554
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

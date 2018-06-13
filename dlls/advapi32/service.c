@@ -48,6 +48,7 @@
 #include "advapi32_misc.h"
 
 #include "wine/exception.h"
+#include "wine/list.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(service);
 
@@ -82,6 +83,18 @@ typedef struct dispatcher_data_t
     SC_HANDLE manager;
     HANDLE pipe;
 } dispatcher_data;
+
+typedef struct notify_data_t {
+    SC_HANDLE service;
+    SC_RPC_NOTIFY_PARAMS params;
+    SERVICE_NOTIFY_STATUS_CHANGE_PARAMS_2 cparams;
+    SC_NOTIFY_RPC_HANDLE notify_handle;
+    SERVICE_NOTIFYW *notify_buffer;
+    HANDLE calling_thread, ready_evt;
+    struct list entry;
+} notify_data;
+
+static struct list notify_list = LIST_INIT(notify_list);
 
 static CRITICAL_SECTION service_cs;
 static CRITICAL_SECTION_DEBUG service_cs_debug =
@@ -516,6 +529,63 @@ static DWORD WINAPI service_control_dispatcher(LPVOID arg)
     return 1;
 }
 
+/* wait for services which accept this type of message to become STOPPED */
+static void handle_shutdown_msg(DWORD msg, DWORD accept)
+{
+    SERVICE_STATUS st;
+    SERVICE_PRESHUTDOWN_INFO spi;
+    DWORD i, n = 0, sz, timeout = 2000;
+    ULONGLONG stop_time;
+    BOOL res, done = TRUE;
+    SC_HANDLE *wait_handles = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(SC_HANDLE) * nb_services );
+
+    EnterCriticalSection( &service_cs );
+    for (i = 0; i < nb_services; i++)
+    {
+        res = QueryServiceStatus( services[i]->full_access_handle, &st );
+        if (!res || st.dwCurrentState == SERVICE_STOPPED || !(st.dwControlsAccepted & accept))
+            continue;
+
+        done = FALSE;
+
+        if (accept == SERVICE_ACCEPT_PRESHUTDOWN)
+        {
+            res = QueryServiceConfig2W( services[i]->full_access_handle, SERVICE_CONFIG_PRESHUTDOWN_INFO,
+                    (LPBYTE)&spi, sizeof(spi), &sz );
+            if (res)
+            {
+                FIXME( "service should be able to delay shutdown\n" );
+                timeout = max( spi.dwPreshutdownTimeout, timeout );
+            }
+        }
+
+        service_handle_control( services[i], msg, NULL, 0 );
+        wait_handles[n++] = services[i]->full_access_handle;
+    }
+    LeaveCriticalSection( &service_cs );
+
+    /* FIXME: these timeouts should be more generous, but we can't currently delay prefix shutdown */
+    timeout = min( timeout, 3000 );
+    stop_time = GetTickCount64() + timeout;
+
+    while (!done && GetTickCount64() < stop_time)
+    {
+        done = TRUE;
+        for (i = 0; i < n; i++)
+        {
+            res = QueryServiceStatus( wait_handles[i], &st );
+            if (!res || st.dwCurrentState == SERVICE_STOPPED)
+                continue;
+
+            done = FALSE;
+            Sleep( 100 );
+            break;
+        }
+    }
+
+    HeapFree( GetProcessHeap(), 0, wait_handles );
+}
+
 /******************************************************************************
  * service_run_main_thread
  */
@@ -570,41 +640,8 @@ static BOOL service_run_main_thread(void)
         ret = WaitForMultipleObjects( n, wait_handles, FALSE, INFINITE );
         if (!ret)  /* system process event */
         {
-            SERVICE_STATUS st;
-            SERVICE_PRESHUTDOWN_INFO spi;
-            DWORD timeout = 5000;
-            BOOL res;
-
-            EnterCriticalSection( &service_cs );
-            n = 0;
-            for (i = 0; i < nb_services && n < MAXIMUM_WAIT_OBJECTS; i++)
-            {
-                if (!services[i]->thread) continue;
-
-                res = QueryServiceStatus(services[i]->full_access_handle, &st);
-                ret = ERROR_SUCCESS;
-                if (res && (st.dwControlsAccepted & SERVICE_ACCEPT_PRESHUTDOWN))
-                {
-                    res = QueryServiceConfig2W( services[i]->full_access_handle, SERVICE_CONFIG_PRESHUTDOWN_INFO,
-                            (LPBYTE)&spi, sizeof(spi), &i );
-                    if (res)
-                    {
-                        FIXME("service should be able to delay shutdown\n");
-                        timeout += spi.dwPreshutdownTimeout;
-                        ret = service_handle_control( services[i], SERVICE_CONTROL_PRESHUTDOWN, NULL, 0 );
-                        wait_handles[n++] = services[i]->thread;
-                    }
-                }
-                else if (res && (st.dwControlsAccepted & SERVICE_ACCEPT_SHUTDOWN))
-                {
-                    ret = service_handle_control( services[i], SERVICE_CONTROL_SHUTDOWN, NULL, 0 );
-                    wait_handles[n++] = services[i]->thread;
-                }
-            }
-            LeaveCriticalSection( &service_cs );
-
-            TRACE("last user process exited, shutting down (timeout: %d)\n", timeout);
-            WaitForMultipleObjects( n, wait_handles, TRUE, timeout );
+            handle_shutdown_msg(SERVICE_CONTROL_PRESHUTDOWN, SERVICE_ACCEPT_PRESHUTDOWN);
+            handle_shutdown_msg(SERVICE_CONTROL_SHUTDOWN, SERVICE_ACCEPT_SHUTDOWN);
             ExitProcess(0);
         }
         else if (ret == 1)
@@ -1607,7 +1644,11 @@ BOOL WINAPI QueryServiceConfig2W(SC_HANDLE hService, DWORD dwLevel, LPBYTE buffe
     switch (dwLevel)
     {
     case SERVICE_CONFIG_DESCRIPTION:
-        if (!(bufptr = heap_alloc( size ))) return ERROR_OUTOFMEMORY;
+        if (!(bufptr = heap_alloc( size )))
+        {
+            SetLastError( ERROR_NOT_ENOUGH_MEMORY );
+            return FALSE;
+        }
         break;
 
     case SERVICE_CONFIG_PRESHUTDOWN_INFO:
@@ -2407,6 +2448,7 @@ BOOL WINAPI ChangeServiceConfig2A( SC_HANDLE hService, DWORD dwInfoLevel,
 BOOL WINAPI ChangeServiceConfig2W( SC_HANDLE hService, DWORD dwInfoLevel, 
     LPVOID lpInfo)
 {
+    SERVICE_RPC_REQUIRED_PRIVILEGES_INFO rpc_privinfo;
     DWORD err;
 
     __TRY
@@ -2414,7 +2456,19 @@ BOOL WINAPI ChangeServiceConfig2W( SC_HANDLE hService, DWORD dwInfoLevel,
         SC_RPC_CONFIG_INFOW info;
 
         info.dwInfoLevel = dwInfoLevel;
-        info.u.descr = lpInfo;
+        if (dwInfoLevel == SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO)
+        {
+            SERVICE_REQUIRED_PRIVILEGES_INFOW *privinfo = lpInfo;
+            WCHAR *p;
+
+            for (p = privinfo->pmszRequiredPrivileges; *p; p += strlenW(p) + 1);
+            rpc_privinfo.cbRequiredPrivileges =
+                (p - privinfo->pmszRequiredPrivileges + 1) * sizeof(WCHAR);
+            rpc_privinfo.pRequiredPrivileges = (BYTE *)privinfo->pmszRequiredPrivileges;
+            info.u.privinfo = &rpc_privinfo;
+        }
+        else
+            info.u.descr = lpInfo;
         err = svcctl_ChangeServiceConfig2W( hService, info );
     }
     __EXCEPT(rpc_filter)
@@ -2592,37 +2646,130 @@ BOOL WINAPI EnumDependentServicesW( SC_HANDLE hService, DWORD dwServiceState,
     return TRUE;
 }
 
+static DWORD WINAPI notify_thread(void *user)
+{
+    DWORD err;
+    notify_data *data = user;
+    SC_RPC_NOTIFY_PARAMS_LIST *list = NULL;
+    SERVICE_NOTIFY_STATUS_CHANGE_PARAMS_2 *cparams;
+    BOOL dummy;
+
+    __TRY
+    {
+        /* GetNotifyResults blocks until there is an event */
+        err = svcctl_GetNotifyResults(data->notify_handle, &list);
+    }
+    __EXCEPT(rpc_filter)
+    {
+        err = map_exception_code(GetExceptionCode());
+    }
+    __ENDTRY
+
+    EnterCriticalSection( &service_cs );
+
+    list_remove(&data->entry);
+
+    LeaveCriticalSection( &service_cs );
+
+    if (err == ERROR_SUCCESS && list)
+    {
+        cparams = list->NotifyParamsArray[0].u.params;
+
+        data->notify_buffer->dwNotificationStatus = cparams->dwNotificationStatus;
+        memcpy(&data->notify_buffer->ServiceStatus, &cparams->ServiceStatus,
+                sizeof(SERVICE_STATUS_PROCESS));
+        data->notify_buffer->dwNotificationTriggered = cparams->dwNotificationTriggered;
+        data->notify_buffer->pszServiceNames = NULL;
+
+        QueueUserAPC((PAPCFUNC)data->notify_buffer->pfnNotifyCallback,
+                data->calling_thread, (ULONG_PTR)data->notify_buffer);
+
+        HeapFree(GetProcessHeap(), 0, list);
+    }
+    else
+        WARN("GetNotifyResults server call failed: %u\n", err);
+
+
+    __TRY
+    {
+        err = svcctl_CloseNotifyHandle(&data->notify_handle, &dummy);
+    }
+    __EXCEPT(rpc_filter)
+    {
+        err = map_exception_code(GetExceptionCode());
+    }
+    __ENDTRY
+
+    if (err != ERROR_SUCCESS)
+        WARN("CloseNotifyHandle server call failed: %u\n", err);
+
+    CloseHandle(data->calling_thread);
+    HeapFree(GetProcessHeap(), 0, data);
+
+    return 0;
+}
+
 /******************************************************************************
  * NotifyServiceStatusChangeW [ADVAPI32.@]
  */
 DWORD WINAPI NotifyServiceStatusChangeW(SC_HANDLE hService, DWORD dwNotifyMask,
         SERVICE_NOTIFYW *pNotifyBuffer)
 {
-    DWORD dummy;
-    BOOL ret;
-    SERVICE_STATUS_PROCESS st;
-    static int once;
+    DWORD err;
+    BOOL b_dummy = FALSE;
+    GUID g_dummy = {0};
+    notify_data *data;
 
-    if (!once++) FIXME("%p 0x%x %p - semi-stub\n", hService, dwNotifyMask, pNotifyBuffer);
+    TRACE("%p 0x%x %p\n", hService, dwNotifyMask, pNotifyBuffer);
 
-    ret = QueryServiceStatusEx(hService, SC_STATUS_PROCESS_INFO, (void*)&st, sizeof(st), &dummy);
-    if (ret)
+    data = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*data));
+    if (!data)
+        return ERROR_NOT_ENOUGH_MEMORY;
+
+    data->service = hService;
+    data->notify_buffer = pNotifyBuffer;
+    if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(),
+            GetCurrentProcess(), &data->calling_thread, 0, FALSE,
+            DUPLICATE_SAME_ACCESS))
     {
-        /* dwNotifyMask is a set of bitflags in same order as SERVICE_ statuses */
-        if (dwNotifyMask & (1 << (st.dwCurrentState - SERVICE_STOPPED)))
-        {
-            pNotifyBuffer->dwNotificationStatus = ERROR_SUCCESS;
-            memcpy(&pNotifyBuffer->ServiceStatus, &st, sizeof(pNotifyBuffer->ServiceStatus));
-            pNotifyBuffer->dwNotificationTriggered = 1 << (st.dwCurrentState - SERVICE_STOPPED);
-            pNotifyBuffer->pszServiceNames = NULL;
-            TRACE("Queueing notification: 0x%x\n", pNotifyBuffer->dwNotificationTriggered);
-            QueueUserAPC((PAPCFUNC)pNotifyBuffer->pfnNotifyCallback,
-                    GetCurrentThread(), (ULONG_PTR)pNotifyBuffer);
-        }
+        ERR("DuplicateHandle failed: %u\n", GetLastError());
+        HeapFree(GetProcessHeap(), 0, data);
+        return ERROR_NOT_ENOUGH_MEMORY;
     }
 
-    /* TODO: If the service is not currently in a matching state, we should
-     * tell `services` to monitor it. */
+    data->params.dwInfoLevel = 2;
+    data->params.u.params = &data->cparams;
+
+    data->cparams.dwNotifyMask = dwNotifyMask;
+
+    EnterCriticalSection( &service_cs );
+
+    __TRY
+    {
+        err = svcctl_NotifyServiceStatusChange(hService, data->params,
+                &g_dummy, &g_dummy, &b_dummy, &data->notify_handle);
+    }
+    __EXCEPT(rpc_filter)
+    {
+        err = map_exception_code(GetExceptionCode());
+    }
+    __ENDTRY
+
+    if (err != ERROR_SUCCESS)
+    {
+        WARN("NotifyServiceStatusChange server call failed: %u\n", err);
+        LeaveCriticalSection( &service_cs );
+        CloseHandle(data->calling_thread);
+        CloseHandle(data->ready_evt);
+        HeapFree(GetProcessHeap(), 0, data);
+        return err;
+    }
+
+    CloseHandle(CreateThread(NULL, 0, &notify_thread, data, 0, NULL));
+
+    list_add_tail(&notify_list, &data->entry);
+
+    LeaveCriticalSection( &service_cs );
 
     return ERROR_SUCCESS;
 }

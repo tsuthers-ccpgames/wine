@@ -710,7 +710,7 @@ static void test_basic_type(void)
     ok( hr == S_OK, "got %08x\n", hr );
 
     /* element content type mapping */
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         prepare_basic_type_test( writer );
         hr = WsWriteType( writer, WS_ELEMENT_CONTENT_TYPE_MAPPING, tests[i].type, NULL,
@@ -723,7 +723,7 @@ static void test_basic_type(void)
     }
 
     /* element type mapping is the same as element content type mapping for basic types */
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         const INT64 *ptr = &tests[i].val;
 
@@ -738,7 +738,7 @@ static void test_basic_type(void)
     }
 
     /* attribute type mapping */
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         prepare_basic_type_test( writer );
         hr = WsWriteStartAttribute( writer, NULL, &localname, &ns, FALSE, NULL );
@@ -1103,7 +1103,7 @@ static void test_WsWriteValue(void)
     ok( hr == E_INVALIDARG, "got %08x\n", hr );
 
     /* element type mapping */
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         hr = set_output( writer );
         ok( hr == S_OK, "got %08x\n", hr );
@@ -1120,7 +1120,7 @@ static void test_WsWriteValue(void)
     }
 
     /* attribute type mapping */
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         hr = set_output( writer );
         ok( hr == S_OK, "got %08x\n", hr );
@@ -2170,7 +2170,7 @@ static void test_text_types(void)
     hr = WsCreateWriter( NULL, 0, &writer, NULL );
     ok( hr == S_OK, "got %08x\n", hr );
 
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         hr = set_output( writer );
         ok( hr == S_OK, "got %08x\n", hr );
@@ -2257,7 +2257,7 @@ static void test_double(void)
     ok( hr == S_OK, "got %08x\n", hr );
 
     text.text.textType = WS_XML_TEXT_TYPE_DOUBLE;
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         hr = set_output( writer );
         ok( hr == S_OK, "got %08x\n", hr );
@@ -2772,7 +2772,7 @@ static void test_escapes(void)
     hr = WsCreateWriter( NULL, 0, &writer, NULL );
     ok( hr == S_OK, "got %08x\n", hr );
 
-    for (i = 0; i < sizeof(tests_elem)/sizeof(tests_elem[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests_elem ); i++)
     {
         hr = set_output( writer );
         ok( hr == S_OK, "%u: got %08x\n", i, hr );
@@ -2789,7 +2789,7 @@ static void test_escapes(void)
         check_output( writer, tests_elem[i].result, __LINE__ );
     }
 
-    for (i = 0; i < sizeof(tests_attr)/sizeof(tests_attr[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests_attr ); i++)
     {
         hr = set_output( writer );
         ok( hr == S_OK, "%u: got %08x\n", i, hr );
@@ -2812,7 +2812,7 @@ static void test_escapes(void)
         check_output( writer, tests_attr[i].result, __LINE__ );
     }
 
-    for (i = 0; i < sizeof(tests_cdata)/sizeof(tests_cdata[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests_cdata ); i++)
     {
         hr = set_output( writer );
         ok( hr == S_OK, "%u: got %08x\n", i, hr );
@@ -2835,7 +2835,7 @@ static void test_escapes(void)
         check_output( writer, tests_cdata[i].result, __LINE__ );
     }
 
-    for (i = 0; i < sizeof(tests_comment)/sizeof(tests_comment[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests_comment ); i++)
     {
         WS_XML_COMMENT_NODE comment = {{WS_XML_NODE_TYPE_COMMENT}};
 
@@ -2954,7 +2954,7 @@ static void test_write_option(void)
     hr = WsCreateWriter( NULL, 0, &writer, NULL );
     ok( hr == S_OK, "got %08x\n", hr );
 
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         hr = set_output( writer );
         ok( hr == S_OK, "%u: got %08x\n", i, hr );
@@ -3041,7 +3041,7 @@ static void test_datetime(void)
 
     hr = WsCreateWriter( NULL, 0, &writer, NULL );
     ok( hr == S_OK, "got %08x\n", hr );
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         hr = set_output( writer );
         ok( hr == S_OK, "got %08x\n", hr );
@@ -3231,7 +3231,7 @@ static void test_WsWriteQualifiedName(void)
     hr = WsWriteQualifiedName( writer, NULL, NULL, NULL, NULL );
     ok( hr == WS_E_INVALID_FORMAT, "got %08x\n", hr );
 
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( tests ); i++)
     {
         WS_XML_STRING prefix2, localname2, ns2;
         const WS_XML_STRING *prefix_ptr, *localname_ptr, *ns_ptr;
@@ -3551,7 +3551,7 @@ static void test_binary_encoding(void)
     hr = WsCreateWriter( NULL, 0, &writer, NULL );
     ok( hr == S_OK, "got %08x\n", hr );
 
-    for (i = 0; i < sizeof(elem_tests)/sizeof(elem_tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( elem_tests ); i++)
     {
         hr = WsSetOutput( writer, &bin.encoding, &buf.output, NULL, 0, NULL );
         ok( hr == S_OK, "%u: got %08x\n", i, hr );
@@ -3574,7 +3574,7 @@ static void test_binary_encoding(void)
         if (hr == S_OK) check_output_bin( writer, elem_tests[i].result, elem_tests[i].len_result, __LINE__ );
     }
 
-    for (i = 0; i < sizeof(attr_tests)/sizeof(attr_tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( attr_tests ); i++)
     {
         hr = WsSetOutput( writer, &bin.encoding, &buf.output, NULL, 0, NULL );
         ok( hr == S_OK, "%u: got %08x\n", i, hr );
@@ -3778,12 +3778,12 @@ static void test_dictionary(void)
 
     UuidCreate( &dict.guid );
     dict.strings     = strings;
-    dict.stringCount = sizeof(strings)/sizeof(strings[0]);
+    dict.stringCount = ARRAY_SIZE( strings );
     dict.isConst     = TRUE;
 
     bin.staticDictionary = &dict;
 
-    for (i = 0; i < sizeof(elem_tests)/sizeof(elem_tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( elem_tests ); i++)
     {
         hr = WsSetOutput( writer, &bin.encoding, &buf.output, NULL, 0, NULL );
         ok( hr == S_OK, "%u: got %08x\n", i, hr );
@@ -3799,7 +3799,7 @@ static void test_dictionary(void)
         if (hr == S_OK) check_output_bin( writer, elem_tests[i].result, elem_tests[i].len_result, __LINE__ );
     }
 
-    for (i = 0; i < sizeof(attr_tests)/sizeof(attr_tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( attr_tests ); i++)
     {
         hr = WsSetOutput( writer, &bin.encoding, &buf.output, NULL, 0, NULL );
         ok( hr == S_OK, "%u: got %08x\n", i, hr );
@@ -4544,6 +4544,111 @@ static void test_text_types_binary(void)
     WsFreeWriter( writer );
 }
 
+static void test_repeating_element_choice(void)
+{
+    static const WCHAR testW[] = {'t','e','s','t',0};
+    static WS_XML_STRING str_ns = {0, NULL}, str_a = {1, (BYTE *)"a"}, str_b = {1, (BYTE *)"b"};
+    static WS_XML_STRING str_s = {1, (BYTE *)"s"}, str_t = {1, (BYTE *)"t"};
+    HRESULT hr;
+    WS_XML_WRITER *writer;
+    WS_UNION_DESCRIPTION u;
+    WS_UNION_FIELD_DESCRIPTION f, f2, *fields[2];
+    WS_FIELD_DESCRIPTION f_items, *fields_items[1];
+    WS_STRUCT_DESCRIPTION s;
+    enum choice {CHOICE_A, CHOICE_B, CHOICE_NONE};
+    struct item
+    {
+        enum choice choice;
+        union
+        {
+            const WCHAR *a;
+            UINT32       b;
+        } value;
+    } items[2];
+    struct test
+    {
+        struct item *items;
+        ULONG        count;
+    } test;
+
+    hr = WsCreateWriter( NULL, 0, &writer, NULL );
+    ok( hr == S_OK, "got %08x\n", hr );
+
+    memset( &f, 0, sizeof(f) );
+    f.value           = CHOICE_A;
+    f.field.mapping   = WS_ELEMENT_FIELD_MAPPING;
+    f.field.localName = &str_a;
+    f.field.ns        = &str_ns;
+    f.field.type      = WS_WSZ_TYPE;
+    f.field.offset    = FIELD_OFFSET(struct item, value.a);
+    fields[0] = &f;
+
+    memset( &f2, 0, sizeof(f2) );
+    f2.value           = CHOICE_B;
+    f2.field.mapping   = WS_ELEMENT_FIELD_MAPPING;
+    f2.field.localName = &str_b;
+    f2.field.ns        = &str_ns;
+    f2.field.type      = WS_UINT32_TYPE;
+    f2.field.offset    = FIELD_OFFSET(struct item, value.b);
+    fields[1] = &f2;
+
+    memset( &u, 0, sizeof(u) );
+    u.size          = sizeof(struct item);
+    u.alignment     = TYPE_ALIGNMENT(struct item);
+    u.fields        = fields;
+    u.fieldCount    = 2;
+    u.enumOffset    = FIELD_OFFSET(struct item, choice);
+    u.noneEnumValue = CHOICE_NONE;
+
+    memset( &f_items, 0, sizeof(f_items) );
+    f_items.mapping         = WS_REPEATING_ELEMENT_CHOICE_FIELD_MAPPING;
+    f_items.localName       = &str_t;
+    f_items.ns              = &str_ns;
+    f_items.type            = WS_UNION_TYPE;
+    f_items.typeDescription = &u;
+    f_items.countOffset     = FIELD_OFFSET(struct test, count);
+    fields_items[0] = &f_items;
+
+    memset( &s, 0, sizeof(s) );
+    s.size          = sizeof(struct test);
+    s.alignment     = TYPE_ALIGNMENT(struct test);
+    s.fields        = fields_items;
+    s.fieldCount    = 1;
+    s.typeLocalName = &str_s;
+    s.typeNs        = &str_ns;
+
+    items[0].choice  = CHOICE_A;
+    items[0].value.a = testW;
+    items[1].choice  = CHOICE_B;
+    items[1].value.b = 1;
+    test.items = items;
+    test.count = 2;
+
+    hr = set_output( writer );
+    ok( hr == S_OK, "got %08x\n", hr );
+    hr = WsWriteType( writer, WS_ELEMENT_CONTENT_TYPE_MAPPING, WS_STRUCT_TYPE, &s,
+                      WS_WRITE_REQUIRED_VALUE, &test, sizeof(test), NULL );
+    ok( hr == S_OK, "got %08x\n", hr );
+    check_output( writer, "<t><a>test</a><b>1</b></t>", __LINE__ );
+
+    items[0].choice = CHOICE_NONE;
+    hr = set_output( writer );
+    ok( hr == S_OK, "got %08x\n", hr );
+    hr = WsWriteType( writer, WS_ELEMENT_CONTENT_TYPE_MAPPING, WS_STRUCT_TYPE, &s,
+                      WS_WRITE_REQUIRED_VALUE, &test, sizeof(test), NULL );
+    ok( hr == WS_E_INVALID_FORMAT, "got %08x\n", hr );
+
+    test.count = 0;
+    hr = set_output( writer );
+    ok( hr == S_OK, "got %08x\n", hr );
+    hr = WsWriteType( writer, WS_ELEMENT_CONTENT_TYPE_MAPPING, WS_STRUCT_TYPE, &s,
+                      WS_WRITE_REQUIRED_VALUE, &test, sizeof(test), NULL );
+    ok( hr == S_OK, "got %08x\n", hr );
+    check_output( writer, "<t/>", __LINE__ );
+
+    WsFreeWriter( writer );
+}
+
 START_TEST(writer)
 {
     test_WsCreateWriter();
@@ -4586,4 +4691,5 @@ START_TEST(writer)
     test_dictionary();
     test_union_type();
     test_text_types_binary();
+    test_repeating_element_choice();
 }

@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <share.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <windef.h>
 #include <winbase.h>
@@ -123,6 +124,7 @@ static int (CDECL *p__iswblank_l)(wint_t,_locale_t);
 static int (CDECL *p_fesetround)(int);
 static void (CDECL *p___setusermatherr)(MSVCRT_matherr_func);
 static int* (CDECL *p_errno)(void);
+static char* (CDECL *p_asctime)(const struct tm *);
 
 static void test__initialize_onexit_table(void)
 {
@@ -426,6 +428,7 @@ static BOOL init(void)
     p_fesetround = (void*)GetProcAddress(module, "fesetround");
     p___setusermatherr = (void*)GetProcAddress(module, "__setusermatherr");
     p_errno = (void*)GetProcAddress(module, "_errno");
+    p_asctime = (void*)GetProcAddress(module, "asctime");
 
     return TRUE;
 }
@@ -700,7 +703,7 @@ static void test_math_errors(void)
     /* necessary so that exp(1e100)==INFINITY on glibc, we can remove this if we change our implementation */
     p_fesetround(FE_TONEAREST);
 
-    for(i = 0; i < sizeof(testsd)/sizeof(testsd[0]); i++) {
+    for(i = 0; i < ARRAY_SIZE(testsd); i++) {
         p_funcd = (void*)GetProcAddress(module, testsd[i].func);
         *p_errno() = -1;
         exception.type = -1;
@@ -714,7 +717,7 @@ static void test_math_errors(void)
            "%s(%f) got exception arg1 %f\n", testsd[i].func, testsd[i].x, exception.arg1);
     }
 
-    for(i = 0; i < sizeof(tests2d)/sizeof(tests2d[0]); i++) {
+    for(i = 0; i < ARRAY_SIZE(tests2d); i++) {
         p_func2d = (void*)GetProcAddress(module, tests2d[i].func);
         *p_errno() = -1;
         exception.type = -1;
@@ -730,7 +733,7 @@ static void test_math_errors(void)
            "%s(%f, %f) got exception arg2 %f\n", tests2d[i].func, tests2d[i].a, tests2d[i].b, exception.arg2);
     }
 
-    for(i = 0; i < sizeof(testsdl)/sizeof(testsdl[0]); i++) {
+    for(i = 0; i < ARRAY_SIZE(testsdl); i++) {
         p_funcdl = (void*)GetProcAddress(module, testsdl[i].func);
         *p_errno() = -1;
         exception.type = -1;
@@ -745,6 +748,21 @@ static void test_math_errors(void)
         ok(exception.arg2 == testsdl[i].b,
            "%s(%f, %ld) got exception arg2 %f\n", testsdl[i].func, testsdl[i].a, testsdl[i].b, exception.arg2);
     }
+}
+
+static void test_asctime(void)
+{
+    const struct tm epoch = { 0, 0, 0, 1, 0, 70, 4, 0, 0 };
+    char *ret;
+
+    if(!p_asctime)
+    {
+        win_skip("asctime is not available\n");
+        return;
+    }
+
+    ret = p_asctime(&epoch);
+    ok(!strcmp(ret, "Thu Jan  1 00:00:00 1970\n"), "asctime returned %s\n", ret);
 }
 
 START_TEST(misc)
@@ -772,4 +790,5 @@ START_TEST(misc)
     test_lldiv();
     test_isblank();
     test_math_errors();
+    test_asctime();
 }

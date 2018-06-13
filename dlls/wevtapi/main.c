@@ -115,3 +115,17 @@ BOOL WINAPI EvtClose(EVT_HANDLE handle)
     FIXME("(%p) stub\n", handle);
     return TRUE;
 }
+
+BOOL WINAPI EvtNext(EVT_HANDLE result_set, DWORD size, EVT_HANDLE *array, DWORD timeout, DWORD flags, DWORD *ret_count)
+{
+    FIXME("(%p %u %p %u %#x %p) stub!\n", result_set, size, array, timeout, flags, ret_count);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+BOOL WINAPI EvtExportLog(EVT_HANDLE session, const WCHAR *path, const WCHAR *query, const WCHAR *file, DWORD flags)
+{
+    FIXME("(%p %s %s %s %#x) stub!\n", session, debugstr_w(path), debugstr_w(query), debugstr_w(file), flags);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}

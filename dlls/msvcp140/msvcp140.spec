@@ -1083,7 +1083,7 @@
 @ stub -arch=win64 ??_Ftime_base@std@@QEAAXXZ
 @ stub -arch=win32 ?CaptureCallstack@platform@details@Concurrency@@YAIPAPAXII@Z
 @ stub -arch=win64 ?CaptureCallstack@platform@details@Concurrency@@YA_KPEAPEAX_K1@Z
-@ stub ?GetCurrentThreadId@platform@details@Concurrency@@YAJXZ
+@ cdecl ?GetCurrentThreadId@platform@details@Concurrency@@YAJXZ() kernel32.GetCurrentThreadId
 @ stub ?GetNextAsyncId@platform@details@Concurrency@@YAIXZ
 @ stub -arch=arm ?ReportUnhandledError@_ExceptionHolder@details@Concurrency@@AAAXXZ
 @ stub -arch=i386 ?ReportUnhandledError@_ExceptionHolder@details@Concurrency@@AAEXXZ
@@ -1443,7 +1443,7 @@
 @ cdecl -arch=win32 ?_Iput@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@ABA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@AAVios_base@2@_WPADI@Z(ptr ptr long ptr ptr long ptr long) num_put_wchar__Iput
 @ cdecl -arch=win64 ?_Iput@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@AEAVios_base@2@_WPEAD_K@Z(ptr ptr ptr ptr long ptr long) num_put_wchar__Iput
 @ cdecl ?_IsCurrentOriginSTA@_ContextCallback@details@Concurrency@@CA_NXZ(ptr) _ContextCallback__IsCurrentOriginSTA
-@ stub ?_IsNonBlockingThread@_Task_impl_base@details@Concurrency@@SA_NXZ
+@ cdecl ?_IsNonBlockingThread@_Task_impl_base@details@Concurrency@@SA_NXZ() _Task_impl_base__IsNonBlockingThread
 @ cdecl -arch=win32 ?_Locimp_Addfac@_Locimp@locale@std@@CAXPAV123@PAVfacet@23@I@Z(ptr ptr long) locale__Locimp__Locimp_Addfac
 @ cdecl -arch=win64 ?_Locimp_Addfac@_Locimp@locale@std@@CAXPEAV123@PEAVfacet@23@_K@Z(ptr ptr long) locale__Locimp__Locimp_Addfac
 @ cdecl -arch=win32 ?_Locimp_ctor@_Locimp@locale@std@@CAXPAV123@ABV123@@Z(ptr ptr) locale__Locimp__Locimp_ctor
@@ -3513,7 +3513,7 @@
 @ thiscall -arch=i386 ?uflow@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MAEGXZ(ptr) basic_streambuf_wchar_uflow
 @ cdecl -arch=win64 ?uflow@?$basic_streambuf@_WU?$char_traits@_W@std@@@std@@MEAAGXZ(ptr) basic_streambuf_wchar_uflow
 @ cdecl ?uncaught_exception@std@@YA_NXZ() MSVCP__uncaught_exception
-@ stub ?uncaught_exceptions@std@@YAHXZ
+@ cdecl ?uncaught_exceptions@std@@YAHXZ() __uncaught_exceptions
 @ cdecl -arch=arm ?underflow@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MAAHXZ(ptr) basic_streambuf_char_underflow
 @ thiscall -arch=i386 ?underflow@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MAEHXZ(ptr) basic_streambuf_char_underflow
 @ cdecl -arch=win64 ?underflow@?$basic_streambuf@DU?$char_traits@D@std@@@std@@MEAAHXZ(ptr) basic_streambuf_char_underflow
@@ -3721,13 +3721,13 @@
 @ stub _Temp_get
 @ stub _Thrd_abort
 @ cdecl _Thrd_create(ptr ptr ptr) _Thrd_create
-@ cdecl _Thrd_current() _Thrd_current
-@ cdecl _Thrd_detach(ptr) _Thrd_detach
-@ cdecl _Thrd_equal(ptr ptr) _Thrd_equal
+@ cdecl -norelay _Thrd_current()
+@ cdecl _Thrd_detach(int64) _Thrd_detach
+@ cdecl _Thrd_equal(int64 int64) _Thrd_equal
 @ stub _Thrd_exit
 @ cdecl _Thrd_hardware_concurrency() _Thrd_hardware_concurrency
 @ cdecl _Thrd_id() _Thrd_id
-@ cdecl _Thrd_join(ptr long) _Thrd_join
+@ cdecl _Thrd_join(int64 long) _Thrd_join
 @ cdecl _Thrd_sleep(ptr) _Thrd_sleep
 @ cdecl _Thrd_start(ptr ptr ptr) _Thrd_start
 @ cdecl _Thrd_yield() _Thrd_yield

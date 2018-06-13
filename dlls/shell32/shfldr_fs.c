@@ -1085,12 +1085,12 @@ ISFHelper_fnGetUniqueName (ISFHelper * iface, LPWSTR pwszName, UINT uLen)
     HRESULT hr;
     WCHAR wszText[MAX_PATH];
     WCHAR wszNewFolder[25];
-    const WCHAR wszFormat[] = {'%','s',' ','%','d',0 };
+    static const WCHAR wszFormat[] = {'%','s',' ','%','d',0 };
 
     TRACE ("(%p)(%p %u)\n", This, pwszName, uLen);
 
-    LoadStringW(shell32_hInstance, IDS_NEWFOLDER, wszNewFolder,  sizeof(wszNewFolder)/sizeof(WCHAR));
-    if (uLen < sizeof(wszNewFolder)/sizeof(WCHAR) + 3)
+    LoadStringW(shell32_hInstance, IDS_NEWFOLDER, wszNewFolder, ARRAY_SIZE(wszNewFolder));
+    if (uLen < ARRAY_SIZE(wszNewFolder) + 3)
         return E_POINTER;
 
     lstrcpynW (pwszName, wszNewFolder, uLen);
@@ -1180,10 +1180,8 @@ ISFHelper_fnAddFolder (ISFHelper * iface, HWND hwnd, LPCWSTR pwszName,
         WCHAR wszCaption[256];
 
         /* Cannot Create folder because of permissions */
-        LoadStringW (shell32_hInstance, IDS_CREATEFOLDER_DENIED, wszTempText,
-         sizeof (wszTempText)/sizeof (wszTempText[0]));
-        LoadStringW (shell32_hInstance, IDS_CREATEFOLDER_CAPTION, wszCaption,
-         sizeof (wszCaption)/sizeof (wszCaption[0]));
+        LoadStringW (shell32_hInstance, IDS_CREATEFOLDER_DENIED, wszTempText, ARRAY_SIZE(wszTempText));
+        LoadStringW (shell32_hInstance, IDS_CREATEFOLDER_CAPTION, wszCaption, ARRAY_SIZE(wszCaption));
         sprintfW (wszText, wszTempText, wszNewDir);
         MessageBoxW (hwnd, wszText, wszCaption, MB_OK | MB_ICONEXCLAMATION);
     }
@@ -1205,7 +1203,7 @@ static WCHAR *build_paths_list(LPCWSTR wszBasePath, int cidl, const LPCITEMIDLIS
     int i;
     
     iPathLen = lstrlenW(wszBasePath);
-    wszPathsList = HeapAlloc(GetProcessHeap(), 0, MAX_PATH*sizeof(WCHAR)*cidl+1);
+    wszPathsList = heap_alloc(MAX_PATH*sizeof(WCHAR)*cidl+1);
     wszListPos = wszPathsList;
     
     for (i = 0; i < cidl; i++) {
@@ -1283,7 +1281,7 @@ ISFHelper_fnDeleteItems (ISFHelper * iface, UINT cidl, LPCITEMIDLIST * apidl)
 
         wszCurrentPath += lstrlenW(wszCurrentPath)+1;
     }
-    HeapFree(GetProcessHeap(), 0, wszPathsList);
+    heap_free(wszPathsList);
     return ret;
 }
 
@@ -1333,8 +1331,7 @@ ISFHelper_fnCopyItems (ISFHelper * iface, IShellFolder * pSFFrom, UINT cidl,
                 WARN("Copy failed\n");
                 ret = E_FAIL;
             }
-            HeapFree(GetProcessHeap(), 0, wszSrcPathsList);
-
+            heap_free(wszSrcPathsList);
         }
         SHFree(pidl);
         IPersistFolder2_Release(ppf2);

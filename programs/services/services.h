@@ -45,6 +45,8 @@ struct process_entry
     HANDLE overlapped_event;
 };
 
+struct sc_notify_handle;
+
 struct service_entry
 {
     struct list entry;
@@ -63,6 +65,8 @@ struct service_entry
     BOOL force_shutdown;
     BOOL marked_for_delete;
     BOOL is_wow64;
+    BOOL status_notified;
+    struct sc_notify_handle *notify;
 };
 
 extern struct scmdatabase *active_database;
@@ -73,7 +77,7 @@ struct service_entry *scmdatabase_find_service(struct scmdatabase *db, LPCWSTR n
 struct service_entry *scmdatabase_find_service_by_displayname(struct scmdatabase *db, LPCWSTR name);
 DWORD scmdatabase_add_service(struct scmdatabase *db, struct service_entry *entry);
 
-BOOL scmdatabase_lock_startup(struct scmdatabase *db);
+BOOL scmdatabase_lock_startup(struct scmdatabase *db, int timeout);
 void scmdatabase_unlock_startup(struct scmdatabase *db);
 
 void scmdatabase_lock(struct scmdatabase *db);

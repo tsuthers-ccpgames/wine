@@ -260,7 +260,7 @@ static void test_GetVolumeNameForVolumeMountPointW(void)
     }
 
     ret = pGetVolumeNameForVolumeMountPointW(path, volume, 0);
-    ok(ret == FALSE, "GetVolumeNameForVolumeMountPointA succeeded\n");
+    ok(ret == FALSE, "GetVolumeNameForVolumeMountPointW succeeded\n");
     ok(GetLastError() == ERROR_FILENAME_EXCED_RANGE ||
         GetLastError() == ERROR_INVALID_PARAMETER, /* Vista */
         "wrong error, last=%d\n", GetLastError());
@@ -771,6 +771,10 @@ static void test_GetVolumePathNameA(void)
         { /* test 41 */
             "s:omefile", "S:\\" /* win2k, winxp */, sizeof(volume_path),
             ERROR_FILE_NOT_FOUND, NO_ERROR
+        },
+        { /* test 42: a reasonable forward slash path that is guaranteed to exist */
+            "C:/windows/system32", "C:\\", sizeof(volume_path),
+            NO_ERROR, NO_ERROR
         },
     };
     BOOL ret, success;

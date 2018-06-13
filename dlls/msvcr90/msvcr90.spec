@@ -201,7 +201,7 @@
 @ extern __badioinfo MSVCRT___badioinfo
 @ cdecl __clean_type_info_names_internal(ptr)
 @ cdecl -arch=i386 __control87_2(long long ptr ptr)
-@ stub __create_locale
+@ cdecl __create_locale(long str) MSVCRT__create_locale
 @ cdecl __crtCompareStringA(long long str long str long)
 @ cdecl __crtCompareStringW(long long wstr long wstr long)
 @ cdecl __crtGetLocaleInfoW(long long ptr long)
@@ -215,9 +215,9 @@
 @ stub ___fls_getvalue@4
 @ stub ___fls_setvalue@8
 @ cdecl __fpecode()
-@ stub __free_locale
+@ cdecl __free_locale(ptr) MSVCRT__free_locale
 @ stub __get_app_type
-@ stub __get_current_locale
+@ cdecl __get_current_locale() MSVCRT__get_current_locale
 @ stub __get_flsindex
 @ stub __get_tlsindex
 @ cdecl __getmainargs(ptr ptr ptr long ptr)
@@ -345,9 +345,9 @@
 @ cdecl _atoflt(ptr str) MSVCRT__atoflt
 @ cdecl _atoflt_l(ptr str ptr) MSVCRT__atoflt_l
 @ cdecl -ret64 _atoi64(str) ntdll._atoi64
-@ stub _atoi64_l
+@ cdecl _atoi64_l(str ptr) MSVCRT__atoi64_l
 @ cdecl _atoi_l(str ptr) MSVCRT__atoi_l
-@ stub _atol_l
+@ cdecl _atol_l(str ptr) MSVCRT__atol_l
 @ cdecl _atoldbl(ptr str) MSVCRT__atoldbl
 @ stub _atoldbl_l
 @ cdecl _beep(long long) MSVCRT__beep
@@ -1166,7 +1166,7 @@
 @ cdecl _wcsrev(wstr) MSVCRT__wcsrev
 @ cdecl _wcsset(wstr long) MSVCRT__wcsset
 @ cdecl _wcsset_s(wstr long long) MSVCRT__wcsset_s
-@ cdecl _wcstod_l(wstr ptr) MSVCRT__wcstod_l
+@ cdecl _wcstod_l(wstr ptr long) MSVCRT__wcstod_l
 @ cdecl -ret64 _wcstoi64(wstr ptr long) MSVCRT__wcstoi64
 @ cdecl -ret64 _wcstoi64_l(wstr ptr long ptr) MSVCRT__wcstoi64_l
 @ cdecl _wcstol_l(wstr ptr long ptr) MSVCRT__wcstol_l

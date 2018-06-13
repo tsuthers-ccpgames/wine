@@ -50,11 +50,15 @@ static SC_HANDLE manager_handle;
 static BOOL shutdown_in_progress;
 static HANDLE stop_event;
 
+#define EVENT_STARTED  0
+#define EVENT_ERROR    1
+
 struct wine_driver
 {
     struct wine_rb_entry entry;
 
     SERVICE_STATUS_HANDLE handle;
+    HANDLE events[2];
     DRIVER_OBJECT *driver_obj;
     WCHAR name[1];
 };
@@ -390,6 +394,8 @@ static void WINAPI async_create_driver( PTP_CALLBACK_INSTANCE instance, void *co
         goto error;
     }
 
+    SetEvent(driver->events[EVENT_STARTED]);
+
     EnterCriticalSection( &drivers_cs );
     driver->driver_obj = driver_obj;
     set_service_status( driver->handle, SERVICE_RUNNING,
@@ -398,6 +404,7 @@ static void WINAPI async_create_driver( PTP_CALLBACK_INSTANCE instance, void *co
     return;
 
 error:
+    SetEvent(driver->events[EVENT_ERROR]);
     EnterCriticalSection( &drivers_cs );
     wine_rb_remove( &wine_drivers, &driver->entry );
     LeaveCriticalSection( &drivers_cs );
@@ -413,6 +420,7 @@ static NTSTATUS create_driver( const WCHAR *driver_name )
     TP_CALLBACK_ENVIRON environment;
     struct wine_driver *driver;
     DWORD length;
+    DWORD ret;
 
     length = FIELD_OFFSET( struct wine_driver, name[strlenW(driver_name) + 1] );
     if (!(driver = HeapAlloc( GetProcessHeap(), 0, length )))
@@ -441,9 +449,19 @@ static NTSTATUS create_driver( const WCHAR *driver_name )
     environment.Version = 1;
     environment.CleanupGroup = cleanup_group;
 
+    driver->events[EVENT_STARTED] = CreateEventW(NULL, TRUE, FALSE, NULL);
+    driver->events[EVENT_ERROR]   = CreateEventW(NULL, TRUE, FALSE, NULL);
+
     /* don't block the service control handler */
     if (!TrySubmitThreadpoolCallback( async_create_driver, driver, &environment ))
         async_create_driver( NULL, driver );
+
+    /* Windows wait 30 Seconds */
+    ret = WaitForMultipleObjects(2, driver->events, FALSE, 30000);
+    if(ret == WAIT_OBJECT_0 + EVENT_ERROR)
+        return STATUS_UNSUCCESSFUL;
+    else if(ret == WAIT_TIMEOUT)
+        return ERROR_SERVICE_REQUEST_TIMEOUT;
 
     return STATUS_SUCCESS;
 }
@@ -453,6 +471,8 @@ static void wine_drivers_rb_destroy( struct wine_rb_entry *entry, void *context 
     if (unload_driver( entry, TRUE ) != STATUS_SUCCESS)
     {
         struct wine_driver *driver = WINE_RB_ENTRY_VALUE( entry, struct wine_driver, entry );
+        CloseHandle(driver->events[EVENT_STARTED]);
+        CloseHandle(driver->events[EVENT_ERROR]);
         ObDereferenceObject( driver->driver_obj );
         CloseServiceHandle( (void *)driver->handle );
         HeapFree( GetProcessHeap(), 0, driver );

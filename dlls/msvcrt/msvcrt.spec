@@ -332,9 +332,9 @@
 @ cdecl _atof_l(str ptr) MSVCRT__atof_l
 @ cdecl _atoflt_l(ptr str ptr) MSVCRT__atoflt_l
 @ cdecl -ret64 _atoi64(str) ntdll._atoi64
-# stub -ret64 _atoi64_l(str ptr)
+@ cdecl _atoi64_l(str ptr) MSVCRT__atoi64_l
 @ cdecl _atoi_l(str ptr) MSVCRT__atoi_l
-# stub _atol_l(str ptr)
+@ cdecl _atol_l(str ptr) MSVCRT__atol_l
 @ cdecl _atoldbl(ptr str) MSVCRT__atoldbl
 # stub _atoldbl_l(ptr str ptr)
 @ cdecl _beep(long long) MSVCRT__beep
@@ -508,13 +508,13 @@
 @ cdecl _get_heap_handle()
 @ cdecl _get_osfhandle(long) MSVCRT__get_osfhandle
 @ cdecl _get_osplatform(ptr) MSVCRT__get_osplatform
-# stub _get_osver(ptr)
+@ cdecl _get_osver(ptr) MSVCRT__get_osver
 @ cdecl _get_output_format() MSVCRT__get_output_format
 @ cdecl _get_pgmptr(ptr)
 @ cdecl _get_sbh_threshold()
 # stub _get_wenviron(ptr)
-# stub _get_winmajor(ptr)
-# stub _get_winminor(ptr)
+@ cdecl _get_winmajor(ptr) MSVCRT__get_winmajor
+@ cdecl _get_winminor(ptr) MSVCRT__get_winminor
 # stub _get_winver(ptr)
 @ cdecl _get_wpgmptr(ptr)
 @ cdecl _get_terminate() MSVCRT__get_terminate

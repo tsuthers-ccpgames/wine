@@ -2148,6 +2148,23 @@ typedef struct tagCBTACTIVATESTRUCT
 } CBTACTIVATESTRUCT, *LPCBTACTIVATESTRUCT;
 
 
+typedef struct tagDROPSTRUCT
+{
+    HWND      hwndSource;
+    HWND      hwndSink;
+    DWORD     wFmt;
+    ULONG_PTR dwData;
+    POINT     ptDrop;
+    DWORD     dwControlData;
+} DROPSTRUCT, *PDROPSTRUCT, *LPDROPSTRUCT;
+
+#define DOF_EXECUTABLE  0x8001
+#define DOF_DOCUMENT    0x8002
+#define DOF_DIRECTORY   0x8003
+#define DOF_MULTIPLE    0x8004
+#define DOF_PROGMAN     0x0001
+#define DOF_SHELLDATA   0x0002
+
 /* modifiers for RegisterHotKey */
 #define	MOD_ALT		0x0001
 #define	MOD_CONTROL	0x0002
@@ -2533,6 +2550,9 @@ typedef struct tagMINIMIZEDMETRICS {
     int iArrange;
 } MINIMIZEDMETRICS, *PMINIMIZEDMETRICS, *LPMINIMIZEDMETRICS;
 
+/* Window affinity */
+#define WDA_NONE     0x0
+#define WDA_MONITOR  0x1
 
 /* Window scrolling */
 #define SW_SCROLLCHILDREN      0x0001
@@ -3337,6 +3357,26 @@ typedef struct tagGESTUREINFO {
 } GESTUREINFO, *PGESTUREINFO;
 typedef GESTUREINFO const * PCGESTUREINFO;
 
+#define POINTER_DEVICE_PRODUCT_STRING_MAX 520
+
+typedef enum tagPOINTER_DEVICE_TYPE {
+    POINTER_DEVICE_TYPE_INTEGRATED_PEN = 0x00000001,
+    POINTER_DEVICE_TYPE_EXTERNAL_PEN   = 0x00000002,
+    POINTER_DEVICE_TYPE_TOUCH          = 0x00000003,
+    POINTER_DEVICE_TYPE_TOUCH_PAD      = 0x00000004,
+    POINTER_DEVICE_TYPE_MAX            = 0xFFFFFFFF
+} POINTER_DEVICE_TYPE;
+
+typedef struct tagPOINTER_DEVICE_INFO {
+    DWORD               displayOrientation;
+    HANDLE              device;
+    POINTER_DEVICE_TYPE pointerDeviceType;
+    HMONITOR            monitor;
+    ULONG               startingCursorId;
+    USHORT              maxActiveContacts;
+    WCHAR               productString[POINTER_DEVICE_PRODUCT_STRING_MAX];
+} POINTER_DEVICE_INFO;
+
 #if defined(_WINGDI_) && !defined(NOGDI)
 WINUSERAPI LONG        WINAPI ChangeDisplaySettingsA(LPDEVMODEA,DWORD);
 WINUSERAPI LONG        WINAPI ChangeDisplaySettingsW(LPDEVMODEW,DWORD);
@@ -3366,6 +3406,7 @@ WINUSERAPI HKL         WINAPI ActivateKeyboardLayout(HKL,UINT);
 WINUSERAPI BOOL        WINAPI AddClipboardFormatListener(HWND);
 WINUSERAPI BOOL        WINAPI AdjustWindowRect(LPRECT,DWORD,BOOL);
 WINUSERAPI BOOL        WINAPI AdjustWindowRectEx(LPRECT,DWORD,BOOL,DWORD);
+WINUSERAPI BOOL        WINAPI AdjustWindowRectExForDpi(RECT*,DWORD,BOOL,DWORD,UINT);
 WINUSERAPI BOOL        WINAPI AllowSetForegroundWindow(DWORD);
 WINUSERAPI BOOL        WINAPI AnimateWindow(HWND,DWORD,DWORD);
 #define                       AnsiLowerA CharLowerA
@@ -3390,6 +3431,7 @@ WINUSERAPI BOOL        WINAPI AnyPopup(void);
 WINUSERAPI BOOL        WINAPI AppendMenuA(HMENU,UINT,UINT_PTR,LPCSTR);
 WINUSERAPI BOOL        WINAPI AppendMenuW(HMENU,UINT,UINT_PTR,LPCWSTR);
 #define                       AppendMenu WINELIB_NAME_AW(AppendMenu)
+WINUSERAPI BOOL        WINAPI AreDpiAwarenessContextsEqual(DPI_AWARENESS_CONTEXT,DPI_AWARENESS_CONTEXT);
 WINUSERAPI UINT        WINAPI ArrangeIconicWindows(HWND);
 WINUSERAPI BOOL        WINAPI AttachThreadInput(DWORD,DWORD,BOOL);
 WINUSERAPI HDWP        WINAPI BeginDeferWindowPos(INT);
@@ -3576,6 +3618,7 @@ WINUSERAPI INT         WINAPI DrawTextExW(HDC,LPWSTR,INT,LPRECT,UINT,LPDRAWTEXTP
 #define                       DrawTextEx WINELIB_NAME_AW(DrawTextEx)
 WINUSERAPI BOOL        WINAPI EmptyClipboard(void);
 WINUSERAPI BOOL        WINAPI EnableMenuItem(HMENU,UINT,UINT);
+WINUSERAPI BOOL        WINAPI EnableMouseInPointer(BOOL);
 WINUSERAPI BOOL        WINAPI EnableScrollBar(HWND,UINT,UINT);
 WINUSERAPI BOOL        WINAPI EnableWindow(HWND,BOOL);
 WINUSERAPI BOOL        WINAPI EndDeferWindowPos(HDWP);
@@ -3621,6 +3664,7 @@ WINUSERAPI HWND        WINAPI GetAncestor(HWND,UINT);
 WINUSERAPI DWORD       WINAPI GetAppCompatFlags(HTASK);
 WINUSERAPI SHORT       WINAPI GetAsyncKeyState(INT);
 WINUSERAPI BOOL        WINAPI GetAutoRotationState(AR_STATE*);
+WINUSERAPI DPI_AWARENESS WINAPI GetAwarenessFromDpiAwarenessContext(DPI_AWARENESS_CONTEXT);
 WINUSERAPI HWND        WINAPI GetCapture(void);
 WINUSERAPI UINT        WINAPI GetCaretBlinkTime(void);
 WINUSERAPI BOOL        WINAPI GetCaretPos(LPPOINT);
@@ -3671,6 +3715,9 @@ WINUSERAPI UINT        WINAPI GetDlgItemTextA(HWND,INT,LPSTR,INT);
 WINUSERAPI UINT        WINAPI GetDlgItemTextW(HWND,INT,LPWSTR,INT);
 #define                       GetDlgItemText WINELIB_NAME_AW(GetDlgItemText)
 WINUSERAPI UINT        WINAPI GetDoubleClickTime(void);
+WINUSERAPI BOOL        WINAPI GetDpiForMonitorInternal(HMONITOR,UINT,UINT*,UINT*);
+WINUSERAPI UINT        WINAPI GetDpiForWindow(HWND);
+WINUSERAPI UINT        WINAPI GetDpiForSystem(void);
 WINUSERAPI HWND        WINAPI GetFocus(void);
 WINUSERAPI HWND        WINAPI GetForegroundWindow(void);
 WINUSERAPI BOOL        WINAPI GetGestureConfig(HWND,DWORD,DWORD,UINT*,GESTURECONFIG*,UINT);
@@ -3739,6 +3786,7 @@ WINUSERAPI HWND        WINAPI GetParent(HWND);
 WINUSERAPI BOOL        WINAPI GetPhysicalCursorPos(POINT*);
 WINUSERAPI INT         WINAPI GetPriorityClipboardFormat(UINT*,INT);
 WINUSERAPI BOOL        WINAPI GetProcessDefaultLayout(DWORD*);
+WINUSERAPI BOOL        WINAPI GetProcessDpiAwarenessInternal(HANDLE,DPI_AWARENESS*);
 WINUSERAPI HANDLE      WINAPI GetPropA(HWND,LPCSTR);
 WINUSERAPI HANDLE      WINAPI GetPropW(HWND,LPCWSTR);
 #define                       GetProp WINELIB_NAME_AW(GetProp)
@@ -3753,11 +3801,13 @@ WINUSERAPI HBRUSH      WINAPI GetSysColorBrush(INT);
 #define                       GetSysModalWindow() ((HWND)0)
 WINUSERAPI HMENU       WINAPI GetSystemMenu(HWND,BOOL);
 WINUSERAPI INT         WINAPI GetSystemMetrics(INT);
+WINUSERAPI INT         WINAPI GetSystemMetricsForDpi(INT,UINT);
 WINUSERAPI DWORD       WINAPI GetTabbedTextExtentA(HDC,LPCSTR,INT,INT,const INT*);
 WINUSERAPI DWORD       WINAPI GetTabbedTextExtentW(HDC,LPCWSTR,INT,INT,const INT*);
 #define                       GetTabbedTextExtent WINELIB_NAME_AW(GetTabbedTextExtent)
 WINUSERAPI BOOL        WINAPI GetTitleBarInfo(HWND,PTITLEBARINFO);
 WINUSERAPI HDESK       WINAPI GetThreadDesktop(DWORD);
+WINUSERAPI DPI_AWARENESS_CONTEXT WINAPI GetThreadDpiAwarenessContext(void);
 WINUSERAPI HWND        WINAPI GetTopWindow(HWND);
 WINUSERAPI BOOL        WINAPI GetTouchInputInfo(HTOUCHINPUT,UINT,TOUCHINPUT*,int);
 WINUSERAPI BOOL        WINAPI GetUpdateRect(HWND,LPRECT,BOOL);
@@ -3770,6 +3820,8 @@ WINUSERAPI BOOL        WINAPI GetUserObjectSecurity(HANDLE,PSECURITY_INFORMATION
 WINUSERAPI HWND        WINAPI GetWindow(HWND,UINT);
 WINUSERAPI DWORD       WINAPI GetWindowContextHelpId(HWND);
 WINUSERAPI HDC         WINAPI GetWindowDC(HWND);
+WINUSERAPI BOOL        WINAPI GetWindowDisplayAffinity(HWND,DWORD*);
+WINUSERAPI DPI_AWARENESS_CONTEXT WINAPI GetWindowDpiAwarenessContext(HWND);
 WINUSERAPI BOOL        WINAPI GetWindowInfo(HWND, PWINDOWINFO);
 WINUSERAPI LONG        WINAPI GetWindowLongA(HWND,INT);
 WINUSERAPI LONG        WINAPI GetWindowLongW(HWND,INT);
@@ -3841,6 +3893,7 @@ WINUSERAPI BOOL        WINAPI IsIconic(HWND);
 WINUSERAPI BOOL        WINAPI IsMenu(HMENU);
 WINUSERAPI BOOL        WINAPI IsProcessDPIAware(void);
 WINUSERAPI BOOL        WINAPI IsTouchWindow(HWND,PULONG);
+WINUSERAPI BOOL        WINAPI IsValidDpiAwarenessContext(DPI_AWARENESS_CONTEXT);
 WINUSERAPI BOOL        WINAPI IsWinEventHookInstalled(DWORD);
 WINUSERAPI BOOL        WINAPI IsWindow(HWND);
 WINUSERAPI BOOL        WINAPI IsWindowEnabled(HWND);
@@ -3880,6 +3933,7 @@ WINUSERAPI INT         WINAPI LoadStringA(HINSTANCE,UINT,LPSTR,INT);
 WINUSERAPI INT         WINAPI LoadStringW(HINSTANCE,UINT,LPWSTR,INT);
 #define                       LoadString WINELIB_NAME_AW(LoadString)
 WINUSERAPI BOOL        WINAPI LogicalToPhysicalPoint(HWND,POINT*);
+WINUSERAPI BOOL        WINAPI LogicalToPhysicalPointForPerMonitorDPI(HWND,POINT*);
 WINUSERAPI BOOL        WINAPI LockSetForegroundWindow(UINT);
 WINUSERAPI BOOL        WINAPI LockWindowUpdate(HWND);
 WINUSERAPI BOOL        WINAPI LockWorkStation(void);
@@ -3935,6 +3989,7 @@ WINUSERAPI BOOL        WINAPI PeekMessageA(LPMSG,HWND,UINT,UINT,UINT);
 WINUSERAPI BOOL        WINAPI PeekMessageW(LPMSG,HWND,UINT,UINT,UINT);
 #define                       PeekMessage WINELIB_NAME_AW(PeekMessage)
 WINUSERAPI BOOL        WINAPI PhysicalToLogicalPoint(HWND,POINT*);
+WINUSERAPI BOOL        WINAPI PhysicalToLogicalPointForPerMonitorDPI(HWND,POINT*);
 #define                       PostAppMessageA(thread,msg,wparam,lparam) PostThreadMessageA((DWORD)(thread),msg,wparam,lparam)
 #define                       PostAppMessageW(thread,msg,wparam,lparam) PostThreadMessageW((DWORD)(thread),msg,wparam,lparam)
 #define                       PostAppMessage WINELIB_NAME_AW(PostAppMessage)
@@ -3969,6 +4024,7 @@ WINUSERAPI HDEVNOTIFY  WINAPI RegisterDeviceNotificationA(HANDLE,LPVOID,DWORD);
 WINUSERAPI HDEVNOTIFY  WINAPI RegisterDeviceNotificationW(HANDLE,LPVOID,DWORD);
 #define                       RegisterDeviceNotification WINELIB_NAME_AW(RegisterDeviceNotification)
 WINUSERAPI BOOL        WINAPI RegisterHotKey(HWND,INT,UINT,UINT);
+WINUSERAPI BOOL        WINAPI RegisterPointerDeviceNotifications(HWND,BOOL);
 WINUSERAPI HPOWERNOTIFY WINAPI RegisterPowerSettingNotification(HANDLE,LPCGUID,DWORD);
 WINUSERAPI BOOL        WINAPI RegisterRawInputDevices(PRAWINPUTDEVICE,UINT,UINT);
 WINUSERAPI BOOL        WINAPI RegisterShellHookWindow(HWND);
@@ -4054,6 +4110,8 @@ WINUSERAPI HWND        WINAPI SetParent(HWND,HWND);
 WINUSERAPI BOOL        WINAPI SetPhysicalCursorPos(INT,INT);
 WINUSERAPI BOOL        WINAPI SetProcessDPIAware(void);
 WINUSERAPI BOOL        WINAPI SetProcessDefaultLayout(DWORD);
+WINUSERAPI BOOL        WINAPI SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT);
+WINUSERAPI BOOL        WINAPI SetProcessDpiAwarenessInternal(DPI_AWARENESS);
 WINUSERAPI BOOL        WINAPI SetProcessWindowStation(HWINSTA);
 WINUSERAPI BOOL        WINAPI SetPropA(HWND,LPCSTR,HANDLE);
 WINUSERAPI BOOL        WINAPI SetPropW(HWND,LPCWSTR,HANDLE);
@@ -4066,12 +4124,14 @@ WINUSERAPI BOOL        WINAPI SetSystemCursor(HCURSOR,DWORD);
 WINUSERAPI BOOL        WINAPI SetSystemMenu(HWND,HMENU);
 WINUSERAPI UINT_PTR    WINAPI SetSystemTimer(HWND,UINT_PTR,UINT,TIMERPROC);
 WINUSERAPI BOOL        WINAPI SetThreadDesktop(HDESK);
+WINUSERAPI DPI_AWARENESS_CONTEXT WINAPI SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT);
 WINUSERAPI UINT_PTR    WINAPI SetTimer(HWND,UINT_PTR,UINT,TIMERPROC);
 WINUSERAPI BOOL        WINAPI SetUserObjectInformationA(HANDLE,INT,LPVOID,DWORD);
 WINUSERAPI BOOL        WINAPI SetUserObjectInformationW(HANDLE,INT,LPVOID,DWORD);
 #define                       SetUserObjectInformation WINELIB_NAME_AW(SetUserObjectInformation)
 WINUSERAPI BOOL        WINAPI SetUserObjectSecurity(HANDLE,PSECURITY_INFORMATION,PSECURITY_DESCRIPTOR);
 WINUSERAPI BOOL        WINAPI SetWindowContextHelpId(HWND,DWORD);
+WINUSERAPI BOOL        WINAPI SetWindowDisplayAffinity(HWND,DWORD);
 WINUSERAPI LONG        WINAPI SetWindowLongA(HWND,INT,LONG);
 WINUSERAPI LONG        WINAPI SetWindowLongW(HWND,INT,LONG);
 #define                       SetWindowLong WINELIB_NAME_AW(SetWindowLong)
@@ -4112,6 +4172,7 @@ WINUSERAPI VOID        WINAPI SwitchToThisWindow(HWND,BOOL);
 WINUSERAPI BOOL        WINAPI SystemParametersInfoA(UINT,UINT,LPVOID,UINT);
 WINUSERAPI BOOL        WINAPI SystemParametersInfoW(UINT,UINT,LPVOID,UINT);
 #define                       SystemParametersInfo WINELIB_NAME_AW(SystemParametersInfo)
+WINUSERAPI BOOL        WINAPI SystemParametersInfoForDpi(UINT,UINT,void*,UINT,UINT);
 WINUSERAPI LONG        WINAPI TabbedTextOutA(HDC,INT,INT,LPCSTR,INT,INT,const INT*,INT);
 WINUSERAPI LONG        WINAPI TabbedTextOutW(HDC,INT,INT,LPCWSTR,INT,INT,const INT*,INT);
 #define                       TabbedTextOut WINELIB_NAME_AW(TabbedTextOut)

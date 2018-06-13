@@ -36,6 +36,29 @@
 
 #include "wine/test.h"
 
+#define NEGOTIATE_BASE_CAPS ( \
+    SECPKG_FLAG_INTEGRITY  | \
+    SECPKG_FLAG_PRIVACY    | \
+    SECPKG_FLAG_CONNECTION | \
+    SECPKG_FLAG_MULTI_REQUIRED | \
+    SECPKG_FLAG_EXTENDED_ERROR | \
+    SECPKG_FLAG_IMPERSONATION  | \
+    SECPKG_FLAG_ACCEPT_WIN32_NAME | \
+    SECPKG_FLAG_NEGOTIABLE        | \
+    SECPKG_FLAG_GSS_COMPATIBLE    | \
+    SECPKG_FLAG_LOGON )
+
+#define NTLM_BASE_CAPS ( \
+    SECPKG_FLAG_INTEGRITY  | \
+    SECPKG_FLAG_PRIVACY    | \
+    SECPKG_FLAG_TOKEN_ONLY | \
+    SECPKG_FLAG_CONNECTION | \
+    SECPKG_FLAG_MULTI_REQUIRED    | \
+    SECPKG_FLAG_IMPERSONATION     | \
+    SECPKG_FLAG_ACCEPT_WIN32_NAME | \
+    SECPKG_FLAG_NEGOTIABLE        | \
+    SECPKG_FLAG_LOGON )
+
 static HMODULE secdll;
 static PSecurityFunctionTableA (SEC_ENTRY * pInitSecurityInterfaceA)(void);
 static SECURITY_STATUS (SEC_ENTRY * pFreeContextBuffer)(PVOID pv);
@@ -797,6 +820,8 @@ static void testAuth(ULONG data_rep, BOOL fake)
     SspiData                client = {{0}}, server = {{0}};
     SEC_WINNT_AUTH_IDENTITY_A id;
     SecPkgContext_Sizes     ctxt_sizes;
+    SecPkgContext_NegotiationInfoA info;
+    SecPkgInfoA *pi;
 
     if(pQuerySecurityPackageInfoA( sec_pkg_name, &pkg_info)!= SEC_E_OK)
     {
@@ -888,6 +913,39 @@ static void testAuth(ULONG data_rep, BOOL fake)
     ok(ctxt_sizes.cbBlockSize == 0,
             "cbBlockSize should be 0 but is %u\n",
             ctxt_sizes.cbBlockSize);
+
+    memset(&info, 0, sizeof(info));
+    sec_status = QueryContextAttributesA(&client.ctxt, SECPKG_ATTR_NEGOTIATION_INFO, &info);
+    ok(sec_status == SEC_E_OK, "QueryContextAttributesA returned %08x\n", sec_status);
+
+    pi = info.PackageInfo;
+    ok(info.NegotiationState == SECPKG_NEGOTIATION_COMPLETE, "got %u\n", info.NegotiationState);
+    ok(pi != NULL, "expected non-NULL PackageInfo\n");
+    if (pi)
+    {
+        UINT expected, got;
+        char *eob;
+
+        ok(pi->fCapabilities == NTLM_BASE_CAPS ||
+           pi->fCapabilities == (NTLM_BASE_CAPS|SECPKG_FLAG_READONLY_WITH_CHECKSUM) ||
+           pi->fCapabilities == (NTLM_BASE_CAPS|SECPKG_FLAG_RESTRICTED_TOKENS) ||
+           pi->fCapabilities == (NTLM_BASE_CAPS|SECPKG_FLAG_RESTRICTED_TOKENS|
+                                 SECPKG_FLAG_APPCONTAINER_CHECKS),
+           "got %08x\n", pi->fCapabilities);
+        ok(pi->wVersion == 1, "got %u\n", pi->wVersion);
+        ok(pi->wRPCID == RPC_C_AUTHN_WINNT, "got %u\n", pi->wRPCID);
+        ok(!lstrcmpA( pi->Name, "NTLM" ), "got %s\n", pi->Name);
+
+        expected = sizeof(*pi) + lstrlenA(pi->Name) + 1 + lstrlenA(pi->Comment) + 1;
+        got = HeapSize(GetProcessHeap(), 0, pi);
+        ok(got == expected, "got %u, expected %u\n", got, expected);
+        eob = (char *)pi + expected;
+        ok(pi->Name + lstrlenA(pi->Name) < eob, "Name doesn't fit into allocated block\n");
+        ok(pi->Comment + lstrlenA(pi->Comment) < eob, "Comment doesn't fit into allocated block\n");
+
+        sec_status = FreeContextBuffer(pi);
+        ok(sec_status == SEC_E_OK, "FreeContextBuffer error %#x\n", sec_status);
+    }
 
 tAuthend:
     cleanupBuffers(&client);
@@ -1107,7 +1165,7 @@ static void testSignSeal(void)
 
     trace("Testing with more than one buffer.\n");
 
-    crypt.cBuffers = sizeof(complex_data)/sizeof(complex_data[0]);
+    crypt.cBuffers = ARRAY_SIZE(complex_data);
     crypt.pBuffers = complex_data;
 
     complex_data[0].BufferType = SECBUFFER_DATA|SECBUFFER_READONLY_WITH_CHECKSUM;
@@ -1378,7 +1436,7 @@ static void test_cred_multiple_use(void)
             getSecError(ret));
 
     buffer_desc.ulVersion = SECBUFFER_VERSION;
-    buffer_desc.cBuffers = sizeof(buffers)/sizeof(buffers[0]);
+    buffer_desc.cBuffers = ARRAY_SIZE(buffers);
     buffer_desc.pBuffers = buffers;
 
     ret = pInitializeSecurityContextA(&cred, NULL, NULL, ISC_REQ_CONNECTION,
@@ -1429,7 +1487,7 @@ static void test_null_auth_data(void)
     buffers[0].pvBuffer = HeapAlloc(GetProcessHeap(), 0, buffers[0].cbBuffer);
 
     buffer_desc.ulVersion = SECBUFFER_VERSION;
-    buffer_desc.cBuffers = sizeof(buffers)/sizeof(buffers[0]);
+    buffer_desc.cBuffers = ARRAY_SIZE(buffers);
     buffer_desc.pBuffers = buffers;
 
     size = sizeof(user);

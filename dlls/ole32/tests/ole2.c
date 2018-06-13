@@ -229,6 +229,16 @@ static void create_bitmap( STGMEDIUM *med )
     med->pUnkForRelease = NULL;
 }
 
+static void create_emf(STGMEDIUM *med)
+{
+    HDC hdc = CreateEnhMetaFileW(NULL, NULL, NULL, NULL);
+
+    Rectangle(hdc, 0, 0, 150, 300);
+    med->tymed = TYMED_ENHMF;
+    U(med)->hEnhMetaFile = CloseEnhMetaFile(hdc);
+    med->pUnkForRelease = NULL;
+}
+
 static void create_mfpict(STGMEDIUM *med)
 {
     METAFILEPICT *mf;
@@ -2416,6 +2426,40 @@ static void test_data_cache_cache(void)
 
     IDataObject_Release( data );
     IOleCache2_Release( cache );
+
+    /* tests for a static class cache */
+    hr = CreateDataCache( NULL, &CLSID_Picture_Dib, &IID_IOleCache2, (void **)&cache );
+
+    fmt.cfFormat = CF_DIB;
+    fmt.dwAspect = DVASPECT_CONTENT;
+    fmt.tymed = TYMED_HGLOBAL;
+    hr = IOleCache2_Cache( cache, &fmt, 0, &conn );
+    ok( hr == CACHE_S_SAMECACHE, "got %08x\n", hr );
+
+    /* aspect other than DVASPECT_CONTENT should fail */
+    fmt.dwAspect = DVASPECT_THUMBNAIL;
+    hr = IOleCache2_Cache( cache, &fmt, 0, &conn );
+    ok( FAILED(hr), "got %08x\n", hr );
+
+    fmt.dwAspect = DVASPECT_DOCPRINT;
+    hr = IOleCache2_Cache( cache, &fmt, 0, &conn );
+    ok( FAILED(hr), "got %08x\n", hr );
+
+    /* try caching another clip format */
+    fmt.cfFormat = CF_METAFILEPICT;
+    fmt.dwAspect = DVASPECT_CONTENT;
+    fmt.tymed = TYMED_MFPICT;
+    hr = IOleCache2_Cache( cache, &fmt, 0, &conn );
+    ok( FAILED(hr), "got %08x\n", hr );
+
+    /* As an exception, it's possible to add an icon aspect */
+    fmt.cfFormat = CF_METAFILEPICT;
+    fmt.dwAspect = DVASPECT_ICON;
+    fmt.tymed = TYMED_MFPICT;
+    hr = IOleCache2_Cache( cache, &fmt, 0, &conn );
+    ok( hr == S_OK, "got %08x\n", hr );
+
+    IOleCache2_Release( cache );
 }
 
 /* The CLSID_Picture_ classes automatically create appropriate cache entries */
@@ -3976,13 +4020,18 @@ static void check_storage_contents(IStorage *stg, const struct storage_def *stg_
         hr = IStorage_OpenStream(stg, stat.pwcsName, NULL, STGM_READ | STGM_SHARE_EXCLUSIVE, 0, &stream);
         ok(hr == S_OK, "unexpected %#x\n", hr);
 
-        if (!memcmp(name, "\2OlePres", 7))
+        if (!memcmp(name, "\2OlePres", 8))
         {
+            ULONG header_size = sizeof(header);
+
             clipformat = read_clipformat(stream);
 
-            hr = IStream_Read(stream, &header, sizeof(header), &bytes);
+            if (clipformat == 0) /* view cache */
+                header_size = FIELD_OFFSET(PresentationDataHeader, unknown7);
+
+            hr = IStream_Read(stream, &header, header_size, &bytes);
             ok(hr == S_OK, "unexpected %#x\n", hr);
-            ok(bytes >= 24, "read %u bytes\n", bytes);
+            ok(bytes == header_size, "read %u bytes, expected %u\n", bytes, header_size);
 
             if (winetest_debug > 1)
                 trace("header: tdSize %#x, dvAspect %#x, lindex %#x, advf %#x, unknown7 %#x, dwObjectExtentX %#x, dwObjectExtentY %#x, dwSize %#x\n",
@@ -4027,6 +4076,83 @@ static void check_storage_contents(IStorage *stg, const struct storage_def *stg_
 
         *enumerated_streams += 1;
     }
+}
+
+static HRESULT stgmedium_cmp(const STGMEDIUM *med1, STGMEDIUM *med2)
+{
+    BYTE *data1, *data2;
+    ULONG datasize1, datasize2;
+
+    if (med1->tymed != med2->tymed)
+        return E_FAIL;
+
+    if (med1->tymed == TYMED_MFPICT)
+    {
+        METAFILEPICT *mfpict1 = GlobalLock(U(med1)->hMetaFilePict);
+        METAFILEPICT *mfpict2 = GlobalLock(U(med2)->hMetaFilePict);
+
+        datasize1 = GetMetaFileBitsEx(mfpict1->hMF, 0, NULL);
+        datasize2 = GetMetaFileBitsEx(mfpict2->hMF, 0, NULL);
+        if (datasize1 == datasize2)
+        {
+            data1 = HeapAlloc(GetProcessHeap(), 0, datasize1);
+            data2 = HeapAlloc(GetProcessHeap(), 0, datasize2);
+            GetMetaFileBitsEx(mfpict1->hMF, datasize1, data1);
+            GetMetaFileBitsEx(mfpict2->hMF, datasize2, data2);
+        }
+        else return E_FAIL;
+    }
+    else if (med1->tymed == TYMED_ENHMF)
+    {
+        datasize1 = GetEnhMetaFileBits(med1->hEnhMetaFile, 0, NULL);
+        datasize2 = GetEnhMetaFileBits(med2->hEnhMetaFile, 0, NULL);
+        if (datasize1 == datasize2)
+        {
+            data1 = HeapAlloc(GetProcessHeap(), 0, datasize1);
+            data2 = HeapAlloc(GetProcessHeap(), 0, datasize2);
+            GetEnhMetaFileBits(med1->hEnhMetaFile, datasize1, data1);
+            GetEnhMetaFileBits(med2->hEnhMetaFile, datasize2, data2);
+        }
+        else return E_FAIL;
+    }
+    else if (med1->tymed == TYMED_HGLOBAL)
+    {
+        datasize1 = GlobalSize(med1->hGlobal);
+        datasize2 = GlobalSize(med2->hGlobal);
+
+        if (datasize1 == datasize2)
+        {
+            data1 = GlobalLock(med1->hGlobal);
+            data2 = GlobalLock(med2->hGlobal);
+        }
+        else
+            return E_FAIL;
+    }
+    else
+        return E_NOTIMPL;
+
+    if (memcmp(data1, data2, datasize1) != 0)
+        return E_FAIL;
+
+    if (med1->tymed == TYMED_HGLOBAL)
+    {
+        GlobalUnlock(U(med1)->hGlobal);
+        GlobalUnlock(U(med2)->hGlobal);
+    }
+    else if (med1->tymed == TYMED_MFPICT)
+    {
+        HeapFree(GetProcessHeap(), 0, data1);
+        HeapFree(GetProcessHeap(), 0, data2);
+        GlobalUnlock(U(med1)->hMetaFilePict);
+        GlobalUnlock(U(med2)->hMetaFilePict);
+    }
+    else
+    {
+        HeapFree(GetProcessHeap(), 0, data1);
+        HeapFree(GetProcessHeap(), 0, data2);
+    }
+
+    return S_OK;
 }
 
 static IStorage *create_storage_from_def(const struct storage_def *stg_def)
@@ -4110,6 +4236,7 @@ static void get_stgdef(struct storage_def *stg_def, CLIPFORMAT cf, STGMEDIUM *st
     BYTE *data;
     int data_size;
     METAFILEPICT *mfpict;
+    HDC hdc;
 
     switch (cf)
     {
@@ -4149,6 +4276,27 @@ static void get_stgdef(struct storage_def *stg_def, CLIPFORMAT cf, STGMEDIUM *st
         stg_def->stream[stm_idx].data_size = data_size;
         stg_def->stream[stm_idx].data = data;
         break;
+    case CF_ENHMETAFILE:
+        if (!strcmp(stg_def->stream[stm_idx].name, "CONTENTS"))
+        {
+            data_size = GetEnhMetaFileBits(U(stg_med)->hEnhMetaFile, 0, NULL);
+            data = HeapAlloc(GetProcessHeap(), 0, sizeof(DWORD) + sizeof(ENHMETAHEADER) + data_size);
+            *((DWORD *)data) = sizeof(ENHMETAHEADER);
+            GetEnhMetaFileBits(U(stg_med)->hEnhMetaFile, data_size, data + sizeof(DWORD) + sizeof(ENHMETAHEADER));
+            memcpy(data + sizeof(DWORD), data + sizeof(DWORD) + sizeof(ENHMETAHEADER), sizeof(ENHMETAHEADER));
+            data_size += sizeof(DWORD) + sizeof(ENHMETAHEADER);
+        }
+        else
+        {
+            hdc = GetDC(NULL);
+            data_size = GetWinMetaFileBits(U(stg_med)->hEnhMetaFile, 0, NULL, MM_ANISOTROPIC, hdc);
+            data = HeapAlloc(GetProcessHeap(), 0, data_size);
+            GetWinMetaFileBits(U(stg_med)->hEnhMetaFile, data_size, data, MM_ANISOTROPIC, hdc);
+            ReleaseDC(NULL, hdc);
+        }
+        stg_def->stream[stm_idx].data_size = data_size;
+        stg_def->stream[stm_idx].data = data;
+        break;
     }
 }
 
@@ -4161,6 +4309,9 @@ static void get_stgmedium(CLIPFORMAT cfFormat, STGMEDIUM *stgmedium)
         break;
     case CF_METAFILEPICT:
         create_mfpict(stgmedium);
+        break;
+    case CF_ENHMETAFILE:
+        create_emf(stgmedium);
         break;
     default:
         ok(0, "cf %x not implemented\n", cfFormat);
@@ -4176,8 +4327,10 @@ static void test_data_cache_save_data(void)
     IStorage *doc;
     IOleCache2 *cache;
     IPersistStorage *persist;
+    IDataObject *odata;
     int enumerated_streams, matched_streams, i;
     DWORD dummy;
+    STGMEDIUM stgmeds[MAX_FMTS];
     struct tests_data_cache
     {
         FORMATETC fmts[MAX_FMTS];
@@ -4191,19 +4344,86 @@ static void test_data_cache_save_data(void)
         {
             {
                 { CF_DIB, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL },
+                { CF_METAFILEPICT, 0, DVASPECT_CONTENT, -1, TYMED_MFPICT },
+                { CF_ENHMETAFILE, 0, DVASPECT_CONTENT, -1, TYMED_ENHMF },
+                { 0, 0, DVASPECT_DOCPRINT, -1, TYMED_HGLOBAL },
             },
-            1, 1, &CLSID_WineTest,
+            4, 3, &CLSID_WineTest,
             {
-               &CLSID_WineTestOld, 1, { { "\2OlePres000", CF_DIB, DVASPECT_CONTENT, 0, NULL, 0 } }
+                &CLSID_WineTestOld, 4, { { "\2OlePres000", CF_DIB, DVASPECT_CONTENT, 0, NULL, 0 },
+                                         { "\2OlePres001", CF_METAFILEPICT, DVASPECT_CONTENT, 0, NULL, 0 },
+                                         { "\2OlePres002", CF_ENHMETAFILE, DVASPECT_CONTENT, 0, NULL, 0 },
+                                         { "\2OlePres003", 0, DVASPECT_DOCPRINT, 0, NULL, 0 } }
+            }
+        },
+        /* without setting data */
+        {
+            {
+                { CF_DIB, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL },
+                { CF_METAFILEPICT, 0, DVASPECT_CONTENT, -1, TYMED_MFPICT },
+                { CF_ENHMETAFILE, 0, DVASPECT_CONTENT, -1, TYMED_ENHMF },
+            },
+            3, 0, &CLSID_WineTest,
+            {
+                &CLSID_WineTestOld, 3, { { "\2OlePres000", CF_DIB, DVASPECT_CONTENT, 0, NULL, 0 },
+                                         { "\2OlePres001", CF_METAFILEPICT, DVASPECT_CONTENT, 0, NULL, 0 },
+                                         { "\2OlePres002", CF_ENHMETAFILE, DVASPECT_CONTENT, 0, NULL, 0 } }
+            }
+        },
+        /* static picture clsids */
+        {
+            {
+                { CF_DIB, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL },
+            },
+            1, 1, &CLSID_Picture_Dib,
+            {
+                &CLSID_WineTestOld, 1, { { "CONTENTS", -1, 0, 0, NULL, 0 } }
             }
         },
         {
             {
                 { CF_METAFILEPICT, 0, DVASPECT_CONTENT, -1, TYMED_MFPICT },
             },
-            1, 1, &CLSID_WineTest,
+            1, 1, &CLSID_Picture_Metafile,
             {
-                &CLSID_WineTestOld, 1, { { "\2OlePres000", CF_METAFILEPICT, DVASPECT_CONTENT, 0, NULL, 0 } }
+                &CLSID_WineTestOld, 1, { { "CONTENTS", -1, 0, 0, NULL, 0 } }
+            }
+        },
+        {
+            {
+                { CF_ENHMETAFILE, 0, DVASPECT_CONTENT, -1, TYMED_ENHMF },
+            },
+            1, 1, &CLSID_Picture_EnhMetafile,
+            {
+                &CLSID_WineTestOld, 1, { { "CONTENTS", -1, 0, 0, NULL, 0 } }
+            }
+        },
+        /* static picture clsids without setting any data */
+        {
+            {
+                { CF_DIB, 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL },
+            },
+            1, 0, &CLSID_Picture_Dib,
+            {
+                &CLSID_WineTestOld, 1, { { "CONTENTS", -1, 0, 0, NULL, 0 } }
+            }
+        },
+        {
+            {
+                { CF_METAFILEPICT, 0, DVASPECT_CONTENT, -1, TYMED_MFPICT },
+            },
+            1, 0, &CLSID_Picture_Metafile,
+            {
+                &CLSID_WineTestOld, 1, { { "CONTENTS", -1, 0, 0, NULL, 0 } }
+            }
+        },
+        {
+            {
+                { CF_ENHMETAFILE, 0, DVASPECT_CONTENT, -1, TYMED_ENHMF },
+            },
+            1, 0, &CLSID_Picture_EnhMetafile,
+            {
+                &CLSID_WineTestOld, 1, { { "CONTENTS", -1, 0, 0, NULL, 0 } }
             }
         },
         {
@@ -4225,9 +4445,9 @@ static void test_data_cache_save_data(void)
             ok(SUCCEEDED(hr), "unexpected %#x\n", hr);
             if (i < pdata->num_set)
             {
-                get_stgmedium(pdata->fmts[i].cfFormat, &stgmed);
-                get_stgdef(&pdata->stg_def, pdata->fmts[i].cfFormat, &stgmed, i);
-                hr = IOleCache2_SetData(cache, &pdata->fmts[i], &stgmed, TRUE);
+                get_stgmedium(pdata->fmts[i].cfFormat, &stgmeds[i]);
+                get_stgdef(&pdata->stg_def, pdata->fmts[i].cfFormat, &stgmeds[i], i);
+                hr = IOleCache2_SetData(cache, &pdata->fmts[i], &stgmeds[i], FALSE);
                 ok(hr == S_OK, "unexpected %#x\n", hr);
             }
         }
@@ -4249,18 +4469,50 @@ static void test_data_cache_save_data(void)
         hr = IPersistStorage_Save(persist, doc, FALSE);
         ok(hr == S_OK, "unexpected %#x\n", hr);
 
+        hr = IPersistStorage_IsDirty(persist);
+        ok(hr == S_OK, "unexpected %#x\n", hr);
+
         check_storage_contents(doc, &pdata->stg_def, &enumerated_streams, &matched_streams);
         ok(enumerated_streams == matched_streams, "enumerated %d != matched %d\n",
            enumerated_streams, matched_streams);
         ok(enumerated_streams == pdata->stg_def.stream_count, "created %d != def streams %d\n",
            enumerated_streams, pdata->stg_def.stream_count);
 
-        for (i = 0; i < pdata->num_set; i++)
-            HeapFree(GetProcessHeap(), 0, (void *)pdata->stg_def.stream[i].data);
+        IPersistStorage_Release(persist);
+        IOleCache2_Release(cache);
 
+        /* now test _Load/_GetData using the storage we used for _Save */
+        hr = CreateDataCache(NULL, pdata->clsid, &IID_IOleCache2, (void **)&cache);
+        ok(hr == S_OK, "unexpected %#x\n", hr);
+        hr = IOleCache2_QueryInterface(cache, &IID_IPersistStorage, (void **)&persist);
+        ok(hr == S_OK, "unexpected %#x\n", hr);
+
+        hr = IStorage_SetClass(doc, pdata->clsid);
+        ok(hr == S_OK, "unexpected %#x\n", hr);
+        trace("IPersistStorage_Load\n");
+        hr = IPersistStorage_Load(persist, doc);
+        ok(hr == S_OK, "unexpected %#x\n", hr);
+
+        hr = IOleCache2_QueryInterface(cache, &IID_IDataObject, (void **)&odata);
+        ok(hr == S_OK, "unexpected %#x\n", hr);
+        for (i = 0; i < pdata->num_set; i++)
+        {
+            hr = IDataObject_GetData(odata, &pdata->fmts[i], &stgmed);
+            ok(hr == S_OK, "unexpected %#x\n", hr);
+
+            hr = stgmedium_cmp(&stgmeds[i], &stgmed);
+            ok(hr == S_OK, "unexpected %#x\n", hr);
+            ReleaseStgMedium(&stgmed);
+            ReleaseStgMedium(&stgmeds[i]);
+        }
+
+        IDataObject_Release(odata);
         IPersistStorage_Release(persist);
         IStorage_Release(doc);
         IOleCache2_Release(cache);
+        for (i = 0; i < pdata->num_set; i++)
+            HeapFree(GetProcessHeap(), 0, (void *)pdata->stg_def.stream[i].data);
+
     }
 }
 
@@ -4317,7 +4569,6 @@ static void test_data_cache_contents(void)
         ok(hr == S_OK, "unexpected %#x\n", hr);
 
         hr = IPersistStorage_IsDirty(stg);
-todo_wine_if(test_data[i].in == &stg_def_4 || test_data[i].in == &stg_def_8 || test_data[i].in == &stg_def_9)
         ok(hr == S_FALSE, "%d: unexpected %#x\n", i, hr);
 
         hr = IPersistStorage_Save(stg, doc2, FALSE);
@@ -4330,7 +4581,8 @@ todo_wine_if(test_data[i].in == &stg_def_4 || test_data[i].in == &stg_def_8 || t
 todo_wine_if(!(test_data[i].in == &stg_def_0 || test_data[i].in == &stg_def_1 || test_data[i].in == &stg_def_2))
         ok(enumerated_streams == matched_streams, "%d out: enumerated %d != matched %d\n", i,
            enumerated_streams, matched_streams);
-todo_wine_if(!(test_data[i].in == &stg_def_0 || test_data[i].in == &stg_def_5))
+todo_wine_if(!(test_data[i].in == &stg_def_0 || test_data[i].in == &stg_def_4 || test_data[i].in == &stg_def_5
+                 || test_data[i].in == &stg_def_6))
         ok(enumerated_streams == test_data[i].out->stream_count, "%d: saved streams %d != def streams %d\n", i,
             enumerated_streams, test_data[i].out->stream_count);
 

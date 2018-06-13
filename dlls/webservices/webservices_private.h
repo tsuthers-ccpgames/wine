@@ -66,8 +66,10 @@ ULONG get_type_size( WS_TYPE, const void * ) DECLSPEC_HIDDEN;
 HRESULT read_header( WS_XML_READER *, const WS_XML_STRING *, const WS_XML_STRING *, WS_TYPE,
                      const void *, WS_READ_OPTION, WS_HEAP *, void *, ULONG ) DECLSPEC_HIDDEN;
 HRESULT create_header_buffer( WS_XML_READER *, WS_HEAP *, WS_XML_BUFFER ** ) DECLSPEC_HIDDEN;
-
+HRESULT text_to_text( const WS_XML_TEXT *, const WS_XML_TEXT *, ULONG *, WS_XML_TEXT ** ) DECLSPEC_HIDDEN;
+HRESULT text_to_utf8text( const WS_XML_TEXT *, const WS_XML_UTF8_TEXT *, ULONG *, WS_XML_UTF8_TEXT ** ) DECLSPEC_HIDDEN;
 WS_XML_UTF8_TEXT *alloc_utf8_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
+WS_XML_UTF16_TEXT *alloc_utf16_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
 WS_XML_BASE64_TEXT *alloc_base64_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
 WS_XML_BOOL_TEXT *alloc_bool_text( BOOL ) DECLSPEC_HIDDEN;
 WS_XML_INT32_TEXT *alloc_int32_text( INT32 ) DECLSPEC_HIDDEN;
@@ -104,7 +106,7 @@ struct node
 struct node *alloc_node( WS_XML_NODE_TYPE ) DECLSPEC_HIDDEN;
 void free_node( struct node * ) DECLSPEC_HIDDEN;
 void destroy_nodes( struct node * ) DECLSPEC_HIDDEN;
-HRESULT copy_node( WS_XML_READER *, struct node ** ) DECLSPEC_HIDDEN;
+HRESULT copy_node( WS_XML_READER *, WS_XML_WRITER_ENCODING_TYPE, struct node ** ) DECLSPEC_HIDDEN;
 
 static inline WS_XML_NODE_TYPE node_type( const struct node *node )
 {
@@ -392,27 +394,7 @@ static inline BOOL is_valid_parent( const struct node *node )
     return (node_type( node ) == WS_XML_NODE_TYPE_ELEMENT || node_type( node ) == WS_XML_NODE_TYPE_BOF);
 }
 
-static inline void* __WINE_ALLOC_SIZE(1) heap_alloc(size_t size)
-{
-    return HeapAlloc(GetProcessHeap(), 0, size);
-}
-
-static inline void* __WINE_ALLOC_SIZE(1) heap_alloc_zero(size_t size)
-{
-    return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
-}
-
-static inline void* __WINE_ALLOC_SIZE(2) heap_realloc(void *mem, size_t size)
-{
-    return HeapReAlloc(GetProcessHeap(), 0, mem, size);
-}
-
 static inline void* __WINE_ALLOC_SIZE(2) heap_realloc_zero(void *mem, size_t size)
 {
     return HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, mem, size);
-}
-
-static inline BOOL heap_free(void *mem)
-{
-    return HeapFree(GetProcessHeap(), 0, mem);
 }

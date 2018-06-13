@@ -306,6 +306,13 @@ HRESULT variant_to_jsval(VARIANT *var, jsval_t *r)
     case VT_UI4:
         *r = jsval_number(V_UI4(var));
         return S_OK;
+    case VT_UI8:
+        /*
+         * Native doesn't support VT_UI8 here, but it's needed for IE9+ APIs
+         * (native IE9 doesn't use jscript.dll for JavaScript).
+         */
+        *r = jsval_number(V_UI8(var));
+        return S_OK;
     case VT_R4:
         *r = jsval_number(V_R4(var));
         return S_OK;
@@ -652,11 +659,18 @@ HRESULT to_int32(script_ctx_t *ctx, jsval_t v, INT *ret)
     double n;
     HRESULT hres;
 
+    const double p32 = (double)0xffffffff + 1;
+
     hres = to_number(ctx, v, &n);
     if(FAILED(hres))
         return hres;
 
-    *ret = is_finite(n) ? n : 0;
+    if(is_finite(n))
+        n = n > 0 ? fmod(n, p32) : -fmod(-n, p32);
+    else
+        n = 0;
+
+    *ret = (UINT32)n;
     return S_OK;
 }
 

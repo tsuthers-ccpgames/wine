@@ -23,29 +23,12 @@
 #define COBJMACROS
 #define INITGUID
 
-#include "windef.h"
-#include "winbase.h"
+#include "wsdapi_internal.h"
 #include "wine/debug.h"
-#include "wine/list.h"
-#include "objbase.h"
+#include "wine/heap.h"
 #include "guiddef.h"
-#include "wsdapi.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(wsdapi);
-
-struct notificationSink
-{
-    struct list entry;
-    IWSDiscoveryPublisherNotify *notificationSink;
-};
-
-typedef struct IWSDiscoveryPublisherImpl {
-    IWSDiscoveryPublisher IWSDiscoveryPublisher_iface;
-    LONG                  ref;
-    IWSDXMLContext        *xmlContext;
-    DWORD                 addressFamily;
-    struct list           notificationSinks;
-} IWSDiscoveryPublisherImpl;
 
 static inline IWSDiscoveryPublisherImpl *impl_from_IWSDiscoveryPublisher(IWSDiscoveryPublisher *iface)
 {
@@ -100,6 +83,8 @@ static ULONG WINAPI IWSDiscoveryPublisherImpl_Release(IWSDiscoveryPublisher *ifa
 
     if (ref == 0)
     {
+        terminate_networking(This);
+
         if (This->xmlContext != NULL)
         {
             IWSDXMLContext_Release(This->xmlContext);
@@ -165,6 +150,9 @@ static HRESULT WINAPI IWSDiscoveryPublisherImpl_RegisterNotificationSink(IWSDisc
 
     list_add_tail(&impl->notificationSinks, &sink->entry);
 
+    if ((!impl->publisherStarted) && (!init_networking(impl)))
+        return E_FAIL;
+
     return S_OK;
 }
 
@@ -200,19 +188,25 @@ static HRESULT WINAPI IWSDiscoveryPublisherImpl_Publish(IWSDiscoveryPublisher *T
                                                         ULONGLONG ullMessageNumber, LPCWSTR pszSessionId, const WSD_NAME_LIST *pTypesList,
                                                         const WSD_URI_LIST *pScopesList, const WSD_URI_LIST *pXAddrsList)
 {
-    FIXME("(%p, %s, %s, %s, %s, %s, %p, %p, %p)\n", This, debugstr_w(pszId), wine_dbgstr_longlong(ullMetadataVersion), wine_dbgstr_longlong(ullInstanceId),
-        wine_dbgstr_longlong(ullMessageNumber), debugstr_w(pszSessionId), pTypesList, pScopesList, pXAddrsList);
-
-    return E_NOTIMPL;
+    return IWSDiscoveryPublisher_PublishEx(This, pszId, ullMetadataVersion, ullInstanceId, ullMessageNumber,
+        pszSessionId, pTypesList, pScopesList, pXAddrsList, NULL, NULL, NULL, NULL, NULL);
 }
 
 static HRESULT WINAPI IWSDiscoveryPublisherImpl_UnPublish(IWSDiscoveryPublisher *This, LPCWSTR pszId, ULONGLONG ullInstanceId, ULONGLONG ullMessageNumber,
                                                           LPCWSTR pszSessionId, const WSDXML_ELEMENT *pAny)
 {
-    FIXME("(%p, %s, %s, %s, %s, %p)\n", This, debugstr_w(pszId), wine_dbgstr_longlong(ullInstanceId), wine_dbgstr_longlong(ullMessageNumber),
-        debugstr_w(pszSessionId), pAny);
+    IWSDiscoveryPublisherImpl *impl = impl_from_IWSDiscoveryPublisher(This);
 
-    return E_NOTIMPL;
+    TRACE("(%p, %s, %s, %s, %s, %p)\n", This, debugstr_w(pszId), wine_dbgstr_longlong(ullInstanceId),
+        wine_dbgstr_longlong(ullMessageNumber), debugstr_w(pszSessionId), pAny);
+
+    if ((!impl->publisherStarted) || (pszId == NULL) || (lstrlenW(pszId) > WSD_MAX_TEXT_LENGTH) ||
+        ((pszSessionId != NULL) && (lstrlenW(pszSessionId) > WSD_MAX_TEXT_LENGTH)))
+    {
+        return E_INVALIDARG;
+    }
+
+    return send_bye_message(impl, pszId, ullInstanceId, ullMessageNumber, pszSessionId, pAny);
 }
 
 static HRESULT WINAPI IWSDiscoveryPublisherImpl_MatchProbe(IWSDiscoveryPublisher *This, const WSD_SOAP_MESSAGE *pProbeMessage,
@@ -248,13 +242,21 @@ static HRESULT WINAPI IWSDiscoveryPublisherImpl_PublishEx(IWSDiscoveryPublisher 
                                                           const WSDXML_ELEMENT *pReferenceParameterAny, const WSDXML_ELEMENT *pPolicyAny,
                                                           const WSDXML_ELEMENT *pEndpointReferenceAny, const WSDXML_ELEMENT *pAny)
 {
-    FIXME("(%p, %s, %s, %s, %s, %s, %p, %p, %p, %p, %p, %p, %p, %p)\n", This, debugstr_w(pszId), wine_dbgstr_longlong(ullMetadataVersion),
+    IWSDiscoveryPublisherImpl *impl = impl_from_IWSDiscoveryPublisher(This);
+
+    TRACE("(%p, %s, %s, %s, %s, %s, %p, %p, %p, %p, %p, %p, %p, %p)\n", This, debugstr_w(pszId), wine_dbgstr_longlong(ullMetadataVersion),
         wine_dbgstr_longlong(ullInstanceId), wine_dbgstr_longlong(ullMessageNumber), debugstr_w(pszSessionId), pTypesList, pScopesList, pXAddrsList,
         pHeaderAny, pReferenceParameterAny, pPolicyAny, pEndpointReferenceAny, pAny);
 
-    return E_NOTIMPL;
-}
+    if ((!impl->publisherStarted) || (pszId == NULL) || (lstrlenW(pszId) > WSD_MAX_TEXT_LENGTH) ||
+        ((pszSessionId != NULL) && (lstrlenW(pszSessionId) > WSD_MAX_TEXT_LENGTH)))
+    {
+        return E_INVALIDARG;
+    }
 
+    return send_hello_message(impl, pszId, ullMetadataVersion, ullInstanceId, ullMessageNumber, pszSessionId,
+        pTypesList, pScopesList, pXAddrsList, pHeaderAny, pReferenceParameterAny, pEndpointReferenceAny, pAny);
+}
 
 static HRESULT WINAPI IWSDiscoveryPublisherImpl_MatchProbeEx(IWSDiscoveryPublisher *This, const WSD_SOAP_MESSAGE *pProbeMessage,
                                                              IWSDMessageParameters *pMessageParameters, LPCWSTR pszId, ULONGLONG ullMetadataVersion,
@@ -339,6 +341,7 @@ static const IWSDiscoveryPublisherVtbl publisher_vtbl =
 HRESULT WINAPI WSDCreateDiscoveryPublisher(IWSDXMLContext *pContext, IWSDiscoveryPublisher **ppPublisher)
 {
     IWSDiscoveryPublisherImpl *obj;
+    HRESULT ret;
 
     TRACE("(%p, %p)\n", pContext, ppPublisher);
 
@@ -363,17 +366,29 @@ HRESULT WINAPI WSDCreateDiscoveryPublisher(IWSDXMLContext *pContext, IWSDiscover
 
     if (pContext == NULL)
     {
-        if (FAILED(WSDXMLCreateContext(&obj->xmlContext)))
+        ret = WSDXMLCreateContext(&obj->xmlContext);
+
+        if (FAILED(ret))
         {
             WARN("Unable to create XML context\n");
-            HeapFree (GetProcessHeap(), 0, obj);
-            return E_OUTOFMEMORY;
+            heap_free(obj);
+            return ret;
         }
     }
     else
     {
         obj->xmlContext = pContext;
         IWSDXMLContext_AddRef(pContext);
+    }
+
+    ret = register_namespaces(obj->xmlContext);
+
+    if (FAILED(ret))
+    {
+        WARN("Unable to register default namespaces\n");
+        heap_free(obj);
+
+        return ret;
     }
 
     list_init(&obj->notificationSinks);

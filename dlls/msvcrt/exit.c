@@ -204,6 +204,7 @@ void CDECL MSVCRT_abort(void)
   MSVCRT__exit(3);
 }
 
+#if _MSVCR_VER>=80
 /*********************************************************************
  *		_set_abort_behavior (MSVCR80.@)
  */
@@ -218,6 +219,7 @@ unsigned int CDECL MSVCRT__set_abort_behavior(unsigned int flags, unsigned int m
   MSVCRT_abort_behavior = (MSVCRT_abort_behavior & ~mask) | (flags & mask);
   return old;
 }
+#endif
 
 /*********************************************************************
  *              _wassert (MSVCRT.@)
@@ -346,6 +348,8 @@ int CDECL MSVCRT_atexit(void (*func)(void))
   return MSVCRT__onexit((MSVCRT__onexit_t)func) == (MSVCRT__onexit_t)func ? 0 : -1;
 }
 
+#if _MSVCR_VER>=140
+
 /*********************************************************************
  *		_crt_atexit (UCRTBASE.@)
  */
@@ -462,6 +466,9 @@ void CDECL _register_thread_local_exe_atexit_callback(_tls_callback_type callbac
     tls_atexit_callback = callback;
 }
 
+#endif /* _MSVCR_VER>=140 */
+
+#if _MSVCR_VER>=71
 /*********************************************************************
  *		_set_purecall_handler (MSVCR71.@)
  */
@@ -473,15 +480,18 @@ MSVCRT_purecall_handler CDECL _set_purecall_handler(MSVCRT_purecall_handler func
     purecall_handler = function;
     return ret;
 }
+#endif
 
+#if _MSVCR_VER>=80
 /*********************************************************************
- *		_get_purecall_handler
+ *		_get_purecall_handler (MSVCR80.@)
  */
 MSVCRT_purecall_handler CDECL _get_purecall_handler(void)
 {
     TRACE("\n");
     return purecall_handler;
 }
+#endif
 
 /*********************************************************************
  *		_purecall (MSVCRT.@)

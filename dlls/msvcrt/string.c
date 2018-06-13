@@ -117,6 +117,7 @@ char* CDECL MSVCRT__strlwr(char *str)
  */
 int CDECL MSVCRT__strupr_s_l(char *str, MSVCRT_size_t len, MSVCRT__locale_t locale)
 {
+    MSVCRT_pthreadlocinfo locinfo;
     char *ptr = str;
 
     if (!str || !len)
@@ -138,10 +139,27 @@ int CDECL MSVCRT__strupr_s_l(char *str, MSVCRT_size_t len, MSVCRT__locale_t loca
         return MSVCRT_EINVAL;
     }
 
-    while (*str)
+    if(!locale)
+        locinfo = get_locinfo();
+    else
+        locinfo = locale->locinfo;
+
+    if(!locinfo->lc_handle[MSVCRT_LC_CTYPE])
     {
-        *str = MSVCRT__toupper_l((unsigned char)*str, locale);
-        str++;
+        while (*str)
+        {
+            if (*str >= 'a' && *str <= 'z')
+                *str -= 'a' - 'A';
+            str++;
+        }
+    }
+    else
+    {
+        while (*str)
+        {
+            *str = MSVCRT__toupper_l((unsigned char)*str, locale);
+            str++;
+        }
     }
 
     return 0;
@@ -499,6 +517,8 @@ double CDECL MSVCRT_strtod( const char *str, char **end )
     return MSVCRT_strtod_l( str, end, NULL );
 }
 
+#if _MSVCR_VER>=120
+
 /*********************************************************************
  *		strtof_l  (MSVCR120.@)
  */
@@ -514,6 +534,8 @@ float CDECL MSVCRT_strtof( const char *str, char **end )
 {
     return MSVCRT__strtof_l(str, end, NULL);
 }
+
+#endif /* _MSVCR_VER>=120 */
 
 /*********************************************************************
  *		atof  (MSVCRT.@)
@@ -1047,6 +1069,33 @@ int CDECL MSVCRT_atoi(const char *str)
 #endif
 
 /******************************************************************
+ *      _atoi64_l (MSVCRT.@)
+ */
+__int64 CDECL MSVCRT__atoi64_l(const char *str, MSVCRT__locale_t locale)
+{
+    return MSVCRT_strtoi64_l(str, NULL, 10, locale);
+}
+
+/******************************************************************
+ *      _atol_l (MSVCRT.@)
+ */
+MSVCRT_long CDECL MSVCRT__atol_l(const char *str, MSVCRT__locale_t locale)
+{
+    __int64 ret = MSVCRT_strtoi64_l(str, NULL, 10, locale);
+
+    if(ret > LONG_MAX) {
+        ret = LONG_MAX;
+        *MSVCRT__errno() = MSVCRT_ERANGE;
+    } else if(ret < LONG_MIN) {
+        ret = LONG_MIN;
+        *MSVCRT__errno() = MSVCRT_ERANGE;
+    }
+    return ret;
+}
+
+#if _MSVCR_VER>=120
+
+/******************************************************************
  *      _atoll_l (MSVCR120.@)
  */
 MSVCRT_longlong CDECL MSVCRT__atoll_l(const char* str, MSVCRT__locale_t locale)
@@ -1061,6 +1110,8 @@ MSVCRT_longlong CDECL MSVCRT_atoll(const char* str)
 {
     return MSVCRT__atoll_l(str, NULL);
 }
+
+#endif /* if _MSVCR_VER>=120 */
 
 /******************************************************************
  *		_strtol_l (MSVCRT.@)

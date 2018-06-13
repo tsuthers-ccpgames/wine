@@ -22,14 +22,15 @@
  */
 
 #include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <io.h>
 #include <windows.h>
+#include <commctrl.h>
 #include <wine/unicode.h>
 #include <wine/debug.h>
-#include "regproc.h"
+#include <wine/heap.h>
+#include "main.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(regedit);
 
@@ -46,7 +47,7 @@ static HKEY reg_class_keys[] = {
 
 void *heap_xalloc(size_t size)
 {
-    void *buf = HeapAlloc(GetProcessHeap(), 0, size);
+    void *buf = heap_alloc(size);
     if (!buf)
     {
         ERR("Out of memory!\n");
@@ -57,12 +58,7 @@ void *heap_xalloc(size_t size)
 
 void *heap_xrealloc(void *buf, size_t size)
 {
-    void *new_buf;
-
-    if (buf)
-        new_buf = HeapReAlloc(GetProcessHeap(), 0, buf, size);
-    else
-        new_buf = HeapAlloc(GetProcessHeap(), 0, size);
+    void *new_buf = heap_realloc(buf, size);
 
     if (!new_buf)
     {
@@ -71,11 +67,6 @@ void *heap_xrealloc(void *buf, size_t size)
     }
 
     return new_buf;
-}
-
-BOOL heap_free(void *buf)
-{
-    return HeapFree(GetProcessHeap(), 0, buf);
 }
 
 /******************************************************************************
@@ -516,7 +507,8 @@ static void free_parser_data(struct parser *parser)
 
 static void prepare_hex_string_data(struct parser *parser)
 {
-    if (parser->data_type == REG_EXPAND_SZ || parser->data_type == REG_MULTI_SZ)
+    if (parser->data_type == REG_EXPAND_SZ || parser->data_type == REG_MULTI_SZ ||
+        parser->data_type == REG_SZ)
     {
         if (parser->is_unicode)
         {
@@ -1179,7 +1171,10 @@ static WCHAR *REGPROC_escape_string(WCHAR *str, size_t str_len, size_t *line_len
     for (i = 0, escape_count = 0; i < str_len; i++)
     {
         WCHAR c = str[i];
-        if (c == '\r' || c == '\n' || c == '\\' || c == '"' || c == '\0')
+
+        if (!c) break;
+
+        if (c == '\r' || c == '\n' || c == '\\' || c == '"')
             escape_count++;
     }
 
@@ -1188,6 +1183,8 @@ static WCHAR *REGPROC_escape_string(WCHAR *str, size_t str_len, size_t *line_len
     for (i = 0, pos = 0; i < str_len; i++, pos++)
     {
         WCHAR c = str[i];
+
+        if (!c) break;
 
         switch (c)
         {
@@ -1206,10 +1203,6 @@ static WCHAR *REGPROC_escape_string(WCHAR *str, size_t str_len, size_t *line_len
         case '"':
             buf[pos++] = '\\';
             buf[pos] = '"';
-            break;
-        case '\0':
-            buf[pos++] = '\\';
-            buf[pos] = '0';
             break;
         default:
             buf[pos] = c;

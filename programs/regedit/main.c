@@ -22,7 +22,6 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <fcntl.h>
 #include "wine/debug.h"
 
@@ -62,7 +61,7 @@ const WCHAR strClipboardFormat[] = {'T','O','D','O',':',' ','S','E','T',' ','C',
 
 #define MAX_LOADSTRING  100
 WCHAR szTitle[MAX_LOADSTRING];
-const WCHAR szFrameClass[] = {'R','E','G','E','D','I','T','_','F','R','A','M','E',0};
+const WCHAR szFrameClass[] = {'R','e','g','E','d','i','t','_','R','e','g','E','d','i','t',0};
 const WCHAR szChildClass[] = {'R','E','G','E','D','I','T',0};
 
 static BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
@@ -172,8 +171,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
     }
 
     /* Initialize global strings */
-    LoadStringW(hInstance, IDS_APP_TITLE, szTitle, COUNT_OF(szTitle));
-    LoadStringW(hInstance, IDS_REGISTRY_DEFAULT_VALUE, g_pszDefaultValueName, COUNT_OF(g_pszDefaultValueName));
+    LoadStringW(hInstance, IDS_APP_TITLE, szTitle, ARRAY_SIZE(szTitle));
+    LoadStringW(hInstance, IDS_REGISTRY_DEFAULT_VALUE, g_pszDefaultValueName, ARRAY_SIZE(g_pszDefaultValueName));
 
     /* Store instance handle in our global variable */
     hInst = hInstance;

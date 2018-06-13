@@ -43,7 +43,24 @@ static LANGID (WINAPI *pGetUserDefaultUILanguage)(void);
 
 static BOOL is_ie9plus;
 
-static const char doc_blank[] = "<html></html>";
+static enum {
+    COMPAT_NONE,
+    COMPAT_IE9
+} compat_mode = COMPAT_NONE;
+
+static const char doc_blank[] =
+    "<html></html>";
+
+static const char doc_blank_ie9[] =
+    "<!DOCTYPE html>\n"
+    "<html>"
+    " <head>"
+    "  <meta http-equiv=\"x-ua-compatible\" content=\"IE=9\" />"
+    " </head>"
+    " <body>"
+    " </body>"
+    "</html>";
+
 static const char doc_str1[] = "<html><body>test</body></html>";
 static const char range_test_str[] =
     "<html><body>test \na<font size=\"2\">bc\t123<br /> it's\r\n  \t</font>text<br /></body></html>";
@@ -135,7 +152,9 @@ typedef enum {
     ET_LINK,
     ET_LABEL,
     ET_BUTTON,
-    ET_AREA
+    ET_AREA,
+    ET_SVG,
+    ET_CIRCLE
 } elem_type_t;
 
 static const IID * const none_iids[] = {
@@ -503,7 +522,9 @@ static const elem_type_info_t elem_type_infos[] = {
     {"LINK",      link_iids,        &DIID_DispHTMLLinkElement,      &CLSID_HTMLLinkElement},
     {"LABEL",     label_iids,       &DIID_DispHTMLLabelElement,     &CLSID_HTMLLabelElement},
     {"BUTTON",    button_iids,      &DIID_DispHTMLButtonElement,    &CLSID_HTMLButtonElement},
-    {"AREA",      area_iids,        &DIID_DispHTMLAreaElement,      &CLSID_HTMLAreaElement}
+    {"AREA",      area_iids,        &DIID_DispHTMLAreaElement,      &CLSID_HTMLAreaElement},
+    {"svg",       elem_iids,        NULL},
+    {"circle",    elem_iids,        NULL}
 };
 
 static int strcmp_wa(LPCWSTR strw, const char *stra)
@@ -757,7 +778,7 @@ static void _test_disp2(unsigned line, IUnknown *unk, const IID *diid, const IID
     IID iid;
     HRESULT hres;
 
-    if(_test_get_dispid(line, unk, &iid))
+    if(_test_get_dispid(line, unk, &iid) && compat_mode < COMPAT_IE9)
         ok_(__FILE__,line) (IsEqualGUID(&iid, diid) || broken(diid2 && IsEqualGUID(&iid, diid2)),
                 "unexpected guid %s\n", wine_dbgstr_guid(&iid));
 
@@ -773,7 +794,7 @@ static void _test_disp2(unsigned line, IUnknown *unk, const IID *diid, const IID
     ok_(__FILE__,line)(hres == E_NOINTERFACE, "Got IManagedObject iface\n");
     ok_(__FILE__,line)(!u, "u = %p\n", u);
 
-    if(val)
+    if(val && compat_mode < COMPAT_IE9) /* FIXME: Enable those tests in IE9+ mode */
         _test_disp_value(line, unk, val);
 
     if(clsid) {
@@ -2683,7 +2704,7 @@ static void _test_elem_collection(unsigned line, IUnknown *unk,
 
     memset(vs, 0, sizeof(vs));
     fetched = 0;
-    hres = IEnumVARIANT_Next(enum_var, sizeof(vs)/sizeof(*vs), vs, &fetched);
+    hres = IEnumVARIANT_Next(enum_var, ARRAY_SIZE(vs), vs, &fetched);
     ok_(__FILE__,line)(hres == S_FALSE, "Next failed: %08x\n", hres);
     ok_(__FILE__,line)(fetched == (len > 2 ? 2 : len), "fetched = %d\n", fetched);
     if(len) {
@@ -2735,7 +2756,10 @@ static void _test_elem_collection(unsigned line, IUnknown *unk,
     V_I4(&name) = -1;
     disp = (void*)0xdeadbeef;
     hres = IHTMLElementCollection_item(col, name, index, &disp);
-    ok_(__FILE__,line) (hres == E_INVALIDARG, "item failed: %08x, expected E_INVALIDARG\n", hres);
+    if(compat_mode < COMPAT_IE9)
+        ok_(__FILE__,line) (hres == E_INVALIDARG, "item failed: %08x, expected E_INVALIDARG\n", hres);
+    else
+        ok_(__FILE__,line) (hres == S_OK, "item failed: %08x\n", hres);
     ok_(__FILE__,line) (disp == NULL, "disp != NULL\n");
 
     IHTMLElementCollection_Release(col);
@@ -4560,8 +4584,9 @@ static void _test_form_put_encoding(unsigned line, IUnknown *unk, HRESULT exp_hr
         _test_form_encoding(line, unk, encoding);
 }
 
-#define test_form_elements(a) _test_form_elements(__LINE__,a)
-static void _test_form_elements(unsigned line, IUnknown *unk)
+#define test_form_elements(a,b,c) _test_form_elements(__LINE__,a,b,c)
+static void _test_form_elements(unsigned line, IUnknown *unk, const elem_type_t *elem_types,
+                                LONG elem_types_cnt)
 {
     IHTMLFormElement *form = _get_form_iface(line, unk);
     IDispatch *disp;
@@ -4571,7 +4596,10 @@ static void _test_form_elements(unsigned line, IUnknown *unk)
     hres = IHTMLFormElement_get_elements(form, &disp);
     ok_(__FILE__,line)(hres == S_OK, "get_elements failed: %08x\n", hres);
     ok_(__FILE__,line)(disp != NULL, "disp = NULL\n");
-    ok_(__FILE__,line)(iface_cmp((IUnknown*)form, (IUnknown*)disp), "disp != form\n");
+    if(compat_mode < COMPAT_IE9)
+        ok_(__FILE__,line)(iface_cmp((IUnknown*)form, (IUnknown*)disp), "disp != form\n");
+    else
+        _test_elem_collection(line, (IUnknown*)disp, elem_types, elem_types_cnt);
 
     IDispatch_Release(disp);
     IHTMLFormElement_Release(form);
@@ -4623,7 +4651,7 @@ static void test_select_form(IUnknown *uselect, IUnknown  *uform)
     ok(form != NULL, "form == NULL\n");
 
     test_form_length((IUnknown*)form, 2);
-    test_form_elements((IUnknown*)form);
+    test_form_elements((IUnknown*)form, NULL, 0);
     test_form_name((IUnknown*)form, "form_name");
 
     ok(iface_cmp(uform, (IUnknown*)form), "Expected %p, got %p\n", uform, form);
@@ -5361,7 +5389,10 @@ static void test_form_item(IHTMLElement *elem)
     V_I4(&name) = -1;
     disp = (void*)0xdeadbeef;
     hres = IHTMLFormElement_item(form, name, index, &disp);
-    ok(hres == E_INVALIDARG, "item failed: %08x, expected E_INVALIDARG\n", hres);
+    if(compat_mode < COMPAT_IE9)
+        ok(hres == E_INVALIDARG, "item failed: %08x, expected E_INVALIDARG\n", hres);
+    else
+        ok(hres == S_OK, "item failed: %08x\n", hres);
     ok(!disp, "disp = %p\n", disp);
 
     V_I4(&name) = 2;
@@ -6157,7 +6188,7 @@ static void _test_language_string(unsigned line, const WCHAR *lang, LCID lcid)
     int res;
 
     if(pLCIDToLocaleName) {
-        res = pLCIDToLocaleName(lcid, buf, sizeof(buf)/sizeof(WCHAR), 0);
+        res = pLCIDToLocaleName(lcid, buf, ARRAY_SIZE(buf), 0);
         ok_(__FILE__,line)(res, "LCIDToLocaleName failed: %u\n", GetLastError());
         ok_(__FILE__,line)(!lstrcmpW(lang, buf), "lang = %s, expected %s\n", wine_dbgstr_w(lang), wine_dbgstr_w(buf));
     }else {
@@ -6455,17 +6486,17 @@ static void test_unique_id(IHTMLDocument2 *doc, IHTMLElement *elem)
 
     hres = IHTMLDocument3_get_uniqueID(doc3, &id);
     ok(hres == S_OK, "get_uniqueID failed: %08x\n", hres);
-    ok(SysStringLen(id) >= sizeof(prefixW)/sizeof(*prefixW), "id %s too short\n", wine_dbgstr_w(id));
+    ok(SysStringLen(id) >= ARRAY_SIZE(prefixW), "id %s too short\n", wine_dbgstr_w(id));
 
     hres = IHTMLDocument3_get_uniqueID(doc3, &id2);
     ok(hres == S_OK, "get_uniqueID failed: %08x\n", hres);
-    ok(SysStringLen(id2) >= sizeof(prefixW)/sizeof(*prefixW), "id %s too short\n", wine_dbgstr_w(id2));
+    ok(SysStringLen(id2) >= ARRAY_SIZE(prefixW), "id %s too short\n", wine_dbgstr_w(id2));
 
     ok(lstrcmpW(id, id2), "same unique ids %s\n", wine_dbgstr_w(id));
 
-    id[sizeof(prefixW)/sizeof(*prefixW)-1] = 0;
+    id[ARRAY_SIZE(prefixW)-1] = 0;
     ok(!lstrcmpW(id, prefixW), "unexpected prefix %s\n", wine_dbgstr_w(id));
-    id2[sizeof(prefixW)/sizeof(*prefixW)-1] = 0;
+    id2[ARRAY_SIZE(prefixW)-1] = 0;
     ok(!lstrcmpW(id2, prefixW), "unexpected prefix %s\n", wine_dbgstr_w(id2));
 
     SysFreeString(id);
@@ -6683,7 +6714,12 @@ static void test_xmlhttprequest(IHTMLWindow5 *window)
 
     hres = IHTMLWindow5_get_XMLHttpRequest(window, &var);
     ok(hres == S_OK, "get_XMLHttpRequest failed: %08x\n", hres);
-    ok(V_VT(&var) == VT_DISPATCH, "expect VT_DISPATCH, got %s\n", debugstr_variant(&var));
+    ok(V_VT(&var) == VT_DISPATCH || broken(V_VT(&var) == VT_EMPTY), "expect VT_DISPATCH, got %s\n", debugstr_variant(&var));
+
+    if (V_VT(&var) == VT_EMPTY) {
+        win_skip("Native XMLHTTP support is missing or disabled.\n");
+        return;
+    }
 
     factory = NULL;
     hres = IDispatch_QueryInterface(V_DISPATCH(&var), &IID_IHTMLXMLHttpRequestFactory, (void**)&factory);
@@ -7231,7 +7267,7 @@ static void test_tr_elem(IHTMLElement *elem)
     ok(hres == S_OK, "get_cells failed: %08x\n", hres);
     ok(col != NULL, "get_cells returned NULL\n");
 
-    test_elem_collection((IUnknown*)col, cell_types, sizeof(cell_types)/sizeof(*cell_types));
+    test_elem_collection((IUnknown*)col, cell_types, ARRAY_SIZE(cell_types));
     IHTMLElementCollection_Release(col);
 
     bstr = a2bstr("left");
@@ -7555,14 +7591,14 @@ static void test_table_elem(IHTMLElement *elem)
     ok(hres == S_OK, "get_rows failed: %08x\n", hres);
     ok(col != NULL, "get_rows returned NULL\n");
 
-    test_elem_collection((IUnknown*)col, row_types, sizeof(row_types)/sizeof(*row_types));
+    test_elem_collection((IUnknown*)col, row_types, ARRAY_SIZE(row_types));
     IHTMLElementCollection_Release(col);
 
-    test_elem_all((IUnknown*)table, all_types, sizeof(all_types)/sizeof(*all_types));
+    test_elem_all((IUnknown*)table, all_types, ARRAY_SIZE(all_types));
 
     node = clone_node((IUnknown*)table, VARIANT_TRUE);
     test_elem_tag((IUnknown*)node, "TABLE");
-    test_elem_all((IUnknown*)node, all_types, sizeof(all_types)/sizeof(*all_types));
+    test_elem_all((IUnknown*)node, all_types, ARRAY_SIZE(all_types));
     IHTMLDOMNode_Release(node);
 
     node = clone_node((IUnknown*)table, VARIANT_FALSE);
@@ -7575,7 +7611,7 @@ static void test_table_elem(IHTMLElement *elem)
     ok(hres == S_OK, "get_tBodies failed: %08x\n", hres);
     ok(col != NULL, "get_tBodies returned NULL\n");
 
-    test_elem_collection((IUnknown*)col, tbodies_types, sizeof(tbodies_types)/sizeof(*tbodies_types));
+    test_elem_collection((IUnknown*)col, tbodies_types, ARRAY_SIZE(tbodies_types));
     IHTMLElementCollection_Release(col);
 
     test_table_cell_spacing(table, NULL);
@@ -7958,7 +7994,7 @@ static void test_iframe_elem(IHTMLElement *elem)
 
     hres = IHTMLDocument2_get_all(content_doc, &col);
     ok(hres == S_OK, "get_all failed: %08x\n", hres);
-    test_elem_collection((IUnknown*)col, all_types, sizeof(all_types)/sizeof(all_types[0]));
+    test_elem_collection((IUnknown*)col, all_types, ARRAY_SIZE(all_types));
     IHTMLElementCollection_Release(col);
 
     body = doc_get_body(content_doc);
@@ -8266,7 +8302,7 @@ static void test_elemsbyclass(IHTMLElement *div)
     hres = IHTMLElement6_getElementsByClassName(elem, str, &collection);
     ok(hres == S_OK, "getElementsByClassName failed: %08x\n", hres);
     ok(collection != NULL, "collection == NULL\n");
-    test_elem_collection((IUnknown*)collection, types, sizeof(types)/sizeof(*types));
+    test_elem_collection((IUnknown*)collection, types, ARRAY_SIZE(types));
     IHTMLElementCollection_Release(collection);
     SysFreeString(str);
 
@@ -8328,8 +8364,8 @@ static void test_elems(IHTMLDocument2 *doc)
 
     hres = IHTMLDocument2_get_all(doc, &col);
     ok(hres == S_OK, "get_all failed: %08x\n", hres);
-    test_elem_collection((IUnknown*)col, all_types, sizeof(all_types)/sizeof(all_types[0]));
-    test_elem_col_item(col, "x", item_types, sizeof(item_types)/sizeof(item_types[0]));
+    test_elem_collection((IUnknown*)col, all_types, ARRAY_SIZE(all_types));
+    test_elem_col_item(col, "x", item_types, ARRAY_SIZE(item_types));
 
     elem = get_elem_col_item_idx(col, 0);
     test_elem_source_index(elem, 0);
@@ -8383,7 +8419,7 @@ static void test_elems(IHTMLDocument2 *doc)
 
     elem = get_doc_elem(doc);
     test_elem_istextedit(elem, VARIANT_FALSE);
-    test_elem_all((IUnknown*)elem, all_types+1, sizeof(all_types)/sizeof(all_types[0])-1);
+    test_elem_all((IUnknown*)elem, all_types+1, ARRAY_SIZE(all_types)-1);
     IHTMLElement_Release(elem);
 
     get_elem_by_id(doc, "xxx", FALSE);
@@ -8860,7 +8896,7 @@ static void test_elems(IHTMLDocument2 *doc)
     ok(elem != NULL, "elem == NULL\n");
     if(elem) {
         test_form_length((IUnknown*)elem, 0);
-        test_form_elements((IUnknown*)elem);
+        test_form_elements((IUnknown*)elem, NULL, 0);
         IHTMLElement_Release(elem);
     }
 
@@ -8928,7 +8964,7 @@ static void test_elems(IHTMLDocument2 *doc)
         static const elem_type_t select_types[] = { ET_OPTION, ET_OPTION, ET_OPTION };
 
         test_select_put_length((IUnknown*)elem, 3);
-        test_elem_all((IUnknown*)elem, select_types, sizeof(select_types)/sizeof(*select_types));
+        test_elem_all((IUnknown*)elem, select_types, ARRAY_SIZE(select_types));
         test_select_put_length((IUnknown*)elem, 1);
         test_elem_all((IUnknown*)elem, select_types, 1);
         IHTMLElement_Release(elem);
@@ -9168,7 +9204,7 @@ static void test_elem_names(IHTMLDocument2 *doc)
     test_elem_set_innerhtml((IUnknown*)body,
             "<input name=\"test\"><a name=\"test\"></a><a name=\"xxx\"></a><div id=\"test\"></div>");
     col = doc_get_elems_by_name(doc, "test");
-    test_elem_collection((IUnknown*)col, test1_types, sizeof(test1_types)/sizeof(*test1_types));
+    test_elem_collection((IUnknown*)col, test1_types, ARRAY_SIZE(test1_types));
     IHTMLElementCollection_Release(col);
 
     col = doc_get_elems_by_name(doc, "yyy");
@@ -9216,7 +9252,7 @@ static void test_elems2(IHTMLDocument2 *doc)
     elem2 = get_doc_elem_by_id(doc, "innerid");
     ok(elem2 != NULL, "elem2 == NULL\n");
     test_elem_set_outerhtml((IUnknown*)elem2, "<br><a href=\"about:blank\" id=\"aid\">a</a>");
-    test_elem_all((IUnknown*)div, outer_types, sizeof(outer_types)/sizeof(*outer_types));
+    test_elem_all((IUnknown*)div, outer_types, ARRAY_SIZE(outer_types));
     IHTMLElement_Release(elem2);
 
     elem2 = get_doc_elem_by_id(doc, "aid");
@@ -9224,53 +9260,6 @@ static void test_elems2(IHTMLDocument2 *doc)
     test_elem_set_outerhtml((IUnknown*)elem2, "");
     test_elem_all((IUnknown*)div, outer_types, 1);
     IHTMLElement_Release(elem2);
-
-    test_elem_set_innerhtml((IUnknown*)div, "<textarea id=\"ta\"></textarea>");
-    elem = get_elem_by_id(doc, "ta", TRUE);
-    if(elem) {
-        IHTMLFormElement *form;
-
-        test_textarea_value((IUnknown*)elem, NULL);
-        test_textarea_put_value((IUnknown*)elem, "test");
-        test_textarea_defaultvalue((IUnknown*)elem, NULL);
-        test_textarea_put_defaultvalue((IUnknown*)elem, "defval text");
-        test_textarea_put_value((IUnknown*)elem, "test");
-        test_textarea_readonly((IUnknown*)elem, VARIANT_FALSE);
-        test_textarea_put_readonly((IUnknown*)elem, VARIANT_TRUE);
-        test_textarea_put_readonly((IUnknown*)elem, VARIANT_FALSE);
-        test_textarea_type((IUnknown*)elem);
-
-        form = get_textarea_form((IUnknown*)elem);
-        ok(!form, "form = %p\n", form);
-
-        test_elem_istextedit(elem, VARIANT_TRUE);
-
-        IHTMLElement_Release(elem);
-    }
-
-    test_elem_set_innerhtml((IUnknown*)div, "<textarea id=\"ta\">default text</textarea>");
-    elem = get_elem_by_id(doc, "ta", TRUE);
-    if(elem) {
-        test_textarea_defaultvalue((IUnknown*)elem, "default text");
-        IHTMLElement_Release(elem);
-    }
-
-    test_elem_set_innerhtml((IUnknown*)div, "<form id=\"fid\"><textarea id=\"ta\"></textarea></form>");
-    elem = get_elem_by_id(doc, "ta", TRUE);
-    if(elem) {
-        IHTMLFormElement *form;
-
-        elem2 = get_elem_by_id(doc, "fid", TRUE);
-        ok(elem2 != NULL, "elem2 == NULL\n");
-
-        form = get_textarea_form((IUnknown*)elem);
-        ok(form != NULL, "form = NULL\n");
-        ok(iface_cmp((IUnknown*)form, (IUnknown*)elem2), "form != elem2\n");
-
-        IHTMLFormElement_Release(form);
-        IHTMLElement_Release(elem2);
-        IHTMLElement_Release(elem);
-    }
 
     test_elem_set_innerhtml((IUnknown*)div,
             "<input value=\"val\" id =\"inputid\"  />");
@@ -9285,35 +9274,6 @@ static void test_elems2(IHTMLDocument2 *doc)
 
     test_elem_set_innerhtml((IUnknown*)div, "");
     test_insert_adjacent_elems(doc, div);
-
-    test_elem_set_innerhtml((IUnknown*)div,
-            "<form id=\"form\"><input type=\"button\" /><div><input type=\"text\" id=\"inputid\"/></div></textarea>");
-    elem = get_elem_by_id(doc, "form", TRUE);
-    if(elem) {
-        test_form_length((IUnknown*)elem, 2);
-        test_form_item(elem);
-        test_form_action((IUnknown*)elem, NULL);
-        test_form_put_action((IUnknown*)elem, "about:blank");
-        test_form_method((IUnknown*)elem, "get");
-        test_form_put_method((IUnknown*)elem, S_OK, "post");
-        test_form_put_method((IUnknown*)elem, E_INVALIDARG, "put");
-        test_form_method((IUnknown*)elem, "post");
-        test_form_name((IUnknown*)elem, NULL);
-        test_form_put_name((IUnknown*)elem, "Name");
-        test_form_encoding((IUnknown*)elem, "application/x-www-form-urlencoded");
-        test_form_put_encoding((IUnknown*)elem, S_OK, "text/plain");
-        test_form_put_encoding((IUnknown*)elem, S_OK, "multipart/form-data");
-        test_form_put_encoding((IUnknown*)elem, E_INVALIDARG, "image/png");
-        test_form_encoding((IUnknown*)elem, "multipart/form-data");
-        test_form_elements((IUnknown*)elem);
-        test_form_reset((IUnknown*)elem);
-        test_form_target((IUnknown*)elem);
-        IHTMLElement_Release(elem);
-
-        elem = get_elem_by_id(doc, "inputid", TRUE);
-        test_input_get_form((IUnknown*)elem, "form");
-        IHTMLElement_Release(elem);
-    }
 
     test_elem_set_innerhtml((IUnknown*)div,
             "<form id=\"form\" name=\"form_name\"><select id=\"sform\"><option id=\"oform\"></option></select><button id=\"btnid\"></button></form>");
@@ -9371,6 +9331,138 @@ static void test_elems2(IHTMLDocument2 *doc)
     IHTMLElement_Release(div);
 }
 
+static void test_textarea_element(IHTMLDocument2 *doc, IHTMLElement *parent)
+{
+    IHTMLElement *form_elem, *elem;
+    IHTMLFormElement *form;
+
+    test_elem_set_innerhtml((IUnknown*)parent,
+                            "<form id=\"fid\"><textarea id=\"ta\"></textarea></form>");
+    elem = get_elem_by_id(doc, "ta", TRUE);
+    test_elem_type((IUnknown*)elem, ET_TEXTAREA);
+
+    form_elem = get_elem_by_id(doc, "fid", TRUE);
+    ok(form_elem != NULL, "form_elem == NULL\n");
+
+    form = get_textarea_form((IUnknown*)elem);
+    ok(form != NULL, "form = NULL\n");
+    ok(iface_cmp((IUnknown*)form, (IUnknown*)form_elem), "form != form_elem\n");
+
+    IHTMLFormElement_Release(form);
+    IHTMLElement_Release(form_elem);
+    IHTMLElement_Release(elem);
+
+    test_elem_set_innerhtml((IUnknown*)parent, "<textarea id=\"ta\"></textarea>");
+    elem = get_elem_by_id(doc, "ta", TRUE);
+
+    test_textarea_value((IUnknown*)elem, NULL);
+    test_textarea_put_value((IUnknown*)elem, "test");
+    test_textarea_defaultvalue((IUnknown*)elem, NULL);
+    test_textarea_put_defaultvalue((IUnknown*)elem, "defval text");
+    test_textarea_put_value((IUnknown*)elem, "test");
+    test_textarea_readonly((IUnknown*)elem, VARIANT_FALSE);
+    test_textarea_put_readonly((IUnknown*)elem, VARIANT_TRUE);
+    test_textarea_put_readonly((IUnknown*)elem, VARIANT_FALSE);
+    test_textarea_type((IUnknown*)elem);
+
+    form = get_textarea_form((IUnknown*)elem);
+    ok(!form, "form = %p\n", form);
+
+    test_elem_istextedit(elem, VARIANT_TRUE);
+
+    IHTMLElement_Release(elem);
+
+    test_elem_set_innerhtml((IUnknown*)parent, "<textarea id=\"ta\">default text</textarea>");
+    elem = get_elem_by_id(doc, "ta", TRUE);
+    test_textarea_defaultvalue((IUnknown*)elem, "default text");
+    IHTMLElement_Release(elem);
+}
+
+static void test_form_element(IHTMLDocument2 *doc, IHTMLElement *parent)
+{
+    IHTMLElement *elem, *input_elem;
+
+    static const elem_type_t elems_textarea_input[] = { ET_TEXTAREA, ET_INPUT };
+
+    test_elem_set_innerhtml((IUnknown*)parent,
+            "<form id=\"form\">"
+             "<textarea></textarea>"
+             "<div><input type=\"text\" id=\"inputid\" /></div>"
+             "</form>");
+    elem = get_elem_by_id(doc, "form", TRUE);
+    test_elem_type((IUnknown*)elem, ET_FORM);
+
+    test_form_length((IUnknown*)elem, 2);
+    test_form_item(elem);
+    test_form_action((IUnknown*)elem, NULL);
+    test_form_put_action((IUnknown*)elem, "about:blank");
+    test_form_method((IUnknown*)elem, "get");
+    test_form_put_method((IUnknown*)elem, S_OK, "post");
+    test_form_put_method((IUnknown*)elem, E_INVALIDARG, "put");
+    test_form_method((IUnknown*)elem, "post");
+    test_form_name((IUnknown*)elem, NULL);
+    test_form_put_name((IUnknown*)elem, "Name");
+    test_form_encoding((IUnknown*)elem, "application/x-www-form-urlencoded");
+    test_form_put_encoding((IUnknown*)elem, S_OK, "text/plain");
+    test_form_put_encoding((IUnknown*)elem, S_OK, "multipart/form-data");
+    test_form_put_encoding((IUnknown*)elem, E_INVALIDARG, "image/png");
+    test_form_encoding((IUnknown*)elem, "multipart/form-data");
+    test_form_elements((IUnknown*)elem, elems_textarea_input, ARRAY_SIZE(elems_textarea_input));
+    test_form_reset((IUnknown*)elem);
+    test_form_target((IUnknown*)elem);
+
+    input_elem = get_elem_by_id(doc, "inputid", TRUE);
+    test_input_get_form((IUnknown*)input_elem, "form");
+    IHTMLElement_Release(input_elem);
+
+    IHTMLElement_Release(elem);
+}
+
+static void test_svg_element(IHTMLDocument2 *doc, IHTMLElement *parent)
+{
+    IHTMLDOMNode *svg_node, *circle_node;
+
+    test_elem_set_innerhtml((IUnknown*)parent,
+            "<svg width=\"100\" height=\"100\" id=\"svgid\">"
+            "<circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"black\" />"
+            "</svg>");
+    svg_node = get_first_child((IUnknown*)parent);
+    if(compat_mode < COMPAT_IE9) {
+        todo_wine
+        ok(!svg_node, "svg_node != NULL\n");
+        if(svg_node)
+            IHTMLDOMNode_Release(svg_node);
+        return;
+    }
+    ok(svg_node != NULL, "svg_node = NULL\n");
+    test_elem_type((IUnknown*)svg_node, ET_SVG);
+
+    circle_node = get_first_child((IUnknown*)svg_node);
+    ok(circle_node != NULL, "circle_node = NULL\n");
+    if(!circle_node)
+        return;
+    test_elem_type((IUnknown*)circle_node, ET_CIRCLE);
+
+    IHTMLDOMNode_Release(circle_node);
+    IHTMLDOMNode_Release(svg_node);
+};
+
+static void test_dom_elements(IHTMLDocument2 *doc)
+{
+    IHTMLElement *body, *div;
+
+    body = doc_get_body(doc);
+    test_elem_set_innerhtml((IUnknown*)body, "<div id=\"parentdiv\"></div>");
+    div = get_doc_elem_by_id(doc, "parentdiv");
+
+    test_textarea_element(doc, div);
+    test_form_element(doc, div);
+    test_svg_element(doc, div);
+
+    IHTMLElement_Release(body);
+    IHTMLElement_Release(div);
+}
+
 static void test_create_elems(IHTMLDocument2 *doc)
 {
     IHTMLElement *elem, *body, *elem2;
@@ -9402,7 +9494,7 @@ static void test_create_elems(IHTMLDocument2 *doc)
 
     hres = IHTMLElement_get_all(body, &disp);
     ok(hres == S_OK, "get_all failed: %08x\n", hres);
-    test_elem_collection((IUnknown*)disp, types1, sizeof(types1)/sizeof(types1[0]));
+    test_elem_collection((IUnknown*)disp, types1, ARRAY_SIZE(types1));
     IDispatch_Release(disp);
 
     test_node_remove_child((IUnknown*)body, node);
@@ -9543,12 +9635,12 @@ static void test_noscript(IHTMLDocument2 *doc)
 
     hres = IHTMLDocument2_get_all(doc, &col);
     ok(hres == S_OK, "get_all failed: %08x\n", hres);
-    test_elem_collection((IUnknown*)col, all_types, sizeof(all_types)/sizeof(all_types[0]));
+    test_elem_collection((IUnknown*)col, all_types, ARRAY_SIZE(all_types));
     IHTMLElementCollection_Release(col);
 
     body = doc_get_body(doc);
     test_elem_set_innerhtml((IUnknown*)body, "<div>test</div><noscript><a href=\"about:blank\">A</a></noscript>");
-    test_elem_all((IUnknown*)body, body_all_types, sizeof(body_all_types)/sizeof(*body_all_types));
+    test_elem_all((IUnknown*)body, body_all_types, ARRAY_SIZE(body_all_types));
     IHTMLElement_Release(body);
 }
 
@@ -9610,12 +9702,12 @@ static void test_create_stylesheet(IHTMLDocument2 *doc)
         ET_DIV
     };
 
-    test_doc_all(doc, all_types, sizeof(all_types)/sizeof(*all_types));
+    test_doc_all(doc, all_types, ARRAY_SIZE(all_types));
 
     hres = IHTMLDocument2_createStyleSheet(doc, NULL, -1, &stylesheet);
     ok(hres == S_OK, "createStyleSheet failed: %08x\n", hres);
 
-    test_doc_all(doc, all_types2, sizeof(all_types2)/sizeof(*all_types2));
+    test_doc_all(doc, all_types2, ARRAY_SIZE(all_types2));
 
     doc_elem = get_doc_elem(doc);
 
@@ -9680,7 +9772,7 @@ static void test_indent(IHTMLDocument2 *doc)
 
     hres = IHTMLDocument2_get_all(doc, &col);
     ok(hres == S_OK, "get_all failed: %08x\n", hres);
-    test_elem_collection((IUnknown*)col, all_types, sizeof(all_types)/sizeof(all_types[0]));
+    test_elem_collection((IUnknown*)col, all_types, ARRAY_SIZE(all_types));
     IHTMLElementCollection_Release(col);
 
     range = test_create_body_range(doc);
@@ -9689,7 +9781,7 @@ static void test_indent(IHTMLDocument2 *doc)
 
     hres = IHTMLDocument2_get_all(doc, &col);
     ok(hres == S_OK, "get_all failed: %08x\n", hres);
-    test_elem_collection((IUnknown*)col, indent_types, sizeof(indent_types)/sizeof(indent_types[0]));
+    test_elem_collection((IUnknown*)col, indent_types, ARRAY_SIZE(indent_types));
     IHTMLElementCollection_Release(col);
 }
 
@@ -9708,7 +9800,7 @@ static void test_cond_comment(IHTMLDocument2 *doc)
 
     hres = IHTMLDocument2_get_all(doc, &col);
     ok(hres == S_OK, "get_all failed: %08x\n", hres);
-    test_elem_collection((IUnknown*)col, all_types, sizeof(all_types)/sizeof(all_types[0]));
+    test_elem_collection((IUnknown*)col, all_types, ARRAY_SIZE(all_types));
     IHTMLElementCollection_Release(col);
 }
 
@@ -10023,7 +10115,7 @@ static void test_docfrag(IHTMLDocument2 *doc)
 
     hres = IHTMLDocument2_get_all(doc, &col);
     ok(hres == S_OK, "get_all failed: %08x\n", hres);
-    test_elem_collection((IUnknown*)col, all_types, sizeof(all_types)/sizeof(all_types[0]));
+    test_elem_collection((IUnknown*)col, all_types, ARRAY_SIZE(all_types));
     IHTMLElementCollection_Release(col);
 
     div = test_create_elem(frag, "div");
@@ -10518,6 +10610,7 @@ static IHTMLDocument2 *create_doc_with_string(const char *str)
     IHTMLDocument2 *doc;
     HGLOBAL mem;
     SIZE_T len;
+    HRESULT hr;
 
     notif_doc = doc = create_document();
     if(!doc)
@@ -10527,9 +10620,11 @@ static IHTMLDocument2 *create_doc_with_string(const char *str)
     len = strlen(str);
     mem = GlobalAlloc(0, len);
     memcpy(mem, str, len);
-    CreateStreamOnHGlobal(mem, TRUE, &stream);
+    hr = CreateStreamOnHGlobal(mem, TRUE, &stream);
+    ok(hr == S_OK, "Failed to create a stream, hr %#x.\n", hr);
 
-    IHTMLDocument2_QueryInterface(doc, &IID_IPersistStreamInit, (void**)&init);
+    hr = IHTMLDocument2_QueryInterface(doc, &IID_IPersistStreamInit, (void**)&init);
+    ok(hr == S_OK, "Failed to get IPersistStreamInit, hr %#x.\n", hr);
 
     IPersistStreamInit_Load(init, stream);
     IPersistStreamInit_Release(init);
@@ -10597,6 +10692,10 @@ static void test_document_mode(IHTMLDocument2 *doc2)
     HRESULT hres;
 
     hres = IHTMLDocument2_QueryInterface(doc2, &IID_IHTMLDocument6, (void**)&doc);
+    if(hres == E_NOINTERFACE) {
+        win_skip("IHTMLDocument6 not supported\n");
+        return;
+    }
     ok(hres == S_OK, "Could not get IHTMLDocument6 interface: %08x\n", hres);
 
     V_VT(&v) = VT_EMPTY;
@@ -10707,6 +10806,12 @@ START_TEST(dom)
     if (winetest_interactive || ! is_ie_hardened()) {
         run_domtest(elem_test_str, test_elems);
         run_domtest(elem_test2_str, test_elems2);
+        run_domtest(doc_blank, test_dom_elements);
+        if(is_ie9plus) {
+            compat_mode = COMPAT_IE9;
+            run_domtest(doc_blank_ie9, test_dom_elements);
+            compat_mode = COMPAT_NONE;
+        }
         run_domtest(noscript_str, test_noscript);
     }else {
         skip("IE running in Enhanced Security Configuration\n");

@@ -1494,7 +1494,7 @@ static nsresult NSAPI nsContextMenuListener_OnShowContextMenu(nsIContextMenuList
 
     TRACE("(%p)->(%08x %p %p)\n", This, aContextFlags, aEvent, aNode);
 
-    hres = get_node(This->doc->basedoc.doc_node, aNode, TRUE, &node);
+    hres = get_node(aNode, TRUE, &node);
     if(FAILED(hres))
         return NS_ERROR_FAILURE;
 
@@ -2200,7 +2200,6 @@ void NSContainer_Release(NSContainer *This)
  * This will be removed after the next Gecko update, that will change calling convention on Gecko side.
  */
 #ifdef __i386__
-extern void *call_thiscall_func;
 __ASM_GLOBAL_FUNC(call_thiscall_func,
         "popl %eax\n\t"
         "popl %edx\n\t"

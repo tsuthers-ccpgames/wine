@@ -365,7 +365,7 @@ static void test_sid(void)
     LocalFree(str);
     LocalFree(psid);
 
-    for( i = 0; i < sizeof(refs) / sizeof(refs[0]); i++ )
+    for( i = 0; i < ARRAY_SIZE(refs); i++ )
     {
         r = AllocateAndInitializeSid( &refs[i].auth, 1,1,0,0,0,0,0,0,0,
          &psid );
@@ -412,7 +412,7 @@ static void test_sid(void)
     }
     LocalFree(psid);
 
-    for(i = 0; i < sizeof(strsid_table) / sizeof(strsid_table[0]); i++)
+    for(i = 0; i < ARRAY_SIZE(strsid_table); i++)
     {
         char *temp;
 
@@ -787,7 +787,7 @@ static void test_lookupPrivilegeValue(void)
     ok( ret,
      "LookupPrivilegeValueA(NULL, sEcREATEtOKENpRIVILEGE, &luid) failed: %d\n",
      GetLastError());
-    for (i = 0; i < sizeof(privs) / sizeof(privs[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(privs); i++)
     {
         /* Not all privileges are implemented on all Windows versions, so
          * don't worry if the call fails
@@ -1843,11 +1843,11 @@ static void test_token_attr(void)
         todo_wine win_skip("TokenLogonSid not supported. Skipping tests\n");
     else
     {
-        todo_wine ok(!ret && (GetLastError() == ERROR_INSUFFICIENT_BUFFER),
+        ok(!ret && (GetLastError() == ERROR_INSUFFICIENT_BUFFER),
             "GetTokenInformation(TokenLogonSid) failed with error %d\n", GetLastError());
         Groups = HeapAlloc(GetProcessHeap(), 0, Size);
         ret = GetTokenInformation(Token, TokenLogonSid, Groups, Size, &Size);
-        todo_wine ok(ret,
+        ok(ret,
             "GetTokenInformation(TokenLogonSid) failed with error %d\n", GetLastError());
         if (ret)
         {
@@ -1879,7 +1879,7 @@ static void test_token_attr(void)
     for (i = 0; i < Privileges->PrivilegeCount; i++)
     {
         CHAR Name[256];
-        DWORD NameLen = sizeof(Name)/sizeof(Name[0]);
+        DWORD NameLen = ARRAY_SIZE(Name);
         LookupPrivilegeNameA(NULL, &Privileges->Privileges[i].Luid, Name, &NameLen);
         trace("\t%s, 0x%x\n", Name, Privileges->Privileges[i].Attributes);
     }
@@ -2072,7 +2072,7 @@ static void test_CreateWellKnownSid(void)
     /* a domain sid usually have three subauthorities but we test that CreateWellKnownSid doesn't check it */
     AllocateAndInitializeSid(&ident, 6, SECURITY_NT_NON_UNIQUE, 12, 23, 34, 45, 56, 0, 0, &domainsid);
 
-    for (i = 0; i < sizeof(well_known_sid_values)/sizeof(well_known_sid_values[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(well_known_sid_values); i++)
     {
         const struct well_known_sid_value *value = &well_known_sid_values[i];
         char sid_buffer[SECURITY_MAX_SID_SIZE];
@@ -3559,7 +3559,7 @@ static void test_CreateDirectoryA(void)
     sa.bInheritHandle = TRUE;
     InitializeSecurityDescriptor(pSD, SECURITY_DESCRIPTOR_REVISION);
     pCreateWellKnownSid(WinBuiltinAdministratorsSid, NULL, admin_sid, &sid_size);
-    pDacl = HeapAlloc(GetProcessHeap(), 0, 100);
+    pDacl = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, 100);
     bret = InitializeAcl(pDacl, 100, ACL_REVISION);
     ok(bret, "Failed to initialize ACL.\n");
     bret = pAddAccessAllowedAceEx(pDacl, ACL_REVISION, OBJECT_INHERIT_ACE|CONTAINER_INHERIT_ACE,
@@ -4193,7 +4193,7 @@ static void test_ConvertStringSecurityDescriptor(void)
         return;
     }
 
-    for (i = 0; i < sizeof(cssd)/sizeof(cssd[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(cssd); i++)
     {
         DWORD GLE;
 
@@ -5330,7 +5330,7 @@ static void test_mutex_security(HANDLE token)
     access = get_obj_access(mutex);
     ok(access == MUTANT_ALL_ACCESS, "expected MUTANT_ALL_ACCESS, got %#x\n", access);
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         SetLastError( 0xdeadbeef );
         ret = DuplicateHandle(GetCurrentProcess(), mutex, GetCurrentProcess(), &dup,
@@ -5387,7 +5387,7 @@ static void test_event_security(HANDLE token)
     access = get_obj_access(event);
     ok(access == EVENT_ALL_ACCESS, "expected EVENT_ALL_ACCESS, got %#x\n", access);
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         SetLastError( 0xdeadbeef );
         ret = DuplicateHandle(GetCurrentProcess(), event, GetCurrentProcess(), &dup,
@@ -5444,7 +5444,7 @@ static void test_semaphore_security(HANDLE token)
     access = get_obj_access(sem);
     ok(access == SEMAPHORE_ALL_ACCESS, "expected SEMAPHORE_ALL_ACCESS, got %#x\n", access);
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         SetLastError( 0xdeadbeef );
         ret = DuplicateHandle(GetCurrentProcess(), sem, GetCurrentProcess(), &dup,
@@ -5497,7 +5497,7 @@ static void test_named_pipe_security(HANDLE token)
     };
 
     /* Test the different security access options for pipes */
-    for (i = 0; i < sizeof(creation_access)/sizeof(creation_access[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(creation_access); i++)
     {
         SetLastError(0xdeadbeef);
         pipe = CreateNamedPipeA(WINE_TEST_PIPE, creation_access[i].open_mode,
@@ -5527,7 +5527,7 @@ static void test_named_pipe_security(HANDLE token)
     access = get_obj_access(file);
     ok(access == FILE_ALL_ACCESS, "expected FILE_ALL_ACCESS, got %#x\n", access);
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         SetLastError( 0xdeadbeef );
         ret = DuplicateHandle(GetCurrentProcess(), file, GetCurrentProcess(), &dup,
@@ -5552,7 +5552,7 @@ static void test_named_pipe_security(HANDLE token)
         access = get_obj_access(file);
         ok(access == FILE_ALL_ACCESS, "expected FILE_ALL_ACCESS, got %#x\n", access);
 
-        for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+        for (i = 0; i < ARRAY_SIZE(map); i++)
         {
             SetLastError( 0xdeadbeef );
             ret = DuplicateHandle(GetCurrentProcess(), file, GetCurrentProcess(), &dup,
@@ -5600,7 +5600,7 @@ static void test_file_security(HANDLE token)
     access = get_obj_access(file);
     ok(access == FILE_ALL_ACCESS, "expected FILE_ALL_ACCESS, got %#x\n", access);
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         SetLastError( 0xdeadbeef );
         ret = DuplicateHandle(GetCurrentProcess(), file, GetCurrentProcess(), &dup,
@@ -5658,7 +5658,7 @@ todo_wine
     access = get_obj_access(file);
     ok(access == FILE_ALL_ACCESS, "expected FILE_ALL_ACCESS, got %#x\n", access);
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         SetLastError( 0xdeadbeef );
         ret = DuplicateHandle(GetCurrentProcess(), file, GetCurrentProcess(), &dup,
@@ -5742,7 +5742,7 @@ static void test_filemap_security(void)
     SetFilePointer(file, 4096, NULL, FILE_BEGIN);
     SetEndOfFile(file);
 
-    for (i = 0; i < sizeof(prot_map)/sizeof(prot_map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(prot_map); i++)
     {
         if (map[i].open_only) continue;
 
@@ -5790,7 +5790,7 @@ static void test_filemap_security(void)
     ok(access == (STANDARD_RIGHTS_REQUIRED | SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE),
        "expected STANDARD_RIGHTS_REQUIRED | SECTION_QUERY | SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, got %#x\n", access);
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         if (map[i].open_only) continue;
 
@@ -5813,7 +5813,7 @@ static void test_filemap_security(void)
                                          "Wine Test Open Mapping");
     ok(created_mapping != NULL, "CreateFileMapping failed with error %u\n", GetLastError());
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         if (!map[i].generic) continue;
 
@@ -5851,7 +5851,7 @@ static void test_thread_security(void)
     access = get_obj_access(thread);
     ok(access == THREAD_ALL_ACCESS_NT4 || access == THREAD_ALL_ACCESS_VISTA, "expected THREAD_ALL_ACCESS, got %#x\n", access);
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         SetLastError( 0xdeadbeef );
         ret = DuplicateHandle(GetCurrentProcess(), thread, GetCurrentProcess(), &dup,
@@ -5933,7 +5933,7 @@ static void test_process_access(void)
     access = get_obj_access(process);
     ok(access == PROCESS_ALL_ACCESS_NT4 || access == PROCESS_ALL_ACCESS_VISTA, "expected PROCESS_ALL_ACCESS, got %#x\n", access);
 
-    for (i = 0; i < sizeof(map)/sizeof(map[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(map); i++)
     {
         SetLastError( 0xdeadbeef );
         ret = DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &dup,
@@ -6306,6 +6306,7 @@ static void test_AddMandatoryAce(void)
     HeapFree(GetProcessHeap(), 0, sd2);
     CloseHandle(handle);
 
+    memset(buffer_acl, 0, sizeof(buffer_acl));
     ret = InitializeAcl(acl, 256, ACL_REVISION);
     ok(ret, "InitializeAcl failed with %u\n", GetLastError());
 
@@ -6570,6 +6571,8 @@ static void test_system_security_access(void)
     /* privilege is checked on access */
     err = GetSecurityInfo( hkey, SE_REGISTRY_KEY, SACL_SECURITY_INFORMATION, NULL, NULL, NULL, &sacl, &sd );
     todo_wine ok( err == ERROR_PRIVILEGE_NOT_HELD, "got %u\n", err );
+    if (err == ERROR_SUCCESS)
+        LocalFree( sd );
 
     priv.PrivilegeCount = 1;
     priv.Privileges[0].Luid = luid;
@@ -6792,6 +6795,7 @@ static void test_maximum_allowed(void)
 
     ret = InitializeSecurityDescriptor(sd, SECURITY_DESCRIPTOR_REVISION);
     ok(ret, "InitializeSecurityDescriptor failed with %u\n", GetLastError());
+    memset(buffer_acl, 0, sizeof(buffer_acl));
     ret = InitializeAcl(acl, 256, ACL_REVISION);
     ok(ret, "InitializeAcl failed with %u\n", GetLastError());
     ret = SetSecurityDescriptorDacl(sd, TRUE, acl, FALSE);
@@ -6921,6 +6925,7 @@ static void test_token_security_descriptor(void)
     ret = InitializeSecurityDescriptor(sd, SECURITY_DESCRIPTOR_REVISION);
     ok(ret, "InitializeSecurityDescriptor failed with error %u\n", GetLastError());
 
+    memset(buffer_acl, 0, sizeof(buffer_acl));
     ret = InitializeAcl(acl, 256, ACL_REVISION);
     ok(ret, "InitializeAcl failed with error %u\n", GetLastError());
 
@@ -7082,6 +7087,7 @@ static void test_token_security_descriptor(void)
     CloseHandle(info.hThread);
 
     LocalFree(acl_child);
+    HeapFree(GetProcessHeap(), 0, sd2);
     LocalFree(psid);
 
     CloseHandle(token3);
@@ -7308,6 +7314,42 @@ static void test_GetExplicitEntriesFromAclW(void)
     HeapFree(GetProcessHeap(), 0, old_acl);
 }
 
+static void test_BuildSecurityDescriptorW(void)
+{
+    SECURITY_DESCRIPTOR old_sd, *new_sd, *rel_sd;
+    ULONG new_sd_size;
+    DWORD buf_size;
+    char buf[1024];
+    BOOL success;
+    DWORD ret;
+
+    InitializeSecurityDescriptor(&old_sd, SECURITY_DESCRIPTOR_REVISION);
+
+    buf_size = sizeof(buf);
+    rel_sd = (SECURITY_DESCRIPTOR *)buf;
+    success = MakeSelfRelativeSD(&old_sd, rel_sd, &buf_size);
+    ok(success, "MakeSelfRelativeSD failed with %u\n", GetLastError());
+
+    new_sd = NULL;
+    new_sd_size = 0;
+    ret = BuildSecurityDescriptorW(NULL, NULL, 0, NULL, 0, NULL, NULL, &new_sd_size, (void **)&new_sd);
+    ok(ret == ERROR_SUCCESS, "BuildSecurityDescriptor failed with %u\n", ret);
+    ok(new_sd != NULL, "expected new_sd != NULL\n");
+    LocalFree(new_sd);
+
+    new_sd = (void *)0xdeadbeef;
+    ret = BuildSecurityDescriptorW(NULL, NULL, 0, NULL, 0, NULL, &old_sd, &new_sd_size, (void **)&new_sd);
+    ok(ret == ERROR_INVALID_SECURITY_DESCR, "expected ERROR_INVALID_SECURITY_DESCR, got %u\n", ret);
+    ok(new_sd == (void *)0xdeadbeef, "expected new_sd == 0xdeadbeef, got %p\n", new_sd);
+
+    new_sd = NULL;
+    new_sd_size = 0;
+    ret = BuildSecurityDescriptorW(NULL, NULL, 0, NULL, 0, NULL, rel_sd, &new_sd_size, (void **)&new_sd);
+    ok(ret == ERROR_SUCCESS, "BuildSecurityDescriptor failed with %u\n", ret);
+    ok(new_sd != NULL, "expected new_sd != NULL\n");
+    LocalFree(new_sd);
+}
+
 START_TEST(security)
 {
     init();
@@ -7362,6 +7404,7 @@ START_TEST(security)
     test_maximum_allowed();
     test_token_label();
     test_GetExplicitEntriesFromAclW();
+    test_BuildSecurityDescriptorW();
 
     /* Must be the last test, modifies process token */
     test_token_security_descriptor();

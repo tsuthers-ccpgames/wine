@@ -271,9 +271,9 @@
 @ cdecl -arch=arm ??0Init@ios_base@std@@QAA@XZ(ptr) msvcp120.??0Init@ios_base@std@@QAA@XZ
 @ thiscall -arch=i386 ??0Init@ios_base@std@@QAE@XZ(ptr) msvcp120.??0Init@ios_base@std@@QAE@XZ
 @ cdecl -arch=win64 ??0Init@ios_base@std@@QEAA@XZ(ptr) msvcp120.??0Init@ios_base@std@@QEAA@XZ
-@ stub -arch=arm ??0_Concurrent_queue_base_v4@details@Concurrency@@IAA@I@Z
-@ stub -arch=i386 ??0_Concurrent_queue_base_v4@details@Concurrency@@IAE@I@Z
-@ stub -arch=win64 ??0_Concurrent_queue_base_v4@details@Concurrency@@IEAA@_K@Z
+@ cdecl -arch=arm ??0_Concurrent_queue_base_v4@details@Concurrency@@IAA@I@Z(ptr long) msvcp120.??0_Concurrent_queue_base_v4@details@Concurrency@@IAA@I@Z
+@ thiscall -arch=i386 ??0_Concurrent_queue_base_v4@details@Concurrency@@IAE@I@Z(ptr long) msvcp120.??0_Concurrent_queue_base_v4@details@Concurrency@@IAE@I@Z
+@ cdecl -arch=win64 ??0_Concurrent_queue_base_v4@details@Concurrency@@IEAA@_K@Z(ptr long) msvcp120.??0_Concurrent_queue_base_v4@details@Concurrency@@IEAA@_K@Z
 @ stub -arch=arm ??0_Concurrent_queue_iterator_base_v4@details@Concurrency@@IAA@ABV_Concurrent_queue_base_v4@12@@Z
 @ stub -arch=i386 ??0_Concurrent_queue_iterator_base_v4@details@Concurrency@@IAE@ABV_Concurrent_queue_base_v4@12@@Z
 @ stub -arch=win64 ??0_Concurrent_queue_iterator_base_v4@details@Concurrency@@IEAA@AEBV_Concurrent_queue_base_v4@12@@Z
@@ -316,12 +316,12 @@
 @ cdecl -arch=arm ??0_Pad@std@@QAA@XZ(ptr) msvcp120.??0_Pad@std@@QAA@XZ
 @ thiscall -arch=i386 ??0_Pad@std@@QAE@XZ(ptr) msvcp120.??0_Pad@std@@QAE@XZ
 @ cdecl -arch=win64 ??0_Pad@std@@QEAA@XZ(ptr) msvcp120.??0_Pad@std@@QEAA@XZ
-@ stub -arch=arm ??0_Runtime_object@details@Concurrency@@QAA@H@Z
-@ stub -arch=i386 ??0_Runtime_object@details@Concurrency@@QAE@H@Z
-@ stub -arch=win64 ??0_Runtime_object@details@Concurrency@@QEAA@H@Z
-@ stub -arch=arm ??0_Runtime_object@details@Concurrency@@QAA@XZ
-@ stub -arch=i386 ??0_Runtime_object@details@Concurrency@@QAE@XZ
-@ stub -arch=win64 ??0_Runtime_object@details@Concurrency@@QEAA@XZ
+@ cdecl -arch=arm ??0_Runtime_object@details@Concurrency@@QAA@H@Z(ptr long) msvcp120.??0_Runtime_object@details@Concurrency@@QAA@H@Z
+@ thiscall -arch=i386 ??0_Runtime_object@details@Concurrency@@QAE@H@Z(ptr long) msvcp120.??0_Runtime_object@details@Concurrency@@QAE@H@Z
+@ cdecl -arch=win64 ??0_Runtime_object@details@Concurrency@@QEAA@H@Z(ptr long) msvcp120.??0_Runtime_object@details@Concurrency@@QEAA@H@Z
+@ cdecl -arch=arm ??0_Runtime_object@details@Concurrency@@QAA@XZ(ptr) msvcp120.??0_Runtime_object@details@Concurrency@@QAA@XZ
+@ thiscall -arch=i386 ??0_Runtime_object@details@Concurrency@@QAE@XZ(ptr) msvcp120.??0_Runtime_object@details@Concurrency@@QAE@XZ
+@ cdecl -arch=win64 ??0_Runtime_object@details@Concurrency@@QEAA@XZ(ptr) msvcp120.??0_Runtime_object@details@Concurrency@@QEAA@XZ
 @ cdecl -arch=arm ??0_Timevec@std@@QAA@ABV01@@Z(ptr ptr) msvcp120.??0_Timevec@std@@QAA@ABV01@@Z
 @ thiscall -arch=i386 ??0_Timevec@std@@QAE@ABV01@@Z(ptr ptr) msvcp120.??0_Timevec@std@@QAE@ABV01@@Z
 @ cdecl -arch=win64 ??0_Timevec@std@@QEAA@AEBV01@@Z(ptr ptr) msvcp120.??0_Timevec@std@@QEAA@AEBV01@@Z
@@ -469,15 +469,15 @@
 @ cdecl -arch=arm ??1Init@ios_base@std@@QAA@XZ(ptr) msvcp120.??1Init@ios_base@std@@QAA@XZ
 @ thiscall -arch=i386 ??1Init@ios_base@std@@QAE@XZ(ptr) msvcp120.??1Init@ios_base@std@@QAE@XZ
 @ cdecl -arch=win64 ??1Init@ios_base@std@@QEAA@XZ(ptr) msvcp120.??1Init@ios_base@std@@QEAA@XZ
-@ stub -arch=arm ??1_Concurrent_queue_base_v4@details@Concurrency@@MAA@XZ
-@ stub -arch=i386 ??1_Concurrent_queue_base_v4@details@Concurrency@@MAE@XZ
-@ stub -arch=win64 ??1_Concurrent_queue_base_v4@details@Concurrency@@MEAA@XZ
+@ cdecl -arch=arm ??1_Concurrent_queue_base_v4@details@Concurrency@@MAA@XZ(ptr) msvcp120.??1_Concurrent_queue_base_v4@details@Concurrency@@MAA@XZ
+@ thiscall -arch=i386 ??1_Concurrent_queue_base_v4@details@Concurrency@@MAE@XZ(ptr) msvcp120.??1_Concurrent_queue_base_v4@details@Concurrency@@MAE@XZ
+@ cdecl -arch=win64 ??1_Concurrent_queue_base_v4@details@Concurrency@@MEAA@XZ(ptr) msvcp120.??1_Concurrent_queue_base_v4@details@Concurrency@@MEAA@XZ
 @ stub -arch=arm ??1_Concurrent_queue_iterator_base_v4@details@Concurrency@@IAA@XZ
 @ stub -arch=i386 ??1_Concurrent_queue_iterator_base_v4@details@Concurrency@@IAE@XZ
 @ stub -arch=win64 ??1_Concurrent_queue_iterator_base_v4@details@Concurrency@@IEAA@XZ
-@ stub -arch=arm ??1_Concurrent_vector_base_v4@details@Concurrency@@IAA@XZ
-@ stub -arch=i386 ??1_Concurrent_vector_base_v4@details@Concurrency@@IAE@XZ
-@ stub -arch=win64 ??1_Concurrent_vector_base_v4@details@Concurrency@@IEAA@XZ
+@ cdecl -arch=arm ??1_Concurrent_vector_base_v4@details@Concurrency@@IAA@XZ(ptr) msvcp120.??1_Concurrent_vector_base_v4@details@Concurrency@@IAA@XZ
+@ thiscall -arch=i386 ??1_Concurrent_vector_base_v4@details@Concurrency@@IAE@XZ(ptr) msvcp120.??1_Concurrent_vector_base_v4@details@Concurrency@@IAE@XZ
+@ cdecl -arch=win64 ??1_Concurrent_vector_base_v4@details@Concurrency@@IEAA@XZ(ptr) msvcp120.??1_Concurrent_vector_base_v4@details@Concurrency@@IEAA@XZ
 @ cdecl -arch=arm ??1_Container_base12@std@@QAA@XZ(ptr) msvcp120.??1_Container_base12@std@@QAA@XZ
 @ thiscall -arch=i386 ??1_Container_base12@std@@QAE@XZ(ptr) msvcp120.??1_Container_base12@std@@QAE@XZ
 @ cdecl -arch=win64 ??1_Container_base12@std@@QEAA@XZ(ptr) msvcp120.??1_Container_base12@std@@QEAA@XZ
@@ -1443,63 +1443,63 @@
 @ stub -arch=win64 ?_Init_locks_ctor@_Init_locks@std@@CAXPEAV12@@Z
 @ stub -arch=win32 ?_Init_locks_dtor@_Init_locks@std@@CAXPAV12@@Z
 @ stub -arch=win64 ?_Init_locks_dtor@_Init_locks@std@@CAXPEAV12@@Z
-@ stub -arch=arm ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAAXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z
-@ stub -arch=i386 ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z
-@ stub -arch=win64 ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAX1@ZP6AX2PEBX1@Z5@Z
-@ stub -arch=arm ?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IBAIXZ
-@ stub -arch=i386 ?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IBEIXZ
-@ stub -arch=win64 ?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IEBA_KXZ
-@ stub -arch=arm ?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IAAIP6AXPAXI@Z@Z
-@ stub -arch=i386 ?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IAEIP6AXPAXI@Z@Z
-@ stub -arch=win64 ?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_KP6AXPEAX_K@Z@Z
-@ stub -arch=arm ?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IAAPAXIPAXP6AX0I@ZP6AX0PBXI@Z@Z
-@ stub -arch=i386 ?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIPAXP6AX0I@ZP6AX0PBXI@Z@Z
-@ stub -arch=win64 ?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KPEAXP6AX10@ZP6AX1PEBX0@Z@Z
-@ stub -arch=arm ?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IAAXABV123@IP6AXPAXPBXI@Z@Z
-@ stub -arch=i386 ?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXPBXI@Z@Z
-@ stub -arch=win64 ?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAXPEBX1@Z@Z
-@ stub -arch=arm ?_Internal_empty@_Concurrent_queue_base_v4@details@Concurrency@@IBA_NXZ
-@ stub -arch=i386 ?_Internal_empty@_Concurrent_queue_base_v4@details@Concurrency@@IBE_NXZ
-@ stub -arch=win64 ?_Internal_empty@_Concurrent_queue_base_v4@details@Concurrency@@IEBA_NXZ
-@ stub -arch=arm ?_Internal_finish_clear@_Concurrent_queue_base_v4@details@Concurrency@@IAAXXZ
-@ stub -arch=i386 ?_Internal_finish_clear@_Concurrent_queue_base_v4@details@Concurrency@@IAEXXZ
-@ stub -arch=win64 ?_Internal_finish_clear@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXXZ
-@ stub -arch=arm ?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IAAIIIP6AXPAXPBXI@Z1@Z
-@ stub -arch=i386 ?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z
-@ stub -arch=win64 ?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_K_K0P6AXPEAXPEBX0@Z2@Z
-@ stub -arch=arm ?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IAAIIIP6AXPAXPBXI@Z1@Z
-@ stub -arch=i386 ?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z
-@ stub -arch=win64 ?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_K_K0P6AXPEAXPEBX0@Z2@Z
-@ stub -arch=arm ?_Internal_move_push@_Concurrent_queue_base_v4@details@Concurrency@@IAAXPAX@Z
-@ stub -arch=i386 ?_Internal_move_push@_Concurrent_queue_base_v4@details@Concurrency@@IAEXPAX@Z
-@ stub -arch=win64 ?_Internal_move_push@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXPEAX@Z
-@ stub -arch=arm ?_Internal_pop_if_present@_Concurrent_queue_base_v4@details@Concurrency@@IAA_NPAX@Z
-@ stub -arch=i386 ?_Internal_pop_if_present@_Concurrent_queue_base_v4@details@Concurrency@@IAE_NPAX@Z
-@ stub -arch=win64 ?_Internal_pop_if_present@_Concurrent_queue_base_v4@details@Concurrency@@IEAA_NPEAX@Z
-@ stub -arch=arm ?_Internal_push@_Concurrent_queue_base_v4@details@Concurrency@@IAAXPBX@Z
-@ stub -arch=i386 ?_Internal_push@_Concurrent_queue_base_v4@details@Concurrency@@IAEXPBX@Z
-@ stub -arch=win64 ?_Internal_push@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXPEBX@Z
-@ stub -arch=arm ?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IAAPAXIAAI@Z
-@ stub -arch=i386 ?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIAAI@Z
-@ stub -arch=win64 ?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KAEA_K@Z
-@ stub -arch=arm ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAAXIII@Z
-@ stub -arch=i386 ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIII@Z
-@ stub -arch=win64 ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00@Z
-@ stub -arch=arm ?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IAAXIIIP6AXPAXI@ZP6AX0PBXI@Z2@Z
-@ stub -arch=i386 ?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIIIP6AXPAXI@ZP6AX0PBXI@Z2@Z
-@ stub -arch=win64 ?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00P6AXPEAX0@ZP6AX1PEBX0@Z3@Z
-@ stub -arch=arm ?_Internal_size@_Concurrent_queue_base_v4@details@Concurrency@@IBAIXZ
-@ stub -arch=i386 ?_Internal_size@_Concurrent_queue_base_v4@details@Concurrency@@IBEIXZ
-@ stub -arch=win64 ?_Internal_size@_Concurrent_queue_base_v4@details@Concurrency@@IEBA_KXZ
-@ stub -arch=arm ?_Internal_swap@_Concurrent_queue_base_v4@details@Concurrency@@IAAXAAV123@@Z
-@ stub -arch=i386 ?_Internal_swap@_Concurrent_queue_base_v4@details@Concurrency@@IAEXAAV123@@Z
-@ stub -arch=win64 ?_Internal_swap@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXAEAV123@@Z
-@ stub -arch=arm ?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IAAXAAV123@@Z
-@ stub -arch=i386 ?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IAEXAAV123@@Z
-@ stub -arch=win64 ?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEAV123@@Z
-@ stub -arch=arm ?_Internal_throw_exception@_Concurrent_queue_base_v4@details@Concurrency@@IBAXXZ
-@ stub -arch=i386 ?_Internal_throw_exception@_Concurrent_queue_base_v4@details@Concurrency@@IBEXXZ
-@ stub -arch=win64 ?_Internal_throw_exception@_Concurrent_queue_base_v4@details@Concurrency@@IEBAXXZ
+@ cdecl -arch=arm ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAAXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z(ptr ptr long ptr ptr ptr) msvcp120.?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAAXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z
+@ thiscall -arch=i386 ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z(ptr ptr long ptr ptr ptr) msvcp120.?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z
+@ cdecl -arch=win64 ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAX1@ZP6AX2PEBX1@Z5@Z(ptr ptr long ptr ptr ptr) msvcp120.?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAX1@ZP6AX2PEBX1@Z5@Z
+@ cdecl -arch=arm ?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IBAIXZ(ptr) msvcp120.?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IBAIXZ
+@ thiscall -arch=i386 ?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IBEIXZ(ptr) msvcp120.?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IBEIXZ
+@ cdecl -arch=win64 ?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IEBA_KXZ(ptr) msvcp120.?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IEBA_KXZ
+@ cdecl -arch=arm ?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IAAIP6AXPAXI@Z@Z(ptr ptr) msvcp120.?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IAAIP6AXPAXI@Z@Z
+@ thiscall -arch=i386 ?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IAEIP6AXPAXI@Z@Z(ptr ptr) msvcp120.?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IAEIP6AXPAXI@Z@Z
+@ cdecl -arch=win64 ?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_KP6AXPEAX_K@Z@Z(ptr ptr) msvcp120.?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_KP6AXPEAX_K@Z@Z
+@ cdecl -arch=arm ?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IAAPAXIPAXP6AX0I@ZP6AX0PBXI@Z@Z(ptr long ptr ptr ptr) msvcp120.?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IAAPAXIPAXP6AX0I@ZP6AX0PBXI@Z@Z
+@ thiscall -arch=i386 ?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIPAXP6AX0I@ZP6AX0PBXI@Z@Z(ptr long ptr ptr ptr) msvcp120.?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIPAXP6AX0I@ZP6AX0PBXI@Z@Z
+@ cdecl -arch=win64 ?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KPEAXP6AX10@ZP6AX1PEBX0@Z@Z(ptr long ptr ptr ptr) msvcp120.?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KPEAXP6AX10@ZP6AX1PEBX0@Z@Z
+@ cdecl -arch=arm ?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IAAXABV123@IP6AXPAXPBXI@Z@Z(ptr ptr long ptr) msvcp120.?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IAAXABV123@IP6AXPAXPBXI@Z@Z
+@ thiscall -arch=i386 ?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXPBXI@Z@Z(ptr ptr long ptr) msvcp120.?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXPBXI@Z@Z
+@ cdecl -arch=win64 ?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAXPEBX1@Z@Z(ptr ptr long ptr) msvcp120.?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAXPEBX1@Z@Z
+@ cdecl -arch=arm ?_Internal_empty@_Concurrent_queue_base_v4@details@Concurrency@@IBA_NXZ(ptr) msvcp120.?_Internal_empty@_Concurrent_queue_base_v4@details@Concurrency@@IBA_NXZ
+@ thiscall -arch=i386 ?_Internal_empty@_Concurrent_queue_base_v4@details@Concurrency@@IBE_NXZ(ptr) msvcp120.?_Internal_empty@_Concurrent_queue_base_v4@details@Concurrency@@IBE_NXZ
+@ cdecl -arch=win64 ?_Internal_empty@_Concurrent_queue_base_v4@details@Concurrency@@IEBA_NXZ(ptr) msvcp120.?_Internal_empty@_Concurrent_queue_base_v4@details@Concurrency@@IEBA_NXZ
+@ cdecl -arch=arm ?_Internal_finish_clear@_Concurrent_queue_base_v4@details@Concurrency@@IAAXXZ(ptr) msvcp120.?_Internal_finish_clear@_Concurrent_queue_base_v4@details@Concurrency@@IAAXXZ
+@ thiscall -arch=i386 ?_Internal_finish_clear@_Concurrent_queue_base_v4@details@Concurrency@@IAEXXZ(ptr) msvcp120.?_Internal_finish_clear@_Concurrent_queue_base_v4@details@Concurrency@@IAEXXZ
+@ cdecl -arch=win64 ?_Internal_finish_clear@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXXZ(ptr) msvcp120.?_Internal_finish_clear@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXXZ
+@ cdecl -arch=arm ?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IAAIIIP6AXPAXPBXI@Z1@Z(ptr long long ptr ptr) msvcp120.?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IAAIIIP6AXPAXPBXI@Z1@Z
+@ thiscall -arch=i386 ?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z(ptr long long ptr ptr) msvcp120.?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z
+@ cdecl -arch=win64 ?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_K_K0P6AXPEAXPEBX0@Z2@Z(ptr long long ptr ptr) msvcp120.?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_K_K0P6AXPEAXPEBX0@Z2@Z
+@ cdecl -arch=arm ?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IAAIIIP6AXPAXPBXI@Z1@Z(ptr long long ptr ptr) msvcp120.?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IAAIIIP6AXPAXPBXI@Z1@Z
+@ thiscall -arch=i386 ?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z(ptr long long ptr ptr) msvcp120.?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z
+@ cdecl -arch=win64 ?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_K_K0P6AXPEAXPEBX0@Z2@Z(ptr long long ptr ptr) msvcp120.?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_K_K0P6AXPEAXPEBX0@Z2@Z
+@ cdecl -arch=arm ?_Internal_move_push@_Concurrent_queue_base_v4@details@Concurrency@@IAAXPAX@Z(ptr ptr) msvcp120.?_Internal_move_push@_Concurrent_queue_base_v4@details@Concurrency@@IAAXPAX@Z
+@ thiscall -arch=i386 ?_Internal_move_push@_Concurrent_queue_base_v4@details@Concurrency@@IAEXPAX@Z(ptr ptr) msvcp120.?_Internal_move_push@_Concurrent_queue_base_v4@details@Concurrency@@IAEXPAX@Z
+@ cdecl -arch=win64 ?_Internal_move_push@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXPEAX@Z(ptr ptr) msvcp120.?_Internal_move_push@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXPEAX@Z
+@ cdecl -arch=arm ?_Internal_pop_if_present@_Concurrent_queue_base_v4@details@Concurrency@@IAA_NPAX@Z(ptr ptr) msvcp120.?_Internal_pop_if_present@_Concurrent_queue_base_v4@details@Concurrency@@IAA_NPAX@Z
+@ thiscall -arch=i386 ?_Internal_pop_if_present@_Concurrent_queue_base_v4@details@Concurrency@@IAE_NPAX@Z(ptr ptr) msvcp120.?_Internal_pop_if_present@_Concurrent_queue_base_v4@details@Concurrency@@IAE_NPAX@Z
+@ cdecl -arch=win64 ?_Internal_pop_if_present@_Concurrent_queue_base_v4@details@Concurrency@@IEAA_NPEAX@Z(ptr ptr) msvcp120.?_Internal_pop_if_present@_Concurrent_queue_base_v4@details@Concurrency@@IEAA_NPEAX@Z
+@ cdecl -arch=arm ?_Internal_push@_Concurrent_queue_base_v4@details@Concurrency@@IAAXPBX@Z(ptr ptr) msvcp120.?_Internal_push@_Concurrent_queue_base_v4@details@Concurrency@@IAAXPBX@Z
+@ thiscall -arch=i386 ?_Internal_push@_Concurrent_queue_base_v4@details@Concurrency@@IAEXPBX@Z(ptr ptr) msvcp120.?_Internal_push@_Concurrent_queue_base_v4@details@Concurrency@@IAEXPBX@Z
+@ cdecl -arch=win64 ?_Internal_push@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXPEBX@Z(ptr ptr) msvcp120.?_Internal_push@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXPEBX@Z
+@ cdecl -arch=arm ?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IAAPAXIAAI@Z(ptr long long) msvcp120.?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IAAPAXIAAI@Z
+@ thiscall -arch=i386 ?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIAAI@Z(ptr long long) msvcp120.?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIAAI@Z
+@ cdecl -arch=win64 ?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KAEA_K@Z(ptr long long) msvcp120.?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KAEA_K@Z
+@ cdecl -arch=arm ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAAXIII@Z(ptr long long long) msvcp120.?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAAXIII@Z
+@ thiscall -arch=i386 ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIII@Z(ptr long long long) msvcp120.?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIII@Z
+@ cdecl -arch=win64 ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00@Z(ptr long long long) msvcp120.?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00@Z
+@ cdecl -arch=arm ?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IAAXIIIP6AXPAXI@ZP6AX0PBXI@Z2@Z(ptr long long long ptr ptr ptr) msvcp120.?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IAAXIIIP6AXPAXI@ZP6AX0PBXI@Z2@Z
+@ thiscall -arch=i386 ?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIIIP6AXPAXI@ZP6AX0PBXI@Z2@Z(ptr long long long ptr ptr ptr) msvcp120.?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIIIP6AXPAXI@ZP6AX0PBXI@Z2@Z
+@ cdecl -arch=win64 ?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00P6AXPEAX0@ZP6AX1PEBX0@Z3@Z(ptr long long long ptr ptr ptr) msvcp120.?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00P6AXPEAX0@ZP6AX1PEBX0@Z3@Z
+@ cdecl -arch=arm ?_Internal_size@_Concurrent_queue_base_v4@details@Concurrency@@IBAIXZ(ptr) msvcp120.?_Internal_size@_Concurrent_queue_base_v4@details@Concurrency@@IBAIXZ
+@ thiscall -arch=i386 ?_Internal_size@_Concurrent_queue_base_v4@details@Concurrency@@IBEIXZ(ptr) msvcp120.?_Internal_size@_Concurrent_queue_base_v4@details@Concurrency@@IBEIXZ
+@ cdecl -arch=win64 ?_Internal_size@_Concurrent_queue_base_v4@details@Concurrency@@IEBA_KXZ(ptr) msvcp120.?_Internal_size@_Concurrent_queue_base_v4@details@Concurrency@@IEBA_KXZ
+@ cdecl -arch=arm ?_Internal_swap@_Concurrent_queue_base_v4@details@Concurrency@@IAAXAAV123@@Z(ptr ptr) msvcp120.?_Internal_swap@_Concurrent_queue_base_v4@details@Concurrency@@IAAXAAV123@@Z
+@ thiscall -arch=i386 ?_Internal_swap@_Concurrent_queue_base_v4@details@Concurrency@@IAEXAAV123@@Z(ptr ptr) msvcp120.?_Internal_swap@_Concurrent_queue_base_v4@details@Concurrency@@IAEXAAV123@@Z
+@ cdecl -arch=win64 ?_Internal_swap@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXAEAV123@@Z(ptr ptr) msvcp120.?_Internal_swap@_Concurrent_queue_base_v4@details@Concurrency@@IEAAXAEAV123@@Z
+@ cdecl -arch=arm ?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IAAXAAV123@@Z(ptr ptr) msvcp120.?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IAAXAAV123@@Z
+@ thiscall -arch=i386 ?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IAEXAAV123@@Z(ptr ptr) msvcp120.?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IAEXAAV123@@Z
+@ cdecl -arch=win64 ?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEAV123@@Z(ptr ptr) msvcp120.?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEAV123@@Z
+@ cdecl -arch=arm ?_Internal_throw_exception@_Concurrent_queue_base_v4@details@Concurrency@@IBAXXZ(ptr) msvcp120.?_Internal_throw_exception@_Concurrent_queue_base_v4@details@Concurrency@@IBAXXZ
+@ thiscall -arch=i386 ?_Internal_throw_exception@_Concurrent_queue_base_v4@details@Concurrency@@IBEXXZ(ptr) msvcp120.?_Internal_throw_exception@_Concurrent_queue_base_v4@details@Concurrency@@IBEXXZ
+@ cdecl -arch=win64 ?_Internal_throw_exception@_Concurrent_queue_base_v4@details@Concurrency@@IEBAXXZ(ptr) msvcp120.?_Internal_throw_exception@_Concurrent_queue_base_v4@details@Concurrency@@IEBAXXZ
 @ cdecl -arch=arm ?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IBAXI@Z(ptr long) msvcp120.?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IBAXI@Z
 @ thiscall -arch=i386 ?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IBEXI@Z(ptr long) msvcp120.?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IBEXI@Z
 @ cdecl -arch=win64 ?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IEBAX_K@Z(ptr long) msvcp120.?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IEBAX_K@Z
@@ -3804,12 +3804,12 @@
 @ stub _Strxfrm
 @ stub _Thrd_abort
 @ cdecl _Thrd_create(ptr ptr ptr) msvcp120._Thrd_create
-@ cdecl _Thrd_current() msvcp120._Thrd_current
-@ cdecl _Thrd_detach(ptr) msvcp120._Thrd_detach
-@ cdecl _Thrd_equal(ptr ptr) msvcp120._Thrd_equal
+@ cdecl -norelay _Thrd_current() msvcp120._Thrd_current
+@ cdecl _Thrd_detach(int64) msvcp120._Thrd_detach
+@ cdecl _Thrd_equal(int64 int64) msvcp120._Thrd_equal
 @ stub _Thrd_exit
-@ cdecl _Thrd_join(ptr long) msvcp120._Thrd_join
-@ cdecl _Thrd_lt(ptr ptr) msvcp120._Thrd_lt
+@ cdecl _Thrd_join(int64 long) msvcp120._Thrd_join
+@ cdecl _Thrd_lt(int64 int64) msvcp120._Thrd_lt
 @ cdecl _Thrd_sleep(ptr) msvcp120._Thrd_sleep
 @ cdecl _Thrd_start(ptr ptr ptr) msvcp120._Thrd_start
 @ cdecl _Thrd_yield() msvcp120._Thrd_yield

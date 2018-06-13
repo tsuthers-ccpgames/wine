@@ -114,7 +114,7 @@
  119 stdcall -ordinal IsLFNDrive(ptr) IsLFNDriveAW
  120 stdcall -noname FileMenu_AbortInitMenu()
  121 stdcall -noname SHFlushClipboard()
- 122 stdcall -private @(long long ptr str long) shell.dll16.RunDLL_CallEntry16
+ 122 stdcall -noname RunDLL_CallEntry16(long long ptr str long)
  123 stdcall -noname SHFreeUnusedLibraries()
  124 stdcall -noname FileMenu_AppendFilesForPidl(long ptr long)
  125 stdcall -noname FileMenu_AddFilesForPidl(long long long ptr long long ptr)
@@ -259,7 +259,7 @@
 
  701 stdcall CDefFolderMenu_Create2(ptr ptr long ptr ptr ptr long ptr ptr)
  704 stdcall -noname GUIDFromStringW(wstr ptr)
- 709 stdcall SHGetSetFolderCustomSettings(ptr str long)
+ 709 stdcall SHGetSetFolderCustomSettings(ptr wstr long)
  714 stdcall @(ptr) SHELL32_714 # PathIsTemporaryW
  723 stdcall -noname SHCreateSessionKey(long ptr)
  727 stdcall SHGetImageList(long ptr ptr)
@@ -452,6 +452,7 @@
 @ stdcall Shell_NotifyIcon(long ptr) Shell_NotifyIconA
 @ stdcall Shell_NotifyIconA(long ptr)
 @ stdcall Shell_NotifyIconW(long ptr)
+@ stdcall Shell_NotifyIconGetRect(ptr ptr)
 @ stdcall StrChrA(str long) shlwapi.StrChrA
 @ stdcall StrChrIA(str long) shlwapi.StrChrIA
 @ stdcall StrChrIW(wstr long) shlwapi.StrChrIW

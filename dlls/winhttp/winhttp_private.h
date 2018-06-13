@@ -23,6 +23,7 @@
 # error You must include config.h to use this header
 #endif
 
+#include "wine/heap.h"
 #include "wine/list.h"
 #include "wine/unicode.h"
 
@@ -45,6 +46,7 @@
 
 #include "ole2.h"
 #include "sspi.h"
+#include "wincrypt.h"
 
 static const WCHAR getW[]    = {'G','E','T',0};
 static const WCHAR postW[]   = {'P','O','S','T',0};
@@ -208,6 +210,7 @@ typedef struct
     DWORD optional_len;
     netconn_t *netconn;
     DWORD security_flags;
+    const CERT_CONTEXT *server_cert;
     int resolve_timeout;
     int connect_timeout;
     int send_timeout;
@@ -322,29 +325,9 @@ void release_host( hostdata_t *host ) DECLSPEC_HIDDEN;
 extern HRESULT WinHttpRequest_create( void ** ) DECLSPEC_HIDDEN;
 void release_typelib( void ) DECLSPEC_HIDDEN;
 
-static inline void* __WINE_ALLOC_SIZE(1) heap_alloc( SIZE_T size )
-{
-    return HeapAlloc( GetProcessHeap(), 0, size );
-}
-
-static inline void* __WINE_ALLOC_SIZE(1) heap_alloc_zero( SIZE_T size )
-{
-    return HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, size );
-}
-
-static inline void* __WINE_ALLOC_SIZE(2) heap_realloc( LPVOID mem, SIZE_T size )
-{
-    return HeapReAlloc( GetProcessHeap(), 0, mem, size );
-}
-
 static inline void* __WINE_ALLOC_SIZE(2) heap_realloc_zero( LPVOID mem, SIZE_T size )
 {
     return HeapReAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, mem, size );
-}
-
-static inline BOOL heap_free( LPVOID mem )
-{
-    return HeapFree( GetProcessHeap(), 0, mem );
 }
 
 static inline WCHAR *strdupW( const WCHAR *src )

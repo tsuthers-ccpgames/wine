@@ -618,6 +618,8 @@ static void test_Startup(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     GetStartupInfoA(&si);
     okChildInt("StartupInfoA", "cb", startup.cb);
@@ -656,6 +658,8 @@ static void test_Startup(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     okChildInt("StartupInfoA", "cb", startup.cb);
     okChildString("StartupInfoA", "lpDesktop", startup.lpDesktop);
@@ -694,6 +698,8 @@ static void test_Startup(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     okChildInt("StartupInfoA", "cb", startup.cb);
     okChildString("StartupInfoA", "lpDesktop", si.lpDesktop);
@@ -732,6 +738,8 @@ static void test_Startup(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     okChildInt("StartupInfoA", "cb", startup.cb);
     okChildString("StartupInfoA", "lpDesktop", startup.lpDesktop);
@@ -770,6 +778,8 @@ static void test_Startup(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     okChildInt("StartupInfoA", "cb", startup.cb);
     okChildString("StartupInfoA", "lpDesktop", startup.lpDesktop);
@@ -810,6 +820,8 @@ static void test_Startup(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     okChildInt("StartupInfoA", "cb", startup.cb);
     okChildString("StartupInfoA", "lpDesktop", startup.lpDesktop);
@@ -848,6 +860,8 @@ static void test_Startup(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     okChildInt("StartupInfoA", "cb", startup.cb);
     okChildString("StartupInfoA", "lpDesktop", startup.lpDesktop);
@@ -888,6 +902,8 @@ static void test_CommandLine(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     okChildInt("Arguments", "argcA", 5);
     okChildString("Arguments", "argvA4", "C:\\Program Files\\my nice app.exe");
@@ -909,6 +925,8 @@ static void test_CommandLine(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     okChildInt("Arguments", "argcA", 7);
     okChildString("Arguments", "argvA4", "a\"b\\");
@@ -930,6 +948,8 @@ static void test_CommandLine(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
     sprintf(buffer, "./%s", exename);
     okChildString("Arguments", "argvA0", buffer);
     release_memory();
@@ -945,6 +965,8 @@ static void test_CommandLine(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
     sprintf(buffer, ".\\%s", exename);
     okChildString("Arguments", "argvA0", buffer);
     release_memory();
@@ -965,6 +987,8 @@ static void test_CommandLine(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
     if (p) sprintf(buffer, "..%s/%s", p, exename);
     else sprintf(buffer, "./%s", exename);
     okChildString("Arguments", "argvA0", buffer);
@@ -988,6 +1012,8 @@ static void test_CommandLine(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
     sprintf(buffer, "tests/process.c dump %s", resfile);
     okChildString("Arguments", "argvA0", "dummy");
     okChildString("Arguments", "CommandLineA", buffer2);
@@ -1085,6 +1111,8 @@ static void test_Directory(void)
     ok(WaitForSingleObject(info.hProcess, 30000) == WAIT_OBJECT_0, "Child process termination\n");
     /* child process has changed result file, so let profile functions know about it */
     WritePrivateProfileStringA(NULL, NULL, NULL, resfile);
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     okChildIString("Misc", "CurrDirA", windir);
     release_memory();
@@ -1093,6 +1121,8 @@ static void test_Directory(void)
     /* search PATH for the exe if directory is NULL */
     ok(CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0L, NULL, NULL, &startup, &info), "CreateProcess\n");
     ok(TerminateProcess(info.hProcess, 0), "Child process termination\n");
+    CloseHandle(info.hThread);
+    CloseHandle(info.hProcess);
 
     /* if any directory is provided, don't search PATH, error on bad directory */
     SetLastError(0xdeadbeef);
@@ -3035,7 +3065,8 @@ static void test_SuspendProcessNewThread(void)
     PVOID exe_base, exit_thread_ptr;
     IMAGE_NT_HEADERS nt_header;
     HANDLE thread_handle = NULL;
-    DWORD exit_code = 0;
+    DWORD dret, exit_code = 0;
+    CONTEXT ctx;
 
     exit_thread_ptr = GetProcAddress(hkernel32, "ExitThread");
     ok(exit_thread_ptr != NULL, "GetProcAddress ExitThread failed\n");
@@ -3052,11 +3083,59 @@ static void test_SuspendProcessNewThread(void)
 
     thread_handle = CreateRemoteThread(pi.hProcess, NULL, 0,
                                        (LPTHREAD_START_ROUTINE)exit_thread_ptr,
-                                       (PVOID)(ULONG_PTR)0x1234, 0, NULL);
+                                       (PVOID)(ULONG_PTR)0x1234, CREATE_SUSPENDED, NULL);
     ok(thread_handle != NULL, "Could not create remote thread (%d)\n", GetLastError());
 
-    ok(WaitForSingleObject(thread_handle, 60000) == WAIT_OBJECT_0, "Waiting for remote thread failed (%d)\n", GetLastError());
-    ok(GetExitCodeThread(thread_handle, &exit_code), "Failed to retrieve remote thread exit code (%d)\n", GetLastError());
+    ret = are_imports_resolved(pi.hProcess, exe_base, &nt_header);
+    ok(!ret, "IAT entry resolved prematurely\n");
+
+    ctx.ContextFlags = CONTEXT_ALL;
+    ret = GetThreadContext( thread_handle, &ctx );
+    ok( ret, "Failed retrieving remote thread context (%d)\n", GetLastError() );
+    ok( ctx.ContextFlags == CONTEXT_ALL, "wrong flags %x\n", ctx.ContextFlags );
+#ifdef __x86_64__
+    ok( !ctx.Rax, "rax is not zero %lx\n", ctx.Rax );
+    ok( !ctx.Rbx, "rbx is not zero %lx\n", ctx.Rbx );
+    ok( ctx.Rcx == (ULONG_PTR)exit_thread_ptr, "wrong rcx %lx/%p\n", ctx.Rcx, exit_thread_ptr );
+    ok( ctx.Rdx == 0x1234, "wrong rdx %lx\n", ctx.Rdx );
+    ok( !ctx.Rsi, "rsi is not zero %lx\n", ctx.Rsi );
+    ok( !ctx.Rdi, "rdi is not zero %lx\n", ctx.Rdi );
+    ok( !ctx.Rbp, "rbp is not zero %lx\n", ctx.Rbp );
+    ok( !ctx.R8, "r8 is not zero %lx\n", ctx.R8 );
+    ok( !ctx.R9, "r9 is not zero %lx\n", ctx.R9 );
+    ok( !ctx.R10, "r10 is not zero %lx\n", ctx.R10 );
+    ok( !ctx.R11, "r11 is not zero %lx\n", ctx.R11 );
+    ok( !ctx.R12, "r12 is not zero %lx\n", ctx.R12 );
+    ok( !ctx.R13, "r13 is not zero %lx\n", ctx.R13 );
+    ok( !ctx.R14, "r14 is not zero %lx\n", ctx.R14 );
+    ok( !ctx.R15, "r15 is not zero %lx\n", ctx.R15 );
+    ok( !((ctx.Rsp + 0x28) & 0xfff), "rsp is not at top of stack page %lx\n", ctx.Rsp );
+    ok( ctx.EFlags == 0x200, "wrong flags %08x\n", ctx.EFlags );
+    ok( ctx.MxCsr == 0x1f80, "wrong mxcsr %08x\n", ctx.MxCsr );
+    ok( ctx.FltSave.ControlWord == 0x27f, "wrong control %08x\n", ctx.FltSave.ControlWord );
+#else
+    ok( !ctx.Ebp || broken(ctx.Ebp), /* winxp */ "ebp is not zero %08x\n", ctx.Ebp );
+    if (!ctx.Ebp)  /* winxp is completely different */
+    {
+        ok( !ctx.Ecx, "ecx is not zero %08x\n", ctx.Ecx );
+        ok( !ctx.Edx, "edx is not zero %08x\n", ctx.Edx );
+        ok( !ctx.Esi, "esi is not zero %08x\n", ctx.Esi );
+        ok( !ctx.Edi, "edi is not zero %08x\n", ctx.Edi );
+    }
+    ok( ctx.Eax == (ULONG_PTR)exit_thread_ptr, "wrong eax %08x/%p\n", ctx.Eax, exit_thread_ptr );
+    ok( ctx.Ebx == 0x1234, "wrong ebx %08x\n", ctx.Ebx );
+    ok( !((ctx.Esp + 0x10) & 0xfff) || broken( !((ctx.Esp + 4) & 0xfff) ), /* winxp, w2k3 */
+        "esp is not at top of stack page or properly aligned: %08x\n", ctx.Esp );
+    ok( (ctx.EFlags & ~2) == 0x200, "wrong flags %08x\n", ctx.EFlags );
+    ok( (WORD)ctx.FloatSave.ControlWord == 0x27f, "wrong control %08x\n", ctx.FloatSave.ControlWord );
+    ok( *(WORD *)ctx.ExtendedRegisters == 0x27f, "wrong control %08x\n", *(WORD *)ctx.ExtendedRegisters );
+#endif
+
+    ResumeThread( thread_handle );
+    dret = WaitForSingleObject(thread_handle, 60000);
+    ok(dret == WAIT_OBJECT_0, "Waiting for remote thread failed (%d)\n", GetLastError());
+    ret = GetExitCodeThread(thread_handle, &exit_code);
+    ok(ret, "Failed to retrieve remote thread exit code (%d)\n", GetLastError());
     ok(exit_code == 0x1234, "Invalid remote thread exit code\n");
 
     ret = are_imports_resolved(pi.hProcess, exe_base, &nt_header);
@@ -3148,10 +3227,11 @@ static void test_SuspendProcessState(void)
                                         0, NULL);
     ok(server_pipe_handle != INVALID_HANDLE_VALUE, "Failed to create communication pipe (%d)\n", GetLastError());
 
-    /* Setup the remote process enviornment */
-    ctx.ContextFlags = CONTEXT_FULL;
+    /* Set up the remote process environment */
+    ctx.ContextFlags = CONTEXT_ALL;
     ret = GetThreadContext(pi.hThread, &ctx);
     ok(ret, "Failed retrieving remote thread context (%d)\n", GetLastError());
+    ok( ctx.ContextFlags == CONTEXT_ALL, "wrong flags %x\n", ctx.ContextFlags );
 
     remote_pipe_params = VirtualAllocEx(pi.hProcess, NULL, sizeof(pipe_params), MEM_COMMIT, PAGE_READWRITE);
     ok(remote_pipe_params != NULL, "Failed allocating memory in remote process (%d)\n", GetLastError());
@@ -3166,7 +3246,6 @@ static void test_SuspendProcessState(void)
     ok(ret, "Failed to write to remote process memory (%d)\n", GetLastError());
 
 #ifdef __x86_64__
-    ok( ctx.ContextFlags == CONTEXT_FULL, "wrong flags %x\n", ctx.ContextFlags );
     ok( !ctx.Rax, "rax is not zero %lx\n", ctx.Rax );
     ok( !ctx.Rbx, "rbx is not zero %lx\n", ctx.Rbx );
     ok( !ctx.Rsi, "rsi is not zero %lx\n", ctx.Rsi );
@@ -3181,6 +3260,9 @@ static void test_SuspendProcessState(void)
     ok( !ctx.R14, "r14 is not zero %lx\n", ctx.R14 );
     ok( !ctx.R15, "r15 is not zero %lx\n", ctx.R15 );
     ok( !((ctx.Rsp + 0x28) & 0xfff), "rsp is not at top of stack page %lx\n", ctx.Rsp );
+    ok( ctx.EFlags == 0x200, "wrong flags %08x\n", ctx.EFlags );
+    ok( ctx.MxCsr == 0x1f80, "wrong mxcsr %08x\n", ctx.MxCsr );
+    ok( ctx.FltSave.ControlWord == 0x27f, "wrong control %08x\n", ctx.FltSave.ControlWord );
     entry_ptr = (void *)ctx.Rcx;
     peb_ptr = (void *)ctx.Rdx;
 
@@ -3198,7 +3280,6 @@ static void test_SuspendProcessState(void)
     ret = WriteProcessMemory(pi.hProcess, (void *)ctx.Rsp, &rop_chain, sizeof(rop_chain), NULL);
     ok(ret, "Failed to write to remote process thread stack (%d)\n", GetLastError());
 #else
-    ok( ctx.ContextFlags == CONTEXT_FULL, "wrong flags %x\n", ctx.ContextFlags );
     ok( !ctx.Ebp || broken(ctx.Ebp), /* winxp */ "ebp is not zero %08x\n", ctx.Ebp );
     if (!ctx.Ebp)  /* winxp is completely different */
     {
@@ -3209,6 +3290,9 @@ static void test_SuspendProcessState(void)
     }
     ok( !((ctx.Esp + 0x10) & 0xfff) || broken( !((ctx.Esp + 4) & 0xfff) ), /* winxp, w2k3 */
         "esp is not at top of stack page or properly aligned: %08x\n", ctx.Esp );
+    ok( (ctx.EFlags & ~2) == 0x200, "wrong flags %08x\n", ctx.EFlags );
+    ok( (WORD)ctx.FloatSave.ControlWord == 0x27f, "wrong control %08x\n", ctx.FloatSave.ControlWord );
+    ok( *(WORD *)ctx.ExtendedRegisters == 0x27f, "wrong control %08x\n", *(WORD *)ctx.ExtendedRegisters );
     entry_ptr = (void *)ctx.Eax;
     peb_ptr = (void *)ctx.Ebx;
 
@@ -3417,16 +3501,16 @@ static void test_process_info(void)
         sizeof(buf) /* ProcessHandleTracing */,
         sizeof(ULONG) /* ProcessIoPriority */,
         sizeof(ULONG) /* ProcessExecuteFlags */,
-#if 0 /* FIXME: Add remaining classes */
-        ProcessResourceManagement,
-        sizeof(ULONG) /* ProcessCookie */,
+        0 /* FIXME: sizeof(?) ProcessTlsInformation */,
+        0 /* FIXME: sizeof(?) ProcessCookie */,
         sizeof(SECTION_IMAGE_INFORMATION) /* ProcessImageInformation */,
-        sizeof(PROCESS_CYCLE_TIME_INFORMATION) /* ProcessCycleTime */,
+        0 /* FIXME: sizeof(PROCESS_CYCLE_TIME_INFORMATION) ProcessCycleTime */,
         sizeof(ULONG) /* ProcessPagePriority */,
         40 /* ProcessInstrumentationCallback */,
-        sizeof(PROCESS_STACK_ALLOCATION_INFORMATION) /* ProcessThreadStackAllocation */,
-        sizeof(PROCESS_WS_WATCH_INFORMATION_EX[]) /* ProcessWorkingSetWatchEx */,
+        0 /* FIXME: sizeof(PROCESS_STACK_ALLOCATION_INFORMATION) ProcessThreadStackAllocation */,
+        0 /* FIXME: sizeof(PROCESS_WS_WATCH_INFORMATION_EX[]) ProcessWorkingSetWatchEx */,
         sizeof(buf) /* ProcessImageFileNameWin32 */,
+#if 0 /* FIXME: Add remaining classes */
         sizeof(HANDLE) /* ProcessImageFileMapping */,
         sizeof(PROCESS_AFFINITY_UPDATE_MODE) /* ProcessAffinityUpdateMode */,
         sizeof(PROCESS_MEMORY_ALLOCATION_MODE) /* ProcessMemoryAllocationMode */,
@@ -3498,6 +3582,9 @@ static void test_process_info(void)
         case ProcessDefaultHardErrorMode:
         case ProcessHandleCount:
         case ProcessImageFileName:
+        case ProcessImageInformation:
+        case ProcessPagePriority:
+        case ProcessImageFileNameWin32:
             ok(status == STATUS_SUCCESS, "for info %u expected STATUS_SUCCESS, got %08x (ret_len %u)\n", i, status, ret_len);
             break;
 
@@ -3515,6 +3602,7 @@ static void test_process_info(void)
         case ProcessExecuteFlags:
         case ProcessDebugPort:
         case ProcessDebugFlags:
+        case ProcessCookie:
 todo_wine
             ok(status == STATUS_ACCESS_DENIED, "for info %u expected STATUS_ACCESS_DENIED, got %08x (ret_len %u)\n", i, status, ret_len);
             break;

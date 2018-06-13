@@ -34,6 +34,7 @@ typedef enum {
     EVENTID_FOCUSIN,
     EVENTID_FOCUSOUT,
     EVENTID_HELP,
+    EVENTID_INPUT,
     EVENTID_KEYDOWN,
     EVENTID_KEYPRESS,
     EVENTID_KEYUP,
@@ -59,22 +60,34 @@ typedef enum {
 typedef struct {
     DispatchEx dispex;
     IDOMEvent IDOMEvent_iface;
+    IDOMUIEvent IDOMUIEvent_iface;
+    IDOMMouseEvent IDOMMouseEvent_iface;
+    IDOMKeyboardEvent IDOMKeyboardEvent_iface;
 
     LONG ref;
 
     nsIDOMEvent *nsevent;
+    nsIDOMUIEvent *ui_event;
+    nsIDOMMouseEvent *mouse_event;
+    nsIDOMKeyEvent *keyboard_event;
+
     eventid_t event_id;
+    WCHAR *type;
     EventTarget *target;
+    EventTarget *current_target;
+    ULONGLONG time_stamp;
+    BOOL bubbles;
+    BOOL cancelable;
     BOOL prevent_default;
     BOOL stop_propagation;
+    BOOL stop_immediate_propagation;
     DOM_EVENT_PHASE phase;
 
     IHTMLEventObj *event_obj;
     BOOL no_event_obj;
-    unsigned in_fire_event;
 } DOMEvent;
 
-void check_event_attr(HTMLDocumentNode*,nsIDOMHTMLElement*) DECLSPEC_HIDDEN;
+void check_event_attr(HTMLDocumentNode*,nsIDOMElement*) DECLSPEC_HIDDEN;
 void release_event_target(EventTarget*) DECLSPEC_HIDDEN;
 HRESULT set_event_handler(EventTarget*,eventid_t,VARIANT*) DECLSPEC_HIDDEN;
 HRESULT get_event_handler(EventTarget*,eventid_t,VARIANT*) DECLSPEC_HIDDEN;
@@ -86,7 +99,7 @@ HRESULT doc_init_events(HTMLDocumentNode*) DECLSPEC_HIDDEN;
 void detach_events(HTMLDocumentNode *doc) DECLSPEC_HIDDEN;
 HRESULT create_event_obj(IHTMLEventObj**) DECLSPEC_HIDDEN;
 void bind_target_event(HTMLDocumentNode*,EventTarget*,const WCHAR*,IDispatch*) DECLSPEC_HIDDEN;
-HRESULT ensure_doc_nsevent_handler(HTMLDocumentNode*,eventid_t) DECLSPEC_HIDDEN;
+HRESULT ensure_doc_nsevent_handler(HTMLDocumentNode*,nsIDOMNode*,eventid_t) DECLSPEC_HIDDEN;
 
 void dispatch_event(EventTarget*,DOMEvent*) DECLSPEC_HIDDEN;
 
@@ -102,6 +115,7 @@ void detach_nsevent(HTMLDocumentNode*,const WCHAR*) DECLSPEC_HIDDEN;
 /* We extend dispex vtbl for EventTarget functions to avoid separated vtbl. */
 typedef struct {
     dispex_static_data_vtbl_t dispex_vtbl;
+    nsISupports *(*get_gecko_target)(DispatchEx*);
     void (*bind_event)(DispatchEx*,eventid_t);
     EventTarget *(*get_parent_event_target)(DispatchEx*);
     HRESULT (*handle_event_default)(DispatchEx*,eventid_t,nsIDOMEvent*,BOOL*);

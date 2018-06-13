@@ -38,17 +38,6 @@ struct edit_notify {
 
 static struct edit_notify notifications;
 
-static BOOL (WINAPI *pEndMenu) (void);
-static BOOL (WINAPI *pGetMenuBarInfo)(HWND,LONG,LONG,PMENUBARINFO);
-
-static void init_function_pointers(void)
-{
-    HMODULE hdll = GetModuleHandleA("user32");
-
-    pEndMenu = (void*)GetProcAddress(hdll, "EndMenu");
-    pGetMenuBarInfo = (void*)GetProcAddress(hdll, "GetMenuBarInfo");
-}
-
 static INT_PTR CALLBACK multi_edit_dialog_proc(HWND hdlg, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     static int num_ok_commands = 0;
@@ -565,6 +554,18 @@ static HWND create_editcontrol (DWORD style, DWORD exstyle)
     assert (handle);
     if (winetest_interactive)
 	ShowWindow (handle, SW_SHOW);
+    return handle;
+}
+
+static HWND create_editcontrolW(DWORD style, DWORD exstyle)
+{
+    static const WCHAR testtextW[] = {'T','e','s','t',' ','t','e','x','t',0};
+    static const WCHAR editW[] = {'E','d','i','t',0};
+    HWND handle;
+
+    handle = CreateWindowExW(exstyle, editW, testtextW, style, 10, 10, 300, 300,
+        NULL, NULL, hinst, NULL);
+    ok(handle != NULL, "Failed to create Edit control.\n");
     return handle;
 }
 
@@ -2294,7 +2295,7 @@ static LRESULT CALLBACK edit4_wnd_procA(HWND hWnd, UINT msg, WPARAM wParam, LPAR
             if (hWnd != (HWND)lParam)
             {
                 got_wm_capturechanged = TRUE;
-                pEndMenu();
+                EndMenu();
             }
             break;
     }
@@ -2312,9 +2313,8 @@ static LRESULT CALLBACK edit_proc_proxy(HWND hWnd, UINT msg, WPARAM wParam, LPAR
             memset(&mbi, 0, sizeof(mbi));
             mbi.cbSize = sizeof(mbi);
             SetLastError(0xdeadbeef);
-            ret = pGetMenuBarInfo(ctx_menu, OBJID_CLIENT, 0, &mbi);
-            ok(ret || broken(!ret && GetLastError()==ERROR_INVALID_WINDOW_HANDLE) /* NT */,
-                    "GetMenuBarInfo failed\n");
+            ret = GetMenuBarInfo(ctx_menu, OBJID_CLIENT, 0, &mbi);
+            ok(ret, "GetMenuBarInfo failed\n");
             if (ret)
             {
                 ok(mbi.hMenu != NULL, "mbi.hMenu = NULL\n");
@@ -2326,9 +2326,8 @@ static LRESULT CALLBACK edit_proc_proxy(HWND hWnd, UINT msg, WPARAM wParam, LPAR
             memset(&mbi, 0, sizeof(mbi));
             mbi.cbSize = sizeof(mbi);
             SetLastError(0xdeadbeef);
-            ret = pGetMenuBarInfo(ctx_menu, OBJID_CLIENT, 1, &mbi);
-            ok(ret || broken(!ret && GetLastError()==ERROR_INVALID_WINDOW_HANDLE) /* NT */,
-                    "GetMenuBarInfo failed\n");
+            ret = GetMenuBarInfo(ctx_menu, OBJID_CLIENT, 1, &mbi);
+            ok(ret, "GetMenuBarInfo failed\n");
             if (ret)
             {
                 ok(mbi.hMenu != NULL, "mbi.hMenu = NULL\n");
@@ -2337,7 +2336,7 @@ static LRESULT CALLBACK edit_proc_proxy(HWND hWnd, UINT msg, WPARAM wParam, LPAR
                 ok(!mbi.fFocused, "mbi.fFocused = TRUE\n");
             }
 
-            pEndMenu();
+            EndMenu();
             break;
         }
     }
@@ -2358,7 +2357,7 @@ static LRESULT CALLBACK child_edit_menu_proc(HWND hwnd, UINT msg, WPARAM wParam,
         if (wParam == MSGF_MENU) {
             HWND hwndMenu = (HWND)lParam;
             MENUBARINFO mbi = { sizeof(MENUBARINFO) };
-            if (pGetMenuBarInfo(hwndMenu, OBJID_CLIENT, 0, &mbi)) {
+            if (GetMenuBarInfo(hwndMenu, OBJID_CLIENT, 0, &mbi)) {
                 MENUITEMINFOA mii = { sizeof(MENUITEMINFOA), MIIM_STATE };
                 if (GetMenuItemInfoA(mbi.hMenu, EM_SETSEL, FALSE, &mii)) {
                     if (mii.fState & MFS_HILITE) {
@@ -2404,11 +2403,8 @@ static void test_contextmenu(void)
     ok(got_en_setfocus, "edit box didn't get focused\n");
     ok(got_wm_capturechanged, "main window capture did not change\n");
 
-    if (pGetMenuBarInfo)
-    {
-        p_edit_proc = (void*)SetWindowLongPtrA(hwndEdit, GWLP_WNDPROC, (ULONG_PTR)edit_proc_proxy);
-        SendMessageA(hwndEdit, WM_CONTEXTMENU, (WPARAM)hwndEdit, MAKEWORD(10, 10));
-    }
+    p_edit_proc = (void*)SetWindowLongPtrA(hwndEdit, GWLP_WNDPROC, (ULONG_PTR)edit_proc_proxy);
+    SendMessageA(hwndEdit, WM_CONTEXTMENU, (WPARAM)hwndEdit, MAKEWORD(10, 10));
 
     DestroyWindow (hwndEdit);
 
@@ -2735,6 +2731,7 @@ static void test_EM_GETHANDLE(void)
 {
     static const char str0[] = "untouched";
     static const char str1[] = "1111+1111+1111#";
+    static const char str1_1[] = "2111+1111+1111#";
     static const char str2[] = "2222-2222-2222-2222#";
     static const char str3[] = "3333*3333*3333*3333*3333#";
     CHAR    current[42];
@@ -2781,6 +2778,44 @@ static void test_EM_GETHANDLE(void)
     len = lstrlenA(buffer);
     ok((len == lstrlenA(str1)) && !lstrcmpA(buffer, str1),
         "got %d and \"%s\" (expected %d and \"%s\")\n", len, buffer, lstrlenA(str1), str1);
+    LocalUnlock(hmem);
+
+    /* See if WM_GETTEXTLENGTH/WM_GETTEXT still work. */
+    len = SendMessageA(hEdit, WM_GETTEXTLENGTH, 0, 0);
+    ok(len == lstrlenA(str1), "Unexpected text length %d.\n", len);
+
+    lstrcpyA(current, str0);
+    r = SendMessageA(hEdit, WM_GETTEXT, sizeof(current), (LPARAM)current);
+    ok((r == lstrlenA(str1)) && !lstrcmpA(current, str1),
+        "Unexpected retval %d and text \"%s\" (expected %d and \"%s\")\n", r, current, lstrlenA(str1), str1);
+
+    /* Application altered buffer contents, see if WM_GETTEXTLENGTH/WM_GETTEXT pick that up. */
+    buffer = LocalLock(hmem);
+    ok(buffer != NULL, "got %p (expected != NULL)\n", buffer);
+    buffer[0] = '2';
+    LocalUnlock(hmem);
+
+    len = SendMessageA(hEdit, WM_GETTEXTLENGTH, 0, 0);
+    ok(len == lstrlenA(str1_1), "Unexpected text length %d.\n", len);
+
+    lstrcpyA(current, str0);
+    r = SendMessageA(hEdit, WM_GETTEXT, sizeof(current), (LPARAM)current);
+    ok((r == lstrlenA(str1_1)) && !lstrcmpA(current, str1_1),
+        "Unexpected retval %d and text \"%s\" (expected %d and \"%s\")\n", r, current, lstrlenA(str1_1), str1_1);
+
+    /* See if WM_SETTEXT/EM_REPLACESEL work. */
+    r = SendMessageA(hEdit, WM_SETTEXT, 0, (LPARAM)str1);
+    ok(r, "Failed to set text.\n");
+
+    buffer = LocalLock(hmem);
+    ok(buffer != NULL && buffer[0] == '1', "Unexpected buffer contents\n");
+    LocalUnlock(hmem);
+
+    r = SendMessageA(hEdit, EM_REPLACESEL, 0, (LPARAM)str1_1);
+    ok(r, "Failed to replace selection.\n");
+
+    buffer = LocalLock(hmem);
+    ok(buffer != NULL && buffer[0] == '2', "Unexpected buffer contents\n");
     LocalUnlock(hmem);
 
     /* use LocalAlloc first to get a different handle */
@@ -2913,11 +2948,91 @@ static void test_paste(void)
     DestroyWindow(hMultilineEdit);
 }
 
+static void test_EM_GETLINE(void)
+{
+    HWND hwnd[2];
+    int i;
+
+    hwnd[0] = create_editcontrol(ES_AUTOHSCROLL | ES_AUTOVSCROLL, 0);
+    hwnd[1] = create_editcontrolW(ES_AUTOHSCROLL | ES_AUTOVSCROLL, 0);
+
+    for (i = 0; i < sizeof(hwnd)/sizeof(hwnd[0]); i++)
+    {
+        static const WCHAR strW[] = {'t','e','x','t',0};
+        static const char *str = "text";
+        WCHAR buffW[16];
+        char buff[16];
+        int r;
+
+        if (i == 0)
+            ok(!IsWindowUnicode(hwnd[i]), "Expected ansi window.\n");
+        else
+            ok(IsWindowUnicode(hwnd[i]), "Expected unicode window.\n");
+
+        SendMessageA(hwnd[i], WM_SETTEXT, 0, (LPARAM)str);
+
+        memset(buff, 0, sizeof(buff));
+        *(WORD *)buff = sizeof(buff);
+        r = SendMessageA(hwnd[i], EM_GETLINE, 0, (LPARAM)buff);
+        ok(r == strlen(str), "Failed to get a line %d.\n", r);
+        ok(!strcmp(buff, str), "Unexpected line data %s.\n", buff);
+
+        memset(buff, 0, sizeof(buff));
+        *(WORD *)buff = sizeof(buff);
+        r = SendMessageA(hwnd[i], EM_GETLINE, 1, (LPARAM)buff);
+        ok(r == strlen(str), "Failed to get a line %d.\n", r);
+        ok(!strcmp(buff, str), "Unexpected line data %s.\n", buff);
+
+        memset(buffW, 0, sizeof(buffW));
+        *(WORD *)buffW = sizeof(buffW)/sizeof(buffW[0]);
+        r = SendMessageW(hwnd[i], EM_GETLINE, 0, (LPARAM)buffW);
+        ok(r == lstrlenW(strW), "Failed to get a line %d.\n", r);
+        ok(!lstrcmpW(buffW, strW), "Unexpected line data %s.\n", wine_dbgstr_w(buffW));
+
+        memset(buffW, 0, sizeof(buffW));
+        *(WORD *)buffW = sizeof(buffW)/sizeof(buffW[0]);
+        r = SendMessageW(hwnd[i], EM_GETLINE, 1, (LPARAM)buffW);
+        ok(r == lstrlenW(strW), "Failed to get a line %d.\n", r);
+        ok(!lstrcmpW(buffW, strW), "Unexpected line data %s.\n", wine_dbgstr_w(buffW));
+
+        DestroyWindow(hwnd[i]);
+    }
+}
+
+static int CALLBACK test_wordbreak_procA(char *text, int current, int length, int code)
+{
+    return -1;
+}
+
+static void test_wordbreak_proc(void)
+{
+    EDITWORDBREAKPROCA proc;
+    LRESULT ret;
+    HWND hwnd;
+
+    hwnd = create_editcontrol(ES_AUTOHSCROLL | ES_AUTOVSCROLL, 0);
+
+    proc = (void *)SendMessageA(hwnd, EM_GETWORDBREAKPROC, 0, 0);
+    ok(proc == NULL, "Unexpected wordbreak proc %p.\n", proc);
+
+    ret = SendMessageA(hwnd, EM_SETWORDBREAKPROC, 0, (LPARAM)test_wordbreak_procA);
+    ok(ret == 1, "Unexpected return value %ld.\n", ret);
+
+    proc = (void *)SendMessageA(hwnd, EM_GETWORDBREAKPROC, 0, 0);
+    ok(proc == test_wordbreak_procA, "Unexpected wordbreak proc %p.\n", proc);
+
+    ret = SendMessageA(hwnd, EM_SETWORDBREAKPROC, 0, 0);
+    ok(ret == 1, "Unexpected return value %ld.\n", ret);
+
+    proc = (void *)SendMessageA(hwnd, EM_GETWORDBREAKPROC, 0, 0);
+    ok(proc == NULL, "Unexpected wordbreak proc %p.\n", proc);
+
+    DestroyWindow(hwnd);
+}
+
 START_TEST(edit)
 {
     BOOL b;
-
-    init_function_pointers();
 
     hinst = GetModuleHandleA(NULL);
     b = RegisterWindowClasses();
@@ -2946,13 +3061,11 @@ START_TEST(edit)
     test_child_edit_wmkeydown();
     test_fontsize();
     test_dialogmode();
-    if (pEndMenu)
-        test_contextmenu();
-    else
-        win_skip("EndMenu is not available\n");
-
+    test_contextmenu();
     test_EM_GETHANDLE();
     test_paste();
+    test_EM_GETLINE();
+    test_wordbreak_proc();
 
     UnregisterWindowClasses();
 }

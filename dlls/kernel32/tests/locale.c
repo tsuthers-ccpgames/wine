@@ -103,6 +103,10 @@ static BOOL (WINAPI *pGetThreadPreferredUILanguages)(DWORD, ULONG*, WCHAR*, ULON
 static BOOL (WINAPI *pGetUserPreferredUILanguages)(DWORD, ULONG*, WCHAR*, ULONG*);
 static WCHAR (WINAPI *pRtlUpcaseUnicodeChar)(WCHAR);
 static INT (WINAPI *pGetNumberFormatEx)(LPCWSTR, DWORD, LPCWSTR, const NUMBERFMTW *, LPWSTR, int);
+static INT (WINAPI *pFindNLSStringEx)(LPCWSTR, DWORD, LPCWSTR, INT, LPCWSTR, INT, LPINT, LPNLSVERSIONINFO, LPVOID, LPARAM);
+static LANGID (WINAPI *pSetThreadUILanguage)(LANGID);
+static LANGID (WINAPI *pGetThreadUILanguage)(VOID);
+static INT (WINAPI *pNormalizeString)(NORM_FORM, LPCWSTR, INT, LPWSTR, INT);
 
 static void InitFunctionPointers(void)
 {
@@ -135,6 +139,10 @@ static void InitFunctionPointers(void)
   X(GetThreadPreferredUILanguages);
   X(GetUserPreferredUILanguages);
   X(GetNumberFormatEx);
+  X(FindNLSStringEx);
+  X(SetThreadUILanguage);
+  X(GetThreadUILanguage);
+  X(NormalizeString);
 
   mod = GetModuleHandleA("ntdll");
   X(RtlUpcaseUnicodeChar);
@@ -2480,7 +2488,7 @@ static void test_lcmapstring_unicode(lcmapstring_wrapper func_ptr, const char *f
     ok(ret == ret2, "%s ret %d, expected value %d\n", func_name, ret2, ret);
 
     /* test LCMAP_FULLWIDTH | LCMAP_HIRAGANA
-       (half-width katakana is converted into full-wdith hiragana) */
+       (half-width katakana is converted into full-width hiragana) */
     ret = func_ptr(LCMAP_FULLWIDTH | LCMAP_HIRAGANA,
                    halfwidth_text, -1, buf, sizeof(buf)/sizeof(WCHAR));
     ok(ret == lstrlenW(hiragana_text) + 1, "%s ret %d, error %d, expected value %d\n", func_name,
@@ -4491,6 +4499,10 @@ static void test_GetLocaleInfoEx(void)
         ok(ret == 1, "got %d\n", ret);
         ok(!bufferW[0], "got %s\n", wine_dbgstr_w(bufferW));
 
+        ret = pGetLocaleInfoEx(enW, LOCALE_SPARENT | LOCALE_NOUSEROVERRIDE, bufferW, sizeof(bufferW)/sizeof(WCHAR));
+        ok(ret == 1, "got %d\n", ret);
+        ok(!bufferW[0], "got %s\n", wine_dbgstr_w(bufferW));
+
         ret = pGetLocaleInfoEx(enW, LOCALE_SCOUNTRY, bufferW, sizeof(bufferW)/sizeof(WCHAR));
         ok(ret == lstrlenW(bufferW)+1, "got %d\n", ret);
         if ((PRIMARYLANGID(LANGIDFROMLCID(GetSystemDefaultLCID())) != LANG_ENGLISH) ||
@@ -4658,7 +4670,8 @@ static void test_GetGeoInfo(void)
     SetLastError(0xdeadbeef);
     ret = pGetGeoInfoA(344, GEO_ISO2, NULL, 0, 0);
     ok(ret == 0, "got %d\n", ret);
-    ok(GetLastError() == ERROR_INVALID_PARAMETER, "got %d\n", GetLastError());
+    ok(GetLastError() == ERROR_INVALID_PARAMETER ||
+       broken(GetLastError() == 0xdeadbeef /* Win10 */), "got %d\n", GetLastError());
 
     ret = pGetGeoInfoA(203, GEO_ISO2, NULL, 0, 0);
     ok(ret == 3, "got %d\n", ret);
@@ -4718,7 +4731,7 @@ static void test_GetGeoInfo(void)
 
     /* try invalid type value */
     SetLastError(0xdeadbeef);
-    ret = pGetGeoInfoA(203, GEO_CURRENCYSYMBOL + 1, NULL, 0, 0);
+    ret = pGetGeoInfoA(203, GEO_ID + 1, NULL, 0, 0);
     ok(ret == 0, "got %d\n", ret);
     ok(GetLastError() == ERROR_INVALID_FLAGS, "got %d\n", GetLastError());
 }
@@ -5329,6 +5342,321 @@ static void test_GetUserPreferredUILanguages(void)
     HeapFree(GetProcessHeap(), 0, buffer);
 }
 
+static void test_FindNLSStringEx(void)
+{
+    INT res;
+    static WCHAR en_simpsimpW[] = {'S','i','m','p','l','e','S','i','m','p','l','e',0};
+    static WCHAR en_simpW[] = {'S','i','m','p','l','e',0};
+    static WCHAR comb_s_accent1W[] = {0x1e69, 'o','u','r','c','e',0};
+    static WCHAR comb_s_accent2W[] = {0x0073,0x323,0x307,'o','u','r','c','e',0};
+    static WCHAR comb_q_accent1W[] = {0x0071,0x0307,0x323,'u','o','t','e',0};
+    static WCHAR comb_q_accent2W[] = {0x0071,0x0323,0x307,'u','o','t','e',0};
+    struct test_data {
+        const WCHAR *locale;
+        DWORD flags;
+        WCHAR *src;
+        INT src_size;
+        WCHAR *value;
+        INT val_size;
+        INT found;
+        INT expected_ret;
+        INT expected_found;
+        int todo;
+        BOOL broken_vista_servers;
+    };
+
+    static struct test_data test_arr[] =
+    {
+        { localeW, FIND_FROMSTART, en_simpsimpW, sizeof(en_simpsimpW)/sizeof(WCHAR)-1,
+          en_simpW, sizeof(en_simpW)/sizeof(WCHAR)-1, 0, 0, 6, 0, FALSE},
+        { localeW, FIND_FROMEND, en_simpsimpW, sizeof(en_simpsimpW)/sizeof(WCHAR)-1,
+          en_simpW, sizeof(en_simpW)/sizeof(WCHAR)-1, 0, 6, 6, 0, FALSE},
+        { localeW, FIND_STARTSWITH, en_simpsimpW, sizeof(en_simpsimpW)/sizeof(WCHAR)-1,
+          en_simpW, sizeof(en_simpW)/sizeof(WCHAR)-1, 0, 0, 6, 0, FALSE},
+        { localeW, FIND_ENDSWITH, en_simpsimpW, sizeof(en_simpsimpW)/sizeof(WCHAR)-1,
+          en_simpW, sizeof(en_simpW)/sizeof(WCHAR)-1, 0, 6, 6, 0, FALSE},
+        { localeW, FIND_FROMSTART, comb_s_accent1W, sizeof(comb_s_accent1W)/sizeof(WCHAR)-1,
+          comb_s_accent2W, sizeof(comb_s_accent2W)/sizeof(WCHAR)-1, 0, 0, 6, 1, TRUE },
+        { localeW, FIND_FROMSTART, comb_q_accent1W, sizeof(comb_q_accent1W)/sizeof(WCHAR)-1,
+          comb_q_accent2W, sizeof(comb_q_accent2W)/sizeof(WCHAR)-1, 0, 0, 7, 1, FALSE },
+        { 0 }
+    };
+    struct test_data *ptest;
+
+    if (!pFindNLSStringEx)
+    {
+        win_skip("FindNLSStringEx is not available.\n");
+        return;
+    }
+
+    SetLastError( 0xdeadbeef );
+    res = pFindNLSStringEx(invalidW, FIND_FROMSTART, fooW, 3, fooW,
+                           3, NULL, NULL, NULL, 0);
+    ok(res, "Expected failure of FindNLSStringEx. Return value was %d\n", res);
+    ok(ERROR_INVALID_PARAMETER == GetLastError(),
+       "Expected ERROR_INVALID_PARAMETER as last error; got %d\n", GetLastError());
+
+    SetLastError( 0xdeadbeef );
+    res = pFindNLSStringEx(localeW, FIND_FROMSTART, NULL, 3, fooW, 3,
+                           NULL, NULL, NULL, 0);
+    ok(res, "Expected failure of FindNLSStringEx. Return value was %d\n", res);
+    ok(ERROR_INVALID_PARAMETER == GetLastError(),
+       "Expected ERROR_INVALID_PARAMETER as last error; got %d\n", GetLastError());
+
+    SetLastError( 0xdeadbeef );
+    res = pFindNLSStringEx(localeW, FIND_FROMSTART, fooW, -5, fooW, 3,
+                           NULL, NULL, NULL, 0);
+    ok(res, "Expected failure of FindNLSStringEx. Return value was %d\n", res);
+    ok(ERROR_INVALID_PARAMETER == GetLastError(),
+       "Expected ERROR_INVALID_PARAMETER as last error; got %d\n", GetLastError());
+
+    SetLastError( 0xdeadbeef );
+    res = pFindNLSStringEx(localeW, FIND_FROMSTART, fooW, 3, NULL, 3,
+                           NULL, NULL, NULL, 0);
+    ok(res, "Expected failure of FindNLSStringEx. Return value was %d\n", res);
+    ok(ERROR_INVALID_PARAMETER == GetLastError(),
+       "Expected ERROR_INVALID_PARAMETER as last error; got %d\n", GetLastError());
+
+    SetLastError( 0xdeadbeef );
+    res = pFindNLSStringEx(localeW, FIND_FROMSTART, fooW, 3, fooW, -5,
+                           NULL, NULL, NULL, 0);
+    ok(res, "Expected failure of FindNLSStringEx. Return value was %d\n", res);
+    ok(ERROR_INVALID_PARAMETER == GetLastError(),
+       "Expected ERROR_INVALID_PARAMETER as last error; got %d\n", GetLastError());
+
+    for (ptest = test_arr; ptest->src != NULL; ptest++)
+    {
+        todo_wine_if(ptest->todo)
+        {
+            res = pFindNLSStringEx(ptest->locale, ptest->flags, ptest->src, ptest->src_size,
+                                   ptest->value, ptest->val_size, &ptest->found, NULL, NULL, 0);
+            if (ptest->broken_vista_servers)
+            {
+                ok(res == ptest->expected_ret || /* Win 7 onwards */
+                   broken(res == -1), /* Win Vista, Server 2003 and 2008 */
+                   "Expected FindNLSStringEx to return %d. Returned value was %d\n",
+                   ptest->expected_ret, res);
+                ok(ptest->found == ptest->expected_found || /* Win 7 onwards */
+                   broken(ptest->found == 0), /* Win Vista, Server 2003 and 2008 */
+                   "Expected FindNLSStringEx to output %d. Value was %d\n",
+                   ptest->expected_found, ptest->found);
+            }
+            else
+            {
+                ok(res == ptest->expected_ret,
+                   "Expected FindNLSStringEx to return %d. Returned value was %d\n",
+                   ptest->expected_ret, res);
+                ok(ptest->found == ptest->expected_found,
+                   "Expected FindNLSStringEx to output %d. Value was %d\n",
+                   ptest->expected_found, ptest->found);
+            }
+        }
+    }
+}
+
+static void test_SetThreadUILanguage(void)
+{
+    LANGID res;
+
+    if (!pGetThreadUILanguage)
+    {
+        win_skip("GetThreadUILanguage isn't implemented, skipping SetThreadUILanguage tests for version < Vista\n");
+        return;   /* BTW SetThreadUILanguage is present on winxp/2003 but doesn`t set the LANGID anyway when tested */
+    }
+
+    res = pSetThreadUILanguage(0);
+    ok(res == pGetThreadUILanguage(), "expected %d got %d\n", pGetThreadUILanguage(), res);
+
+    res = pSetThreadUILanguage(MAKELANGID(LANG_DUTCH, SUBLANG_DUTCH_BELGIAN));
+    ok(res == MAKELANGID(LANG_DUTCH, SUBLANG_DUTCH_BELGIAN),
+    "expected %d got %d\n", MAKELANGID(LANG_DUTCH, SUBLANG_DUTCH_BELGIAN), res);
+
+    res = pSetThreadUILanguage(0);
+    todo_wine ok(res == MAKELANGID(LANG_DUTCH, SUBLANG_DUTCH_BELGIAN),
+    "expected %d got %d\n", MAKELANGID(LANG_DUTCH, SUBLANG_DUTCH_BELGIAN), res);
+}
+
+static void test_NormalizeString(void)
+{
+    /* part 0: specific cases */
+    /* LATIN CAPITAL LETTER D WITH DOT ABOVE */
+    static const WCHAR part0_str1[] = {0x1e0a,0};
+    static const WCHAR part0_nfd1[] = {0x0044,0x0307,0};
+
+    /* LATIN CAPITAL LETTER D, COMBINING DOT BELOW, COMBINING DOT ABOVE */
+    static const WCHAR part0_str2[] = {0x0044,0x0323,0x0307,0};
+    static const WCHAR part0_nfc2[] = {0x1e0c,0x0307,0};
+
+    /* LATIN CAPITAL LETTER D, COMBINING HORN, COMBINING DOT BELOW, COMBINING DOT ABOVE */
+    static const WCHAR part0_str3[] = {0x0044,0x031b,0x0323,0x0307,0};
+    static const WCHAR part0_nfc3[] = {0x1e0c,0x031b,0x0307,0};
+
+    /* LATIN CAPITAL LETTER D, COMBINING HORN, COMBINING DOT BELOW, COMBINING DOT ABOVE */
+    static const WCHAR part0_str4[] = {0x0044,0x031b,0x0323,0x0307,0};
+    static const WCHAR part0_nfc4[] = {0x1e0c,0x031b,0x0307,0};
+
+    /*
+     * HEBREW ACCENT SEGOL, HEBREW POINT PATAH, HEBREW POINT DAGESH OR MAPIQ,
+     * HEBREW ACCENT MERKHA, HEBREW POINT SHEVA, HEBREW PUNCTUATION PASEQ,
+     * HEBREW MARK UPPER DOT, HEBREW ACCENT DEHI
+     */
+    static const WCHAR part0_str5[] = {0x0592,0x05B7,0x05BC,0x05A5,0x05B0,0x05C0,0x05C4,0x05AD,0};
+    static const WCHAR part0_nfc5[] = {0x05B0,0x05B7,0x05BC,0x05A5,0x0592,0x05C0,0x05AD,0x05C4,0};
+
+    /*
+     * HEBREW POINT QAMATS, HEBREW POINT HOLAM, HEBREW POINT HATAF SEGOL,
+     * HEBREW ACCENT ETNAHTA, HEBREW PUNCTUATION SOF PASUQ, HEBREW POINT SHEVA,
+     * HEBREW ACCENT ILUY, HEBREW ACCENT QARNEY PARA
+     */
+    static const WCHAR part0_str6[] = {0x05B8,0x05B9,0x05B1,0x0591,0x05C3,0x05B0,0x05AC,0x059F,0};
+    static const WCHAR part0_nfc6[] = {0x05B1,0x05B8,0x05B9,0x0591,0x05C3,0x05B0,0x05AC,0x059F,0};
+
+    /* LATIN CAPITAL LETTER D WITH DOT BELOW */
+    static const WCHAR part0_str8[] = {0x1E0C,0};
+    static const WCHAR part0_nfd8[] = {0x0044,0x0323,0};
+
+    /* LATIN CAPITAL LETTER D WITH DOT ABOVE, COMBINING DOT BELOW */
+    static const WCHAR part0_str9[] = {0x1E0A,0x0323,0};
+    static const WCHAR part0_nfc9[] = {0x1E0C,0x0307,0};
+    static const WCHAR part0_nfd9[] = {0x0044,0x0323,0x0307,0};
+
+    /* LATIN CAPITAL LETTER D WITH DOT BELOW, COMBINING DOT ABOVE */
+    static const WCHAR part0_str10[] = {0x1E0C,0x0307,0};
+    static const WCHAR part0_nfd10[] = {0x0044,0x0323,0x0307,0};
+
+    /* LATIN CAPITAL LETTER E WITH MACRON AND GRAVE, COMBINING MACRON */
+    static const WCHAR part0_str11[] = {0x1E14,0x0304,0};
+    static const WCHAR part0_nfd11[] = {0x0045,0x0304,0x0300,0x0304,0};
+
+    /* LATIN CAPITAL LETTER E WITH MACRON, COMBINING GRAVE ACCENT */
+    static const WCHAR part0_str12[] = {0x0112,0x0300,0};
+    static const WCHAR part0_nfc12[] = {0x1E14,0};
+    static const WCHAR part0_nfd12[] = {0x0045,0x0304,0x0300,0};
+
+    /* part 1: character by character */
+    /* DIAERESIS */
+    static const WCHAR part1_str1[] = {0x00a8,0};
+    static const WCHAR part1_nfkc1[] = {0x0020,0x0308,0};
+
+    /* VULGAR FRACTION ONE QUARTER */
+    static const WCHAR part1_str2[] = {0x00bc,0};
+    static const WCHAR part1_nfkc2[] = {0x0031,0x2044,0x0034,0};
+
+    /* LATIN CAPITAL LETTER E WITH CIRCUMFLEX */
+    static const WCHAR part1_str3[] = {0x00ca,0};
+    static const WCHAR part1_nfd3[] = {0x0045,0x0302,0};
+
+    /* MODIFIER LETTER SMALL GAMMA */
+    static const WCHAR part1_str4[] = {0x02e0,0};
+    static const WCHAR part1_nfkc4[] = {0x0263,0};
+
+    /* CYRILLIC CAPITAL LETTER IE WITH GRAVE */
+    static const WCHAR part1_str5[] = {0x0400,0};
+    static const WCHAR part1_nfd5[] = {0x0415,0x0300,0};
+
+    /* CYRILLIC CAPITAL LETTER IZHITSA WITH DOUBLE GRAVE ACCENT */
+    static const WCHAR part1_str6[] = {0x0476,0};
+    static const WCHAR part1_nfd6[] = {0x0474,0x030F,0};
+
+    /* ARABIC LIGATURE HAH WITH JEEM INITIAL FORM */
+    static const WCHAR part1_str7[] = {0xFCA9,0};
+    static const WCHAR part1_nfkc7[] = {0x062D,0x062C,0};
+
+    /* GREEK SMALL LETTER OMICRON WITH PSILI AND VARIA */
+    static const WCHAR part1_str8[] = {0x1F42,0};
+    static const WCHAR part1_nfd8[] = {0x03BF,0x0313,0x0300,0};
+
+    /* QUADRUPLE PRIME */
+    static const WCHAR part1_str9[] = {0x2057,0};
+    static const WCHAR part1_nfkc9[] = {0x2032,0x2032,0x2032,0x2032,0};
+
+    /* KATAKANA-HIRAGANA VOICED SOUND MARK */
+    static const WCHAR part1_str10[] = {0x309B,0};
+    static const WCHAR part1_nfkc10[] = {0x20,0x3099,0};
+
+    struct test_data_normal {
+        const WCHAR *str;
+        const WCHAR *expected[4];
+    };
+    static const struct test_data_normal test_arr[] =
+    {
+        { part0_str1, { part0_str1, part0_nfd1, part0_str1, part0_nfd1 } },
+        { part0_str2, { part0_nfc2, part0_str2, part0_nfc2, part0_str2 } },
+        { part0_str3, { part0_nfc3, part0_str3, part0_nfc3, part0_str3 } },
+        { part0_str4, { part0_nfc4, part0_str4, part0_nfc4, part0_str4 } },
+        { part0_str5, { part0_nfc5, part0_nfc5, part0_nfc5, part0_nfc5 } },
+        { part0_str6, { part0_nfc6, part0_nfc6, part0_nfc6, part0_nfc6 } },
+        { part0_str8, { part0_str8, part0_nfd8, part0_str8, part0_nfd8 } },
+        { part0_str9, { part0_nfc9, part0_nfd9, part0_nfc9, part0_nfd9 } },
+        { part0_str10, { part0_str10, part0_nfd10, part0_str10, part0_nfd10 } },
+        { part0_str11, { part0_str11, part0_nfd11, part0_str11, part0_nfd11 } },
+        { part0_str12, { part0_nfc12, part0_nfd12, part0_nfc12, part0_nfd12 } },
+        { part1_str1, { part1_str1, part1_str1, part1_nfkc1, part1_nfkc1 } },
+        { part1_str2, { part1_str2, part1_str2, part1_nfkc2, part1_nfkc2 } },
+        { part1_str3, { part1_str3, part1_nfd3, part1_str3, part1_nfd3 } },
+        { part1_str4, { part1_str4, part1_str4, part1_nfkc4, part1_nfkc4 } },
+        { part1_str5, { part1_str5, part1_nfd5, part1_str5, part1_nfd5 } },
+        { part1_str6, { part1_str6, part1_nfd6, part1_str6, part1_nfd6 } },
+        { part1_str7, { part1_str7, part1_str7, part1_nfkc7, part1_nfkc7 } },
+        { part1_str8, { part1_str8, part1_nfd8, part1_str8, part1_nfd8 } },
+        { part1_str9, { part1_str9, part1_str9, part1_nfkc9, part1_nfkc9 } },
+        { part1_str10, { part1_str10, part1_str10, part1_nfkc10, part1_nfkc10 } },
+        { 0 }
+    };
+    const struct test_data_normal *ptest = test_arr;
+    const int norm_forms[] = { NormalizationC, NormalizationD, NormalizationKC, NormalizationKD };
+    WCHAR dst[80];
+    int dstlen;
+
+    if (!pNormalizeString)
+    {
+        win_skip("NormalizeString is not available.\n");
+        return;
+    }
+
+    todo_wine {
+        dstlen = pNormalizeString( NormalizationD, ptest->str, -1, dst, 1 );
+        ok(GetLastError() == ERROR_INSUFFICIENT_BUFFER, "Should have failed with ERROR_INSUFFICIENT_BUFFER\n");
+    }
+
+    /*
+     * For each string, first test passing -1 as srclen to NormalizeString,
+     * thereby assuming a null-terminating string in src, and then test passing
+     * explicitly the string length.
+     * Do that for all 4 normalization forms.
+     */
+    while (ptest->str)
+    {
+        int str_cmp, i;
+
+        for (i = 0; i < 4; i++)
+        {
+            todo_wine {
+                dstlen = pNormalizeString( norm_forms[i], ptest->str, -1, NULL, 0 );
+                if (dstlen)
+                {
+                    dstlen = pNormalizeString( norm_forms[i], ptest->str, -1, dst, dstlen );
+                    ok(dstlen == strlenW( ptest->expected[i] )+1, "Copied length differed: was %d, should be %d\n",
+                       dstlen, strlenW( ptest->expected[i] )+1);
+                    str_cmp = strncmpW( ptest->expected[i], dst, dstlen+1 );
+                    ok( str_cmp == 0, "test failed: returned value was %d\n", str_cmp );
+                }
+
+                dstlen = pNormalizeString( norm_forms[i], ptest->str, strlenW(ptest->str), NULL, 0 );
+                if (dstlen)
+                {
+                    dstlen = pNormalizeString( norm_forms[i], ptest->str, strlenW(ptest->str), dst, dstlen );
+                    ok(dstlen == strlenW( ptest->expected[i] ), "Copied length differed: was %d, should be %d\n",
+                       dstlen, strlenW( ptest->expected[i] ));
+                    str_cmp = strncmpW( ptest->expected[i], dst, dstlen );
+                    ok( str_cmp == 0, "test failed: returned value was %d\n", str_cmp );
+                }
+            }
+        }
+        ptest++;
+    }
+}
+
 START_TEST(locale)
 {
   InitFunctionPointers();
@@ -5375,6 +5703,9 @@ START_TEST(locale)
   test_GetSystemPreferredUILanguages();
   test_GetThreadPreferredUILanguages();
   test_GetUserPreferredUILanguages();
+  test_FindNLSStringEx();
+  test_SetThreadUILanguage();
+  test_NormalizeString();
   /* this requires collation table patch to make it MS compatible */
   if (0) test_sorting();
 }

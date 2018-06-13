@@ -89,6 +89,16 @@ function test_listener_order() {
        + "body.click(attached),document.click(attached),document.click(bubble),"
        + "document.onclick,window.click(bubble),", "calls = " + calls);
 
+    var e = document.createEvent("Event");
+    e.initEvent("click", true, true);
+
+    calls = "";
+    div.dispatchEvent(e);
+    ok(calls === "window.click(capture),document.click(capture),body.click(capture),"
+       + "div.click(bubble),new div.onclick,div.click(capture1),div.click(capture2),"
+       + "body.onclick,body.click(bubble),body.click(bubble2),document.click(bubble),"
+       + "document.onclick,window.click(bubble),", "calls = " + calls);
+
     next_test();
 }
 
@@ -237,11 +247,23 @@ function test_stop_propagation() {
     function stop_propagation(e) {
         calls += "stop,";
         e.stopPropagation();
+        ok(e.bubbles === true, "bubbles = " + e.bubbles);
+        ok(e.defaultPrevented === false, "defaultPrevented = " + e.defaultPrevented);
     }
 
+    function stop_immediate_propagation(e) {
+        calls += "immediateStop,";
+        e.stopImmediatePropagation();
+        ok(e.bubbles === true, "bubbles = " + e.bubbles);
+        ok(e.cancelable === true, "cancelable = " + e.cancelable);
+        ok(e.defaultPrevented === false, "defaultPrevented = " + e.defaultPrevented);
+    }
+
+    div1.addEventListener("click", stop_immediate_propagation, true);
     div1.addEventListener("click", stop_propagation, true);
     div1.addEventListener("click", record_call("div1.click(capture)"), true);
 
+    div2.addEventListener("click", stop_immediate_propagation, true);
     div2.addEventListener("click", stop_propagation, true);
     div2.addEventListener("click", record_call("div2.click(capture)"), true);
 
@@ -253,9 +275,19 @@ function test_stop_propagation() {
 
     calls = "";
     div2.click();
+    ok(calls === "immediateStop,", "calls = " + calls);
+
+    div1.removeEventListener("click", stop_immediate_propagation, true);
+    calls = "";
+    div2.click();
     ok(calls === "stop,div1.click(capture),", "calls = " + calls);
 
     div1.removeEventListener("click", stop_propagation, true);
+    calls = "";
+    div2.click();
+    ok(calls === "div1.click(capture),immediateStop,", "calls = " + calls);
+
+    div2.removeEventListener("click", stop_immediate_propagation, true);
     calls = "";
     div2.click();
     ok(calls === "div1.click(capture),stop,div2.click(capture),stop,div2.click(bubble),",
@@ -283,10 +315,10 @@ function test_prevent_default() {
     var calls;
 
     div.addEventListener("click", function(e) {
-        calls += "div,";
         ok(e.defaultPrevented === false, "e.defaultPrevented = " + e.defaultPrevented);
         e.preventDefault();
-        ok(e.defaultPrevented === true, "e.defaultPrevented = " + e.defaultPrevented);
+        ok(e.defaultPrevented === e.cancelable, "e.defaultPrevented = " + e.defaultPrevented);
+        calls += "div,";
     }, true);
 
     a.addEventListener("click", function(e) {
@@ -298,7 +330,481 @@ function test_prevent_default() {
     a.click();
     ok(calls === "div,a,", "calls = " + calls);
 
+    var e = document.createEvent("Event");
+    e.initEvent("click", true, false);
+
+    calls = "";
+    div.dispatchEvent(e);
+    ok(calls === "div,", "calls = " + calls);
+
+    e = document.createEvent("Event");
+    e.initEvent("click", false, true);
+
+    calls = "";
+    div.dispatchEvent(e);
+    ok(calls === "div,", "calls = " + calls);
+
+    document.body.innerHTML = '<div></div>';
+    var elem = document.body.firstChild;
+    var e, r;
+
+    elem.onclick = function(event) {
+        event.preventDefault();
+    }
+    e = document.createEvent("Event");
+    e.initEvent("click", true, true);
+    r = elem.dispatchEvent(e);
+    ok(r === false, "dispatchEvent returned " + r);
+
+    elem.onclick = function(event) {
+        event.preventDefault();
+        ok(event.defaultPrevented === false, "defaultPrevented");
+    }
+    e = document.createEvent("Event");
+    e.initEvent("click", true, false);
+    r = elem.dispatchEvent(e);
+    ok(r === true, "dispatchEvent returned " + r);
+
+    elem.onclick = function(event) {
+        event.stopPropagation();
+    }
+    e = document.createEvent("Event");
+    e.initEvent("click", true, true);
+    r = elem.dispatchEvent(e);
+    ok(r === true, "dispatchEvent returned " + r);
+
+    e = document.createEvent("Event");
+    e.initEvent("click", false, true);
+    e.preventDefault();
+    ok(e.defaultPrevented === false, "defaultPrevented = " + e.defaultPrevented);
+
+    e = document.createEvent("Event");
+    e.initEvent("click", false, true);
+    elem.onclick = null;
+    r = elem.dispatchEvent(e);
+    ok(r === true, "dispatchEvent returned " + r);
+    e.preventDefault();
+    ok(e.defaultPrevented === false, "defaultPrevented = " + e.defaultPrevented);
+
     next_test();
+}
+
+function test_init_event() {
+    var e = document.createEvent("Event");
+    var calls;
+
+    ok(e.type === "", "type = " + e.type);
+    ok(e.cancelable === false, "cancelable = " + e.cancelable);
+    ok(e.bubbles === false, "bubbles = " + e.bubbles);
+
+    e.initEvent("test", true, false);
+    ok(e.type === "test", "type = " + e.type);
+    ok(e.cancelable === false, "cancelable = " + e.cancelable);
+    ok(e.bubbles === true, "bubbles = " + e.bubbles);
+    ok(e.defaultPrevented === false, "defaultPrevented = " + e.defaultPrevented);
+
+    e.preventDefault();
+    ok(e.defaultPrevented === false, "defaultPrevented = " + e.defaultPrevented);
+
+    e.initEvent("NewTest", false, true);
+    ok(e.type === "NewTest", "type = " + e.type);
+    ok(e.cancelable === true, "cancelable = " + e.cancelable);
+    ok(e.bubbles === false, "bubbles = " + e.bubbles);
+
+    document.body.innerHTML = '<div></div>';
+    var elem = document.body.firstChild;
+
+    elem.addEventListener("NewTest", function(event) {
+        ok(e === event, "e != event");
+
+        e.preventDefault();
+        ok(e.defaultPrevented === true, "defaultPrevented = " + e.defaultPrevented);
+
+        /* initEvent no longer has effect */
+        event.initEvent("test", true, false);
+        ok(event.type === "NewTest", "event.type = " + event.type);
+        ok(event.bubbles === false, "bubbles = " + event.bubbles);
+        ok(event.cancelable === true, "cancelable = " + event.cancelable);
+        ok(e.defaultPrevented === true, "defaultPrevented = " + e.defaultPrevented);
+
+        calls++;
+    }, true);
+
+    calls = 0;
+    elem.dispatchEvent(e);
+    ok(calls === 1, "calls = " + calls);
+    ok(e.type === "NewTest", "event.type = " + e.type);
+    ok(e.bubbles === false, "bubbles = " + e.bubbles);
+    ok(e.cancelable === true, "cancelable = " + e.cancelable);
+    ok(e.target === elem, "target != elem");
+    ok(e.defaultPrevented === false, "defaultPrevented = " + e.defaultPrevented);
+
+    /* initEvent no longer has any effect except resetting defaultPrevented */
+    e.initEvent("test", true, false);
+    ok(e.type === "NewTest", "type = " + e.type);
+    ok(e.bubbles === false, "bubbles = " + e.bubbles);
+    ok(e.cancelable === true, "cancelable = " + e.cancelable);
+    ok(e.target === elem, "target != elem");
+    ok(e.defaultPrevented === false, "defaultPrevented = " + e.defaultPrevented);
+
+    calls = 0;
+    elem.dispatchEvent(e);
+    ok(calls === 1, "calls = " + calls);
+    ok(e.type === "NewTest", "event.type = " + e.type);
+    ok(e.bubbles === false, "bubbles = " + e.bubbles);
+    ok(e.cancelable === true, "cancelable = " + e.cancelable);
+    ok(e.target === elem, "target != elem");
+
+    document.body.dispatchEvent(e);
+    ok(e.target === document.body, "target != body");
+
+    next_test();
+}
+
+function test_current_target() {
+    document.body.innerHTML = '<div><div></div></div>';
+    var parent = document.body.firstChild;
+    var child = parent.firstChild;
+    var calls;
+    var e;
+
+    function expect_current_target(expected_target) {
+        return function(event) {
+            ok(event.currentTarget === expected_target, "unexpected currentTarget");
+            calls++;
+        }
+    }
+
+    parent.addEventListener("test", expect_current_target(parent), true);
+    parent.addEventListener("test", expect_current_target(parent), false);
+    child.addEventListener("test", expect_current_target(child), true);
+    child.addEventListener("test", expect_current_target(child), false);
+
+    e = document.createEvent("Event");
+    e.initEvent("test", true, true);
+    ok(e.currentTarget === null, "currentTarget != null");
+
+    calls = 0;
+    child.dispatchEvent(e);
+    ok(calls === 4, "calls = " + calls + " expected 4");
+    ok(e.currentTarget === null, "currentTarget != null");
+
+    next_test();
+}
+
+function test_dispatch_event() {
+    document.body.innerHTML = '<div><div></div></div>';
+    var parent = document.body.firstChild;
+    var child = parent.firstChild;
+    var calls;
+    var e;
+
+    function record_call(msg) {
+        return function(event) {
+            ok(event === e, "event != e");
+            ok(event.target === child, "target != child");
+            ok(event.srcElement === child, "srcElement != child");
+            calls += msg + ",";
+        };
+    }
+
+    parent.addEventListener("click", record_call("parent.click(capture)"), true);
+    parent.addEventListener("click", record_call("parent.click(bubble)"), false);
+    child.addEventListener("click", record_call("child.click(capture)"), true);
+    child.addEventListener("click", record_call("child.click(bubble)"), false);
+    parent.addEventListener("testing", record_call("parent.testing(capture)"), true);
+    parent.addEventListener("testing", record_call("parent.testing(bubble)"), false);
+    child.addEventListener("testing", record_call("child.testing(capture)"), true);
+    child.addEventListener("testing", record_call("child.testing(bubble)"), false);
+
+    e = document.createEvent("Event");
+    e.initEvent("click", true, true);
+    ok(e.target === null, "e.target != null");
+    ok(e.srcElement === null, "e.srcElement != null");
+
+    calls = "";
+    child.dispatchEvent(e);
+    ok(calls === "parent.click(capture),child.click(capture),child.click(bubble),"
+       + "parent.click(bubble),", "calls = " + calls);
+    ok(e.target === child, "e.target != child");
+    ok(e.srcElement === child, "e.srcElement != child");
+    ok(e.currentTarget === null, "e.currentTarget != null");
+
+    e = document.createEvent("Event");
+    e.initEvent("click", false, true);
+
+    calls = "";
+    child.dispatchEvent(e);
+    ok(calls === "parent.click(capture),child.click(capture),child.click(bubble),",
+       "calls = " + calls);
+
+    /* again, without reinitialization */
+    calls = "";
+    child.dispatchEvent(e);
+    ok(calls === "parent.click(capture),child.click(capture),child.click(bubble),",
+       "calls = " + calls);
+
+    e = document.createEvent("Event");
+    e.initEvent("testing", true, true);
+
+    calls = "";
+    child.dispatchEvent(e);
+    ok(calls === "parent.testing(capture),child.testing(capture),"
+       + "child.testing(bubble),parent.testing(bubble),", "calls = " + calls);
+
+    var xhr = new XMLHttpRequest();
+    xhr.addEventListener("testing", function(event) {
+        ok(event === e, "event != e");
+        ok(event.target === xhr, "target != child");
+        ok(event.srcElement === null, "srcElement != child");
+        calls += "xhr.testing";
+    }, true);
+
+    calls = "";
+    xhr.dispatchEvent(e);
+    ok(calls === "xhr.testing", "calls = " + calls);
+
+    next_test();
+}
+
+function test_recursive_dispatch() {
+    document.body.innerHTML = '<div></div><div></div>';
+    var elem1 = document.body.firstChild;
+    var elem2 = elem1.nextSibling;
+    var calls;
+
+    var e = document.createEvent("Event");
+    ok(e.eventPhase === 0, "eventPhase = " + e.eventPhase);
+
+    e.initEvent("test", true, true);
+    ok(e.eventPhase === 0, "eventPhase = " + e.eventPhase);
+
+    elem1.addEventListener("test", function(event_arg) {
+        calls += "elem1.test,";
+        ok(event_arg === e, "event_arg != e");
+        try {
+            elem2.dispatchEvent(e);
+            ok(false, "expected exception");
+        }catch(exception) {}
+    }, true);
+
+    elem2.addEventListener("test", function() {
+        ok(false, "unexpected recursive event call");
+    }, true);
+
+    calls = "";
+    elem1.dispatchEvent(e);
+    ok(calls === "elem1.test,", "calls = " + calls);
+    ok(e.eventPhase === 3, "eventPhase = " + e.eventPhase);
+
+    next_test();
+}
+
+function test_time_stamp() {
+    document.body.innerHTML = '<div></div>';
+    var elem = document.body.firstChild;
+    var calls, last_time_stamp;
+
+    elem.onclick = function(event) {
+        ok(event.timeStamp === last_time_stamp, "timeStamp = " + event.timeStamp);
+        calls++;
+    }
+
+    var e = document.createEvent("Event");
+    ok(typeof(e.timeStamp) === "number", "typeof(timeStamp) = " + typeof(e.timeStamp));
+    ok(e.timeStamp > 0, "timeStamp = " + e.timeStamp);
+
+    var now = (new Date()).getTime();
+    last_time_stamp = e.timeStamp;
+    ok(Math.abs(now - last_time_stamp) < 3, "timeStamp " + last_time_stamp + " != now " + now);
+
+    e.initEvent("click", true, true);
+    ok(e.timeStamp === last_time_stamp, "timeStamp = " + e.timeStamp);
+    calls = 0;
+    elem.dispatchEvent(e);
+    ok(calls === 1, "calls = " + calls);
+    ok(e.timeStamp === last_time_stamp, "timeStamp = " + e.timeStamp);
+
+    elem.onclick = function(event) {
+        ok(event.timeStamp > 0, "timeStamp = " + event.timeStamp);
+        trace("timestamp " + event.timeStamp);
+        calls++;
+    }
+
+    calls = 0;
+    elem.click();
+    ok(calls === 1, "calls = " + calls);
+
+    next_test();
+}
+
+function test_mouse_event() {
+    var e;
+
+    e = document.createEvent("MouseEvent");
+    ok(e.screenX === 0, "screenX = " + e.screenX);
+    ok(e.screenY === 0, "screenY = " + e.screenY);
+    ok(e.clientX === 0, "clientX = " + e.clientX);
+    ok(e.clientY === 0, "clientY = " + e.clientY);
+    ok(e.offsetX === 0, "offsetX = " + e.offsetX);
+    ok(e.offsetY === 0, "offsetY = " + e.offsetY);
+    ok(e.ctrlKey === false, "ctrlKey = " + e.ctrlKey);
+    ok(e.altKey === false, "altKey = " + e.altKey);
+    ok(e.shiftKey === false, "shiftKey = " + e.shiftKey);
+    ok(e.metaKey === false, "metaKey = " + e.metaKey);
+    ok(e.button === 0, "button = " + e.button);
+    ok(e.buttons === 0, "buttons = " + e.buttons);
+    ok(e.pageX === 0, "pageX = " + e.pageX);
+    ok(e.pageY === 0, "pageY = " + e.pageY);
+    ok(e.which === 1, "which = " + e.which);
+    ok(e.relatedTarget === null, "relatedTarget = " + e.relatedTarget);
+    ok(e.toElement === null, "toElement = " + e.toElement);
+    ok(e.fromElement === null, "fromElement = " + e.fromElement);
+
+    e.initMouseEvent("test", true, true, window, 1, 2, 3, 4, 5, false, false, false, false, 1, document);
+    ok(e.type === "test", "type = " + e.type);
+    ok(e.cancelable === true, "cancelable = " + e.cancelable);
+    ok(e.bubbles === true, "bubbles = " + e.bubbles);
+    ok(e.detail === 1, "detail = " + e.detail);
+    todo_wine.
+    ok(e.view === window, "view != window");
+    ok(e.screenX === 2, "screenX = " + e.screenX);
+    ok(e.screenY === 3, "screenY = " + e.screenY);
+    ok(e.clientX === 4, "clientX = " + e.clientX);
+    ok(e.clientY === 5, "clientY = " + e.clientY);
+    ok(e.ctrlKey === false, "ctrlKey = " + e.ctrlKey);
+    ok(e.altKey === false, "altKey = " + e.altKey);
+    ok(e.shiftKey === false, "shiftKey = " + e.shiftKey);
+    ok(e.metaKey === false, "metaKey = " + e.metaKey);
+    ok(e.button === 1, "button = " + e.button);
+    ok(e.buttons === 0, "buttons = " + e.buttons);
+    ok(e.which === 2, "which = " + e.which);
+    ok(e.relatedTarget === document, "relatedTarget = " + e.relatedTarget);
+
+    e.initMouseEvent("test", false, false, window, 9, 8, 7, 6, 5, true, true, true, true, 127, document.body);
+    ok(e.type === "test", "type = " + e.type);
+    ok(e.cancelable === false, "cancelable = " + e.cancelable);
+    ok(e.bubbles === false, "bubbles = " + e.bubbles);
+    ok(e.detail === 9, "detail = " + e.detail);
+    ok(e.screenX === 8, "screenX = " + e.screenX);
+    ok(e.screenY === 7, "screenY = " + e.screenY);
+    ok(e.clientX === 6, "clientX = " + e.clientX);
+    ok(e.clientY === 5, "clientY = " + e.clientY);
+    ok(e.ctrlKey === true, "ctrlKey = " + e.ctrlKey);
+    ok(e.altKey === true, "altKey = " + e.altKey);
+    ok(e.shiftKey === true, "shiftKey = " + e.shiftKey);
+    ok(e.metaKey === true, "metaKey = " + e.metaKey);
+    ok(e.button === 127, "button = " + e.button);
+    ok(e.which === 128, "which = " + e.which);
+    ok(e.relatedTarget === document.body, "relatedTarget = " + e.relatedTarget);
+
+    e.initEvent("testevent", true, true);
+    ok(e.type === "testevent", "type = " + e.type);
+    ok(e.cancelable === true, "cancelable = " + e.cancelable);
+    ok(e.bubbles === true, "bubbles = " + e.bubbles);
+    ok(e.detail === 9, "detail = " + e.detail);
+    ok(e.screenX === 8, "screenX = " + e.screenX);
+    ok(e.screenY === 7, "screenY = " + e.screenY);
+    ok(e.clientX === 6, "clientX = " + e.clientX);
+    ok(e.clientY === 5, "clientY = " + e.clientY);
+    ok(e.ctrlKey === true, "ctrlKey = " + e.ctrlKey);
+    ok(e.altKey === true, "altKey = " + e.altKey);
+    ok(e.shiftKey === true, "shiftKey = " + e.shiftKey);
+    ok(e.metaKey === true, "metaKey = " + e.metaKey);
+    ok(e.button === 127, "button = " + e.button);
+
+    e.initUIEvent("testevent", true, true, window, 6);
+    ok(e.type === "testevent", "type = " + e.type);
+    ok(e.cancelable === true, "cancelable = " + e.cancelable);
+    ok(e.bubbles === true, "bubbles = " + e.bubbles);
+    ok(e.detail === 6, "detail = " + e.detail);
+    ok(e.screenX === 8, "screenX = " + e.screenX);
+    ok(e.screenY === 7, "screenY = " + e.screenY);
+    ok(e.clientX === 6, "clientX = " + e.clientX);
+    ok(e.clientY === 5, "clientY = " + e.clientY);
+    ok(e.ctrlKey === true, "ctrlKey = " + e.ctrlKey);
+    ok(e.altKey === true, "altKey = " + e.altKey);
+    ok(e.shiftKey === true, "shiftKey = " + e.shiftKey);
+    ok(e.metaKey === true, "metaKey = " + e.metaKey);
+    ok(e.button === 127, "button = " + e.button);
+
+    next_test();
+}
+
+function test_ui_event() {
+    var e;
+
+    e = document.createEvent("UIEvent");
+    ok(e.detail === 0, "detail = " + e.detail);
+
+    e.initUIEvent("test", true, true, window, 3);
+    ok(e.type === "test", "type = " + e.type);
+    ok(e.cancelable === true, "cancelable = " + e.cancelable);
+    ok(e.bubbles === true, "bubbles = " + e.bubbles);
+    ok(e.detail === 3, "detail = " + e.detail);
+    todo_wine.
+    ok(e.view === window, "view != window");
+
+    next_test();
+}
+
+function test_keyboard_event() {
+    var e;
+
+    e = document.createEvent("KeyboardEvent");
+
+    e.initEvent("test", true, true);
+    ok(e.key === "", "key = " + e.key);
+    ok(e.keyCode === 0, "keyCode = " + e.keyCode);
+    ok(e.charCode === 0, "charCode = " + e.charCode);
+    ok(e.repeat === false, "repeat = " + e.repeat);
+    ok(e.ctrlKey === false, "ctrlKey = " + e.ctrlKey);
+    ok(e.altKey === false, "altKey = " + e.altKey);
+    ok(e.shiftKey === false, "shiftKey = " + e.shiftKey);
+    ok(e.metaKey === false, "metaKey = " + e.metaKey);
+    ok(e.location === 0, "location = " + e.location);
+    ok(e.detail === 0, "detail = " + e.detail);
+    ok(e.which === 0, "which = " + e.which);
+
+    next_test();
+}
+
+function test_error_event() {
+    document.body.innerHTML = '<div><img></img></div>';
+    var div = document.body.firstChild;
+    var img = div.firstChild;
+    var calls = "";
+
+    function record_call(msg) {
+        return function() { calls += msg + "," };
+    }
+    var win_onerror = record_call("window.onerror");
+    var doc_onerror = record_call("doc.onerror");
+    var body_onerror = record_call("body.onerror");
+
+    window.addEventListener("error", win_onerror, true);
+    document.addEventListener("error", doc_onerror, true);
+    document.body.addEventListener("error", body_onerror, true);
+    div.addEventListener("error", record_call("div.onerror"), true);
+
+    div.addEventListener("error", function() {
+        ok(calls === "window.onerror,doc.onerror,body.onerror,div.onerror,", "calls = " + calls);
+
+        window.removeEventListener("error", win_onerror, true);
+        document.removeEventListener("error", doc_onerror, true);
+        document.body.removeEventListener("error", body_onerror, true);
+        next_test();
+    }, true);
+
+    img.src = "about:blank";
+}
+
+function test_detached_img_error_event() {
+    var img = new Image();
+    img.onerror = function() {
+        next_test();
+    }
+    img.src = "about:blank";
 }
 
 var tests = [
@@ -309,5 +815,15 @@ var tests = [
     test_event_phase,
     test_stop_propagation,
     test_prevent_default,
+    test_init_event,
+    test_current_target,
+    test_dispatch_event,
+    test_recursive_dispatch,
+    test_ui_event,
+    test_mouse_event,
+    test_keyboard_event,
+    test_error_event,
+    test_detached_img_error_event,
+    test_time_stamp,
     test_listener_order
 ];

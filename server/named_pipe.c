@@ -40,6 +40,7 @@
 #include "thread.h"
 #include "request.h"
 #include "security.h"
+#include "process.h"
 
 enum pipe_state
 {
@@ -66,6 +67,8 @@ struct pipe_end
     struct fd           *fd;         /* pipe file descriptor */
     unsigned int         flags;      /* pipe flags */
     struct pipe_end     *connection; /* the other end of the pipe */
+    process_id_t         client_pid; /* process that created the client */
+    process_id_t         server_pid; /* process that created the server */
     data_size_t          buffer_size;/* size of buffered data that doesn't block caller */
     struct list          message_queue;
     struct async_queue   read_q;     /* read queue */
@@ -150,8 +153,12 @@ static void pipe_end_reselect_async( struct fd *fd, struct async_queue *queue );
 
 /* server end functions */
 static void pipe_server_dump( struct object *obj, int verbose );
+static struct security_descriptor *pipe_server_get_sd( struct object *obj );
+static int pipe_server_set_sd( struct object *obj, const struct security_descriptor *sd,
+                               unsigned int set_info );
 static void pipe_server_destroy( struct object *obj);
 static int pipe_server_ioctl( struct fd *fd, ioctl_code_t code, struct async *async );
+static void pipe_server_get_file_info( struct fd *fd, unsigned int info_class );
 
 static const struct object_ops pipe_server_ops =
 {
@@ -165,8 +172,8 @@ static const struct object_ops pipe_server_ops =
     no_signal,                    /* signal */
     pipe_end_get_fd,              /* get_fd */
     default_fd_map_access,        /* map_access */
-    default_get_sd,               /* get_sd */
-    default_set_sd,               /* set_sd */
+    pipe_server_get_sd,           /* get_sd */
+    pipe_server_set_sd,           /* set_sd */
     no_lookup_name,               /* lookup_name */
     no_link_name,                 /* link_name */
     NULL,                         /* unlink_name */
@@ -183,6 +190,7 @@ static const struct fd_ops pipe_server_fd_ops =
     pipe_end_read,                /* read */
     pipe_end_write,               /* write */
     pipe_end_flush,               /* flush */
+    pipe_server_get_file_info,    /* get_file_info */
     pipe_end_get_volume_info,     /* get_volume_info */
     pipe_server_ioctl,            /* ioctl */
     no_fd_queue_async,            /* queue_async */
@@ -191,8 +199,12 @@ static const struct fd_ops pipe_server_fd_ops =
 
 /* client end functions */
 static void pipe_client_dump( struct object *obj, int verbose );
+static struct security_descriptor *pipe_client_get_sd( struct object *obj );
+static int pipe_client_set_sd( struct object *obj, const struct security_descriptor *sd,
+                               unsigned int set_info );
 static void pipe_client_destroy( struct object *obj );
 static int pipe_client_ioctl( struct fd *fd, ioctl_code_t code, struct async *async );
+static void pipe_client_get_file_info( struct fd *fd, unsigned int info_class );
 
 static const struct object_ops pipe_client_ops =
 {
@@ -206,8 +218,8 @@ static const struct object_ops pipe_client_ops =
     no_signal,                    /* signal */
     pipe_end_get_fd,              /* get_fd */
     default_fd_map_access,        /* map_access */
-    default_get_sd,               /* get_sd */
-    default_set_sd,               /* set_sd */
+    pipe_client_get_sd,           /* get_sd */
+    pipe_client_set_sd,           /* set_sd */
     no_lookup_name,               /* lookup_name */
     no_link_name,                 /* link_name */
     NULL,                         /* unlink_name */
@@ -224,6 +236,7 @@ static const struct fd_ops pipe_client_fd_ops =
     pipe_end_read,                /* read */
     pipe_end_write,               /* write */
     pipe_end_flush,               /* flush */
+    pipe_client_get_file_info,    /* get_file_info */
     pipe_end_get_volume_info,     /* get_volume_info */
     pipe_client_ioctl,            /* ioctl */
     no_fd_queue_async,            /* queue_async */
@@ -271,6 +284,7 @@ static const struct fd_ops named_pipe_device_fd_ops =
     no_fd_read,                       /* read */
     no_fd_write,                      /* write */
     no_fd_flush,                      /* flush */
+    no_fd_get_file_info,              /* get_file_info */
     no_fd_get_volume_info,            /* get_volume_info */
     named_pipe_device_ioctl,          /* ioctl */
     default_fd_queue_async,           /* queue_async */
@@ -340,18 +354,29 @@ static void set_server_state( struct pipe_server *server, enum pipe_state state 
 }
 
 
+static struct pipe_message *queue_message( struct pipe_end *pipe_end, struct iosb *iosb )
+{
+    struct pipe_message *message;
+
+    if (!(message = mem_alloc( sizeof(*message) ))) return NULL;
+    message->iosb = (struct iosb *)grab_object( iosb );
+    message->async = NULL;
+    message->read_pos = 0;
+    list_add_tail( &pipe_end->message_queue, &message->entry );
+    return message;
+}
+
 static void wake_message( struct pipe_message *message )
 {
     struct async *async = message->async;
 
     message->async = NULL;
+    if (!async) return;
+
     message->iosb->status = STATUS_SUCCESS;
     message->iosb->result = message->iosb->in_size;
-    if (async)
-    {
-        async_terminate( async, message->iosb->result ? STATUS_ALERTED : STATUS_SUCCESS );
-        release_object( async );
-    }
+    async_terminate( async, message->iosb->result ? STATUS_ALERTED : STATUS_SUCCESS );
+    release_object( async );
 }
 
 static void free_message( struct pipe_message *message )
@@ -542,6 +567,85 @@ static int pipe_end_flush( struct fd *fd, struct async *async )
     return 1;
 }
 
+static void pipe_end_get_file_info( struct fd *fd, struct named_pipe *pipe, unsigned int info_class )
+{
+    switch (info_class)
+    {
+    case FileNameInformation:
+        {
+            FILE_NAME_INFORMATION *name_info;
+            data_size_t name_len, reply_size;
+            const WCHAR *name;
+
+            if (get_reply_max_size() < sizeof(*name_info))
+            {
+                set_error( STATUS_INFO_LENGTH_MISMATCH );
+                return;
+            }
+
+            name = get_object_name( &pipe->obj, &name_len );
+            reply_size = offsetof( FILE_NAME_INFORMATION, FileName[name_len/sizeof(WCHAR) + 1] );
+            if (reply_size > get_reply_max_size())
+            {
+                reply_size = get_reply_max_size();
+                set_error( STATUS_BUFFER_OVERFLOW );
+            }
+
+            if (!(name_info = set_reply_data_size( reply_size ))) return;
+            name_info->FileNameLength = name_len + sizeof(WCHAR);
+            name_info->FileName[0] = '\\';
+            reply_size -= offsetof( FILE_NAME_INFORMATION, FileName[1] );
+            if (reply_size) memcpy( &name_info->FileName[1], name, reply_size );
+            break;
+        }
+    default:
+        no_fd_get_file_info( fd, info_class );
+    }
+}
+
+static struct security_descriptor *pipe_server_get_sd( struct object *obj )
+{
+    struct pipe_server *server = (struct pipe_server *) obj;
+    return default_get_sd( &server->pipe->obj );
+}
+
+static struct security_descriptor *pipe_client_get_sd( struct object *obj )
+{
+    struct pipe_client *client = (struct pipe_client *) obj;
+    if (client->server) return default_get_sd( &client->server->pipe->obj );
+    set_error( STATUS_PIPE_DISCONNECTED );
+    return NULL;
+}
+
+static int pipe_server_set_sd( struct object *obj, const struct security_descriptor *sd,
+                               unsigned int set_info )
+{
+    struct pipe_server *server = (struct pipe_server *) obj;
+    return default_set_sd( &server->pipe->obj, sd, set_info );
+}
+
+static int pipe_client_set_sd( struct object *obj, const struct security_descriptor *sd,
+                               unsigned int set_info )
+{
+    struct pipe_client *client = (struct pipe_client *) obj;
+    if (client->server) return default_set_sd( &client->server->pipe->obj, sd, set_info );
+    set_error( STATUS_PIPE_DISCONNECTED );
+    return 0;
+}
+
+static void pipe_server_get_file_info( struct fd *fd, unsigned int info_class )
+{
+    struct pipe_server *server = get_fd_user( fd );
+    pipe_end_get_file_info( fd, server->pipe, info_class );
+}
+
+static void pipe_client_get_file_info( struct fd *fd, unsigned int info_class )
+{
+    struct pipe_client *client = get_fd_user( fd );
+    if (client->server) pipe_end_get_file_info( fd, client->server->pipe, info_class );
+    else set_error( STATUS_PIPE_DISCONNECTED );
+}
+
 static void pipe_end_get_volume_info( struct fd *fd, unsigned int info_class )
 {
     switch (info_class)
@@ -678,7 +782,7 @@ static void reselect_write_queue( struct pipe_end *pipe_end )
         else
         {
             avail += message->iosb->in_size - message->read_pos;
-            if (message->iosb->status == STATUS_PENDING && (avail <= reader->buffer_size || !message->iosb->in_size))
+            if (message->async && (avail <= reader->buffer_size || !message->iosb->in_size))
                 wake_message( message );
         }
     }
@@ -705,26 +809,26 @@ static int pipe_end_read( struct fd *fd, struct async *async, file_pos_t pos )
 
 static int pipe_end_write( struct fd *fd, struct async *async, file_pos_t pos )
 {
-    struct pipe_end *write_end = get_fd_user( fd );
-    struct pipe_end *read_end = write_end->connection;
+    struct pipe_end *pipe_end = get_fd_user( fd );
     struct pipe_message *message;
+    struct iosb *iosb;
 
-    if (!read_end)
+    if (!pipe_end->connection)
     {
         set_error( STATUS_PIPE_DISCONNECTED );
         return 0;
     }
 
-    if (!(write_end->flags & NAMED_PIPE_MESSAGE_STREAM_WRITE) && !get_req_data_size()) return 1;
+    if (!(pipe_end->flags & NAMED_PIPE_MESSAGE_STREAM_WRITE) && !get_req_data_size()) return 1;
 
-    if (!(message = mem_alloc( sizeof(*message) ))) return 0;
+    iosb = async_get_iosb( async );
+    message = queue_message( pipe_end->connection, iosb );
+    release_object( iosb );
+    if (!message) return 0;
+
     message->async = (struct async *)grab_object( async );
-    message->iosb = async_get_iosb( async );
-    message->read_pos = 0;
-    list_add_tail( &read_end->message_queue, &message->entry );
-
-    queue_async( &write_end->write_q, async );
-    reselect_write_queue( write_end );
+    queue_async( &pipe_end->write_q, async );
+    reselect_write_queue( pipe_end );
     set_error( STATUS_PENDING );
     return 1;
 }
@@ -799,6 +903,96 @@ static int pipe_end_peek( struct pipe_end *pipe_end )
     return 1;
 }
 
+static int pipe_end_transceive( struct pipe_end *pipe_end, struct async *async )
+{
+    struct pipe_message *message;
+    struct iosb *iosb;
+
+    if ((pipe_end->flags & (NAMED_PIPE_MESSAGE_STREAM_WRITE | NAMED_PIPE_MESSAGE_STREAM_READ))
+        != (NAMED_PIPE_MESSAGE_STREAM_WRITE | NAMED_PIPE_MESSAGE_STREAM_READ))
+    {
+        set_error( STATUS_INVALID_READ_MODE );
+        return 0;
+    }
+
+    if (!pipe_end->connection)
+    {
+        set_error( STATUS_PIPE_BROKEN );
+        return 0;
+    }
+
+    /* not allowed if we already have read data buffered */
+    if (!list_empty( &pipe_end->message_queue ))
+    {
+        set_error( STATUS_PIPE_BUSY );
+        return 0;
+    }
+
+    iosb = async_get_iosb( async );
+    /* ignore output buffer copy transferred because of METHOD_NEITHER */
+    iosb->in_size -= iosb->out_size;
+    /* transaction never blocks on write, so just queue a message without async */
+    message = queue_message( pipe_end->connection, iosb );
+    release_object( iosb );
+    if (!message) return 0;
+    reselect_read_queue( pipe_end->connection );
+
+    queue_async( &pipe_end->read_q, async );
+    reselect_read_queue( pipe_end );
+    set_error( STATUS_PENDING );
+    return 1;
+}
+
+static int pipe_end_get_connection_attribute( struct pipe_end *pipe_end )
+{
+    const char *attr = get_req_data();
+    data_size_t value_size, attr_size = get_req_data_size();
+    void *value;
+
+    if (attr_size == sizeof("ClientProcessId") && !memcmp( attr, "ClientProcessId", attr_size ))
+    {
+        value = &pipe_end->client_pid;
+        value_size = sizeof(pipe_end->client_pid);
+    }
+    else if (attr_size == sizeof("ServerProcessId") && !memcmp( attr, "ServerProcessId", attr_size ))
+    {
+        value = &pipe_end->server_pid;
+        value_size = sizeof(pipe_end->server_pid);
+    }
+    else
+    {
+        set_error( STATUS_ILLEGAL_FUNCTION );
+        return 0;
+    }
+
+    if (get_reply_max_size() < value_size)
+    {
+        set_error( STATUS_INFO_LENGTH_MISMATCH );
+        return 0;
+    }
+
+    set_reply_data( value, value_size );
+    return 1;
+}
+
+static int pipe_end_ioctl( struct pipe_end *pipe_end, ioctl_code_t code, struct async *async )
+{
+    switch(code)
+    {
+    case FSCTL_PIPE_GET_CONNECTION_ATTRIBUTE:
+        return pipe_end_get_connection_attribute( pipe_end );
+
+    case FSCTL_PIPE_PEEK:
+        return pipe_end_peek( pipe_end );
+
+    case FSCTL_PIPE_TRANSCEIVE:
+        return pipe_end_transceive( pipe_end, async );
+
+    default:
+        return default_fd_ioctl( pipe_end->fd, code, async );
+    }
+}
+
 static int pipe_server_ioctl( struct fd *fd, ioctl_code_t code, struct async *async )
 {
     struct pipe_server *server = get_fd_user( fd );
@@ -854,11 +1048,8 @@ static int pipe_server_ioctl( struct fd *fd, ioctl_code_t code, struct async *as
         }
         return 1;
 
-    case FSCTL_PIPE_PEEK:
-        return pipe_end_peek( &server->pipe_end );
-
     default:
-        return default_fd_ioctl( fd, code, async );
+        return pipe_end_ioctl( &server->pipe_end, code, async );
     }
 }
 
@@ -872,11 +1063,8 @@ static int pipe_client_ioctl( struct fd *fd, ioctl_code_t code, struct async *as
         set_error( STATUS_ILLEGAL_FUNCTION );
         return 0;
 
-    case FSCTL_PIPE_PEEK:
-        return pipe_end_peek( &client->pipe_end );
-
     default:
-        return default_fd_ioctl( fd, code, async );
+        return pipe_end_ioctl( &client->pipe_end, code, async );
     }
 }
 
@@ -912,6 +1100,7 @@ static struct pipe_server *create_pipe_server( struct named_pipe *pipe, unsigned
     server->client = NULL;
     server->options = options;
     init_pipe_end( &server->pipe_end, pipe_flags, pipe->insize );
+    server->pipe_end.server_pid = get_process_id( current->process );
 
     list_add_head( &pipe->servers, &server->entry );
     grab_object( pipe );
@@ -937,6 +1126,7 @@ static struct pipe_client *create_pipe_client( unsigned int flags, unsigned int 
     client->server = NULL;
     client->flags = flags;
     init_pipe_end( &client->pipe_end, pipe_flags, buffer_size );
+    client->pipe_end.client_pid = get_process_id( current->process );
 
     client->pipe_end.fd = alloc_pseudo_fd( &pipe_client_fd_ops, &client->pipe_end.obj, options );
     if (!client->pipe_end.fd)
@@ -1019,6 +1209,8 @@ static struct object *named_pipe_open_file( struct object *obj, unsigned int acc
         client->server = server;
         server->pipe_end.connection = &client->pipe_end;
         client->pipe_end.connection = &server->pipe_end;
+        server->pipe_end.client_pid = client->pipe_end.client_pid;
+        client->pipe_end.server_pid = server->pipe_end.server_pid;
     }
     release_object( server );
     return &client->pipe_end.obj;
@@ -1116,6 +1308,10 @@ DECL_HANDLER(create_named_pipe)
         pipe->timeout = req->timeout;
         pipe->flags = req->flags & NAMED_PIPE_MESSAGE_STREAM_WRITE;
         pipe->sharing = req->sharing;
+        if (sd) default_set_sd( &pipe->obj, sd, OWNER_SECURITY_INFORMATION |
+                                                GROUP_SECURITY_INFORMATION |
+                                                DACL_SECURITY_INFORMATION |
+                                                SACL_SECURITY_INFORMATION );
     }
     else
     {
@@ -1139,10 +1335,6 @@ DECL_HANDLER(create_named_pipe)
     {
         reply->handle = alloc_handle( current->process, server, req->access, objattr->attributes );
         server->pipe->instances++;
-        if (sd) default_set_sd( &server->pipe_end.obj, sd, OWNER_SECURITY_INFORMATION |
-                                                           GROUP_SECURITY_INFORMATION |
-                                                           DACL_SECURITY_INFORMATION |
-                                                           SACL_SECURITY_INFORMATION );
         release_object( server );
     }
 

@@ -1858,7 +1858,7 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
         return WIN_DestroyWindow( hwnd );
     case WM_WINE_SETWINDOWPOS:
         if (is_desktop_window( hwnd )) return 0;
-        return USER_SetWindowPos( (WINDOWPOS *)lparam );
+        return USER_SetWindowPos( (WINDOWPOS *)lparam, 0, 0 );
     case WM_WINE_SHOWWINDOW:
         if (is_desktop_window( hwnd )) return 0;
         return ShowWindow( hwnd, wparam );
@@ -2312,7 +2312,7 @@ static BOOL process_rawinput_message( MSG *msg, const struct hardware_msg_data *
         rawinput->data.mouse.usFlags           = MOUSE_MOVE_RELATIVE;
         rawinput->data.mouse.u.s.usButtonFlags = 0;
         rawinput->data.mouse.u.s.usButtonData  = 0;
-        for (i = 1; i < sizeof(button_flags) / sizeof(*button_flags); ++i)
+        for (i = 1; i < ARRAY_SIZE(button_flags); ++i)
         {
             if (msg_data->flags & (1 << i))
                 rawinput->data.mouse.u.s.usButtonFlags |= button_flags[i];
@@ -2502,7 +2502,16 @@ static BOOL process_mouse_message( MSG *msg, UINT hw_id, ULONG_PTR extra_info, H
     }
     else
     {
+        HWND orig = msg->hwnd;
+
         msg->hwnd = WINPOS_WindowFromPoint( msg->hwnd, msg->pt, &hittest );
+        if (!msg->hwnd) /* As a heuristic, try the next window if it's the owner of orig */
+        {
+            HWND next = GetWindow( orig, GW_HWNDNEXT );
+
+            if (next && GetWindow( orig, GW_OWNER ) == next && WIN_IsCurrentThread( next ))
+                msg->hwnd = WINPOS_WindowFromPoint( next, msg->pt, &hittest );
+        }
     }
 
     if (!msg->hwnd || !WIN_IsCurrentThread( msg->hwnd ))
@@ -3893,7 +3902,7 @@ BOOL WINAPI TranslateMessage( const MSG *msg )
     }
 
     GetKeyboardState( state );
-    len = ToUnicode(msg->wParam, HIWORD(msg->lParam), state, wp, sizeof(wp)/sizeof(WCHAR), 0);
+    len = ToUnicode(msg->wParam, HIWORD(msg->lParam), state, wp, ARRAY_SIZE(wp), 0);
     if (len == -1)
     {
         message = (msg->message == WM_KEYDOWN) ? WM_DEADCHAR : WM_SYSDEADCHAR;

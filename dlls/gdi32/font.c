@@ -811,7 +811,8 @@ static BOOL FONT_DeleteObject( HGDIOBJ handle )
     FONTOBJ *obj;
 
     if (!(obj = free_gdi_handle( handle ))) return FALSE;
-    return HeapFree( GetProcessHeap(), 0, obj );
+    HeapFree( GetProcessHeap(), 0, obj );
+    return TRUE;
 }
 
 
@@ -1664,16 +1665,16 @@ UINT WINAPI GetOutlineTextMetricsW(
         output->otmTextMetrics.tmOverhang         = width_to_LP( dc, output->otmTextMetrics.tmOverhang );
         output->otmAscent                = height_to_LP( dc, output->otmAscent);
         output->otmDescent               = height_to_LP( dc, output->otmDescent);
-        output->otmLineGap               = abs(INTERNAL_YDSTOWS(dc,output->otmLineGap));
-        output->otmsCapEmHeight          = abs(INTERNAL_YDSTOWS(dc,output->otmsCapEmHeight));
-        output->otmsXHeight              = abs(INTERNAL_YDSTOWS(dc,output->otmsXHeight));
+        output->otmLineGap               = INTERNAL_YDSTOWS(dc, output->otmLineGap);
+        output->otmsCapEmHeight          = INTERNAL_YDSTOWS(dc, output->otmsCapEmHeight);
+        output->otmsXHeight              = INTERNAL_YDSTOWS(dc, output->otmsXHeight);
         output->otmrcFontBox.top         = height_to_LP( dc, output->otmrcFontBox.top);
         output->otmrcFontBox.bottom      = height_to_LP( dc, output->otmrcFontBox.bottom);
         output->otmrcFontBox.left        = width_to_LP( dc, output->otmrcFontBox.left);
         output->otmrcFontBox.right       = width_to_LP( dc, output->otmrcFontBox.right);
         output->otmMacAscent             = height_to_LP( dc, output->otmMacAscent);
         output->otmMacDescent            = height_to_LP( dc, output->otmMacDescent);
-        output->otmMacLineGap            = abs(INTERNAL_YDSTOWS(dc,output->otmMacLineGap));
+        output->otmMacLineGap            = INTERNAL_YDSTOWS(dc, output->otmMacLineGap);
         output->otmptSubscriptSize.x     = width_to_LP( dc, output->otmptSubscriptSize.x);
         output->otmptSubscriptSize.y     = height_to_LP( dc, output->otmptSubscriptSize.y);
         output->otmptSubscriptOffset.x   = width_to_LP( dc, output->otmptSubscriptOffset.x);
@@ -1682,7 +1683,7 @@ UINT WINAPI GetOutlineTextMetricsW(
         output->otmptSuperscriptSize.y   = height_to_LP( dc, output->otmptSuperscriptSize.y);
         output->otmptSuperscriptOffset.x = width_to_LP( dc, output->otmptSuperscriptOffset.x);
         output->otmptSuperscriptOffset.y = height_to_LP( dc, output->otmptSuperscriptOffset.y);
-        output->otmsStrikeoutSize        = abs(INTERNAL_YDSTOWS(dc,output->otmsStrikeoutSize));
+        output->otmsStrikeoutSize        = INTERNAL_YDSTOWS(dc, output->otmsStrikeoutSize);
         output->otmsStrikeoutPosition    = height_to_LP( dc, output->otmsStrikeoutPosition);
         output->otmsUnderscoreSize       = height_to_LP( dc, output->otmsUnderscoreSize);
         output->otmsUnderscorePosition   = height_to_LP( dc, output->otmsUnderscorePosition);
@@ -2822,6 +2823,7 @@ DWORD WINAPI GetGlyphOutlineA( HDC hdc, UINT uChar, UINT fuFormat,
         UINT cp;
         int len;
         char mbchs[2];
+        WCHAR wChar;
 
         cp = GdiGetCodePage(hdc);
         if (IsDBCSLeadByteEx(cp, uChar >> 8)) {
@@ -2832,8 +2834,9 @@ DWORD WINAPI GetGlyphOutlineA( HDC hdc, UINT uChar, UINT fuFormat,
             len = 1;
             mbchs[0] = (uChar & 0xff);
         }
-        uChar = 0;
-        MultiByteToWideChar(cp, 0, mbchs, len, (LPWSTR)&uChar, 1);
+        wChar = 0;
+        MultiByteToWideChar(cp, 0, mbchs, len, &wChar, 1);
+        uChar = wChar;
     }
 
     return GetGlyphOutlineW(hdc, uChar, fuFormat, lpgm, cbBuffer, lpBuffer,

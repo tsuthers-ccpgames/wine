@@ -319,7 +319,7 @@
 # @ stub CreateProcessInternalWSecure
 @ stdcall CreateProcessW(wstr wstr ptr ptr long long ptr wstr ptr ptr)
 @ stdcall CreateRemoteThread(long ptr long ptr long long ptr)
-# @ stub CreateRemoteThreadEx
+@ stdcall CreateRemoteThreadEx(long ptr long ptr ptr long ptr ptr)
 @ stdcall CreateSemaphoreA(ptr long long str)
 @ stdcall CreateSemaphoreExA(ptr long long str long long)
 @ stdcall CreateSemaphoreExW(ptr long long wstr long long)
@@ -340,8 +340,8 @@
 @ stdcall CreateTimerQueue ()
 @ stdcall CreateTimerQueueTimer(ptr long ptr ptr long long long)
 @ stdcall CreateToolhelp32Snapshot(long long)
-# @ stub -arch=x86_64 CreateUmsCompletionList
-# @ stub -arch=x86_64 CreateUmsThreadContext
+@ stdcall -arch=x86_64 CreateUmsCompletionList(ptr)
+@ stdcall -arch=x86_64 CreateUmsThreadContext(ptr)
 @ stub CreateVirtualBuffer
 @ stdcall CreateWaitableTimerA(ptr long str)
 @ stdcall CreateWaitableTimerExA(ptr str long long)
@@ -373,11 +373,11 @@
 @ stdcall DeleteTimerQueue(long)
 @ stdcall DeleteTimerQueueEx (long long)
 @ stdcall DeleteTimerQueueTimer(long long long)
-# @ stub -arch=x86_64 DeleteUmsCompletionList
-# @ stub -arch=x86_64 DeleteUmsThreadContext
+@ stdcall -arch=x86_64 DeleteUmsCompletionList(ptr)
+@ stdcall -arch=x86_64 DeleteUmsThreadContext(ptr)
 @ stdcall DeleteVolumeMountPointA(str)
 @ stdcall DeleteVolumeMountPointW(wstr)
-# @ stub -arch=x86_64 DequeueUmsCompletionListItems
+@ stdcall -arch=x86_64 DequeueUmsCompletionListItems(ptr long ptr)
 @ stdcall DeviceIoControl(long long ptr long ptr long ptr ptr)
 @ stdcall DisableThreadLibraryCalls(long)
 @ stdcall DisconnectNamedPipe(long)
@@ -434,10 +434,10 @@
 @ stdcall EnumUILanguagesW(ptr long long)
 # @ stub EnumerateLocalComputerNamesA
 # @ stub EnumerateLocalComputerNamesW
-# @ stub -arch=x86_64 EnterUmsSchedulingMode
+@ stdcall -arch=x86_64 EnterUmsSchedulingMode(ptr)
 @ stdcall EraseTape(ptr long long)
 @ stdcall EscapeCommFunction(long long)
-# @ stub -arch=x86_64 ExecuteUmsThread
+@ stdcall -arch=x86_64 ExecuteUmsThread(ptr)
 @ stdcall ExitProcess(long)
 @ stdcall ExitThread(long)
 @ stub ExitVDM
@@ -505,7 +505,7 @@
 @ stub FindNextVolumeMountPointW
 @ stdcall FindNextVolumeW(long ptr long)
 # @ stub FindNLSString
-# @ stub FindNLSStringEx
+@ stdcall FindNLSStringEx(wstr long wstr long wstr long ptr ptr ptr long)
 @ stdcall FindResourceA(long str str)
 @ stdcall FindResourceExA(long str str long)
 @ stdcall FindResourceExW(long wstr wstr long)
@@ -621,7 +621,7 @@
 @ stdcall GetConsoleTitleW(ptr long)
 @ stdcall GetConsoleWindow()
 @ stdcall GetCurrencyFormatA(long long str ptr str long)
-# @ stub GetCurrencyFormatEx
+@ stdcall GetCurrencyFormatEx(wstr long wstr ptr ptr long)
 @ stdcall GetCurrencyFormatW(long long str ptr str long)
 @ stdcall GetCurrentActCtx(ptr)
 @ stdcall GetCurrentConsoleFont(long long ptr)
@@ -637,7 +637,7 @@
 @ stdcall GetCurrentProcessorNumberEx(ptr) ntdll.RtlGetCurrentProcessorNumberEx
 @ stdcall -norelay GetCurrentThread()
 @ stdcall -norelay GetCurrentThreadId()
-# @ stub -arch=x86_64 GetCurrentUmsThread
+@ stdcall -arch=x86_64 GetCurrentUmsThread()
 @ stdcall GetDateFormatA(long long ptr str ptr long)
 @ stdcall GetDateFormatEx(wstr long ptr wstr ptr long wstr)
 @ stdcall GetDateFormatW(long long ptr wstr ptr long)
@@ -657,7 +657,7 @@
 # @ stub GetDurationFormat
 # @ stub GetDurationFormatEx
 @ stdcall GetDynamicTimeZoneInformation(ptr)
-# @ stub GetEnabledXStateFeatures
+@ stdcall -ret64 -arch=i386,x86_64 GetEnabledXStateFeatures()
 @ stdcall GetEnvironmentStrings() GetEnvironmentStringsA
 @ stdcall GetEnvironmentStringsA()
 @ stdcall GetEnvironmentStringsW()
@@ -727,15 +727,15 @@
 # @ stub GetNamedPipeAttribute
 # @ stub GetNamedPipeClientComputerNameA
 # @ stub GetNamedPipeClientComputerNameW
-# @ stub GetNamedPipeClientProcessId
-# @ stub GetNamedPipeClientSessionId
+@ stdcall GetNamedPipeClientProcessId(long ptr)
+@ stdcall GetNamedPipeClientSessionId(long ptr)
 @ stdcall GetNamedPipeHandleStateA(long ptr ptr ptr ptr str long)
 @ stdcall GetNamedPipeHandleStateW(long ptr ptr ptr ptr wstr long)
 @ stdcall GetNamedPipeInfo(long ptr ptr ptr ptr)
-# @ stub GetNamedPipeServerProcessId
-# @ stub GetNamedPipeServerSessionId
+@ stdcall GetNamedPipeServerProcessId(long ptr)
+@ stdcall GetNamedPipeServerSessionId(long ptr)
 @ stdcall GetNativeSystemInfo(ptr)
-# @ stub -arch=x86_64 GetNextUmsListItem
+@ stdcall -arch=x86_64 GetNextUmsListItem(ptr)
 @ stub GetNextVDMCommand
 @ stub GetNlsSectionName
 # @ stub GetNLSVersion
@@ -746,7 +746,7 @@
 @ stdcall GetNumaHighestNodeNumber(ptr)
 # @ stub GetNumaNodeNumberFromHandle
 @ stdcall GetNumaNodeProcessorMask(long ptr)
-# @ stub GetNumaNodeProcessorMaskEx
+@ stdcall GetNumaNodeProcessorMaskEx(long ptr)
 # @ stub GetNumaProcessorMap
 @ stdcall GetNumaProcessorNode(long ptr)
 # @ stub GetNumaProcessorNodeEx
@@ -866,7 +866,7 @@
 @ stdcall GetTimeZoneInformationForYear(long ptr ptr)
 @ stdcall GetThreadUILanguage()
 # @ stub GetUILanguageInfo
-# @ stub -arch=x86_64 GetUmsCompletionListEvent
+@ stdcall -arch=x86_64 GetUmsCompletionListEvent(ptr ptr)
 # @ stub -arch=x86_64 GetUmsSystemThreadInformation
 @ stdcall GetUserDefaultLCID()
 @ stdcall GetUserDefaultLangID()
@@ -1155,7 +1155,7 @@
 @ stdcall PulseEvent(long)
 @ stdcall PurgeComm(long long)
 @ stdcall -i386 -private -norelay QT_Thunk() krnl386.exe16.QT_Thunk
-# @ stub QueryActCtxSettingsW
+@ stdcall QueryActCtxSettingsW(long ptr wstr wstr ptr long ptr)
 @ stdcall QueryActCtxW(long ptr ptr long ptr long ptr)
 @ stdcall QueryDepthSList(ptr) ntdll.RtlQueryDepthSList
 @ stdcall QueryDosDeviceA(str ptr long)
@@ -1171,11 +1171,11 @@
 @ stdcall QueryPerformanceCounter(ptr)
 @ stdcall QueryPerformanceFrequency(ptr)
 # @ stub QueryProcessAffinityUpdateMode
-# @ stub QueryProcessCycleTime
+@ stdcall QueryProcessCycleTime(long ptr)
 @ stdcall QueryThreadCycleTime(long ptr)
 # @ stub QueryThreadProfiling
 # @ stub QueryThreadpoolStackInformation
-# @ stub -arch=x86_64 QueryUmsThreadInformation
+@ stdcall -arch=x86_64 QueryUmsThreadInformation(ptr long ptr long ptr)
 @ stdcall QueryUnbiasedInterruptTime(ptr)
 @ stub QueryWin31IniFilesMappedToRegistry
 @ stdcall QueueUserAPC(ptr long long)
@@ -1267,16 +1267,16 @@
 # @ stub RemoveLocalAlternateComputerNameW
 @ stdcall RemoveVectoredContinueHandler(ptr) ntdll.RtlRemoveVectoredContinueHandler
 @ stdcall RemoveVectoredExceptionHandler(ptr) ntdll.RtlRemoveVectoredExceptionHandler
-# @ stub ReOpenFile
+@ stdcall ReOpenFile(ptr long long long) ReOpenFile
 @ stdcall ReplaceFile(wstr wstr wstr long ptr ptr) ReplaceFileW
 @ stdcall ReplaceFileA(str str str long ptr ptr)
 @ stdcall ReplaceFileW(wstr wstr wstr long ptr ptr)
-@ stub RequestDeviceWakeup
 # @ stub RemoveDirectoryTransactedA
 # @ stub RemoveDirectoryTransactedW
 @ stdcall RemoveDllDirectory(ptr)
 # @ stub RemoveSecureMemoryCacheCallback
 # @ stub ReplacePartitionUnit
+@ stdcall RequestDeviceWakeup(long)
 @ stdcall RequestWakeupLatency(long)
 @ stdcall ResetEvent(long)
 @ stdcall ResetWriteWatch(ptr long)
@@ -1425,7 +1425,7 @@
 @ stdcall SetNamedPipeHandleState(long ptr ptr ptr)
 @ stdcall SetPriorityClass(long long)
 @ stdcall SetProcessAffinityMask(long long)
-# @ stub SetProcessAffinityUpdateMode
+@ stdcall SetProcessAffinityUpdateMode(long long)
 @ stdcall SetProcessDEPPolicy(long)
 # @ stub SetProcessPreferredUILanguages
 @ stdcall SetProcessPriorityBoost(long long)
@@ -1464,7 +1464,7 @@
 @ stdcall SetThreadpoolWait(ptr long ptr)
 @ stdcall SetTimeZoneInformation(ptr)
 @ stub SetTimerQueueTimer
-# @ stub -arch=x86_64 SetUmsThreadInformation
+@ stdcall -arch=x86_64 SetUmsThreadInformation(ptr long ptr long)
 @ stdcall SetUnhandledExceptionFilter(ptr)
 @ stdcall SetUserGeoID(long)
 @ stub SetVDMCurrentDirectories
@@ -1524,7 +1524,7 @@
 # @ stub -arch=x86_64 uaw_wcsicmp
 # @ stub -arch=x86_64 uaw_wcslen
 # @ stub -arch=x86_64 uaw_wcsrchr
-# @ stub -arch=x86_64 UmsThreadYield
+@ stdcall -arch=x86_64 UmsThreadYield(ptr)
 # @ stub -arch=x86_64 __misaligned_access
 @ stdcall -i386 -private UTRegister(long str str str ptr ptr ptr) krnl386.exe16.UTRegister
 @ stdcall -i386 -private UTUnRegister(long) krnl386.exe16.UTUnRegister
@@ -1600,10 +1600,10 @@
 @ stdcall WinExec(str long)
 @ stdcall Wow64EnableWow64FsRedirection(long)
 @ stdcall Wow64DisableWow64FsRedirection(ptr)
-# @ stub Wow64GetThreadContext
+@ stdcall Wow64GetThreadContext(long ptr)
 # @ stub Wow64GetThreadSelectorEntry
 @ stdcall Wow64RevertWow64FsRedirection(ptr)
-# @ stub Wow64SetThreadContext
+@ stdcall Wow64SetThreadContext(long ptr)
 # @ stub Wow64SuspendThread
 @ stdcall WriteConsoleA(long ptr long ptr ptr)
 @ stdcall WriteConsoleInputA(long ptr long ptr)

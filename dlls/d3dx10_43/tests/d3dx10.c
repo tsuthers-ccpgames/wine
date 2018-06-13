@@ -269,8 +269,8 @@ float4 main(float4 color : COLOR) : SV_TARGET
     hr = ID3D10Device_CreatePixelShader(device, simple_ps, sizeof(simple_ps), &ps);
     ok(SUCCEEDED(hr), "Failed to create pixel shader, hr %#x.\n", hr);
 
-    hr = ID3D10Device_CreateInputLayout(device, layout_desc, sizeof(layout_desc) / sizeof(*layout_desc),
-            simple_vs, sizeof(simple_vs), &input_layout);
+    hr = ID3D10Device_CreateInputLayout(device, layout_desc, ARRAY_SIZE(layout_desc), simple_vs,
+            sizeof(simple_vs), &input_layout);
     ok(SUCCEEDED(hr), "Failed to create input layout, hr %#x.\n", hr);
 
     blend_desc.AlphaToCoverageEnable = FALSE;
@@ -510,31 +510,29 @@ float4 main(float4 color : COLOR) : SV_TARGET
     ok(!tmp_dsv, "Got unexpected depth stencil view %p.\n", tmp_dsv);
 
     ID3D10Device_RSGetScissorRects(device, &count, NULL);
-    todo_wine ok(count == D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE,
+    ok(count == D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE,
             "Got unexpected scissor rect count %u.\n", count);
     memset(tmp_rect, 0x55, sizeof(tmp_rect));
     count = D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
     ID3D10Device_RSGetScissorRects(device, &count, tmp_rect);
     for (i = 0; i < D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; ++i)
     {
-        todo_wine_if(i)
-            ok(tmp_rect[i].left == i
-                    && tmp_rect[i].top == i * 2
-                    && tmp_rect[i].right == i + 1
-                    && tmp_rect[i].bottom == (i + 1) * 2,
-                    "Got unexpected scissor rect %s in slot %u.\n",
-                    wine_dbgstr_rect(&tmp_rect[i]), i);
+        ok(tmp_rect[i].left == i
+                && tmp_rect[i].top == i * 2
+                && tmp_rect[i].right == i + 1
+                && tmp_rect[i].bottom == (i + 1) * 2,
+                "Got unexpected scissor rect %s in slot %u.\n",
+                wine_dbgstr_rect(&tmp_rect[i]), i);
     }
     ID3D10Device_RSGetViewports(device, &count, NULL);
-    todo_wine ok(count == D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE,
+    ok(count == D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE,
             "Got unexpected viewport count %u.\n", count);
     memset(tmp_viewport, 0x55, sizeof(tmp_viewport));
     count = D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
     ID3D10Device_RSGetViewports(device, &count, tmp_viewport);
     for (i = 0; i < D3D10_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE; ++i)
     {
-        todo_wine_if(i)
-            ok(tmp_viewport[i].TopLeftX == i * 3
+        ok(tmp_viewport[i].TopLeftX == i * 3
                     && tmp_viewport[i].TopLeftY == i * 4
                     && tmp_viewport[i].Width == 3
                     && tmp_viewport[i].Height == 4

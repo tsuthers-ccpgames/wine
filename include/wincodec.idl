@@ -189,6 +189,12 @@ typedef enum WICPngFilterOption {
     WICPNFFILTEROPTION_FORCE_DWORD = CODEC_FORCE_DWORD
 } WICPngFilterOption;
 
+typedef enum WICSectionAccessLevel {
+    WICSectionAccessLevelRead = 0x00000001,
+    WICSectionAccessLevelReadWrite = 0x00000003,
+    WICSectionAccessLevel_FORCE_DWORD = CODEC_FORCE_DWORD
+} WICSectionAccessLevel;
+
 typedef GUID WICPixelFormatGUID;
 typedef REFGUID REFWICPixelFormatGUID;
 
@@ -890,7 +896,7 @@ interface IWICImageEncoder : IUnknown
         [in] ID2D1Image *image,
         [in] IWICBitmapEncoder *encoder,
         [in, unique] const WICImageParameters *parameters);
-};
+}
 
 cpp_quote("DEFINE_GUID(CLSID_WICImagingFactory,  0xcacaf262,0x9370,0x4615,0xa1,0x3b,0x9f,0x55,0x39,0xda,0x4c,0x0a);")
 cpp_quote("DEFINE_GUID(CLSID_WICImagingFactory1, 0xcacaf262,0x9370,0x4615,0xa1,0x3b,0x9f,0x55,0x39,0xda,0x4c,0x0a);")
@@ -1032,7 +1038,7 @@ interface IWICImagingFactory2 : IWICImagingFactory
     HRESULT CreateImageEncoder(
         [in] ID2D1Device *device,
         [out] IWICImageEncoder **encoder);
-};
+}
 
 [
     local,
@@ -1058,6 +1064,8 @@ interface IWICEnumMetadataItem : IUnknown
 }
 
 cpp_quote("HRESULT WINAPI WICConvertBitmapSource(REFWICPixelFormatGUID dstFormat, IWICBitmapSource *pISrc, IWICBitmapSource **ppIDst);")
+cpp_quote("HRESULT WINAPI WICCreateBitmapFromSection(UINT width, UINT height, REFWICPixelFormatGUID format, HANDLE section, UINT stride, UINT offset, IWICBitmap **bitmap);")
+cpp_quote("HRESULT WINAPI WICCreateBitmapFromSectionEx(UINT width, UINT height, REFWICPixelFormatGUID format, HANDLE section, UINT stride, UINT offset, WICSectionAccessLevel access, IWICBitmap **bitmap);")
 
 cpp_quote("HRESULT WINAPI WICMapGuidToShortName(REFGUID,UINT,WCHAR *,UINT *);")
 cpp_quote("HRESULT WINAPI WICMapShortNameToGuid(PCWSTR,GUID *);")

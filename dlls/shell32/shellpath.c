@@ -857,6 +857,7 @@ static const WCHAR Microsoft_Windows_Start_Menu_Admin_ToolsW[] = {'M','i','c','r
 static const WCHAR Microsoft_Windows_Start_Menu_StartupW[] = {'M','i','c','r','o','s','o','f','t','\\','W','i','n','d','o','w','s','\\','S','t','a','r','t',' ','M','e','n','u','\\','P','r','o','g','r','a','m','s','\\','S','t','a','r','t','U','p','\0'};
 static const WCHAR Microsoft_Windows_TemplatesW[] = {'M','i','c','r','o','s','o','f','t','\\','W','i','n','d','o','w','s','\\','T','e','m','p','l','a','t','e','s',0};
 static const WCHAR Microsoft_Windows_Temporary_Internet_FilesW[] = {'M','i','c','r','o','s','o','f','t','\\','W','i','n','d','o','w','s','\\','T','e','m','p','o','r','a','r','y',' ','I','n','t','e','r','n','e','t',' ','F','i','l','e','s',0};
+static const WCHAR Microsoft_Windows_ThemesW[] =  {'M','i','c','r','o','s','o','f','t','\\','W','i','n','d','o','w','s','\\','T','h','e','m','e','s',0};
 static const WCHAR MoviesW[] = {'M','o','v','i','e','s','\0'};
 static const WCHAR MusicW[] = {'M','u','s','i','c','\0'};
 static const WCHAR MusicLibraryW[] = {'M','u','s','i','c','L','i','b','r','a','r','y',0};
@@ -1079,7 +1080,7 @@ static ULONG WINAPI ApplicationDestinations_Release(IApplicationDestinations *if
     TRACE("(%p), new refcount=%i\n", This, ref);
 
     if (ref == 0)
-        HeapFree(GetProcessHeap(), 0, This);
+        heap_free(This);
 
     return ref;
 }
@@ -3421,8 +3422,9 @@ static HRESULT _SHGetDefaultValue(BYTE folder, LPWSTR pszPath)
 
     TRACE("0x%02x,%p\n", folder, pszPath);
 
-    if (folder >= sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]))
+    if (folder >= ARRAY_SIZE(CSIDL_Data))
         return E_INVALIDARG;
+
     if (!pszPath)
         return E_INVALIDARG;
 
@@ -3508,7 +3510,7 @@ static HRESULT _SHGetCurrentVersionPath(DWORD dwFlags, BYTE folder,
 
     TRACE("0x%08x,0x%02x,%p\n", dwFlags, folder, pszPath);
 
-    if (folder >= sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]))
+    if (folder >= ARRAY_SIZE(CSIDL_Data))
         return E_INVALIDARG;
     if (CSIDL_Data[folder].type != CSIDL_Type_CurrVer)
         return E_INVALIDARG;
@@ -3575,13 +3577,13 @@ static LPWSTR _GetUserSidStringFromToken(HANDLE Token)
     {
         if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
             return NULL;
-        UserInfo = HeapAlloc(GetProcessHeap(), 0, InfoSize);
+        UserInfo = heap_alloc(InfoSize);
         if (UserInfo == NULL)
             return NULL;
         if (! GetTokenInformation(Token, TokenUser, UserInfo, InfoSize,
                                   &InfoSize))
         {
-            HeapFree(GetProcessHeap(), 0, UserInfo);
+            heap_free(UserInfo);
             return NULL;
         }
     }
@@ -3590,7 +3592,7 @@ static LPWSTR _GetUserSidStringFromToken(HANDLE Token)
         SidStr = NULL;
 
     if (UserInfo != (PTOKEN_USER) InfoBuffer)
-        HeapFree(GetProcessHeap(), 0, UserInfo);
+        heap_free(UserInfo);
 
     return SidStr;
 }
@@ -3612,7 +3614,7 @@ static HRESULT _SHGetUserProfilePath(HANDLE hToken, DWORD dwFlags, BYTE folder,
 
     TRACE("%p,0x%08x,0x%02x,%p\n", hToken, dwFlags, folder, pszPath);
 
-    if (folder >= sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]))
+    if (folder >= ARRAY_SIZE(CSIDL_Data))
         return E_INVALIDARG;
     if (CSIDL_Data[folder].type != CSIDL_Type_User)
         return E_INVALIDARG;
@@ -3684,7 +3686,7 @@ static HRESULT _SHGetAllUsersProfilePath(DWORD dwFlags, BYTE folder,
 
     TRACE("0x%08x,0x%02x,%p\n", dwFlags, folder, pszPath);
 
-    if (folder >= sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]))
+    if (folder >= ARRAY_SIZE(CSIDL_Data))
         return E_INVALIDARG;
     if (CSIDL_Data[folder].type != CSIDL_Type_AllUsers && CSIDL_Data[folder].type != CSIDL_Type_ProgramData)
         return E_INVALIDARG;
@@ -3935,10 +3937,11 @@ HRESULT WINAPI SHGetFolderPathAndSubDirA(
     HRESULT hr = S_OK;
     LPWSTR pszSubPathW = NULL;
     LPWSTR pszPathW = NULL;
-    TRACE("%08x,%08x,%s\n",nFolder, dwFlags, debugstr_w(pszSubPathW));
+
+    TRACE("%p,%#x,%p,%#x,%s,%p\n", hwndOwner, nFolder, hToken, dwFlags, debugstr_a(pszSubPath), pszPath);
 
     if(pszPath) {
-        pszPathW = HeapAlloc(GetProcessHeap(), 0, MAX_PATH * sizeof(WCHAR));
+        pszPathW = heap_alloc(MAX_PATH * sizeof(WCHAR));
         if(!pszPathW) {
             hr = HRESULT_FROM_WIN32(ERROR_NOT_ENOUGH_MEMORY);
             goto cleanup;
@@ -3952,7 +3955,7 @@ HRESULT WINAPI SHGetFolderPathAndSubDirA(
      */
     if (pszSubPath && pszSubPath[0]) {
         length = MultiByteToWideChar(CP_ACP, 0, pszSubPath, -1, NULL, 0);
-        pszSubPathW = HeapAlloc(GetProcessHeap(), 0, length * sizeof(WCHAR));
+        pszSubPathW = heap_alloc(length * sizeof(WCHAR));
         if(!pszSubPathW) {
             hr = HRESULT_FROM_WIN32(ERROR_NOT_ENOUGH_MEMORY);
             goto cleanup;
@@ -3966,8 +3969,8 @@ HRESULT WINAPI SHGetFolderPathAndSubDirA(
         WideCharToMultiByte(CP_ACP, 0, pszPathW, -1, pszPath, MAX_PATH, NULL, NULL);
 
 cleanup:
-    HeapFree(GetProcessHeap(), 0, pszPathW);
-    HeapFree(GetProcessHeap(), 0, pszSubPathW);
+    heap_free(pszPathW);
+    heap_free(pszSubPathW);
     return hr;
 }
 
@@ -3988,7 +3991,7 @@ HRESULT WINAPI SHGetFolderPathAndSubDirW(
     CSIDL_Type type;
     int        ret;
     
-    TRACE("%p,%p,nFolder=0x%04x,%s\n", hwndOwner,pszPath,nFolder,debugstr_w(pszSubPath));
+    TRACE("%p,%#x,%p,%#x,%s,%p\n", hwndOwner, nFolder, hToken, dwFlags, debugstr_w(pszSubPath), pszPath);
 
     /* Windows always NULL-terminates the resulting path regardless of success
      * or failure, so do so first
@@ -3996,7 +3999,7 @@ HRESULT WINAPI SHGetFolderPathAndSubDirW(
     if (pszPath)
         *pszPath = '\0';
 
-    if (folder >= sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]))
+    if (folder >= ARRAY_SIZE(CSIDL_Data))
         return E_INVALIDARG;
     if ((SHGFP_TYPE_CURRENT != dwFlags) && (SHGFP_TYPE_DEFAULT != dwFlags))
         return E_INVALIDARG;
@@ -4125,7 +4128,7 @@ HRESULT WINAPI SHGetFolderPathA(
     WCHAR szTemp[MAX_PATH];
     HRESULT hr;
 
-    TRACE("%p,%p,nFolder=0x%04x\n",hwndOwner,pszPath,nFolder);
+    TRACE("%p,%d,%p,%#x,%p\n", hwndOwner, nFolder, hToken, dwFlags, pszPath);
 
     if (pszPath)
         *pszPath = '\0';
@@ -4292,7 +4295,7 @@ static HRESULT _SHRegisterUserShellFolders(BOOL bDefault)
     }
 
     hr = _SHRegisterFolders(hRootKey, hToken, pUserShellFolderPath,
-     pShellFolderPath, folders, sizeof(folders) / sizeof(folders[0]));
+     pShellFolderPath, folders, ARRAY_SIZE(folders));
     TRACE("returning 0x%08x\n", hr);
     return hr;
 }
@@ -4317,7 +4320,7 @@ static HRESULT _SHRegisterCommonShellFolders(void)
 
     TRACE("\n");
     hr = _SHRegisterFolders(HKEY_LOCAL_MACHINE, NULL, szSHUserFolders,
-     szSHFolders, folders, sizeof(folders) / sizeof(folders[0]));
+     szSHFolders, folders, ARRAY_SIZE(folders));
     TRACE("returning 0x%08x\n", hr);
     return hr;
 }
@@ -4410,7 +4413,7 @@ static void _SHCreateSymbolicLinks(void)
     const WCHAR* MyOSXStuffW[] = { PicturesW, MoviesW, MusicW };
     int acsidlMyStuff[] = { CSIDL_MYPICTURES, CSIDL_MYVIDEO, CSIDL_MYMUSIC };
     static const char * const xdg_dirs[] = { "PICTURES", "VIDEOS", "MUSIC", "DOCUMENTS", "DESKTOP" };
-    static const unsigned int num = sizeof(xdg_dirs) / sizeof(xdg_dirs[0]);
+    static const unsigned int num = ARRAY_SIZE(xdg_dirs);
     WCHAR wszTempPath[MAX_PATH];
     char szPersonalTarget[FILENAME_MAX], *pszPersonal;
     char szMyStuffTarget[FILENAME_MAX], *pszMyStuff;
@@ -4445,7 +4448,7 @@ static void _SHCreateSymbolicLinks(void)
                  * 'My Videos' and 'My Music' subfolders or fail silently if
                  * they already exist.
                  */
-                for (i = 0; i < sizeof(aidsMyStuff)/sizeof(*aidsMyStuff); i++)
+                for (i = 0; i < ARRAY_SIZE(aidsMyStuff); i++)
                 {
                     strcpy(szMyStuffTarget, szPersonalTarget);
                     if (_SHAppendToUnixPath(szMyStuffTarget, MAKEINTRESOURCEW(aidsMyStuff[i])))
@@ -4485,7 +4488,7 @@ static void _SHCreateSymbolicLinks(void)
          * in '%USERPROFILE%\\My Documents' or fail silently if they already exist. */
         pszHome = NULL;
         strcpy(szPersonalTarget, pszPersonal);
-        for (i = 0; i < sizeof(aidsMyStuff)/sizeof(aidsMyStuff[0]); i++) {
+        for (i = 0; i < ARRAY_SIZE(aidsMyStuff); i++) {
             strcpy(szMyStuffTarget, szPersonalTarget);
             if (_SHAppendToUnixPath(szMyStuffTarget, MAKEINTRESOURCEW(aidsMyStuff[i])))
                 mkdir(szMyStuffTarget, 0777);
@@ -4493,7 +4496,7 @@ static void _SHCreateSymbolicLinks(void)
     }
 
     /* Create symbolic links for 'My Pictures', 'My Videos' and 'My Music'. */
-    for (i=0; i < sizeof(aidsMyStuff)/sizeof(aidsMyStuff[0]); i++)
+    for (i=0; i < ARRAY_SIZE(aidsMyStuff); i++)
     {
         /* Create the current 'My Whatever' folder and get its unix path. */
         hr = SHGetFolderPathW(NULL, acsidlMyStuff[i]|CSIDL_FLAG_CREATE, NULL,
@@ -4534,7 +4537,7 @@ static void _SHCreateSymbolicLinks(void)
         }
         remove(pszMyStuff);
         symlink(szMyStuffTarget, pszMyStuff);
-        HeapFree(GetProcessHeap(), 0, pszMyStuff);
+        heap_free(pszMyStuff);
     }
 
     /* Last but not least, the Desktop folder */
@@ -4542,7 +4545,7 @@ static void _SHCreateSymbolicLinks(void)
         strcpy(szDesktopTarget, pszHome);
     else
         strcpy(szDesktopTarget, pszPersonal);
-    HeapFree(GetProcessHeap(), 0, pszPersonal);
+    heap_free(pszPersonal);
 
     xdg_desktop_dir = xdg_results ? xdg_results[num - 1] : NULL;
     if (xdg_desktop_dir ||
@@ -4558,7 +4561,7 @@ static void _SHCreateSymbolicLinks(void)
                 symlink(xdg_desktop_dir, pszDesktop);
             else
                 symlink(szDesktopTarget, pszDesktop);
-            HeapFree(GetProcessHeap(), 0, pszDesktop);
+            heap_free(pszDesktop);
         }
     }
 
@@ -4566,8 +4569,8 @@ static void _SHCreateSymbolicLinks(void)
     if (xdg_results)
     {
         for (i = 0; i < num; i++)
-            HeapFree(GetProcessHeap(), 0, xdg_results[i]);
-        HeapFree(GetProcessHeap(), 0, xdg_results);
+            heap_free(xdg_results[i]);
+        heap_free(xdg_results);
     }
 }
 
@@ -4609,6 +4612,11 @@ static HRESULT create_extra_folders(void)
     {
         hr = SHGetFolderPathAndSubDirW( 0, CSIDL_COMMON_APPDATA | CSIDL_FLAG_CREATE, NULL,
                                         SHGFP_TYPE_DEFAULT, microsoftW, path );
+    }
+    if (SUCCEEDED(hr))
+    {
+        hr = SHGetFolderPathAndSubDirW(0, CSIDL_APPDATA | CSIDL_FLAG_CREATE, NULL,
+                                       SHGFP_TYPE_DEFAULT, Microsoft_Windows_ThemesW, path);
     }
     return hr;
 }
@@ -4654,11 +4662,11 @@ static HRESULT set_folder_attributes(void)
     };
 
     unsigned int i;
-    WCHAR buffer[39 + (sizeof(clsidW) + sizeof(shellfolderW)) / sizeof(WCHAR)];
+    WCHAR buffer[39 + ARRAY_SIZE(clsidW) + ARRAY_SIZE(shellfolderW)];
     LONG res;
     HKEY hkey;
 
-    for (i = 0; i < sizeof(folders)/sizeof(folders[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(folders); i++)
     {
         strcpyW( buffer, clsidW );
         StringFromGUID2( folders[i].clsid, buffer + strlenW(buffer), 39 );
@@ -4854,7 +4862,7 @@ HRESULT WINAPI SHGetSpecialFolderLocation(
 static int csidl_from_id( const KNOWNFOLDERID *id )
 {
     int i;
-    for (i = 0; i < sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(CSIDL_Data); i++)
         if (IsEqualGUID( CSIDL_Data[i].id, id )) return i;
     return -1;
 }
@@ -5048,12 +5056,12 @@ static HRESULT get_known_folder_registry_path(
     TRACE("(%s, %s, %p)\n", debugstr_guid(rfid), debugstr_w(lpStringGuid), lpPath);
 
     if(rfid)
-        StringFromGUID2(rfid, sGuid, sizeof(sGuid)/sizeof(sGuid[0]));
+        StringFromGUID2(rfid, sGuid, ARRAY_SIZE(sGuid));
     else
         lstrcpyW(sGuid, lpStringGuid);
 
     length = lstrlenW(szKnownFolderDescriptions)+51;
-    *lpPath = HeapAlloc(GetProcessHeap(), 0, length*sizeof(WCHAR));
+    *lpPath = heap_alloc(length*sizeof(WCHAR));
     if(!(*lpPath))
         hr = E_OUTOFMEMORY;
 
@@ -5137,7 +5145,7 @@ static HRESULT get_known_folder_redirection_place(
             hr = E_FAIL;
     }
 
-    HeapFree(GetProcessHeap(), 0, lpRegistryPath);
+    heap_free(lpRegistryPath);
     return hr;
 }
 
@@ -5165,7 +5173,7 @@ static HRESULT redirect_known_folder(
     if(SUCCEEDED(hr))
         hr = get_known_folder_path_by_id(rfid, lpRegistryPath, 0, &lpSrcPath);
 
-    HeapFree(GetProcessHeap(), 0, lpRegistryPath);
+    heap_free(lpRegistryPath);
 
     /* get path to redirection storage */
     if(SUCCEEDED(hr))
@@ -5177,7 +5185,7 @@ static HRESULT redirect_known_folder(
 
     if(SUCCEEDED(hr))
     {
-        StringFromGUID2(rfid, sGuid, sizeof(sGuid)/sizeof(sGuid[0]));
+        StringFromGUID2(rfid, sGuid, ARRAY_SIZE(sGuid));
 
         hr = HRESULT_FROM_WIN32(RegSetValueExW(hKey, sGuid, 0, REG_SZ, (LPBYTE)pszTargetPath, (lstrlenW(pszTargetPath)+1)*sizeof(WCHAR)));
 
@@ -5262,8 +5270,8 @@ static ULONG WINAPI knownfolder_Release(
     if (!refs)
     {
         TRACE("destroying %p\n", knownfolder);
-        HeapFree( GetProcessHeap(), 0, knownfolder->registryPath);
-        HeapFree( GetProcessHeap(), 0, knownfolder );
+        heap_free( knownfolder->registryPath );
+        heap_free( knownfolder );
     }
     return refs;
 }
@@ -5321,7 +5329,7 @@ static HRESULT knownfolder_set_id(
     else
     {
         /* This known folder is not registered. To mark it, we set registryPath to NULL */
-        HeapFree(GetProcessHeap(), 0, knownfolder->registryPath);
+        heap_free(knownfolder->registryPath);
         knownfolder->registryPath = NULL;
         hr = S_OK;
     }
@@ -5401,15 +5409,15 @@ static HRESULT get_known_folder_path(
 
         hr = get_known_folder_path(parentGuid, parentRegistryPath, &parentPath);
         if(FAILED(hr)) {
-            HeapFree(GetProcessHeap(), 0, parentRegistryPath);
+            heap_free(parentRegistryPath);
             return hr;
         }
 
         lstrcatW(path, parentPath);
         lstrcatW(path, sBackslash);
 
-        HeapFree(GetProcessHeap(), 0, parentRegistryPath);
-        HeapFree(GetProcessHeap(), 0, parentPath);
+        heap_free(parentRegistryPath);
+        heap_free(parentPath);
     }
 
     /* check, if folder was redirected */
@@ -5478,7 +5486,7 @@ static HRESULT get_known_folder_path_by_id(
     /* if this is registry-registered known folder, get path from registry */
     if(lpRegistryPath)
     {
-        StringFromGUID2(folderId, sGuid, sizeof(sGuid)/sizeof(sGuid[0]));
+        StringFromGUID2(folderId, sGuid, ARRAY_SIZE(sGuid));
 
         hr = get_known_folder_path(sGuid, lpRegistryPath, ppszPath);
     }
@@ -5624,7 +5632,7 @@ static HRESULT knownfolder_create( struct knownfolder **knownfolder )
 {
     struct knownfolder *kf;
 
-    kf = HeapAlloc( GetProcessHeap(), 0, sizeof(*kf) );
+    kf = heap_alloc( sizeof(*kf) );
     if (!kf) return E_OUTOFMEMORY;
 
     kf->IKnownFolder_iface.lpVtbl = &knownfolder_vtbl;
@@ -5666,8 +5674,8 @@ static ULONG WINAPI foldermanager_Release(
     if (!refs)
     {
         TRACE("destroying %p\n", foldermanager);
-        HeapFree( GetProcessHeap(), 0, foldermanager->ids );
-        HeapFree( GetProcessHeap(), 0, foldermanager );
+        heap_free( foldermanager->ids );
+        heap_free( foldermanager );
     }
     return refs;
 }
@@ -5708,7 +5716,7 @@ static HRESULT WINAPI foldermanager_FolderIdFromCsidl(
 {
     TRACE("%d, %p\n", nCsidl, pfid);
 
-    if (nCsidl >= sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]))
+    if (nCsidl >= ARRAY_SIZE(CSIDL_Data))
         return E_INVALIDARG;
     *pfid = *CSIDL_Data[nCsidl].id;
     return S_OK;
@@ -5759,7 +5767,7 @@ static BOOL is_knownfolder( struct foldermanager *fm, const KNOWNFOLDERID *id )
     if(SUCCEEDED(hr))
     {
         hr = HRESULT_FROM_WIN32(RegOpenKeyExW(HKEY_LOCAL_MACHINE, registryPath, 0, 0, &hKey));
-        HeapFree(GetProcessHeap(), 0, registryPath);
+        heap_free(registryPath);
     }
 
     if(SUCCEEDED(hr))
@@ -5819,7 +5827,7 @@ static HRESULT WINAPI foldermanager_GetFolderByName(
         if (FAILED( hr )) return hr;
 
         hr = get_known_folder_wstr( path, szName, &name );
-        HeapFree( GetProcessHeap(), 0, path );
+        heap_free( path );
         if (FAILED( hr )) return hr;
 
         found = !strcmpiW( pszCanonicalName, name );
@@ -5878,7 +5886,7 @@ static HRESULT register_folder(const KNOWNFOLDERID *rfid, const KNOWNFOLDER_DEFI
         if(SUCCEEDED(hr) && !IsEqualGUID(&pKFD->fidParent, &GUID_NULL))
         {
             WCHAR sParentGuid[39];
-            StringFromGUID2(&pKFD->fidParent, sParentGuid, sizeof(sParentGuid)/sizeof(sParentGuid[0]));
+            StringFromGUID2(&pKFD->fidParent, sParentGuid, ARRAY_SIZE(sParentGuid));
 
             /* this known folder has parent folder */
             hr = HRESULT_FROM_WIN32(RegSetValueExW(hKey, szParentFolder, 0, REG_SZ, (LPBYTE)sParentGuid, sizeof(sParentGuid)));
@@ -5893,7 +5901,7 @@ static HRESULT register_folder(const KNOWNFOLDERID *rfid, const KNOWNFOLDER_DEFI
             SHDeleteKeyW(HKEY_LOCAL_MACHINE, registryPath);
     }
 
-    HeapFree(GetProcessHeap(), 0, registryPath);
+    heap_free(registryPath);
     return hr;
 }
 
@@ -5919,7 +5927,7 @@ static HRESULT WINAPI foldermanager_UnregisterFolder(
     if(SUCCEEDED(hr))
         hr = HRESULT_FROM_WIN32(SHDeleteKeyW(HKEY_LOCAL_MACHINE, registryPath));
 
-    HeapFree(GetProcessHeap(), 0, registryPath);
+    heap_free(registryPath);
     return hr;
 }
 
@@ -5977,24 +5985,24 @@ static HRESULT foldermanager_create( void **ppv )
     UINT i, j;
     struct foldermanager *fm;
 
-    fm = HeapAlloc( GetProcessHeap(), 0, sizeof(*fm) );
+    fm = heap_alloc( sizeof(*fm) );
     if (!fm) return E_OUTOFMEMORY;
 
     fm->IKnownFolderManager_iface.lpVtbl = &foldermanager_vtbl;
     fm->refs = 1;
     fm->num_ids = 0;
 
-    for (i = 0; i < sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(CSIDL_Data); i++)
     {
         if (!IsEqualGUID( CSIDL_Data[i].id, &GUID_NULL )) fm->num_ids++;
     }
-    fm->ids = HeapAlloc( GetProcessHeap(), 0, fm->num_ids * sizeof(KNOWNFOLDERID) );
+    fm->ids = heap_alloc( fm->num_ids * sizeof(KNOWNFOLDERID) );
     if (!fm->ids)
     {
-        HeapFree( GetProcessHeap(), 0, fm );
+        heap_free( fm );
         return E_OUTOFMEMORY;
     }
-    for (i = j = 0; i < sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]); i++)
+    for (i = j = 0; i < ARRAY_SIZE(CSIDL_Data); i++)
     {
         if (!IsEqualGUID( CSIDL_Data[i].id, &GUID_NULL ))
         {
@@ -6090,7 +6098,9 @@ HRESULT WINAPI SHGetKnownFolderItem(REFKNOWNFOLDERID rfid, KNOWN_FOLDER_FLAG fla
 static void register_system_knownfolders(void)
 {
     int i;
-    for(i = 0; i < sizeof(CSIDL_Data) / sizeof(CSIDL_Data[0]); ++i){
+
+    for (i = 0; i < ARRAY_SIZE(CSIDL_Data); ++i)
+    {
         const CSIDL_DATA *folder = &CSIDL_Data[i];
         if(folder->pszName){
             KNOWNFOLDER_DEFINITION kfd;

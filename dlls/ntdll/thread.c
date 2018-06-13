@@ -48,10 +48,15 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(thread);
 
+#ifndef PTHREAD_STACK_MIN
+#define PTHREAD_STACK_MIN 16384
+#endif
+
 struct _KUSER_SHARED_DATA *user_shared_data = NULL;
+static const WCHAR default_windirW[] = {'C',':','\\','w','i','n','d','o','w','s',0};
 
 PUNHANDLED_EXCEPTION_FILTER unhandled_exception_filter = NULL;
-LPTHREAD_START_ROUTINE kernel32_start_process = NULL;
+void (WINAPI *kernel32_start_process)(LPTHREAD_START_ROUTINE,void*) = NULL;
 
 /* info passed to a starting thread */
 struct startup_info
@@ -272,6 +277,7 @@ HANDLE thread_init(void)
 {
     TEB *teb;
     void *addr;
+    BOOL suspend;
     SIZE_T size, info_size;
     HANDLE exe_file = 0;
     LARGE_INTEGER now;
@@ -293,6 +299,7 @@ HANDLE thread_init(void)
         exit(1);
     }
     user_shared_data = addr;
+    memcpy( user_shared_data->NtSystemRoot, default_windirW, sizeof(default_windirW) );
 
     /* allocate and initialize the PEB */
 
@@ -359,7 +366,7 @@ HANDLE thread_init(void)
 
     /* setup the server connection */
     server_init_process();
-    info_size = server_init_thread( peb );
+    info_size = server_init_thread( peb, &suspend );
 
     /* create the process heap */
     if (!(peb->ProcessHeap = RtlCreateHeap( HEAP_GROWABLE, NULL, 0, 0, NULL, NULL )))
@@ -425,13 +432,21 @@ static void free_thread_data( TEB *teb )
 
 
 /***********************************************************************
- *           terminate_thread
+ *           abort_thread
  */
-void terminate_thread( int status )
+void abort_thread( int status )
 {
     pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
     if (interlocked_xchg_add( &nb_threads, -1 ) <= 1) _exit( status );
+    signal_exit_thread( status );
+}
 
+
+/***********************************************************************
+ *           exit_thread
+ */
+void exit_thread( int status )
+{
     close( ntdll_get_thread_data()->wait_fd[0] );
     close( ntdll_get_thread_data()->wait_fd[1] );
     close( ntdll_get_thread_data()->reply_fd );
@@ -441,9 +456,9 @@ void terminate_thread( int status )
 
 
 /***********************************************************************
- *           exit_thread
+ *           RtlExitUserThread  (NTDLL.@)
  */
-void exit_thread( int status )
+void WINAPI RtlExitUserThread( ULONG status )
 {
     static void *prev_teb;
     TEB *teb;
@@ -462,7 +477,8 @@ void exit_thread( int status )
     if (interlocked_xchg_add( &nb_threads, -1 ) <= 1)
     {
         LdrShutdownProcess();
-        exit( status );
+        pthread_sigmask( SIG_BLOCK, &server_block_set, NULL );
+        signal_exit_process( status );
     }
 
     LdrShutdownThread();
@@ -481,11 +497,7 @@ void exit_thread( int status )
         }
     }
 
-    close( ntdll_get_thread_data()->wait_fd[0] );
-    close( ntdll_get_thread_data()->wait_fd[1] );
-    close( ntdll_get_thread_data()->reply_fd );
-    close( ntdll_get_thread_data()->request_fd );
-    pthread_exit( UIntToPtr(status) );
+    signal_exit_thread( status );
 }
 
 
@@ -496,7 +508,7 @@ void exit_thread( int status )
  */
 static void start_thread( struct startup_info *info )
 {
-    NTSTATUS status;
+    BOOL suspend;
     TEB *teb = info->teb;
     struct ntdll_thread_data *thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
     struct debug_info debug_info;
@@ -507,9 +519,25 @@ static void start_thread( struct startup_info *info )
     thread_data->pthread_id = pthread_self();
 
     signal_init_thread( teb );
-    server_init_thread( info->entry_point );
-    status = signal_start_thread( (LPTHREAD_START_ROUTINE)info->entry_point, info->entry_arg );
-    NtTerminateThread( GetCurrentThread(), status );
+    server_init_thread( info->entry_point, &suspend );
+    signal_start_thread( (LPTHREAD_START_ROUTINE)info->entry_point, info->entry_arg, suspend );
+}
+
+
+/***********************************************************************
+ *              NtCreateThreadEx   (NTDLL.@)
+ */
+NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle_ptr, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
+                                  HANDLE process, LPTHREAD_START_ROUTINE start, void *param,
+                                  ULONG flags, ULONG zero_bits, ULONG stack_commit,
+                                  ULONG stack_reserve, void *attribute_list )
+{
+    FIXME( "%p, %x, %p, %p, %p, %p, %x, %x, %x, %x, %p semi-stub!\n", handle_ptr, access, attr,
+           process, start, param, flags, zero_bits, stack_commit, stack_reserve, attribute_list );
+
+    return RtlCreateUserThread( process, NULL, flags & THREAD_CREATE_FLAGS_CREATE_SUSPENDED,
+                                NULL, stack_reserve, stack_commit, (PRTL_THREAD_START_ROUTINE)start,
+                                param, handle_ptr, NULL );
 }
 
 
@@ -532,6 +560,7 @@ NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, const SECURITY_DESCRIPTOR *
     DWORD tid = 0;
     int request_pipe[2];
     NTSTATUS status;
+    SIZE_T extra_stack = PTHREAD_STACK_MIN;
 
     if (process != NtCurrentProcess())
     {
@@ -610,7 +639,7 @@ NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, const SECURITY_DESCRIPTOR *
     info->entry_point = start;
     info->entry_arg   = param;
 
-    if ((status = virtual_alloc_thread_stack( teb, stack_reserve, stack_commit, PTHREAD_STACK_MIN )))
+    if ((status = virtual_alloc_thread_stack( teb, stack_reserve, stack_commit, &extra_stack )))
         goto error;
 
     thread_data = (struct ntdll_thread_data *)&teb->GdiTebBatch;
@@ -622,7 +651,7 @@ NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, const SECURITY_DESCRIPTOR *
 
     pthread_attr_init( &attr );
     pthread_attr_setstack( &attr, teb->DeallocationStack,
-                         (char *)teb->Tib.StackBase + PTHREAD_STACK_MIN - (char *)teb->DeallocationStack );
+                         (char *)teb->Tib.StackBase + extra_stack - (char *)teb->DeallocationStack );
     pthread_attr_setscope( &attr, PTHREAD_SCOPE_SYSTEM ); /* force creating a kernel thread */
     interlocked_xchg_add( &nb_threads, 1 );
     if (pthread_create( &pthread_id, &attr, (void * (*)(void *))start_thread, info ))
@@ -795,22 +824,47 @@ NTSTATUS WINAPI NtQueueApcThread( HANDLE handle, PNTAPCFUNC func, ULONG_PTR arg1
 }
 
 
+/******************************************************************************
+ *              RtlPushFrame  (NTDLL.@)
+ */
+void WINAPI RtlPushFrame( TEB_ACTIVE_FRAME *frame )
+{
+    frame->Previous = NtCurrentTeb()->ActiveFrame;
+    NtCurrentTeb()->ActiveFrame = frame;
+}
+
+
+/******************************************************************************
+ *              RtlPopFrame  (NTDLL.@)
+ */
+void WINAPI RtlPopFrame( TEB_ACTIVE_FRAME *frame )
+{
+    NtCurrentTeb()->ActiveFrame = frame->Previous;
+}
+
+
+/******************************************************************************
+ *              RtlGetFrame  (NTDLL.@)
+ */
+TEB_ACTIVE_FRAME * WINAPI RtlGetFrame(void)
+{
+    return NtCurrentTeb()->ActiveFrame;
+}
+
+
 /***********************************************************************
  *              set_thread_context
  */
-NTSTATUS set_thread_context( HANDLE handle, const CONTEXT *context, BOOL *self )
+NTSTATUS set_thread_context( HANDLE handle, const context_t *context, BOOL *self )
 {
     NTSTATUS ret;
     DWORD dummy, i;
-    context_t server_context;
-
-    context_to_server( &server_context, context );
 
     SERVER_START_REQ( set_thread_context )
     {
         req->handle  = wine_server_obj_handle( handle );
         req->suspend = 1;
-        wine_server_add_data( req, &server_context, sizeof(server_context) );
+        wine_server_add_data( req, context, sizeof(*context) );
         ret = wine_server_call( req );
         *self = reply->self;
     }
@@ -824,7 +878,7 @@ NTSTATUS set_thread_context( HANDLE handle, const CONTEXT *context, BOOL *self )
             {
                 req->handle  = wine_server_obj_handle( handle );
                 req->suspend = 0;
-                wine_server_add_data( req, &server_context, sizeof(server_context) );
+                wine_server_add_data( req, context, sizeof(*context) );
                 ret = wine_server_call( req );
             }
             SERVER_END_REQ;
@@ -844,45 +898,20 @@ NTSTATUS set_thread_context( HANDLE handle, const CONTEXT *context, BOOL *self )
 }
 
 
-/* convert CPU-specific flags to generic server flags */
-static inline unsigned int get_server_context_flags( DWORD flags )
-{
-    unsigned int ret = 0;
-
-    flags &= 0x3f;  /* mask CPU id flags */
-    if (flags & CONTEXT_CONTROL) ret |= SERVER_CTX_CONTROL;
-    if (flags & CONTEXT_INTEGER) ret |= SERVER_CTX_INTEGER;
-#ifdef CONTEXT_SEGMENTS
-    if (flags & CONTEXT_SEGMENTS) ret |= SERVER_CTX_SEGMENTS;
-#endif
-#ifdef CONTEXT_FLOATING_POINT
-    if (flags & CONTEXT_FLOATING_POINT) ret |= SERVER_CTX_FLOATING_POINT;
-#endif
-#ifdef CONTEXT_DEBUG_REGISTERS
-    if (flags & CONTEXT_DEBUG_REGISTERS) ret |= SERVER_CTX_DEBUG_REGISTERS;
-#endif
-#ifdef CONTEXT_EXTENDED_REGISTERS
-    if (flags & CONTEXT_EXTENDED_REGISTERS) ret |= SERVER_CTX_EXTENDED_REGISTERS;
-#endif
-    return ret;
-}
-
 /***********************************************************************
  *              get_thread_context
  */
-NTSTATUS get_thread_context( HANDLE handle, CONTEXT *context, BOOL *self )
+NTSTATUS get_thread_context( HANDLE handle, context_t *context, unsigned int flags, BOOL *self )
 {
     NTSTATUS ret;
     DWORD dummy, i;
-    unsigned int server_flags = get_server_context_flags( context->ContextFlags );
-    context_t server_context;
 
     SERVER_START_REQ( get_thread_context )
     {
         req->handle  = wine_server_obj_handle( handle );
-        req->flags   = server_flags;
+        req->flags   = flags;
         req->suspend = 1;
-        wine_server_set_reply( req, &server_context, sizeof(server_context) );
+        wine_server_set_reply( req, context, sizeof(*context) );
         ret = wine_server_call( req );
         *self = reply->self;
     }
@@ -895,9 +924,9 @@ NTSTATUS get_thread_context( HANDLE handle, CONTEXT *context, BOOL *self )
             SERVER_START_REQ( get_thread_context )
             {
                 req->handle  = wine_server_obj_handle( handle );
-                req->flags   = server_flags;
+                req->flags   = flags;
                 req->suspend = 0;
-                wine_server_set_reply( req, &server_context, sizeof(server_context) );
+                wine_server_set_reply( req, context, sizeof(*context) );
                 ret = wine_server_call( req );
             }
             SERVER_END_REQ;
@@ -912,7 +941,6 @@ NTSTATUS get_thread_context( HANDLE handle, CONTEXT *context, BOOL *self )
         NtResumeThread( handle, &dummy );
         if (ret == STATUS_PENDING) ret = STATUS_ACCESS_DENIED;
     }
-    if (!ret) ret = context_from_server( context, &server_context );
     return ret;
 }
 

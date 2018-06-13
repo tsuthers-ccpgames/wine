@@ -73,6 +73,7 @@
 #include "typelib.h"
 #include "wine/debug.h"
 #include "variant.h"
+#include "wine/heap.h"
 #include "wine/list.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ole);
@@ -2426,7 +2427,7 @@ MSFT_DoFuncs(TLBContext*     pcx,
         ptfd->funcdesc.callconv   =  (pFuncRec->FKCCIC) >> 8 & 0xF;
         ptfd->funcdesc.cParams    =   pFuncRec->nrargs  ;
         ptfd->funcdesc.cParamsOpt =   pFuncRec->nroargs ;
-        ptfd->funcdesc.oVft       =   pFuncRec->VtableOffset & ~1;
+        ptfd->funcdesc.oVft       =   (pFuncRec->VtableOffset & ~1) * sizeof(void *) / pTI->pTypeLib->ptr_size;
         ptfd->funcdesc.wFuncFlags =   LOWORD(pFuncRec->Flags) ;
 
         /* nameoffset is sometimes -1 on the second half of a propget/propput
@@ -4160,7 +4161,7 @@ static void SLTG_DoFuncs(char *pBlk, char *pFirstItem, ITypeInfoImpl *pTI,
 	pFuncDesc->funcdesc.callconv = pFunc->nacc & 0x7;
 	pFuncDesc->funcdesc.cParams = pFunc->nacc >> 3;
 	pFuncDesc->funcdesc.cParamsOpt = (pFunc->retnextopt & 0x7e) >> 1;
-	pFuncDesc->funcdesc.oVft = pFunc->vtblpos & ~1;
+	pFuncDesc->funcdesc.oVft = (pFunc->vtblpos & ~1) * sizeof(void *) / pTI->pTypeLib->ptr_size;
 
 	if(pFunc->magic & SLTG_FUNCTION_FLAGS_PRESENT)
 	    pFuncDesc->funcdesc.wFuncFlags = pFunc->funcflags;
@@ -6443,7 +6444,10 @@ __ASM_GLOBAL_FUNC( call_method,
                     "subs r1, r1, #4\n\t"           /* Decrement count */
                     "bgt 2b\n\t"                    /* Loop till done */
 
-                    "1:\tvldm r3!, {s0-s15}\n\t"    /* Load the s0-s15/d0-d7 arguments */
+                    "1:\n\t"
+#ifndef __SOFTFP__
+                    "vldm r3!, {s0-s15}\n\t"        /* Load the s0-s15/d0-d7 arguments */
+#endif
                     "mov ip, r0\n\t"                /* Save the function call address to ip before we nuke r0 with arguments to pass */
                     "ldm r3, {r0-r3}\n\t"           /* Load the r0-r3 arguments */
 
@@ -6854,14 +6858,19 @@ DispCallFunc(
     UINT i;
     DWORD *args;
     struct {
+#ifndef __SOFTFP__
         union {
             float s[16];
             double d[8];
         } sd;
+#endif
         DWORD r[4];
     } regs;
     int rcount;     /* 32-bit register index count */
-    int scount;     /* single-precision float register index count (will be incremented twice for doubles, plus alignment) */
+#ifndef __SOFTFP__
+    int scount = 0; /* single-precision float register index count */
+    int dcount = 0; /* double-precision float register index count */
+#endif
 
     TRACE("(%p, %ld, %d, %d, %d, %p, %p, %p (vt=%d))\n",
         pvInstance, oVft, cc, vtReturn, cActuals, prgvt, prgpvarg, pvargResult, V_VT(pvargResult));
@@ -6874,7 +6883,6 @@ DispCallFunc(
 
     argspos = 0;
     rcount = 0;
-    scount = 0;
 
     /* Determine if we need to pass a pointer for the return value as arg 0.  If so, do that */
     /*  first as it will need to be in the 'r' registers:                                    */
@@ -6912,28 +6920,22 @@ DispCallFunc(
         {
         case VT_EMPTY:
             break;
-        case VT_R4:             /* these must be 4-byte aligned, and put in 's' regs or stack, as they are single-floats */
-            if (scount < 16)
-                regs.sd.s[scount++] = V_R4(arg);
-            else
-                args[argspos++] = V_UI4(arg);
-            break;
         case VT_R8:             /* these must be 8-byte aligned, and put in 'd' regs or stack, as they are double-floats */
         case VT_DATE:
-            if (scount < 15)
+#ifndef __SOFTFP__
+            dcount = max( (scount + 1) / 2, dcount );
+            if (dcount < 8)
             {
-                scount += (scount % 2); /* align scount to next whole double */
-                regs.sd.d[scount/2] = V_R8(arg);
-                scount += 2;
+                regs.sd.d[dcount++] = V_R8(arg);
             }
             else
             {
-                scount = 16;                /* Make sure we flag that all 's' regs are full */
                 argspos += (argspos % 2);   /* align argspos to 8-bytes */
                 memcpy( &args[argspos], &V_R8(arg), sizeof(V_R8(arg)) );
                 argspos += sizeof(V_R8(arg)) / sizeof(DWORD);
             }
             break;
+#endif
         case VT_I8:             /* these must be 8-byte aligned, and put in 'r' regs or stack, as they are long-longs */
         case VT_UI8:
         case VT_CY:
@@ -6977,6 +6979,15 @@ DispCallFunc(
             else
                 args[argspos++] = V_BOOL(arg);
             break;
+        case VT_R4:             /* these must be 4-byte aligned, and put in 's' regs or stack, as they are single-floats */
+#ifndef __SOFTFP__
+            if (!(scount % 2)) scount = max( scount, dcount * 2 );
+            if (scount < 16)
+                regs.sd.s[scount++] = V_R4(arg);
+            else
+                args[argspos++] = V_UI4(arg);
+            break;
+#endif
         default:
             if (rcount < 4)
                 regs.r[rcount++] = V_UI4(arg);
@@ -6988,8 +6999,6 @@ DispCallFunc(
     }
 
     argspos += (argspos % 2);   /* Make sure stack function alignment is 8-byte */
-
-    TRACE("rcount: %d, scount: %d, argspos: %d\n", rcount, scount, argspos);
 
     switch (vtReturn)
     {

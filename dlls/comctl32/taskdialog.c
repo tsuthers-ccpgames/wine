@@ -48,9 +48,9 @@ static const UINT DIALOG_MIN_WIDTH = 240;
 static const UINT DIALOG_SPACING = 5;
 static const UINT DIALOG_BUTTON_WIDTH = 50;
 static const UINT DIALOG_BUTTON_HEIGHT = 14;
+static const UINT DIALOG_TIMER_MS = 200;
 
-static const UINT ID_MAIN_INSTRUCTION = 0xf000;
-static const UINT ID_CONTENT          = 0xf001;
+static const UINT ID_TIMER = 1;
 
 struct taskdialog_control
 {
@@ -63,45 +63,49 @@ struct taskdialog_button_desc
 {
     int id;
     const WCHAR *text;
-    unsigned int width;
-    unsigned int line;
     HINSTANCE hinst;
 };
 
 struct taskdialog_template_desc
 {
     const TASKDIALOGCONFIG *taskconfig;
-    unsigned int dialog_height;
-    unsigned int dialog_width;
     struct list controls;
     WORD control_count;
-    LONG x_baseunit;
-    LONG y_baseunit;
-    HFONT font;
     struct taskdialog_button_desc *default_button;
 };
 
 struct taskdialog_info
 {
     HWND hwnd;
-    PFTASKDIALOGCALLBACK callback;
-    LONG_PTR callback_data;
+    const TASKDIALOGCONFIG *taskconfig;
+    DWORD last_timer_tick;
+    HFONT font;
+    HFONT main_instruction_font;
+    /* Control handles */
+    HWND main_instruction;
+    HWND content;
+    /* Dialog metrics */
+    struct
+    {
+        LONG x_baseunit;
+        LONG y_baseunit;
+        LONG h_spacing;
+        LONG v_spacing;
+    } m;
 };
 
-static void pixels_to_dialogunits(const struct taskdialog_template_desc *desc, LONG *width, LONG *height)
+struct button_layout_info
 {
-    if (width)
-        *width = MulDiv(*width, 4, desc->x_baseunit);
-    if (height)
-        *height = MulDiv(*height, 8, desc->y_baseunit);
-}
+    INT id;
+    HWND hwnd;
+    LONG width;
+    LONG line;
+};
 
-static void dialogunits_to_pixels(const struct taskdialog_template_desc *desc, LONG *width, LONG *height)
+static void taskdialog_du_to_px(struct taskdialog_info *dialog_info, LONG *width, LONG *height)
 {
-    if (width)
-        *width = MulDiv(*width, desc->x_baseunit, 4);
-    if (height)
-        *height = MulDiv(*height, desc->y_baseunit, 8);
+    if (width) *width = MulDiv(*width, dialog_info->m.x_baseunit, 4);
+    if (height) *height = MulDiv(*height, dialog_info->m.y_baseunit, 8);
 }
 
 static void template_write_data(char **ptr, const void *src, unsigned int size)
@@ -110,49 +114,8 @@ static void template_write_data(char **ptr, const void *src, unsigned int size)
     *ptr += size;
 }
 
-/* used to calculate size for the controls */
-static void taskdialog_get_text_extent(const struct taskdialog_template_desc *desc, const WCHAR *text,
-        BOOL user_resource, SIZE *sz)
-{
-    RECT rect = { 0, 0, desc->dialog_width - DIALOG_SPACING * 2, 0}; /* padding left and right of the control */
-    const WCHAR *textW = NULL;
-    static const WCHAR nulW;
-    unsigned int length;
-    HFONT oldfont;
-    HDC hdc;
-
-    if (IS_INTRESOURCE(text))
-    {
-        if (!(length = LoadStringW(user_resource ? desc->taskconfig->hInstance : COMCTL32_hModule,
-                (UINT_PTR)text, (WCHAR *)&textW, 0)))
-        {
-            WARN("Failed to load text\n");
-            textW = &nulW;
-            length = 0;
-        }
-    }
-    else
-    {
-        textW = text;
-        length = strlenW(textW);
-    }
-
-    hdc = GetDC(0);
-    oldfont = SelectObject(hdc, desc->font);
-
-    dialogunits_to_pixels(desc, &rect.right, NULL);
-    DrawTextW(hdc, textW, length, &rect, DT_LEFT | DT_EXPANDTABS | DT_CALCRECT | DT_WORDBREAK);
-    pixels_to_dialogunits(desc, &rect.right, &rect.bottom);
-
-    SelectObject(hdc, oldfont);
-    ReleaseDC(0, hdc);
-
-    sz->cx = rect.right - rect.left;
-    sz->cy = rect.bottom - rect.top;
-}
-
 static unsigned int taskdialog_add_control(struct taskdialog_template_desc *desc, WORD id, const WCHAR *class,
-        HINSTANCE hInstance, const WCHAR *text, DWORD style, short x, short y, short cx, short cy)
+        HINSTANCE hInstance, const WCHAR *text, DWORD style)
 {
     struct taskdialog_control *control = Alloc(sizeof(*control));
     unsigned int size, class_size, text_size;
@@ -181,10 +144,6 @@ static unsigned int taskdialog_add_control(struct taskdialog_template_desc *desc
 
     template->style = WS_VISIBLE | style;
     template->dwExtendedStyle = 0;
-    template->x = x;
-    template->y = y;
-    template->cx = cx;
-    template->cy = cy;
     template->id = id;
     ptr = (char *)(template + 1);
     template_write_data(&ptr, class, class_size);
@@ -196,44 +155,11 @@ static unsigned int taskdialog_add_control(struct taskdialog_template_desc *desc
     return ALIGNED_LENGTH(size, 3);
 }
 
-static unsigned int taskdialog_add_static_label(struct taskdialog_template_desc *desc, WORD id, const WCHAR *str)
-{
-    unsigned int size;
-    SIZE sz;
-
-    if (!str)
-        return 0;
-
-    taskdialog_get_text_extent(desc, str, TRUE, &sz);
-
-    desc->dialog_height += DIALOG_SPACING;
-    size = taskdialog_add_control(desc, id, WC_STATICW, desc->taskconfig->hInstance, str, 0, DIALOG_SPACING,
-            desc->dialog_height, sz.cx, sz.cy);
-    desc->dialog_height += sz.cy + DIALOG_SPACING;
-    return size;
-}
-
-static unsigned int taskdialog_add_main_instruction(struct taskdialog_template_desc *desc)
-{
-    return taskdialog_add_static_label(desc, ID_MAIN_INSTRUCTION, desc->taskconfig->pszMainInstruction);
-}
-
-static unsigned int taskdialog_add_content(struct taskdialog_template_desc *desc)
-{
-    return taskdialog_add_static_label(desc, ID_CONTENT, desc->taskconfig->pszContent);
-}
-
 static void taskdialog_init_button(struct taskdialog_button_desc *button, struct taskdialog_template_desc *desc,
         int id, const WCHAR *text, BOOL custom_button)
 {
-    SIZE sz;
-
-    taskdialog_get_text_extent(desc, text, custom_button, &sz);
-
     button->id = id;
     button->text = text;
-    button->width = max(DIALOG_BUTTON_WIDTH, sz.cx + DIALOG_SPACING * 2);
-    button->line = 0;
     button->hinst = custom_button ? desc->taskconfig->hInstance : COMCTL32_hModule;
 
     if (id == desc->taskconfig->nDefaultButton)
@@ -268,8 +194,7 @@ static void taskdialog_init_common_buttons(struct taskdialog_template_desc *desc
 
 static unsigned int taskdialog_add_buttons(struct taskdialog_template_desc *desc)
 {
-    unsigned int count = 0, buttons_size, i, line_count, size = 0;
-    unsigned int location_x, *line_widths, alignment = ~0u;
+    unsigned int count = 0, buttons_size, i, size = 0;
     const TASKDIALOGCONFIG *taskconfig = desc->taskconfig;
     struct taskdialog_button_desc *buttons;
 
@@ -297,78 +222,13 @@ static unsigned int taskdialog_add_buttons(struct taskdialog_template_desc *desc
     if (!desc->default_button)
         desc->default_button = &buttons[0];
 
-    /* For easy handling just allocate as many lines as buttons, the worst case. */
-    line_widths = Alloc(count * sizeof(*line_widths));
-
-    /* Separate buttons into lines */
-    location_x = DIALOG_SPACING;
-    for (i = 0, line_count = 0; i < count; i++)
-    {
-        if (location_x + buttons[i].width + DIALOG_SPACING > desc->dialog_width)
-        {
-            location_x = DIALOG_SPACING;
-            line_count++;
-        }
-
-        buttons[i].line = line_count;
-
-        location_x += buttons[i].width + DIALOG_SPACING;
-        line_widths[line_count] += buttons[i].width + DIALOG_SPACING;
-    }
-    line_count++;
-
-    /* Try to balance lines so they are about the same size */
-    for (i = 1; i < line_count - 1; i++)
-    {
-        int diff_now = abs(line_widths[i] - line_widths[i - 1]);
-        unsigned int j, last_button = 0;
-        int diff_changed;
-
-        for (j = 0; j < count; j++)
-            if (buttons[j].line == i - 1)
-                last_button = j;
-
-        /* Difference in length of both lines if we wrapped the last button from the last line into this one */
-        diff_changed = abs(2 * buttons[last_button].width + line_widths[i] - line_widths[i - 1]);
-
-        if (diff_changed < diff_now)
-        {
-            buttons[last_button].line = i;
-            line_widths[i] += buttons[last_button].width;
-            line_widths[i - 1] -= buttons[last_button].width;
-        }
-    }
-
-    /* Calculate left alignment so all lines are as far right as possible. */
-    for (i = 0; i < line_count; i++)
-    {
-        int new_alignment = desc->dialog_width - line_widths[i];
-        if (new_alignment < alignment)
-            alignment = new_alignment;
-    }
-
-    /* Now that we got them all positioned, create all buttons */
-    location_x = alignment;
+    /* create all buttons */
     for (i = 0; i < count; i++)
     {
         DWORD style = &buttons[i] == desc->default_button ? BS_DEFPUSHBUTTON : BS_PUSHBUTTON;
-
-        if (i > 0 && buttons[i].line != buttons[i - 1].line) /* New line */
-        {
-            location_x = alignment;
-            desc->dialog_height += DIALOG_BUTTON_HEIGHT + DIALOG_SPACING;
-        }
-
-        size += taskdialog_add_control(desc, buttons[i].id, WC_BUTTONW, buttons[i].hinst, buttons[i].text, style,
-                location_x, desc->dialog_height, buttons[i].width, DIALOG_BUTTON_HEIGHT);
-
-        location_x += buttons[i].width + DIALOG_SPACING;
+        size += taskdialog_add_control(desc, buttons[i].id, WC_BUTTONW, buttons[i].hinst, buttons[i].text, style);
     }
 
-    /* Add height for last row and spacing */
-    desc->dialog_height += DIALOG_BUTTON_HEIGHT + DIALOG_SPACING;
-
-    Free(line_widths);
     Free(buttons);
 
     return size;
@@ -386,29 +246,24 @@ static void taskdialog_clear_controls(struct list *controls)
     }
 }
 
-static unsigned int taskdialog_get_reference_rect(const struct taskdialog_template_desc *desc, RECT *ret)
+static unsigned int taskdialog_get_reference_rect(const TASKDIALOGCONFIG *taskconfig, RECT *ret)
 {
-    HMONITOR monitor = MonitorFromWindow(desc->taskconfig->hwndParent ? desc->taskconfig->hwndParent : GetActiveWindow(),
-            MONITOR_DEFAULTTOPRIMARY);
+    HMONITOR monitor = MonitorFromWindow(taskconfig->hwndParent ? taskconfig->hwndParent : GetActiveWindow(),
+                                         MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO info;
 
     info.cbSize = sizeof(info);
     GetMonitorInfoW(monitor, &info);
 
-    if (desc->taskconfig->dwFlags & TDF_POSITION_RELATIVE_TO_WINDOW && desc->taskconfig->hwndParent)
-        GetWindowRect(desc->taskconfig->hwndParent, ret);
+    if (taskconfig->dwFlags & TDF_POSITION_RELATIVE_TO_WINDOW && taskconfig->hwndParent)
+        GetWindowRect(taskconfig->hwndParent, ret);
     else
         *ret = info.rcWork;
 
-    pixels_to_dialogunits(desc, &ret->left, &ret->top);
-    pixels_to_dialogunits(desc, &ret->right, &ret->bottom);
-
-    pixels_to_dialogunits(desc, &info.rcWork.left, &info.rcWork.top);
-    pixels_to_dialogunits(desc, &info.rcWork.right, &info.rcWork.bottom);
     return info.rcWork.right - info.rcWork.left;
 }
 
-static WCHAR *taskdialog_get_exe_name(const TASKDIALOGCONFIG *taskconfig, WCHAR *name, DWORD length)
+static WCHAR *taskdialog_get_exe_name(WCHAR *name, DWORD length)
 {
     DWORD len = GetModuleFileNameW(NULL, name, length);
     if (len && len < length)
@@ -425,25 +280,22 @@ static WCHAR *taskdialog_get_exe_name(const TASKDIALOGCONFIG *taskconfig, WCHAR 
 static DLGTEMPLATE *create_taskdialog_template(const TASKDIALOGCONFIG *taskconfig)
 {
     struct taskdialog_control *control, *control2;
-    unsigned int size, title_size, screen_width;
+    unsigned int size, title_size;
     struct taskdialog_template_desc desc;
     static const WORD fontsize = 0x7fff;
     static const WCHAR emptyW[] = { 0 };
     const WCHAR *titleW = NULL;
     DLGTEMPLATE *template;
-    NONCLIENTMETRICSW ncm;
     WCHAR pathW[MAX_PATH];
-    RECT ref_rect;
     char *ptr;
-    HDC hdc;
 
     /* Window title */
     if (!taskconfig->pszWindowTitle)
-        titleW = taskdialog_get_exe_name(taskconfig, pathW, sizeof(pathW)/sizeof(pathW[0]));
+        titleW = taskdialog_get_exe_name(pathW, ARRAY_SIZE(pathW));
     else if (IS_INTRESOURCE(taskconfig->pszWindowTitle))
     {
         if (!LoadStringW(taskconfig->hInstance, LOWORD(taskconfig->pszWindowTitle), (WCHAR *)&titleW, 0))
-            titleW = taskdialog_get_exe_name(taskconfig, pathW, sizeof(pathW)/sizeof(pathW[0]));
+            titleW = taskdialog_get_exe_name(pathW, ARRAY_SIZE(pathW));
     }
     else
         titleW = taskconfig->pszWindowTitle;
@@ -458,41 +310,22 @@ static DLGTEMPLATE *create_taskdialog_template(const TASKDIALOGCONFIG *taskconfi
     list_init(&desc.controls);
     desc.taskconfig = taskconfig;
     desc.control_count = 0;
-
-    ncm.cbSize = sizeof(ncm);
-    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, ncm.cbSize, &ncm, 0);
-    desc.font = CreateFontIndirectW(&ncm.lfMessageFont);
-
-    hdc = GetDC(0);
-    SelectObject(hdc, desc.font);
-    desc.x_baseunit = GdiGetCharDimensions(hdc, NULL, &desc.y_baseunit);
-    ReleaseDC(0, hdc);
-
-    screen_width = taskdialog_get_reference_rect(&desc, &ref_rect);
-
-    desc.dialog_height = 0;
-    desc.dialog_width = max(taskconfig->cxWidth, DIALOG_MIN_WIDTH);
-    desc.dialog_width = min(desc.dialog_width, screen_width);
     desc.default_button = NULL;
 
-    size += taskdialog_add_main_instruction(&desc);
-    size += taskdialog_add_content(&desc);
     size += taskdialog_add_buttons(&desc);
 
     template = Alloc(size);
     if (!template)
     {
         taskdialog_clear_controls(&desc.controls);
-        DeleteObject(desc.font);
         return NULL;
     }
 
     template->style = DS_MODALFRAME | DS_SETFONT | WS_CAPTION | WS_VISIBLE | WS_SYSMENU;
+    if (taskconfig->dwFlags & TDF_CAN_BE_MINIMIZED) template->style |= WS_MINIMIZEBOX;
+    if (!(taskconfig->dwFlags & TDF_NO_SET_FOREGROUND)) template->style |= DS_SETFOREGROUND;
+    if (taskconfig->dwFlags & TDF_RTL_LAYOUT) template->dwExtendedStyle = WS_EX_LAYOUTRTL | WS_EX_RIGHT | WS_EX_RTLREADING;
     template->cdit = desc.control_count;
-    template->x = (ref_rect.left + ref_rect.right + desc.dialog_width) / 2;
-    template->y = (ref_rect.top + ref_rect.bottom + desc.dialog_height) / 2;
-    template->cx = desc.dialog_width;
-    template->cy = desc.dialog_height;
 
     ptr = (char *)(template + 1);
     ptr += 2; /* menu */
@@ -513,20 +346,313 @@ static DLGTEMPLATE *create_taskdialog_template(const TASKDIALOGCONFIG *taskconfi
         Free(control);
     }
 
-    DeleteObject(desc.font);
     return template;
 }
 
 static HRESULT taskdialog_notify(struct taskdialog_info *dialog_info, UINT notification, WPARAM wparam, LPARAM lparam)
 {
-    return dialog_info->callback ? dialog_info->callback(dialog_info->hwnd, notification, wparam, lparam,
-            dialog_info->callback_data) : S_OK;
+    const TASKDIALOGCONFIG *taskconfig = dialog_info->taskconfig;
+    return taskconfig->pfCallback
+               ? taskconfig->pfCallback(dialog_info->hwnd, notification, wparam, lparam, taskconfig->lpCallbackData)
+               : S_OK;
 }
 
 static void taskdialog_on_button_click(struct taskdialog_info *dialog_info, WORD command_id)
 {
     if (taskdialog_notify(dialog_info, TDN_BUTTON_CLICKED, command_id, 0) == S_OK)
         EndDialog(dialog_info->hwnd, command_id);
+}
+
+static WCHAR *taskdialog_gettext(struct taskdialog_info *dialog_info, BOOL user_resource, const WCHAR *text)
+{
+    const WCHAR *textW = NULL;
+    INT length;
+    WCHAR *ret;
+
+    if (IS_INTRESOURCE(text))
+    {
+        if (!(length = LoadStringW(user_resource ? dialog_info->taskconfig->hInstance : COMCTL32_hModule,
+                                   (UINT_PTR)text, (WCHAR *)&textW, 0)))
+            return NULL;
+    }
+    else
+    {
+        textW = text;
+        length = strlenW(textW);
+    }
+
+    ret = Alloc((length + 1) * sizeof(WCHAR));
+    if (ret) memcpy(ret, textW, length * sizeof(WCHAR));
+
+    return ret;
+}
+
+static void taskdialog_get_label_size(struct taskdialog_info *dialog_info, HWND hwnd, LONG max_width, SIZE *size)
+{
+    DWORD style = DT_EXPANDTABS | DT_CALCRECT | DT_WORDBREAK;
+    HFONT hfont, old_hfont;
+    HDC hdc;
+    RECT rect = {0};
+    WCHAR text[1024];
+    INT text_length;
+
+    if (dialog_info->taskconfig->dwFlags & TDF_RTL_LAYOUT)
+        style |= DT_RIGHT | DT_RTLREADING;
+    else
+        style |= DT_LEFT;
+
+    hfont = (HFONT)SendMessageW(hwnd, WM_GETFONT, 0, 0);
+    text_length = GetWindowTextW(hwnd, text, ARRAY_SIZE(text));
+    hdc = GetDC(hwnd);
+    old_hfont = SelectObject(hdc, hfont);
+    rect.right = max_width;
+    size->cy = DrawTextW(hdc, text, text_length, &rect, style);
+    size->cx = min(max_width, rect.right - rect.left);
+    if (old_hfont) SelectObject(hdc, old_hfont);
+    ReleaseDC(hwnd, hdc);
+}
+
+static HWND taskdialog_create_label(struct taskdialog_info *dialog_info, const WCHAR *text, HFONT font)
+{
+    WCHAR *textW;
+    HWND hwnd;
+
+    if (!text) return NULL;
+
+    textW = taskdialog_gettext(dialog_info, TRUE, text);
+    hwnd = CreateWindowW(WC_STATICW, textW, WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, dialog_info->hwnd, NULL, 0, NULL);
+    if (textW) Free(textW);
+
+    SendMessageW(hwnd, WM_SETFONT, (WPARAM)font, 0);
+    return hwnd;
+}
+
+static void taskdialog_add_main_instruction(struct taskdialog_info *dialog_info)
+{
+    const TASKDIALOGCONFIG *taskconfig = dialog_info->taskconfig;
+    NONCLIENTMETRICSW ncm;
+
+    if (!taskconfig->pszMainInstruction) return;
+
+    ncm.cbSize = sizeof(ncm);
+    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, ncm.cbSize, &ncm, 0);
+    /* 1.25 times the height */
+    ncm.lfMessageFont.lfHeight = ncm.lfMessageFont.lfHeight * 5 / 4;
+    ncm.lfMessageFont.lfWeight = FW_BOLD;
+    dialog_info->main_instruction_font = CreateFontIndirectW(&ncm.lfMessageFont);
+
+    dialog_info->main_instruction =
+        taskdialog_create_label(dialog_info, taskconfig->pszMainInstruction, dialog_info->main_instruction_font);
+}
+
+static void taskdialog_add_content(struct taskdialog_info *dialog_info)
+{
+    dialog_info->content = taskdialog_create_label(dialog_info, dialog_info->taskconfig->pszContent, dialog_info->font);
+}
+
+static void taskdialog_label_layout(struct taskdialog_info *dialog_info, HWND hwnd, INT start_x, LONG dialog_width,
+                                    LONG *dialog_height)
+{
+    LONG x, y, max_width;
+    SIZE size;
+
+    if (!hwnd) return;
+
+    x = start_x + dialog_info->m.h_spacing;
+    y = *dialog_height + dialog_info->m.v_spacing;
+    max_width = dialog_width - x - dialog_info->m.h_spacing;
+    taskdialog_get_label_size(dialog_info, hwnd, max_width, &size);
+    SetWindowPos(hwnd, 0, x, y, size.cx, size.cy, SWP_NOZORDER);
+    *dialog_height = y + size.cy;
+}
+
+static void taskdialog_layout(struct taskdialog_info *dialog_info)
+{
+    const TASKDIALOGCONFIG *taskconfig = dialog_info->taskconfig;
+    DWORD flags = taskconfig->dwCommonButtons;
+    static BOOL first_time = TRUE;
+    RECT ref_rect;
+    LONG screen_width, dialog_width, dialog_height = 0;
+    LONG h_spacing, v_spacing;
+    INT button_max_count, button_count = 0;
+    struct button_layout_info *button_layout_infos;
+    LONG button_min_width, button_height;
+    LONG *line_widths, line_count, align;
+    LONG x, y;
+    SIZE size;
+    INT i;
+
+    screen_width = taskdialog_get_reference_rect(dialog_info->taskconfig, &ref_rect);
+    dialog_width = max(taskconfig->cxWidth, DIALOG_MIN_WIDTH);
+    taskdialog_du_to_px(dialog_info, &dialog_width, 0);
+    dialog_width = min(dialog_width, screen_width);
+
+    h_spacing = dialog_info->m.h_spacing;
+    v_spacing = dialog_info->m.v_spacing;
+
+    /* Main instruction */
+    taskdialog_label_layout(dialog_info, dialog_info->main_instruction, 0, dialog_width, &dialog_height);
+
+    /* Content */
+    taskdialog_label_layout(dialog_info, dialog_info->content, 0, dialog_width, &dialog_height);
+
+    /* Common and custom buttons */
+    /* Allocate enough memory for the custom and the default buttons. Maximum 6 default buttons possible. */
+    button_max_count = 6;
+    /* Custom buttons */
+    if (taskconfig->cButtons && taskconfig->pButtons) button_max_count += taskconfig->cButtons;
+
+    button_layout_infos = Alloc(button_max_count * sizeof(*button_layout_infos));
+    line_widths = Alloc(button_max_count * sizeof(*line_widths));
+
+    if (taskconfig->cButtons && taskconfig->pButtons)
+        for (button_count = 0; button_count < taskconfig->cButtons; button_count++)
+            button_layout_infos[button_count].id = taskconfig->pButtons[button_count].nButtonID;
+
+    /* Ok button may be added if no button is specified in taskconfig */
+    if (GetDlgItem(dialog_info->hwnd, IDOK)) button_layout_infos[button_count++].id = IDOK;
+    if (flags & TDCBF_YES_BUTTON) button_layout_infos[button_count++].id = IDYES;
+    if (flags & TDCBF_NO_BUTTON) button_layout_infos[button_count++].id = IDNO;
+    if (flags & TDCBF_RETRY_BUTTON) button_layout_infos[button_count++].id = IDRETRY;
+    if (flags & TDCBF_CANCEL_BUTTON) button_layout_infos[button_count++].id = IDCANCEL;
+    if (flags & TDCBF_CLOSE_BUTTON) button_layout_infos[button_count++].id = IDCLOSE;
+
+    button_min_width = DIALOG_BUTTON_WIDTH;
+    button_height = DIALOG_BUTTON_HEIGHT;
+    taskdialog_du_to_px(dialog_info, &button_min_width, &button_height);
+    for (i = 0; i < button_count; i++)
+    {
+        button_layout_infos[i].hwnd = GetDlgItem(dialog_info->hwnd, button_layout_infos[i].id);
+        taskdialog_get_label_size(dialog_info, button_layout_infos[i].hwnd, dialog_width - h_spacing * 2, &size);
+        button_layout_infos[i].width = max(size.cx, button_min_width);
+    }
+
+    /* Separate buttons into lines */
+    x = h_spacing;
+    for (i = 0, line_count = 0; i < button_count; i++)
+    {
+        if (x + button_layout_infos[i].width + h_spacing >= dialog_width)
+        {
+            x = h_spacing;
+            line_count++;
+        }
+
+        button_layout_infos[i].line = line_count;
+
+        x += button_layout_infos[i].width + h_spacing;
+        line_widths[line_count] += button_layout_infos[i].width + h_spacing;
+    }
+    line_count++;
+
+    /* Try to balance lines so they are about the same size */
+    for (i = 1; i < line_count - 1; i++)
+    {
+        int diff_now = abs(line_widths[i] - line_widths[i - 1]);
+        unsigned int j, last_button = 0;
+        int diff_changed;
+
+        for (j = 0; j < button_count; j++)
+            if (button_layout_infos[j].line == i - 1) last_button = j;
+
+        /* Difference in length of both lines if we wrapped the last button from the last line into this one */
+        diff_changed = abs(2 * button_layout_infos[last_button].width + line_widths[i] - line_widths[i - 1]);
+
+        if (diff_changed < diff_now)
+        {
+            button_layout_infos[last_button].line = i;
+            line_widths[i] += button_layout_infos[last_button].width;
+            line_widths[i - 1] -= button_layout_infos[last_button].width;
+        }
+    }
+
+    /* Calculate left alignment so all lines are as far right as possible. */
+    align = dialog_width - h_spacing;
+    for (i = 0; i < line_count; i++)
+    {
+        int new_alignment = dialog_width - line_widths[i];
+        if (new_alignment < align) align = new_alignment;
+    }
+
+    /* Now that we got them all positioned, move all buttons */
+    x = align;
+    size.cy = button_height;
+    for (i = 0; i < button_count; i++)
+    {
+        /* New line */
+        if (i > 0 && button_layout_infos[i].line != button_layout_infos[i - 1].line)
+        {
+            x = align;
+            dialog_height += size.cy + v_spacing;
+        }
+
+        y = dialog_height + v_spacing;
+        size.cx = button_layout_infos[i].width;
+        SetWindowPos(button_layout_infos[i].hwnd, 0, x, y, size.cx, size.cy, SWP_NOZORDER);
+        x += button_layout_infos[i].width + h_spacing;
+    }
+
+    /* Add height for last row button and spacing */
+    dialog_height += size.cy + v_spacing;
+
+    Free(button_layout_infos);
+    Free(line_widths);
+
+    /* Add height for spacing, title height and frame height */
+    dialog_height += v_spacing;
+    dialog_height += GetSystemMetrics(SM_CYCAPTION);
+    dialog_height += GetSystemMetrics(SM_CXDLGFRAME);
+
+    if (first_time)
+    {
+        x = (ref_rect.left + ref_rect.right + dialog_width) / 2;
+        y = (ref_rect.top + ref_rect.bottom + dialog_height) / 2;
+        SetWindowPos(dialog_info->hwnd, 0, x, y, dialog_width, dialog_height, SWP_NOZORDER);
+        first_time = FALSE;
+    }
+    else
+        SetWindowPos(dialog_info->hwnd, 0, 0, 0, dialog_width, dialog_height, SWP_NOMOVE | SWP_NOZORDER);
+}
+
+static void taskdialog_init(struct taskdialog_info *dialog_info, HWND hwnd)
+{
+    const TASKDIALOGCONFIG *taskconfig = dialog_info->taskconfig;
+    NONCLIENTMETRICSW ncm;
+    HDC hdc;
+
+    ncm.cbSize = sizeof(ncm);
+    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, ncm.cbSize, &ncm, 0);
+
+    memset(dialog_info, 0, sizeof(*dialog_info));
+    dialog_info->taskconfig = taskconfig;
+    dialog_info->hwnd = hwnd;
+    dialog_info->font = CreateFontIndirectW(&ncm.lfMessageFont);
+
+    hdc = GetDC(dialog_info->hwnd);
+    SelectObject(hdc, dialog_info->font);
+    dialog_info->m.x_baseunit = GdiGetCharDimensions(hdc, NULL, &dialog_info->m.y_baseunit);
+    ReleaseDC(dialog_info->hwnd, hdc);
+
+    dialog_info->m.h_spacing = DIALOG_SPACING;
+    dialog_info->m.v_spacing = DIALOG_SPACING;
+    taskdialog_du_to_px(dialog_info, &dialog_info->m.h_spacing, &dialog_info->m.v_spacing);
+
+    if (taskconfig->dwFlags & TDF_CALLBACK_TIMER)
+    {
+        SetTimer(hwnd, ID_TIMER, DIALOG_TIMER_MS, NULL);
+        dialog_info->last_timer_tick = GetTickCount();
+    }
+
+    taskdialog_add_main_instruction(dialog_info);
+    taskdialog_add_content(dialog_info);
+
+    taskdialog_layout(dialog_info);
+}
+
+static void taskdialog_destroy(struct taskdialog_info *dialog_info)
+{
+    if (dialog_info->taskconfig->dwFlags & TDF_CALLBACK_TIMER) KillTimer(dialog_info->hwnd, ID_TIMER);
+    if (dialog_info->font) DeleteObject(dialog_info->font);
+    if (dialog_info->main_instruction_font) DeleteObject(dialog_info->main_instruction_font);
 }
 
 static INT_PTR CALLBACK taskdialog_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -546,27 +672,40 @@ static INT_PTR CALLBACK taskdialog_proc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
             break;
         case WM_INITDIALOG:
             dialog_info = (struct taskdialog_info *)lParam;
-            dialog_info->hwnd = hwnd;
-            SetPropW(hwnd, taskdialog_info_propnameW, dialog_info);
 
+            taskdialog_init(dialog_info, hwnd);
+
+            SetPropW(hwnd, taskdialog_info_propnameW, dialog_info);
             taskdialog_notify(dialog_info, TDN_DIALOG_CONSTRUCTED, 0, 0);
-            break;
-        case WM_SHOWWINDOW:
             taskdialog_notify(dialog_info, TDN_CREATED, 0, 0);
             break;
         case WM_COMMAND:
             if (HIWORD(wParam) == BN_CLICKED)
             {
                 taskdialog_on_button_click(dialog_info, LOWORD(wParam));
-                return TRUE;
+                break;
+            }
+            return FALSE;
+        case WM_HELP:
+            taskdialog_notify(dialog_info, TDN_HELP, 0, 0);
+            break;
+        case WM_TIMER:
+            if (ID_TIMER == wParam)
+            {
+                DWORD elapsed = GetTickCount() - dialog_info->last_timer_tick;
+                if (taskdialog_notify(dialog_info, TDN_TIMER, elapsed, 0) == S_FALSE)
+                    dialog_info->last_timer_tick = GetTickCount();
             }
             break;
         case WM_DESTROY:
             taskdialog_notify(dialog_info, TDN_DESTROYED, 0, 0);
             RemovePropW(hwnd, taskdialog_info_propnameW);
+            taskdialog_destroy(dialog_info);
             break;
+        default:
+            return FALSE;
     }
-    return FALSE;
+    return TRUE;
 }
 
 /***********************************************************************
@@ -584,8 +723,7 @@ HRESULT WINAPI TaskDialogIndirect(const TASKDIALOGCONFIG *taskconfig, int *butto
     if (!taskconfig || taskconfig->cbSize != sizeof(TASKDIALOGCONFIG))
         return E_INVALIDARG;
 
-    dialog_info.callback = taskconfig->pfCallback;
-    dialog_info.callback_data = taskconfig->lpCallbackData;
+    dialog_info.taskconfig = taskconfig;
 
     template = create_taskdialog_template(taskconfig);
     ret = (short)DialogBoxIndirectParamW(taskconfig->hInstance, template, taskconfig->hwndParent,

@@ -467,6 +467,7 @@ static const WCHAR wszLuminance[] = {'L','u','m','i','n','a','n','c','e',0};
 static const WCHAR wszChrominance[] = {'C','h','r','o','m','i','n','a','n','c','e',0};
 static const WCHAR wszJpegYCrCbSubsampling[] = {'J','p','e','g','Y','C','r','C','b','S','u','b','s','a','m','p','l','i','n','g',0};
 static const WCHAR wszSuppressApp0[] = {'S','u','p','p','r','e','s','s','A','p','p','0',0};
+static const WCHAR wszEnableV5Header32bppBGRA[] = {'E','n','a','b','l','e','V','5','H','e','a','d','e','r','3','2','b','p','p','B','G','R','A',0};
 
 static const struct property_opt_test_data testdata_tiff_props[] = {
     { wszTiffCompressionMethod, VT_UI1,         VT_UI1,  WICTiffCompressionDontCare },
@@ -487,6 +488,11 @@ static const struct property_opt_test_data testdata_jpeg_props[] = {
     { wszChrominance,          VT_I4|VT_ARRAY,  VT_EMPTY },
     { wszJpegYCrCbSubsampling, VT_UI1,          VT_UI1, WICJpegYCrCbSubsamplingDefault, 0.0f, TRUE }, /* not supported on XP/2k3 */
     { wszSuppressApp0,         VT_BOOL,         VT_BOOL, FALSE },
+    { NULL }
+};
+
+static const struct property_opt_test_data testdata_bmp_props[] = {
+    { wszEnableV5Header32bppBGRA, VT_BOOL, VT_BOOL, VARIANT_FALSE, 0.0f, TRUE }, /* Supported since Win7 */
     { NULL }
 };
 
@@ -616,6 +622,8 @@ static void test_encoder_properties(const CLSID* clsid_encoder, IPropertyBag2 *o
         test_specific_encoder_properties(options, testdata_png_props, all_props, cProperties2);
     else if (IsEqualCLSID(clsid_encoder, &CLSID_WICJpegEncoder))
         test_specific_encoder_properties(options, testdata_jpeg_props, all_props, cProperties2);
+    else if (IsEqualCLSID(clsid_encoder, &CLSID_WICBmpEncoder))
+        test_specific_encoder_properties(options, testdata_bmp_props, all_props, cProperties2);
 
     for (i=0; i < cProperties2; i++)
     {
@@ -624,9 +632,59 @@ static void test_encoder_properties(const CLSID* clsid_encoder, IPropertyBag2 *o
     }
 }
 
-static void check_bmp_format(IStream *stream, const WICPixelFormatGUID *format)
+static void check_bmp_format(IStream *stream, const struct bitmap_data *data)
 {
-    /* FIXME */
+    BITMAPFILEHEADER bfh;
+    BITMAPINFOHEADER bih;
+    HRESULT hr;
+    ULONG len;
+
+    hr = IStream_Read(stream, &bfh, sizeof(bfh), &len);
+    ok(hr == S_OK, "Failed to read file header, hr %#x.\n", hr);
+
+    hr = IStream_Read(stream, &bih, sizeof(bih), &len);
+    ok(hr == S_OK, "Failed to read file header, hr %#x.\n", hr);
+
+    ok(bfh.bfType == 0x4d42, "Unexpected header type, %#x.\n", bfh.bfType);
+    ok(bfh.bfSize != 0, "Unexpected bitmap size %d.\n", bfh.bfSize);
+    ok(bfh.bfReserved1 == 0, "Unexpected bfReserved1 field.\n");
+    ok(bfh.bfReserved2 == 0, "Unexpected bfReserved2 field.\n");
+
+    if (IsEqualGUID(data->format, &GUID_WICPixelFormat1bppIndexed)
+            || IsEqualGUID(data->format, &GUID_WICPixelFormat8bppIndexed))
+    {
+        /* TODO: test with actual palette size */
+        ok(bfh.bfOffBits > sizeof(bfh) + sizeof(bih), "Unexpected data offset %d, format %s.\n",
+            bfh.bfOffBits, wine_dbgstr_guid(data->format));
+    }
+    else
+        ok(bfh.bfOffBits == sizeof(bfh) + sizeof(bih), "Unexpected data offset %d, format %s.\n",
+            bfh.bfOffBits, wine_dbgstr_guid(data->format));
+
+    ok(bih.biSize == sizeof(bih), "Unexpected header size %d.\n", bih.biSize);
+    ok(bih.biWidth == data->width, "Unexpected bitmap width %d.\n", bih.biWidth);
+    ok(bih.biHeight == data->height, "Unexpected bitmap height %d.\n", bih.biHeight);
+    ok(bih.biPlanes == 1, "Unexpected planes count %d.\n", bih.biPlanes);
+
+    if (IsEqualGUID(data->format, &GUID_WICPixelFormat1bppIndexed))
+        ok(bih.biBitCount == 1, "Unexpected bit count %u, format %s.\n", bih.biBitCount,
+            wine_dbgstr_guid(data->format));
+    else if (IsEqualGUID(data->format, &GUID_WICPixelFormat8bppIndexed))
+        ok(bih.biBitCount == 8, "Unexpected bit count %u, format %s.\n", bih.biBitCount,
+            wine_dbgstr_guid(data->format));
+    else if (IsEqualGUID(data->format, &GUID_WICPixelFormat32bppBGR))
+        ok(bih.biBitCount == 32, "Unexpected bit count %u, format %s.\n", bih.biBitCount,
+            wine_dbgstr_guid(data->format));
+
+    ok(bih.biCompression == BI_RGB, "Unexpected compression mode %u.\n", bih.biCompression);
+todo_wine
+    ok(bih.biSizeImage == 0, "Unexpected image size %d.\n", bih.biSizeImage);
+    ok(bih.biXPelsPerMeter == 3780 || broken(bih.biXPelsPerMeter == 0) /* XP */, "Unexpected horz resolution %d.\n",
+            bih.biXPelsPerMeter);
+    ok(bih.biYPelsPerMeter == 3780 || broken(bih.biYPelsPerMeter == 0) /* XP */, "Unexpected vert resolution %d.\n",
+            bih.biYPelsPerMeter);
+
+    /* FIXME: test actual data */
 }
 
 static void check_tiff_format(IStream *stream, const WICPixelFormatGUID *format)
@@ -714,7 +772,7 @@ static void check_png_format(IStream *stream, const WICPixelFormatGUID *format)
         ok(0, "unknown PNG pixel format %s\n", wine_dbgstr_guid(format));
 }
 
-static void check_bitmap_format(IStream *stream, const CLSID *encoder, const WICPixelFormatGUID *format)
+static void check_bitmap_format(IStream *stream, const CLSID *encoder, const struct bitmap_data *dst)
 {
     HRESULT hr;
     LARGE_INTEGER pos;
@@ -724,11 +782,11 @@ static void check_bitmap_format(IStream *stream, const CLSID *encoder, const WIC
     ok(hr == S_OK, "IStream_Seek error %#x\n", hr);
 
     if (IsEqualGUID(encoder, &CLSID_WICPngEncoder))
-        check_png_format(stream, format);
+        check_png_format(stream, dst->format);
     else if (IsEqualGUID(encoder, &CLSID_WICBmpEncoder))
-        check_bmp_format(stream, format);
+        check_bmp_format(stream, dst);
     else if (IsEqualGUID(encoder, &CLSID_WICTiffEncoder))
-        check_tiff_format(stream, format);
+        check_tiff_format(stream, dst->format);
     else
         ok(0, "unknown encoder %s\n", wine_dbgstr_guid(encoder));
 
@@ -802,6 +860,24 @@ static void test_multi_encoder(const struct bitmap_data **srcs, const CLSID* cls
     IWICBitmapFrameDecode *framedecode;
     WICPixelFormatGUID pixelformat;
     int i;
+
+    hr = CoCreateInstance(clsid_encoder, NULL, CLSCTX_INPROC_SERVER,
+        &IID_IWICBitmapEncoder, (void **)&encoder);
+    ok(SUCCEEDED(hr), "CoCreateInstance failed, hr=%x\n", hr);
+
+    hr = CreateStreamOnHGlobal(NULL, TRUE, &stream);
+    ok(SUCCEEDED(hr), "CreateStreamOnHGlobal failed, hr=%x\n", hr);
+
+    hr = IWICBitmapEncoder_Initialize(encoder, stream, WICBitmapEncoderNoCache);
+    ok(SUCCEEDED(hr), "Initialize failed, hr=%x\n", hr);
+
+    /* Encoder options are optional. */
+    hr = IWICBitmapEncoder_CreateNewFrame(encoder, &frameencode, NULL);
+    ok(SUCCEEDED(hr), "Failed to create encode frame, hr %#x.\n", hr);
+
+    IStream_Release(stream);
+    IWICBitmapEncoder_Release(encoder);
+    IWICBitmapFrameEncode_Release(frameencode);
 
     hr = CoCreateInstance(clsid_encoder, NULL, CLSCTX_INPROC_SERVER,
         &IID_IWICBitmapEncoder, (void**)&encoder);
@@ -946,7 +1022,7 @@ static void test_multi_encoder(const struct bitmap_data **srcs, const CLSID* cls
                 hr = IWICBitmapEncoder_Commit(encoder);
                 ok(SUCCEEDED(hr), "Commit failed, hr=%x\n", hr);
 
-                check_bitmap_format(stream, clsid_encoder, dsts[0]->format);
+                check_bitmap_format(stream, clsid_encoder, dsts[0]);
             }
 
             if (SUCCEEDED(hr))

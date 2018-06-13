@@ -68,6 +68,7 @@ typedef struct _KSERVICE_TABLE_DESCRIPTOR
 KSERVICE_TABLE_DESCRIPTOR KeServiceDescriptorTable[4] = { { 0 } };
 
 typedef void (WINAPI *PCREATE_PROCESS_NOTIFY_ROUTINE)(HANDLE,HANDLE,BOOLEAN);
+typedef void (WINAPI *PCREATE_PROCESS_NOTIFY_ROUTINE_EX)(PEPROCESS,HANDLE,PPS_CREATE_NOTIFY_INFO);
 typedef void (WINAPI *PCREATE_THREAD_NOTIFY_ROUTINE)(HANDLE,HANDLE,BOOLEAN);
 
 static const WCHAR servicesW[] = {'\\','R','e','g','i','s','t','r','y',
@@ -599,6 +600,34 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
 
 
 /***********************************************************************
+ *           ExAcquireFastMutexUnsafe  (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT(ExAcquireFastMutexUnsafe)
+void WINAPI __regs_ExAcquireFastMutexUnsafe(PFAST_MUTEX FastMutex)
+#else
+void WINAPI ExAcquireFastMutexUnsafe(PFAST_MUTEX FastMutex)
+#endif
+{
+    FIXME("(%p): stub\n", FastMutex);
+}
+
+
+/***********************************************************************
+ *           ExReleaseFastMutexUnsafe  (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT(ExReleaseFastMutexUnsafe)
+void WINAPI __regs_ExReleaseFastMutexUnsafe(PFAST_MUTEX FastMutex)
+#else
+void WINAPI ExReleaseFastMutexUnsafe(PFAST_MUTEX FastMutex)
+#endif
+{
+    FIXME("(%p): stub\n", FastMutex);
+}
+
+
+/***********************************************************************
  *           IoAcquireCancelSpinLock  (NTOSKRNL.EXE.@)
  */
 void WINAPI IoAcquireCancelSpinLock(PKIRQL irql)
@@ -610,9 +639,9 @@ void WINAPI IoAcquireCancelSpinLock(PKIRQL irql)
 /***********************************************************************
  *           IoReleaseCancelSpinLock  (NTOSKRNL.EXE.@)
  */
-void WINAPI IoReleaseCancelSpinLock(PKIRQL irql)
+void WINAPI IoReleaseCancelSpinLock(KIRQL irql)
 {
-    FIXME("(%p): stub\n", irql);
+    FIXME("(%u): stub\n", irql);
 }
 
 
@@ -1623,6 +1652,20 @@ PSLIST_ENTRY WINAPI NTOSKRNL_InterlockedPopEntrySList( PSLIST_HEADER list )
 
 
 /***********************************************************************
+ *           ExInterlockedPopEntrySList   (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL2_ENTRYPOINT
+DEFINE_FASTCALL2_ENTRYPOINT( NTOSKRNL_ExInterlockedPopEntrySList )
+PSLIST_ENTRY WINAPI __regs_NTOSKRNL_ExInterlockedPopEntrySList( PSLIST_HEADER list, PKSPIN_LOCK lock )
+#else
+PSLIST_ENTRY WINAPI NTOSKRNL_ExInterlockedPopEntrySList( PSLIST_HEADER list, PKSPIN_LOCK lock )
+#endif
+{
+    return InterlockedPopEntrySList( list );
+}
+
+
+/***********************************************************************
  *           InterlockedPushEntrySList   (NTOSKRNL.EXE.@)
  */
 #ifdef DEFINE_FASTCALL2_ENTRYPOINT
@@ -1636,6 +1679,20 @@ PSLIST_ENTRY WINAPI NTOSKRNL_InterlockedPushEntrySList( PSLIST_HEADER list, PSLI
     return InterlockedPushEntrySList( list, entry );
 }
 
+/***********************************************************************
+ *           ExInterlockedPushEntrySList   (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL3_ENTRYPOINT
+DEFINE_FASTCALL3_ENTRYPOINT( NTOSKRNL_ExInterlockedPushEntrySList )
+PSLIST_ENTRY WINAPI DECLSPEC_HIDDEN __regs_NTOSKRNL_ExInterlockedPushEntrySList( PSLIST_HEADER list,
+                                                                               PSLIST_ENTRY entry,
+                                                                               PKSPIN_LOCK lock )
+#else
+PSLIST_ENTRY WINAPI NTOSKRNL_ExInterlockedPushEntrySList( PSLIST_HEADER list, PSLIST_ENTRY entry, PKSPIN_LOCK lock )
+#endif
+{
+    return InterlockedPushEntrySList( list, entry );
+}
 
 /***********************************************************************
  *           ExAllocatePool   (NTOSKRNL.EXE.@)
@@ -2107,7 +2164,7 @@ void WINAPI MmFreeNonCachedMemory( void *addr, SIZE_T size )
 BOOLEAN WINAPI MmIsAddressValid(PVOID VirtualAddress)
 {
     TRACE("(%p)\n", VirtualAddress);
-    return !IsBadWritePtr(VirtualAddress, 1);
+    return !IsBadReadPtr(VirtualAddress, 1);
 }
 
 /***********************************************************************
@@ -2202,7 +2259,11 @@ NTSTATUS WINAPI ObReferenceObjectByHandle( HANDLE obj, ACCESS_MASK access,
                                            POBJECT_HANDLE_INFORMATION info)
 {
     FIXME( "stub: %p %x %p %d %p %p\n", obj, access, type, mode, ptr, info);
-    return STATUS_NOT_IMPLEMENTED;
+
+    if(ptr)
+        *ptr = UlongToHandle(0xdeadbeaf);
+
+    return STATUS_SUCCESS;
 }
 
  /***********************************************************************
@@ -2257,6 +2318,19 @@ static void ObReferenceObject( void *obj )
 
 
 /***********************************************************************
+ *           ObReferenceObjectByPointer   (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI ObReferenceObjectByPointer(void *obj, ACCESS_MASK access,
+                                           POBJECT_TYPE type,
+                                           KPROCESSOR_MODE mode)
+{
+    FIXME("(%p, %x, %p, %d): stub\n", obj, access, type, mode);
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+
+/***********************************************************************
  *           ObDereferenceObject   (NTOSKRNL.EXE.@)
  */
 void WINAPI ObDereferenceObject( void *obj )
@@ -2292,6 +2366,46 @@ void WINAPI ObfDereferenceObject( void *obj )
     ObDereferenceObject( obj );
 }
 
+/***********************************************************************
+ *           ObRegisterCallbacks (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI ObRegisterCallbacks(POB_CALLBACK_REGISTRATION *callBack, void **handle)
+{
+    FIXME( "stub: %p %p\n", callBack, handle );
+
+    if(handle)
+        *handle = UlongToHandle(0xdeadbeaf);
+
+    return STATUS_SUCCESS;
+}
+
+/***********************************************************************
+ *           ObUnRegisterCallbacks (NTOSKRNL.EXE.@)
+ */
+void WINAPI ObUnRegisterCallbacks(void *handle)
+{
+    FIXME( "stub: %p\n", handle );
+}
+
+/***********************************************************************
+ *           ObGetFilterVersion (NTOSKRNL.EXE.@)
+ */
+USHORT WINAPI ObGetFilterVersion(void)
+{
+    FIXME( "stub:\n" );
+
+    return OB_FLT_REGISTRATION_VERSION;
+}
+
+/***********************************************************************
+ *           ObGetObjectType (NTOSKRNL.EXE.@)
+ */
+POBJECT_TYPE WINAPI ObGetObjectType(void *object)
+{
+    FIXME("stub: %p\n", object);
+
+    return NULL;
+}
 
 /***********************************************************************
  *           IoGetAttachedDeviceReference   (NTOSKRNL.EXE.@)
@@ -2382,6 +2496,16 @@ NTSTATUS WINAPI PsImpersonateClient(PETHREAD Thread, PACCESS_TOKEN Token, BOOLEA
  *           PsSetCreateProcessNotifyRoutine   (NTOSKRNL.EXE.@)
  */
 NTSTATUS WINAPI PsSetCreateProcessNotifyRoutine( PCREATE_PROCESS_NOTIFY_ROUTINE callback, BOOLEAN remove )
+{
+    FIXME( "stub: %p %d\n", callback, remove );
+    return STATUS_SUCCESS;
+}
+
+
+/***********************************************************************
+ *           PsSetCreateProcessNotifyRoutineEx   (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI PsSetCreateProcessNotifyRoutineEx( PCREATE_PROCESS_NOTIFY_ROUTINE_EX callback, BOOLEAN remove )
 {
     FIXME( "stub: %p %d\n", callback, remove );
     return STATUS_SUCCESS;
@@ -2608,7 +2732,7 @@ BOOLEAN WINAPI Ke386SetIoAccessMap(ULONG flag, PVOID buffer)
 PKEVENT WINAPI IoCreateSynchronizationEvent(PUNICODE_STRING name, PHANDLE handle)
 {
     FIXME("(%p %p) stub\n", name, handle);
-    return NULL;
+    return (KEVENT *)0xdeadbeaf;
 }
 
 /*****************************************************
@@ -3266,4 +3390,147 @@ PKEVENT WINAPI IoCreateNotificationEvent(UNICODE_STRING *name, HANDLE *handle)
 {
     FIXME( "stub: %s %p\n", debugstr_us(name), handle );
     return NULL;
+}
+
+
+/*********************************************************************
+ *                  memcpy   (NTOSKRNL.@)
+ *
+ * NOTES
+ *  Behaves like memmove.
+ */
+void * __cdecl NTOSKRNL_memcpy( void *dst, const void *src, size_t n )
+{
+    return memmove( dst, src, n );
+}
+
+/*********************************************************************
+ *                  memset   (NTOSKRNL.@)
+ */
+void * __cdecl NTOSKRNL_memset( void *dst, int c, size_t n )
+{
+    return memset( dst, c, n );
+}
+
+/*********************************************************************
+ *                  _stricmp   (NTOSKRNL.@)
+ */
+int __cdecl NTOSKRNL__stricmp( LPCSTR str1, LPCSTR str2 )
+{
+    return strcasecmp( str1, str2 );
+}
+
+/*********************************************************************
+ *                  _strnicmp   (NTOSKRNL.@)
+ */
+int __cdecl NTOSKRNL__strnicmp( LPCSTR str1, LPCSTR str2, size_t n )
+{
+    return strncasecmp( str1, str2, n );
+}
+
+/*********************************************************************
+ *           _wcsnicmp    (NTOSKRNL.@)
+ */
+INT __cdecl NTOSKRNL__wcsnicmp( LPCWSTR str1, LPCWSTR str2, INT n )
+{
+    return strncmpiW( str1, str2, n );
+}
+
+/*********************************************************************
+ *           wcsncmp    (NTOSKRNL.@)
+ */
+INT __cdecl NTOSKRNL_wcsncmp( LPCWSTR str1, LPCWSTR str2, INT n )
+{
+    return strncmpW( str1, str2, n );
+}
+
+
+#ifdef __x86_64__
+/**************************************************************************
+ *		__chkstk (NTOSKRNL.@)
+ *
+ * Supposed to touch all the stack pages, but we shouldn't need that.
+ */
+__ASM_GLOBAL_FUNC( __chkstk, "ret" );
+
+#elif defined(__i386__)
+/**************************************************************************
+ *           _chkstk   (NTOSKRNL.@)
+ */
+__ASM_STDCALL_FUNC( _chkstk, 0,
+                   "negl %eax\n\t"
+                   "addl %esp,%eax\n\t"
+                   "xchgl %esp,%eax\n\t"
+                   "movl 0(%eax),%eax\n\t"  /* copy return address from old location */
+                   "movl %eax,0(%esp)\n\t"
+                   "ret" )
+#elif defined(__arm__)
+/**************************************************************************
+ *		__chkstk (NTDLL.@)
+ *
+ * Incoming r4 contains words to allocate, converting to bytes then return
+ */
+__ASM_GLOBAL_FUNC( __chkstk, "lsl r4, r4, #2\n\t"
+                             "bx lr" )
+#endif
+
+/*********************************************************************
+ *           PsAcquireProcessExitSynchronization    (NTOSKRNL.@)
+*/
+NTSTATUS WINAPI PsAcquireProcessExitSynchronization(PEPROCESS process)
+{
+    FIXME("stub: %p\n", process);
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/*********************************************************************
+ *           PsReleaseProcessExitSynchronization    (NTOSKRNL.@)
+ */
+void WINAPI PsReleaseProcessExitSynchronization(PEPROCESS process)
+{
+    FIXME("stub: %p\n", process);
+}
+
+typedef struct _EX_PUSH_LOCK_WAIT_BLOCK *PEX_PUSH_LOCK_WAIT_BLOCK;
+/*********************************************************************
+ *           ExfUnblockPushLock    (NTOSKRNL.@)
+ */
+#ifdef DEFINE_FASTCALL2_ENTRYPOINT
+DEFINE_FASTCALL2_ENTRYPOINT( ExfUnblockPushLock )
+void WINAPI DECLSPEC_HIDDEN __regs_ExfUnblockPushLock( EX_PUSH_LOCK *lock,
+                                                       PEX_PUSH_LOCK_WAIT_BLOCK block)
+#else
+void WINAPI ExfUnblockPushLock( EX_PUSH_LOCK *lock, PEX_PUSH_LOCK_WAIT_BLOCK block )
+#endif
+{
+    FIXME( "stub: %p, %p\n", lock, block );
+}
+
+/*********************************************************************
+ *           PsGetProcessId    (NTOSKRNL.@)
+ */
+HANDLE WINAPI PsGetProcessId(PEPROCESS process)
+{
+    FIXME("stub: %p\n", process);
+
+    return 0;
+}
+
+/*********************************************************************
+ *           FsRtlRegisterFileSystemFilterCallbacks    (NTOSKRNL.@)
+ */
+NTSTATUS WINAPI FsRtlRegisterFileSystemFilterCallbacks( DRIVER_OBJECT *object, PFS_FILTER_CALLBACKS callbacks)
+{
+    FIXME("stub: %p %p\n", object, callbacks);
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/*********************************************************************
+ *           SeSinglePrivilegeCheck    (NTOSKRNL.@)
+ */
+BOOLEAN WINAPI SeSinglePrivilegeCheck(LUID privilege, KPROCESSOR_MODE mode)
+{
+    FIXME("stub: %08x%08x %u\n", privilege.HighPart, privilege.LowPart, mode);
+    return TRUE;
 }

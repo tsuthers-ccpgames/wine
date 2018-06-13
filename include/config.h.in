@@ -89,8 +89,8 @@
 /* Define to 1 if you have the <CL/cl.h> header file. */
 #undef HAVE_CL_CL_H
 
-/* Define to 1 if you have the <CommonCrypto/CommonDigest.h> header file. */
-#undef HAVE_COMMONCRYPTO_COMMONDIGEST_H
+/* Define to 1 if you have the <CommonCrypto/CommonCryptor.h> header file. */
+#undef HAVE_COMMONCRYPTO_COMMONCRYPTOR_H
 
 /* Define to 1 if you have the <CoreAudio/CoreAudio.h> header file. */
 #undef HAVE_COREAUDIO_COREAUDIO_H
@@ -285,6 +285,12 @@
 /* Define to 1 if you have the <gsm.h> header file. */
 #undef HAVE_GSM_H
 
+/* Define to 1 if you have the <gssapi/gssapi_ext.h> header file. */
+#undef HAVE_GSSAPI_GSSAPI_EXT_H
+
+/* Define to 1 if you have the <gssapi/gssapi.h> header file. */
+#undef HAVE_GSSAPI_GSSAPI_H
+
 /* Define to 1 if you have the <ieeefp.h> header file. */
 #undef HAVE_IEEEFP_H
 
@@ -335,6 +341,15 @@
 
 /* Define to 1 if you have the `isnanf' function. */
 #undef HAVE_ISNANF
+
+/* Define to 1 if you have the `j0' function. */
+#undef HAVE_J0
+
+/* Define to 1 if you have the `j1' function. */
+#undef HAVE_J1
+
+/* Define to 1 if you have the `jn' function. */
+#undef HAVE_JN
 
 /* Define to 1 if you have the <jpeglib.h> header file. */
 #undef HAVE_JPEGLIB_H
@@ -834,6 +849,9 @@
 /* Define to 1 if you have the <scsi/sg.h> header file. */
 #undef HAVE_SCSI_SG_H
 
+/* Define to 1 if you have the <SDL2/SDL.h> header file. */
+#undef HAVE_SDL2_SDL_H
+
 /* Define to 1 if you have the <Security/Security.h> header file. */
 #undef HAVE_SECURITY_SECURITY_H
 
@@ -920,6 +938,9 @@
 
 /* Define to 1 if you have the `strncasecmp' function. */
 #undef HAVE_STRNCASECMP
+
+/* Define to 1 if you have the `strnlen' function. */
+#undef HAVE_STRNLEN
 
 /* Define to 1 if you have the <stropts.h> header file. */
 #undef HAVE_STROPTS_H
@@ -1221,9 +1242,6 @@
 /* Define to 1 if you have the <sys/vfs.h> header file. */
 #undef HAVE_SYS_VFS_H
 
-/* Define to 1 if you have the <sys/vm86.h> header file. */
-#undef HAVE_SYS_VM86_H
-
 /* Define to 1 if you have the <sys/vnode.h> header file. */
 #undef HAVE_SYS_VNODE_H
 
@@ -1356,6 +1374,15 @@
 /* Define if Xrandr has the XRRGetScreenResources function */
 #undef HAVE_XRRGETSCREENRESOURCES
 
+/* Define to 1 if you have the `y0' function. */
+#undef HAVE_Y0
+
+/* Define to 1 if you have the `y1' function. */
+#undef HAVE_Y1
+
+/* Define to 1 if you have the `yn' function. */
+#undef HAVE_YN
+
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_ZLIB
 
@@ -1403,6 +1430,10 @@
 
 /* Define to 1 if you have the `__builtin_popcount' built-in function. */
 #undef HAVE___BUILTIN_POPCOUNT
+
+/* Define to 1 if you have the `__clear_cache' (potentially built-in)
+   function. */
+#undef HAVE___CLEAR_CACHE
 
 /* Define to 1 if you have the `__res_getservers' function. */
 #undef HAVE___RES_GETSERVERS
@@ -1472,6 +1503,9 @@
 /* Define to the soname of the libgsm library. */
 #undef SONAME_LIBGSM
 
+/* Define to the soname of the libgssapi_krb5 library. */
+#undef SONAME_LIBGSSAPI_KRB5
+
 /* Define to the soname of the libhal library. */
 #undef SONAME_LIBHAL
 
@@ -1502,11 +1536,20 @@
 /* Define to the soname of the libsane library. */
 #undef SONAME_LIBSANE
 
+/* Define to the soname of the libSDL2 library. */
+#undef SONAME_LIBSDL2
+
 /* Define to the soname of the libtiff library. */
 #undef SONAME_LIBTIFF
 
 /* Define to the soname of the libv4l1 library. */
 #undef SONAME_LIBV4L1
+
+/* Define to the soname of the libvkd3d library. */
+#undef SONAME_LIBVKD3D
+
+/* Define to the soname of the libvulkan library. */
+#undef SONAME_LIBVULKAN
 
 /* Define to the soname of the libX11 library. */
 #undef SONAME_LIBX11

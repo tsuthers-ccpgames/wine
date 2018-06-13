@@ -22,17 +22,12 @@
 
 #define COBJMACROS
 
-#include "windef.h"
-#include "winbase.h"
+#include "wsdapi_internal.h"
 #include "wine/debug.h"
-#include "wine/list.h"
-#include "wsdapi.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(wsdapi);
 
-#define WSD_MAX_TEXT_LENGTH 8192
-
-static LPWSTR duplicate_string(void *parentMemoryBlock, LPCWSTR value)
+LPWSTR duplicate_string(void *parentMemoryBlock, LPCWSTR value)
 {
     int valueLen;
     LPWSTR dup;
@@ -68,7 +63,7 @@ static WSDXML_NAMESPACE *duplicate_namespace(void *parentMemoryBlock, WSDXML_NAM
     return newNs;
 }
 
-static WSDXML_NAME *duplicate_name(void *parentMemoryBlock, WSDXML_NAME *name)
+WSDXML_NAME *duplicate_name(void *parentMemoryBlock, WSDXML_NAME *name)
 {
     WSDXML_NAME *dup;
 

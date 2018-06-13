@@ -28,6 +28,8 @@
 #include "shlobj.h"
 #include "shellapi.h"
 #include "commoncontrols.h"
+
+#include "wine/heap.h"
 #include "wine/test.h"
 
 #include "shell32_test.h"
@@ -83,12 +85,12 @@ static LPITEMIDLIST path_to_pidl(const char* path)
         int len;
 
         len=MultiByteToWideChar(CP_ACP, 0, path, -1, NULL, 0);
-        pathW=HeapAlloc(GetProcessHeap(), 0, len*sizeof(WCHAR));
+        pathW = heap_alloc(len * sizeof(WCHAR));
         MultiByteToWideChar(CP_ACP, 0, path, -1, pathW, len);
 
         r=pSHILCreateFromPath(pathW, &pidl, NULL);
         ok(r == S_OK, "SHILCreateFromPath failed (0x%08x)\n", r);
-        HeapFree(GetProcessHeap(), 0, pathW);
+        heap_free(pathW);
     }
     return pidl;
 }
@@ -169,8 +171,9 @@ static void test_get_set(void)
     ok(finddata.dwFileAttributes == 0, "unexpected attributes %x\n", finddata.dwFileAttributes);
     ok(finddata.cFileName[0] == 0, "unexpected filename '%s'\n", finddata.cFileName);
 
-    CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER,
-                     &IID_IShellLinkW, (LPVOID*)&slW);
+    r = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER,
+                         &IID_IShellLinkW, (LPVOID*)&slW);
+    ok(r == S_OK, "CoCreateInstance failed (0x%08x)\n", r);
     if (!slW /* Win9x */ || !pGetLongPathNameA /* NT4 */)
         skip("SetPath with NULL parameter crashes on Win9x and some NT4\n");
     else
@@ -1414,9 +1417,7 @@ static void test_SHGetImageList(void)
     for (i = 0; i <= SHIL_LAST; i++)
     {
         hr = SHGetImageList( i, &IID_IImageList, (void **)&list );
-        todo_wine_if(i == SHIL_EXTRALARGE || i == SHIL_JUMBO)
-            ok( hr == S_OK ||
-                broken( i == SHIL_JUMBO && hr == E_INVALIDARG ), /* XP and 2003 */
+        ok( hr == S_OK || broken( i == SHIL_JUMBO && hr == E_INVALIDARG ), /* XP and 2003 */
                 "%d: got %08x\n", i, hr );
         if (FAILED(hr)) continue;
         IImageList_GetIconSize( list, &width, &height );

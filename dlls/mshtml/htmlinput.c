@@ -46,32 +46,6 @@ struct HTMLInputElement {
 
 static const WCHAR forW[] = {'f','o','r',0};
 
-static HRESULT return_nsform(HTMLElement *elem, nsIDOMHTMLFormElement *nsform, IHTMLFormElement **p)
-{
-    nsIDOMNode *form_node;
-    HTMLDOMNode *node;
-    nsresult nsres;
-    HRESULT hres;
-
-    if(!nsform) {
-        *p = NULL;
-        return S_OK;
-    }
-
-    nsres = nsIDOMHTMLFormElement_QueryInterface(nsform, &IID_nsIDOMNode, (void**)&form_node);
-    nsIDOMHTMLFormElement_Release(nsform);
-    assert(nsres == NS_OK);
-
-    hres = get_node(elem->node.doc, form_node, TRUE, &node);
-    nsIDOMNode_Release(form_node);
-    if (FAILED(hres))
-        return hres;
-
-    hres = IHTMLDOMNode_QueryInterface(&node->IHTMLDOMNode_iface, &IID_IHTMLElement, (void**)p);
-    node_release(node);
-    return hres;
-}
-
 static inline HTMLInputElement *impl_from_IHTMLInputElement(IHTMLInputElement *iface)
 {
     return CONTAINING_RECORD(iface, HTMLInputElement, IHTMLInputElement_iface);
@@ -288,12 +262,7 @@ static HRESULT WINAPI HTMLInputElement_get_form(IHTMLInputElement *iface, IHTMLF
     TRACE("(%p)->(%p)\n", This, p);
 
     nsres = nsIDOMHTMLInputElement_GetForm(This->nsinput, &nsform);
-    if (NS_FAILED(nsres)) {
-        ERR("GetForm failed: %08x, nsform: %p\n", nsres, nsform);
-        return E_FAIL;
-    }
-
-    return return_nsform(&This->element, nsform, p);
+    return return_nsform(nsres, nsform, p);
 }
 
 static HRESULT WINAPI HTMLInputElement_put_size(IHTMLInputElement *iface, LONG v)
@@ -1490,7 +1459,7 @@ static dispex_static_data_t HTMLInputElement_dispex = {
     HTMLElement_init_dispex_info
 };
 
-HRESULT HTMLInputElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
+HRESULT HTMLInputElement_Create(HTMLDocumentNode *doc, nsIDOMElement *nselem, HTMLElement **elem)
 {
     HTMLInputElement *ret;
     nsresult nsres;
@@ -1506,7 +1475,7 @@ HRESULT HTMLInputElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem
 
     HTMLElement_Init(&ret->element, doc, nselem, &HTMLInputElement_dispex);
 
-    nsres = nsIDOMHTMLElement_QueryInterface(nselem, &IID_nsIDOMHTMLInputElement, (void**)&ret->nsinput);
+    nsres = nsIDOMElement_QueryInterface(nselem, &IID_nsIDOMHTMLInputElement, (void**)&ret->nsinput);
     assert(nsres == NS_OK);
 
     *elem = &ret->element;
@@ -1590,7 +1559,7 @@ static HRESULT WINAPI HTMLLabelElement_put_htmlFor(IHTMLLabelElement *iface, BST
 
     nsAString_InitDepend(&for_str, forW);
     nsAString_InitDepend(&val_str, v);
-    nsres = nsIDOMHTMLElement_SetAttribute(This->element.nselem, &for_str, &val_str);
+    nsres = nsIDOMElement_SetAttribute(This->element.dom_element, &for_str, &val_str);
     nsAString_Finish(&for_str);
     nsAString_Finish(&val_str);
     if(NS_FAILED(nsres)) {
@@ -1686,7 +1655,7 @@ static dispex_static_data_t HTMLLabelElement_dispex = {
     HTMLElement_init_dispex_info
 };
 
-HRESULT HTMLLabelElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
+HRESULT HTMLLabelElement_Create(HTMLDocumentNode *doc, nsIDOMElement *nselem, HTMLElement **elem)
 {
     HTMLLabelElement *ret;
 
@@ -1905,12 +1874,7 @@ static HRESULT WINAPI HTMLButtonElement_get_form(IHTMLButtonElement *iface, IHTM
     TRACE("(%p)->(%p)\n", This, p);
 
     nsres = nsIDOMHTMLButtonElement_GetForm(This->nsbutton, &nsform);
-    if (NS_FAILED(nsres)) {
-        ERR("GetForm failed: %08x, nsform: %p\n", nsres, nsform);
-        return E_FAIL;
-    }
-
-    return return_nsform(&This->element, nsform, p);
+    return return_nsform(nsres, nsform, p);
 }
 
 static HRESULT WINAPI HTMLButtonElement_createTextRange(IHTMLButtonElement *iface, IHTMLTxtRange **range)
@@ -2037,7 +2001,7 @@ static dispex_static_data_t HTMLButtonElement_dispex = {
     HTMLElement_init_dispex_info
 };
 
-HRESULT HTMLButtonElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nselem, HTMLElement **elem)
+HRESULT HTMLButtonElement_Create(HTMLDocumentNode *doc, nsIDOMElement *nselem, HTMLElement **elem)
 {
     HTMLButtonElement *ret;
     nsresult nsres;
@@ -2051,7 +2015,7 @@ HRESULT HTMLButtonElement_Create(HTMLDocumentNode *doc, nsIDOMHTMLElement *nsele
 
     HTMLElement_Init(&ret->element, doc, nselem, &HTMLButtonElement_dispex);
 
-    nsres = nsIDOMHTMLElement_QueryInterface(nselem, &IID_nsIDOMHTMLButtonElement, (void**)&ret->nsbutton);
+    nsres = nsIDOMElement_QueryInterface(nselem, &IID_nsIDOMHTMLButtonElement, (void**)&ret->nsbutton);
     assert(nsres == NS_OK);
 
     *elem = &ret->element;

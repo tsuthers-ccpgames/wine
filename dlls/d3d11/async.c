@@ -74,7 +74,7 @@ static ULONG STDMETHODCALLTYPE d3d11_query_AddRef(ID3D11Query *iface)
 
     if (refcount == 1)
     {
-        ID3D11Device_AddRef(query->device);
+        ID3D11Device2_AddRef(query->device);
         wined3d_mutex_lock();
         wined3d_query_incref(query->wined3d_query);
         wined3d_mutex_unlock();
@@ -92,13 +92,13 @@ static ULONG STDMETHODCALLTYPE d3d11_query_Release(ID3D11Query *iface)
 
     if (!refcount)
     {
-        ID3D11Device *device = query->device;
+        ID3D11Device2 *device = query->device;
 
         wined3d_mutex_lock();
         wined3d_query_decref(query->wined3d_query);
         wined3d_mutex_unlock();
 
-        ID3D11Device_Release(device);
+        ID3D11Device2_Release(device);
     }
 
     return refcount;
@@ -110,7 +110,7 @@ static void STDMETHODCALLTYPE d3d11_query_GetDevice(ID3D11Query *iface, ID3D11De
 
     TRACE("iface %p, device %p.\n", iface, device);
 
-    *device = query->device;
+    *device = (ID3D11Device *)query->device;
     ID3D11Device_AddRef(*device);
 }
 
@@ -189,7 +189,7 @@ static void STDMETHODCALLTYPE d3d_query_wined3d_object_destroyed(void *parent)
     struct d3d_query *query = parent;
 
     wined3d_private_store_cleanup(&query->private_store);
-    HeapFree(GetProcessHeap(), 0, parent);
+    heap_free(parent);
 }
 
 static const struct wined3d_parent_ops d3d_query_wined3d_parent_ops =
@@ -254,7 +254,7 @@ static void STDMETHODCALLTYPE d3d10_query_GetDevice(ID3D10Query *iface, ID3D10De
 
     TRACE("iface %p, device %p.\n", iface, device);
 
-    ID3D11Device_QueryInterface(query->device, &IID_ID3D10Device, (void **)device);
+    ID3D11Device2_QueryInterface(query->device, &IID_ID3D10Device, (void **)device);
 }
 
 static HRESULT STDMETHODCALLTYPE d3d10_query_GetPrivateData(ID3D10Query *iface,
@@ -470,8 +470,7 @@ static HRESULT d3d_query_init(struct d3d_query *query, struct d3d_device *device
     wined3d_mutex_unlock();
 
     query->predicate = predicate;
-    query->device = &device->ID3D11Device_iface;
-    ID3D11Device_AddRef(query->device);
+    ID3D11Device2_AddRef(query->device = &device->ID3D11Device2_iface);
 
     return S_OK;
 }
@@ -502,13 +501,13 @@ HRESULT d3d_query_create(struct d3d_device *device, const D3D11_QUERY_DESC *desc
     if (is_predicate_type)
         predicate = TRUE;
 
-    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+    if (!(object = heap_alloc_zero(sizeof(*object))))
         return E_OUTOFMEMORY;
 
     if (FAILED(hr = d3d_query_init(object, device, desc, predicate)))
     {
         WARN("Failed to initialize predicate, hr %#x.\n", hr);
-        HeapFree(GetProcessHeap(), 0, object);
+        heap_free(object);
         return hr;
     }
 

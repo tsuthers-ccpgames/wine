@@ -177,15 +177,6 @@ typedef struct
 static LRESULT CALLBACK
 TOOLTIPS_SubclassProc (HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uId, DWORD_PTR dwRef);
 
-
-static inline BOOL TOOLTIPS_IsCallbackString(LPCWSTR str, BOOL isW)
-{
-    if (isW)
-      return str == LPSTR_TEXTCALLBACKW;
-    else
-      return (LPCSTR)str == LPSTR_TEXTCALLBACKA;
-}
-
 static inline UINT_PTR
 TOOLTIPS_GetTitleIconIndex(HICON hIcon)
 {
@@ -624,18 +615,10 @@ TOOLTIPS_Show (TOOLTIPS_INFO *infoPtr, BOOL track_activate)
     }
 
     toolPtr = &infoPtr->tools[nTool];
-
-    TRACE("Show tooltip %d\n", nTool);
-
-    hdr.hwndFrom = infoPtr->hwndSelf;
-    hdr.idFrom = toolPtr->uId;
-    hdr.code = TTN_SHOW;
-    SendMessageW (toolPtr->hwnd, WM_NOTIFY, toolPtr->uId, (LPARAM)&hdr);
-
-    TRACE("%s\n", debugstr_w(infoPtr->szTipText));
-
     TOOLTIPS_CalcTipSize (infoPtr, &size);
-    TRACE("size %d x %d\n", size.cx, size.cy);
+
+    TRACE("Show tooltip %d, %s, size %d x %d\n", nTool, debugstr_w(infoPtr->szTipText),
+        size.cx, size.cy);
 
     if (track_activate && (toolPtr->uFlags & TTF_TRACK))
     {
@@ -808,7 +791,7 @@ TOOLTIPS_Show (TOOLTIPS_INFO *infoPtr, BOOL track_activate)
           }
         }
 
-        hrStem = CreatePolygonRgn(pts, sizeof(pts) / sizeof(pts[0]), ALTERNATE);
+        hrStem = CreatePolygonRgn(pts, ARRAY_SIZE(pts), ALTERNATE);
         
         hRgn = CreateRoundRectRgn(0,
                                   (infoPtr->bToolBelow ? BALLOON_STEMHEIGHT : 0),
@@ -824,9 +807,16 @@ TOOLTIPS_Show (TOOLTIPS_INFO *infoPtr, BOOL track_activate)
          * it is no longer needed */
     }
 
-    SetWindowPos (infoPtr->hwndSelf, HWND_TOPMOST, rect.left, rect.top,
-		    rect.right - rect.left, rect.bottom - rect.top,
-		    SWP_SHOWWINDOW | SWP_NOACTIVATE);
+    SetWindowPos (infoPtr->hwndSelf, NULL, rect.left, rect.top,
+        rect.right - rect.left, rect.bottom - rect.top, SWP_NOZORDER | SWP_NOACTIVATE);
+
+    hdr.hwndFrom = infoPtr->hwndSelf;
+    hdr.idFrom = toolPtr->uId;
+    hdr.code = TTN_SHOW;
+    SendMessageW (toolPtr->hwnd, WM_NOTIFY, toolPtr->uId, (LPARAM)&hdr);
+
+    SetWindowPos (infoPtr->hwndSelf, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
 
     /* repaint the tooltip */
     InvalidateRect(infoPtr->hwndSelf, NULL, TRUE);
@@ -1059,7 +1049,7 @@ TOOLTIPS_AddToolT (TOOLTIPS_INFO *infoPtr, const TTTOOLINFOW *ti, BOOL isW)
     TRACE("add tool (%p) %p %ld%s\n", infoPtr->hwndSelf, ti->hwnd, ti->uId,
         (ti->uFlags & TTF_IDISHWND) ? " TTF_IDISHWND" : "");
 
-    if (ti->cbSize >= TTTOOLINFOW_V2_SIZE && !ti->lpszText && isW)
+    if (ti->cbSize > TTTOOLINFOW_V3_SIZE && isW)
         return FALSE;
 
     if (infoPtr->uNumTools == 0) {
@@ -1092,7 +1082,7 @@ TOOLTIPS_AddToolT (TOOLTIPS_INFO *infoPtr, const TTTOOLINFOW *ti, BOOL isW)
             toolPtr->lpszText = ti->lpszText;
         }
         else if (ti->lpszText) {
-            if (TOOLTIPS_IsCallbackString(ti->lpszText, isW)) {
+            if (ti->lpszText == LPSTR_TEXTCALLBACKW) {
                 TRACE("add CALLBACK\n");
                 toolPtr->lpszText = LPSTR_TEXTCALLBACKW;
             }
@@ -1142,6 +1132,13 @@ TOOLTIPS_AddToolT (TOOLTIPS_INFO *infoPtr, const TTTOOLINFOW *ti, BOOL isW)
     return TRUE;
 }
 
+static void TOOLTIPS_ResetSubclass (const TTTOOL_INFO *toolPtr)
+{
+    /* Reset subclassing data. */
+    if (toolPtr->uInternalFlags & TTF_SUBCLASS)
+        SetWindowSubclass(toolPtr->uInternalFlags & TTF_IDISHWND ? (HWND)toolPtr->uId : toolPtr->hwnd,
+            TOOLTIPS_SubclassProc, 1, 0);
+}
 
 static LRESULT
 TOOLTIPS_DelToolT (TOOLTIPS_INFO *infoPtr, const TTTOOLINFOW *ti, BOOL isW)
@@ -1174,15 +1171,7 @@ TOOLTIPS_DelToolT (TOOLTIPS_INFO *infoPtr, const TTTOOLINFOW *ti, BOOL isW)
 	    Free (toolPtr->lpszText);
     }
 
-    /* remove subclassing */
-    if (toolPtr->uInternalFlags & TTF_SUBCLASS) {
-	if (toolPtr->uInternalFlags & TTF_IDISHWND) {
-	    RemoveWindowSubclass((HWND)toolPtr->uId, TOOLTIPS_SubclassProc, 1);
-	}
-	else {
-	    RemoveWindowSubclass(toolPtr->hwnd, TOOLTIPS_SubclassProc, 1);
-	}
-    }
+    TOOLTIPS_ResetSubclass (toolPtr);
 
     /* delete tool from tool list */
     if (infoPtr->uNumTools == 1) {
@@ -1676,7 +1665,7 @@ TOOLTIPS_SetToolInfoT (TOOLTIPS_INFO *infoPtr, const TTTOOLINFOW *ti, BOOL isW)
 	toolPtr->lpszText = ti->lpszText;
     }
     else {
-	if (TOOLTIPS_IsCallbackString(ti->lpszText, isW))
+	if (ti->lpszText == LPSTR_TEXTCALLBACKW)
 	    toolPtr->lpszText = LPSTR_TEXTCALLBACKW;
 	else {
 	    if ( (toolPtr->lpszText) &&
@@ -1802,7 +1791,7 @@ TOOLTIPS_UpdateTipTextT (TOOLTIPS_INFO *infoPtr, const TTTOOLINFOW *ti, BOOL isW
 	toolPtr->lpszText = ti->lpszText;
     }
     else if (ti->lpszText) {
-	if (TOOLTIPS_IsCallbackString(ti->lpszText, isW))
+	if (ti->lpszText == LPSTR_TEXTCALLBACKW)
 	    toolPtr->lpszText = LPSTR_TEXTCALLBACKW;
 	else {
 	    if ( (toolPtr->lpszText)  &&
@@ -1888,16 +1877,9 @@ TOOLTIPS_Destroy (TOOLTIPS_INFO *infoPtr)
 		}
 	    }
 
-	    /* remove subclassing */
-        if (toolPtr->uInternalFlags & TTF_SUBCLASS) {
-            if (toolPtr->uInternalFlags & TTF_IDISHWND) {
-                RemoveWindowSubclass((HWND)toolPtr->uId, TOOLTIPS_SubclassProc, 1);
-            }
-            else {
-                RemoveWindowSubclass(toolPtr->hwnd, TOOLTIPS_SubclassProc, 1);
-            }
+            TOOLTIPS_ResetSubclass (toolPtr);
         }
-    }
+
 	Free (infoPtr->tools);
     }
 
@@ -2117,12 +2099,13 @@ TOOLTIPS_WinIniChange (TOOLTIPS_INFO *infoPtr)
 
 
 static LRESULT CALLBACK
-TOOLTIPS_SubclassProc (HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uID, DWORD_PTR dwRef)
+TOOLTIPS_SubclassProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uID, DWORD_PTR dwRef)
 {
     TOOLTIPS_INFO *infoPtr = TOOLTIPS_GetInfoPtr ((HWND)dwRef);
     MSG msg;
 
-    switch(uMsg) {
+    switch (message)
+    {
     case WM_MOUSEMOVE:
     case WM_LBUTTONDOWN:
     case WM_LBUTTONUP:
@@ -2130,17 +2113,23 @@ TOOLTIPS_SubclassProc (HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_
     case WM_MBUTTONUP:
     case WM_RBUTTONDOWN:
     case WM_RBUTTONUP:
-        msg.hwnd = hwnd;
-	msg.message = uMsg;
-	msg.wParam = wParam;
-	msg.lParam = lParam;
-	TOOLTIPS_RelayEvent(infoPtr, &msg);
-	break;
-
+        if (infoPtr)
+        {
+            msg.hwnd = hwnd;
+            msg.message = message;
+            msg.wParam = wParam;
+            msg.lParam = lParam;
+            TOOLTIPS_RelayEvent(infoPtr, &msg);
+        }
+        break;
+    case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, TOOLTIPS_SubclassProc, 1);
+        break;
     default:
         break;
     }
-    return DefSubclassProc(hwnd, uMsg, wParam, lParam);
+
+    return DefSubclassProc(hwnd, message, wParam, lParam);
 }
 
 

@@ -40,7 +40,6 @@
 #include "winsock2.h"
 #include "ws2ipdef.h"
 #include "winhttp.h"
-#include "wincrypt.h"
 #include "winreg.h"
 #define COBJMACROS
 #include "ole2.h"
@@ -225,7 +224,7 @@ static BOOL session_set_option( object_header_t *hdr, DWORD option, LPVOID buffe
         return TRUE;
     default:
         FIXME("unimplemented option %u\n", option);
-        set_last_error( ERROR_INVALID_PARAMETER );
+        set_last_error( ERROR_WINHTTP_INVALID_OPTION );
         return FALSE;
     }
 }
@@ -597,6 +596,8 @@ static void request_destroy( object_header_t *hdr )
     }
     release_object( &request->connect->hdr );
 
+    CertFreeCertificateContext( request->server_cert );
+
     destroy_authinfo( request->authinfo );
     destroy_authinfo( request->proxy_authinfo );
 
@@ -759,14 +760,14 @@ static BOOL request_query_option( object_header_t *hdr, DWORD option, LPVOID buf
             return FALSE;
         }
 
-        if (!request->netconn || !(cert = netconn_get_certificate( request->netconn ))) return FALSE;
+        if (!(cert = CertDuplicateCertificateContext( request->server_cert ))) return FALSE;
         *(CERT_CONTEXT **)buffer = (CERT_CONTEXT *)cert;
         *buflen = sizeof(cert);
         return TRUE;
     }
     case WINHTTP_OPTION_SECURITY_CERTIFICATE_STRUCT:
     {
-        const CERT_CONTEXT *cert;
+        const CERT_CONTEXT *cert = request->server_cert;
         const CRYPT_OID_INFO *oidInfo;
         WINHTTP_CERTIFICATE_INFO *ci = buffer;
 
@@ -778,16 +779,14 @@ static BOOL request_query_option( object_header_t *hdr, DWORD option, LPVOID buf
             set_last_error( ERROR_INSUFFICIENT_BUFFER );
             return FALSE;
         }
-        if (!request->netconn || !(cert = netconn_get_certificate( request->netconn ))) return FALSE;
+        if (!cert) return FALSE;
 
         ci->ftExpiry = cert->pCertInfo->NotAfter;
         ci->ftStart  = cert->pCertInfo->NotBefore;
         ci->lpszSubjectInfo = blob_to_str( cert->dwCertEncodingType, &cert->pCertInfo->Subject );
         ci->lpszIssuerInfo  = blob_to_str( cert->dwCertEncodingType, &cert->pCertInfo->Issuer );
         ci->lpszProtocolName      = NULL;
-        oidInfo = CryptFindOIDInfo( CRYPT_OID_INFO_OID_KEY,
-                                    cert->pCertInfo->SignatureAlgorithm.pszObjId,
-                                    0 );
+        oidInfo = CryptFindOIDInfo( CRYPT_OID_INFO_OID_KEY, cert->pCertInfo->SignatureAlgorithm.pszObjId, 0 );
         if (oidInfo)
             ci->lpszSignatureAlgName = (LPWSTR)oidInfo->pwszName;
         else
@@ -795,7 +794,6 @@ static BOOL request_query_option( object_header_t *hdr, DWORD option, LPVOID buf
         ci->lpszEncryptionAlgName = NULL;
         ci->dwKeySize = request->netconn ? netconn_get_cipher_strength( request->netconn ) : 0;
 
-        CertFreeCertificateContext( cert );
         *buflen = sizeof(*ci);
         return TRUE;
     }
@@ -1024,8 +1022,8 @@ static BOOL request_set_option( object_header_t *hdr, DWORD option, LPVOID buffe
         return TRUE;
     default:
         FIXME("unimplemented option %u\n", option);
-        set_last_error( ERROR_INVALID_PARAMETER );
-        return TRUE;
+        set_last_error( ERROR_WINHTTP_INVALID_OPTION );
+        return FALSE;
     }
 }
 
@@ -1597,29 +1595,21 @@ BOOL WINAPI WinHttpGetDefaultProxyConfiguration( WINHTTP_PROXY_INFO *info )
     }
     if (!got_from_reg && (envproxy = getenv( "http_proxy" )))
     {
-        char *colon, *http_proxy;
+        char *colon, *http_proxy = NULL;
 
-        if ((colon = strchr( envproxy, ':' )))
+        if (!(colon = strchr( envproxy, ':' ))) http_proxy = envproxy;
+        else
         {
             if (*(colon + 1) == '/' && *(colon + 2) == '/')
             {
-                static const char http[] = "http://";
-
                 /* It's a scheme, check that it's http */
-                if (!strncmp( envproxy, http, strlen( http ) ))
-                    http_proxy = envproxy + strlen( http );
-                else
-                {
-                    WARN("unsupported scheme in $http_proxy: %s\n", envproxy);
-                    http_proxy = NULL;
-                }
+                if (!strncmp( envproxy, "http://", 7 )) http_proxy = envproxy + 7;
+                else WARN("unsupported scheme in $http_proxy: %s\n", envproxy);
             }
-            else
-                http_proxy = envproxy;
+            else http_proxy = envproxy;
         }
-        else
-            http_proxy = envproxy;
-        if (http_proxy)
+
+        if (http_proxy && http_proxy[0])
         {
             WCHAR *http_proxyW;
             int len;
@@ -1632,8 +1622,7 @@ BOOL WINAPI WinHttpGetDefaultProxyConfiguration( WINHTTP_PROXY_INFO *info )
                 info->dwAccessType = WINHTTP_ACCESS_TYPE_NAMED_PROXY;
                 info->lpszProxy = http_proxyW;
                 info->lpszProxyBypass = NULL;
-                TRACE("http proxy (from environment) = %s\n",
-                    debugstr_w(info->lpszProxy));
+                TRACE("http proxy (from environment) = %s\n", debugstr_w(info->lpszProxy));
             }
         }
     }

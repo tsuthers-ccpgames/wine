@@ -20,21 +20,7 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  *
- * NOTES
- *
- * This code was audited for completeness against the documented features
- * of Comctl32.dll version 6.0 on Oct. 8, 2004, by Dimitrie O. Paun.
- * 
- * Unless otherwise noted, we believe this code to be complete, as per
- * the specification mentioned above.
- * If you discover missing features, or bugs, please note them below.
- *
  * TODO:
- *   - EDITBALLOONTIP structure
- *   - EM_GETCUEBANNER/Edit_GetCueBannerText
- *   - EM_HIDEBALLOONTIP/Edit_HideBalloonTip
- *   - EM_SETCUEBANNER/Edit_SetCueBannerText
- *   - EM_SHOWBALLOONTIP/Edit_ShowBalloonTip
  *   - EM_GETIMESTATUS, EM_SETIMESTATUS
  *   - EN_ALIGN_LTR_EC
  *   - EN_ALIGN_RTL_EC
@@ -1264,8 +1250,6 @@ static inline void text_buffer_changed(EDITSTATE *es)
  */
 static void EDIT_LockBuffer(EDITSTATE *es)
 {
-        if (es->hlocapp) return;
-
 	if (!es->text) {
 
 	    if(!es->hloc32W) return;
@@ -1306,8 +1290,6 @@ static void EDIT_LockBuffer(EDITSTATE *es)
  */
 static void EDIT_UnlockBuffer(EDITSTATE *es, BOOL force)
 {
-        if (es->hlocapp) return;
-
 	/* Edit window might be already destroyed */
 	if(!IsWindow(es->hwndSelf))
 	{
@@ -1323,7 +1305,6 @@ static void EDIT_UnlockBuffer(EDITSTATE *es, BOOL force)
 		ERR("es->text == 0 ... please report\n");
 		return;
 	}
-
 	if (force || (es->lock_count == 1)) {
 	    if (es->hloc32W) {
 		UINT countA = 0;
@@ -2576,7 +2557,7 @@ static void EDIT_EM_ReplaceSel(EDITSTATE *es, BOOL can_undo, const WCHAR *lpsz_r
 	UINT bufl;
 
 	TRACE("%s, can_undo %d, send_update %d\n",
-	    debugstr_w(lpsz_replace), can_undo, send_update);
+	    debugstr_wn(lpsz_replace, strl), can_undo, send_update);
 
 	s = es->selection_start;
 	e = es->selection_end;
@@ -4844,6 +4825,7 @@ LRESULT EditWndProc_common( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, B
 
 	case EM_SETWORDBREAKPROC:
 		EDIT_EM_SetWordBreakProc(es, (void *)lParam);
+		result = 1;
 		break;
 
 	case EM_GETWORDBREAKPROC:
@@ -5205,7 +5187,8 @@ LRESULT EditWndProc_common( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, B
 		break;
 	}
 
-	if (IsWindow(hwnd) && es) EDIT_UnlockBuffer(es, FALSE);
+        if (IsWindow(hwnd) && es && msg != EM_GETHANDLE)
+            EDIT_UnlockBuffer(es, FALSE);
 
         TRACE("hwnd=%p msg=%x (%s) -- 0x%08lx\n", hwnd, msg, SPY_GetMsgName(msg, hwnd), result);
 

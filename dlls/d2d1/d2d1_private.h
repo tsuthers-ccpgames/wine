@@ -20,11 +20,12 @@
 #define __WINE_D2D1_PRIVATE_H
 
 #include "wine/debug.h"
+#include "wine/heap.h"
 
 #include <assert.h>
 #include <limits.h>
 #define COBJMACROS
-#include "d2d1.h"
+#include "d2d1_1.h"
 #ifdef D2D1_INIT_GUID
 #include "initguid.h"
 #endif
@@ -52,11 +53,17 @@ enum d2d_shape_type
     D2D_SHAPE_TYPE_COUNT,
 };
 
+struct d2d_settings
+{
+    unsigned int max_version_factory;
+};
+extern struct d2d_settings d2d_settings DECLSPEC_HIDDEN;
+
 struct d2d_clip_stack
 {
     D2D1_RECT_F *stack;
-    unsigned int size;
-    unsigned int count;
+    size_t size;
+    size_t count;
 };
 
 struct d2d_error_state
@@ -319,7 +326,7 @@ HRESULT d2d_mesh_create(ID2D1Factory *factory, struct d2d_mesh **mesh) DECLSPEC_
 
 struct d2d_bitmap
 {
-    ID2D1Bitmap ID2D1Bitmap_iface;
+    ID2D1Bitmap1 ID2D1Bitmap1_iface;
     LONG refcount;
 
     ID2D1Factory *factory;
@@ -469,6 +476,42 @@ HRESULT d2d_rectangle_geometry_init(struct d2d_geometry *geometry,
 void d2d_transformed_geometry_init(struct d2d_geometry *geometry, ID2D1Factory *factory,
         ID2D1Geometry *src_geometry, const D2D_MATRIX_3X2_F *transform) DECLSPEC_HIDDEN;
 struct d2d_geometry *unsafe_impl_from_ID2D1Geometry(ID2D1Geometry *iface) DECLSPEC_HIDDEN;
+
+struct d2d_device
+{
+    ID2D1Device ID2D1Device_iface;
+    LONG refcount;
+    ID2D1Factory1 *factory;
+    IDXGIDevice *dxgi_device;
+};
+
+void d2d_device_init(struct d2d_device *device, ID2D1Factory1 *factory, IDXGIDevice *dxgi_device) DECLSPEC_HIDDEN;
+
+static inline BOOL d2d_array_reserve(void **elements, size_t *capacity, size_t count, size_t size)
+{
+    size_t new_capacity, max_capacity;
+    void *new_elements;
+
+    if (count <= *capacity)
+        return TRUE;
+
+    max_capacity = ~(SIZE_T)0 / size;
+    if (count > max_capacity)
+        return FALSE;
+
+    new_capacity = max(4, *capacity);
+    while (new_capacity < count && new_capacity <= max_capacity / 2)
+        new_capacity *= 2;
+    if (new_capacity < count)
+        new_capacity = max_capacity;
+
+    if (!(new_elements = heap_realloc(*elements, new_capacity * size)))
+        return FALSE;
+
+    *elements = new_elements;
+    *capacity = new_capacity;
+    return TRUE;
+}
 
 static inline void d2d_matrix_multiply(D2D_MATRIX_3X2_F *a, const D2D_MATRIX_3X2_F *b)
 {

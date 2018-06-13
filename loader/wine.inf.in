@@ -135,6 +135,7 @@ AddService=FontCache,0,FontCacheService
 AddService=Schedule,0,TaskSchedulerService
 AddService=WineBus,0,WineBusService
 AddService=WineHID,0,WineHIDService
+AddService=Winmgmt,0,WinmgmtService
 
 [DefaultInstall.NT.Services]
 AddService=BITS,0,BITSService
@@ -151,6 +152,7 @@ AddService=FontCache,0,FontCacheService
 AddService=Schedule,0,TaskSchedulerService
 AddService=WineBus,0,WineBusService
 AddService=WineHID,0,WineHIDService
+AddService=Winmgmt,0,WinmgmtService
 
 [DefaultInstall.ntamd64.Services]
 AddService=BITS,0,BITSService
@@ -167,6 +169,7 @@ AddService=FontCache,0,FontCacheService
 AddService=Schedule,0,TaskSchedulerService
 AddService=WineBus,0,WineBusService
 AddService=WineHID,0,WineHIDService
+AddService=Winmgmt,0,WinmgmtService
 
 [Strings]
 MciExtStr="Software\Microsoft\Windows NT\CurrentVersion\MCI Extensions"
@@ -472,6 +475,8 @@ HKLM,System\CurrentControlSet\Control\Class\{745a17a0-74d3-11d0-b6fe-00a0c90f57d
 [CriticalDevice]
 HKLM,System\CurrentControlSet\Control\CriticalDeviceDatabase\HIDRAW,"Service",,"WineHID"
 HKLM,System\CurrentControlSet\Control\CriticalDeviceDatabase\IOHID,"Service",,"WineHID"
+HKLM,System\CurrentControlSet\Control\CriticalDeviceDatabase\LNXEV,"Service",,"WineHID"
+HKLM,System\CurrentControlSet\Control\CriticalDeviceDatabase\SDLJOY,"Service",,"WineHID"
 
 [CurrentVersion]
 HKCU,%CurrentVersion%\Run,,16
@@ -683,6 +688,7 @@ HKLM,Software\Microsoft\Windows Messaging Subsystem,"MAPI",2,"1"
 HKLM,Software\Policies,,16
 HKLM,Software\Registered Applications,,16
 HKLM,System\CurrentControlSet\Control\hivelist,,16
+HKLM,System\CurrentControlSet\Control\Lsa,"Security Packages",0x10002,kerberos,schannel
 HKLM,System\CurrentControlSet\Control\Lsa\Kerberos,,16
 HKLM,System\CurrentControlSet\Control\SecurityProviders\Schannel\Protocols\SSL 2.0\Client,"DisabledByDefault",0x10003,1
 HKLM,System\CurrentControlSet\Control\ServiceGroupOrder,"List",0x00010000,"TDI"
@@ -2576,7 +2582,9 @@ HKLM,%CurrentVersion%\Telephony\Country List\998,"SameAreaRule",,"G"
 10,help,
 10,inf,
 10,logs,
+10,tasks,
 10,temp,
+11,catroot,
 11,mui,
 11,tasks,
 11,spool\drivers\color,
@@ -3312,6 +3320,14 @@ LoadOrderGroup="SpoolerGroup"
 Description="Remote desktop access"
 DisplayName="Terminal Services"
 ServiceBinary="%11%\termsv.exe"
+ServiceType=32
+StartType=3
+ErrorControl=1
+
+[WinmgmtService]
+Description="Provides access to Windows Management Instrumentation"
+DisplayName="Windows Management Instrumentation Service"
+ServiceBinary="%11%\winmgmt.exe"
 ServiceType=32
 StartType=3
 ErrorControl=1

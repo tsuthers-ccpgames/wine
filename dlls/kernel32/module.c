@@ -58,6 +58,15 @@ static struct list dll_dir_list = LIST_INIT( dll_dir_list );  /* extra dirs from
 static WCHAR *dll_directory;  /* extra path for SetDllDirectoryW */
 static DWORD default_search_flags;  /* default flags set by SetDefaultDllDirectories */
 
+/* to keep track of LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE file handles */
+struct exclusive_datafile
+{
+    struct list entry;
+    HMODULE     module;
+    HANDLE      file;
+};
+static struct list exclusive_datafile_list = LIST_INIT( exclusive_datafile_list );
+
 static CRITICAL_SECTION dlldir_section;
 static CRITICAL_SECTION_DEBUG critsect_debug =
 {
@@ -253,8 +262,8 @@ BOOL WINAPI DisableThreadLibraryCalls( HMODULE hModule )
 /* Check whether a file is an OS/2 or a very old Windows executable
  * by testing on import of KERNEL.
  *
- * FIXME: is reading the module imports the only way of discerning
- *        old Windows binaries from OS/2 ones ? At least it seems so...
+ * Reading the module imports is the only reasonable way of discerning
+ * old Windows binaries from OS/2 ones.
  */
 static DWORD MODULE_Decide_OS2_OldWin(HANDLE hfile, const IMAGE_DOS_HEADER *mz, const IMAGE_OS2_HEADER *ne)
 {
@@ -270,31 +279,28 @@ static DWORD MODULE_Decide_OS2_OldWin(HANDLE hfile, const IMAGE_DOS_HEADER *mz, 
       || (!(modtab = HeapAlloc( GetProcessHeap(), 0, ne->ne_cmod*sizeof(WORD))))
       || (!(ReadFile(hfile, modtab, ne->ne_cmod*sizeof(WORD), &len, NULL)))
       || (len != ne->ne_cmod*sizeof(WORD)) )
-	goto broken;
+	goto done;
 
     /* read imported names table */
     if ( (SetFilePointer( hfile, mz->e_lfanew + ne->ne_imptab, NULL, SEEK_SET ) == -1)
       || (!(nametab = HeapAlloc( GetProcessHeap(), 0, ne->ne_enttab - ne->ne_imptab)))
       || (!(ReadFile(hfile, nametab, ne->ne_enttab - ne->ne_imptab, &len, NULL)))
       || (len != ne->ne_enttab - ne->ne_imptab) )
-	goto broken;
+	goto done;
 
     for (i=0; i < ne->ne_cmod; i++)
     {
-	LPSTR module = &nametab[modtab[i]];
-	TRACE("modref: %.*s\n", module[0], &module[1]);
-	if (!(strncmp(&module[1], "KERNEL", module[0])))
-	{ /* very old Windows file */
-	    MESSAGE("This seems to be a very old (pre-3.0) Windows executable. Expect crashes, especially if this is a real-mode binary !\n");
+        LPSTR module = &nametab[modtab[i]];
+        TRACE("modref: %.*s\n", module[0], &module[1]);
+        if (!(strncmp(&module[1], "KERNEL", module[0])))
+        { /* very old Windows file */
+            MESSAGE("This seems to be a very old (pre-3.0) Windows executable. Expect crashes, especially if this is a real-mode binary !\n");
             ret = BINARY_WIN16;
-	    goto good;
-	}
+            break;
+        }
     }
 
-broken:
-    ERR("Hmm, an error occurred. Is this binary file broken?\n");
-
-good:
+done:
     HeapFree( GetProcessHeap(), 0, modtab);
     HeapFree( GetProcessHeap(), 0, nametab);
     SetFilePointer( hfile, currpos, NULL, SEEK_SET); /* restore filepos */
@@ -313,11 +319,27 @@ void MODULE_get_binary_info( HANDLE hfile, struct binary_info *info )
             unsigned char magic[4];
             unsigned char class;
             unsigned char data;
-            unsigned char version;
-            unsigned char ignored[9];
+            unsigned char ignored1[10];
             unsigned short type;
             unsigned short machine;
+            unsigned char ignored2[8];
+            unsigned int phoff;
+            unsigned char ignored3[12];
+            unsigned short phnum;
         } elf;
+        struct
+        {
+            unsigned char magic[4];
+            unsigned char class;
+            unsigned char data;
+            unsigned char ignored1[10];
+            unsigned short type;
+            unsigned short machine;
+            unsigned char ignored2[12];
+            unsigned __int64 phoff;
+            unsigned char ignored3[16];
+            unsigned short phnum;
+        } elf64;
         struct
         {
             unsigned int magic;
@@ -338,20 +360,54 @@ void MODULE_get_binary_info( HANDLE hfile, struct binary_info *info )
 
     if (!memcmp( header.elf.magic, "\177ELF", 4 ))
     {
-        if (header.elf.class == 2) info->flags |= BINARY_FLAG_64BIT;
 #ifdef WORDS_BIGENDIAN
-        if (header.elf.data == 1)
+        BOOL byteswap = (header.elf.data == 1);
 #else
-        if (header.elf.data == 2)
+        BOOL byteswap = (header.elf.data == 2);
 #endif
+        if (header.elf.class == 2) info->flags |= BINARY_FLAG_64BIT;
+        if (byteswap)
         {
             header.elf.type = RtlUshortByteSwap( header.elf.type );
             header.elf.machine = RtlUshortByteSwap( header.elf.machine );
         }
         switch(header.elf.type)
         {
-        case 2: info->type = BINARY_UNIX_EXE; break;
-        case 3: info->type = BINARY_UNIX_LIB; break;
+        case 2:
+            info->type = BINARY_UNIX_EXE;
+            break;
+        case 3:
+        {
+            LARGE_INTEGER phoff;
+            unsigned short phnum;
+            unsigned int type;
+            if (header.elf.class == 2)
+            {
+                phoff.QuadPart = byteswap ? RtlUlonglongByteSwap( header.elf64.phoff ) : header.elf64.phoff;
+                phnum = byteswap ? RtlUshortByteSwap( header.elf64.phnum ) : header.elf64.phnum;
+            }
+            else
+            {
+                phoff.QuadPart = byteswap ? RtlUlongByteSwap( header.elf.phoff ) : header.elf.phoff;
+                phnum = byteswap ? RtlUshortByteSwap( header.elf.phnum ) : header.elf.phnum;
+            }
+            while (phnum--)
+            {
+                if (SetFilePointerEx( hfile, phoff, NULL, FILE_BEGIN ) == -1) return;
+                if (!ReadFile( hfile, &type, sizeof(type), &len, NULL ) || len < sizeof(type)) return;
+                if (byteswap) type = RtlUlongByteSwap( type );
+                if (type == 3)
+                {
+                    info->type = BINARY_UNIX_EXE;
+                    break;
+                }
+                phoff.QuadPart += (header.elf.class == 2) ? 56 : 32;
+            }
+            if (!info->type) info->type = BINARY_UNIX_LIB;
+            break;
+        }
+        default:
+            return;
         }
         switch(header.elf.machine)
         {
@@ -1078,12 +1134,13 @@ static BOOL load_library_as_datafile( LPCWSTR name, HMODULE *hmod, DWORD flags )
     WCHAR filenameW[MAX_PATH];
     HANDLE hFile = INVALID_HANDLE_VALUE;
     HANDLE mapping;
-    HMODULE module;
-    DWORD sharing = FILE_SHARE_READ;
+    HMODULE module = 0;
+    DWORD protect = PAGE_READONLY;
+    DWORD sharing = FILE_SHARE_READ | FILE_SHARE_DELETE;
 
     *hmod = 0;
 
-    if (!(flags & LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE)) sharing |= FILE_SHARE_WRITE;
+    if (flags & LOAD_LIBRARY_AS_IMAGE_RESOURCE) protect |= SEC_IMAGE;
 
     if (SearchPathW( NULL, name, dotDLL, sizeof(filenameW) / sizeof(filenameW[0]),
                      filenameW, NULL ))
@@ -1092,22 +1149,39 @@ static BOOL load_library_as_datafile( LPCWSTR name, HMODULE *hmod, DWORD flags )
     }
     if (hFile == INVALID_HANDLE_VALUE) return FALSE;
 
-    mapping = CreateFileMappingW( hFile, NULL, PAGE_READONLY, 0, 0, NULL );
-    CloseHandle( hFile );
-    if (!mapping) return FALSE;
+    mapping = CreateFileMappingW( hFile, NULL, protect, 0, 0, NULL );
+    if (!mapping) goto failed;
 
     module = MapViewOfFile( mapping, FILE_MAP_READ, 0, 0, 0 );
     CloseHandle( mapping );
-    if (!module) return FALSE;
+    if (!module) goto failed;
 
-    /* make sure it's a valid PE file */
-    if (!RtlImageNtHeader(module))
+    if (!(flags & LOAD_LIBRARY_AS_IMAGE_RESOURCE))
     {
-        UnmapViewOfFile( module );
-        return FALSE;
+        /* make sure it's a valid PE file */
+        if (!RtlImageNtHeader( module )) goto failed;
+        *hmod = (HMODULE)((char *)module + 1); /* set bit 0 for data file module */
+
+        if (flags & LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE)
+        {
+            struct exclusive_datafile *file = HeapAlloc( GetProcessHeap(), 0, sizeof(*file) );
+            if (!file) goto failed;
+            file->module = *hmod;
+            file->file   = hFile;
+            list_add_head( &exclusive_datafile_list, &file->entry );
+            TRACE( "delaying close %p for module %p\n", file->file, file->module );
+            return TRUE;
+        }
     }
-    *hmod = (HMODULE)((char *)module + 1);  /* set low bit of handle to indicate datafile module */
+    else *hmod = (HMODULE)((char *)module + 2); /* set bit 1 for image resource module */
+
+    CloseHandle( hFile );
     return TRUE;
+
+failed:
+    if (module) UnmapViewOfFile( module );
+    CloseHandle( hFile );
+    return FALSE;
 }
 
 
@@ -1127,7 +1201,6 @@ static HMODULE load_library( const UNICODE_STRING *libname, DWORD flags )
                                              LOAD_LIBRARY_SEARCH_SYSTEM32 |
                                              LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     const DWORD unsupported_flags = (LOAD_IGNORE_CODE_AUTHZ_LEVEL |
-                                     LOAD_LIBRARY_AS_IMAGE_RESOURCE |
                                      LOAD_LIBRARY_REQUIRE_SIGNED_TARGET);
 
     if (!(flags & load_library_search_flags)) flags |= default_search_flags;
@@ -1141,7 +1214,7 @@ static HMODULE load_library( const UNICODE_STRING *libname, DWORD flags )
         load_path = MODULE_get_dll_load_path( flags & LOAD_WITH_ALTERED_SEARCH_PATH ? libname->Buffer : NULL, -1 );
     if (!load_path) return 0;
 
-    if (flags & (LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE))
+    if (flags & (LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE | LOAD_LIBRARY_AS_IMAGE_RESOURCE))
     {
         ULONG_PTR magic;
 
@@ -1152,12 +1225,12 @@ static HMODULE load_library( const UNICODE_STRING *libname, DWORD flags )
             LdrUnlockLoaderLock( 0, magic );
             goto done;
         }
+        if (load_library_as_datafile( libname->Buffer, &hModule, flags ))
+        {
+            LdrUnlockLoaderLock( 0, magic );
+            goto done;
+        }
         LdrUnlockLoaderLock( 0, magic );
-
-        /* The method in load_library_as_datafile allows searching for the
-         * 'native' libraries only
-         */
-        if (load_library_as_datafile( libname->Buffer, &hModule, flags )) goto done;
         flags |= DONT_RESOLVE_DLL_REFERENCES; /* Just in case */
         /* Fallback to normal behaviour */
     }
@@ -1290,11 +1363,26 @@ BOOL WINAPI DECLSPEC_HOTPATCH FreeLibrary(HINSTANCE hLibModule)
         return FALSE;
     }
 
-    if ((ULONG_PTR)hLibModule & 1)
+    if ((ULONG_PTR)hLibModule & 3) /* this is a datafile module */
     {
-        /* this is a LOAD_LIBRARY_AS_DATAFILE module */
-        char *ptr = (char *)hLibModule - 1;
-        return UnmapViewOfFile( ptr );
+        if ((ULONG_PTR)hLibModule & 1)
+        {
+            struct exclusive_datafile *file;
+            ULONG_PTR magic;
+
+            LdrLockLoaderLock( 0, NULL, &magic );
+            LIST_FOR_EACH_ENTRY( file, &exclusive_datafile_list, struct exclusive_datafile, entry )
+            {
+                if (file->module != hLibModule) continue;
+                TRACE( "closing %p for module %p\n", file->file, file->module );
+                CloseHandle( file->file );
+                list_remove( &file->entry );
+                HeapFree( GetProcessHeap(), 0, file );
+                break;
+            }
+            LdrUnlockLoaderLock( 0, magic );
+        }
+        return UnmapViewOfFile( (void *)((ULONG_PTR)hLibModule & ~3) );
     }
 
     if ((nts = LdrUnloadDll( hLibModule )) == STATUS_SUCCESS) retv = TRUE;
@@ -1316,7 +1404,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH FreeLibrary(HINSTANCE hLibModule)
  *  Success: A pointer to the symbol in the process address space.
  *  Failure: NULL. Use GetLastError() to determine the cause.
  */
-FARPROC WINAPI GetProcAddress( HMODULE hModule, LPCSTR function )
+FARPROC get_proc_address( HMODULE hModule, LPCSTR function )
 {
     NTSTATUS    nts;
     FARPROC     fp;
@@ -1340,6 +1428,54 @@ FARPROC WINAPI GetProcAddress( HMODULE hModule, LPCSTR function )
     return fp;
 }
 
+#ifdef __x86_64__
+/*
+ * Work around a Delphi bug on x86_64.  When delay loading a symbol,
+ * Delphi saves rcx, rdx, r8 and r9 to the stack.  It then calls
+ * GetProcAddress(), pops the saved registers and calls the function.
+ * This works fine if all of the parameters are ints.  However, since
+ * it does not save xmm0 - 3, it relies on GetProcAddress() preserving
+ * these registers if the function takes floating point parameters.
+ * This wrapper saves xmm0 - 3 to the stack.
+ */
+extern FARPROC get_proc_address_wrapper( HMODULE module, LPCSTR function );
+
+__ASM_GLOBAL_FUNC( get_proc_address_wrapper,
+                   "pushq %rbp\n\t"
+                   __ASM_CFI(".cfi_adjust_cfa_offset 8\n\t")
+                   __ASM_CFI(".cfi_rel_offset %rbp,0\n\t")
+                   "movq %rsp,%rbp\n\t"
+                   __ASM_CFI(".cfi_def_cfa_register %rbp\n\t")
+                   "subq $0x40,%rsp\n\t"
+                   "movaps %xmm0,-0x10(%rbp)\n\t"
+                   "movaps %xmm1,-0x20(%rbp)\n\t"
+                   "movaps %xmm2,-0x30(%rbp)\n\t"
+                   "movaps %xmm3,-0x40(%rbp)\n\t"
+                   "call " __ASM_NAME("get_proc_address") "\n\t"
+                   "movaps -0x40(%rbp), %xmm3\n\t"
+                   "movaps -0x30(%rbp), %xmm2\n\t"
+                   "movaps -0x20(%rbp), %xmm1\n\t"
+                   "movaps -0x10(%rbp), %xmm0\n\t"
+                   "movq %rbp,%rsp\n\t"
+                   __ASM_CFI(".cfi_def_cfa_register %rsp\n\t")
+                   "popq %rbp\n\t"
+                   __ASM_CFI(".cfi_adjust_cfa_offset -8\n\t")
+                   __ASM_CFI(".cfi_same_value %rbp\n\t")
+                   "ret" )
+#else /* __x86_64__ */
+
+static inline FARPROC get_proc_address_wrapper( HMODULE module, LPCSTR function )
+{
+    return get_proc_address( module, function );
+}
+
+#endif /* __x86_64__ */
+
+FARPROC WINAPI GetProcAddress( HMODULE hModule, LPCSTR function )
+{
+    return get_proc_address_wrapper( hModule, function );
+}
+
 /***********************************************************************
  *           DelayLoadFailureHook  (KERNEL32.@)
  */
@@ -1357,10 +1493,56 @@ FARPROC WINAPI DelayLoadFailureHook( LPCSTR name, LPCSTR function )
     return NULL;
 }
 
+typedef struct _PEB32
+{
+    BOOLEAN InheritedAddressSpace;
+    BOOLEAN ReadImageFileExecOptions;
+    BOOLEAN BeingDebugged;
+    BOOLEAN SpareBool;
+    DWORD   Mutant;
+    DWORD   ImageBaseAddress;
+    DWORD   LdrData;
+} PEB32;
+
+typedef struct _LIST_ENTRY32
+{
+  DWORD Flink;
+  DWORD Blink;
+} LIST_ENTRY32;
+
+typedef struct _PEB_LDR_DATA32
+{
+    ULONG        Length;
+    BOOLEAN      Initialized;
+    DWORD        SsHandle;
+    LIST_ENTRY32 InLoadOrderModuleList;
+} PEB_LDR_DATA32;
+
+typedef struct _UNICODE_STRING32
+{
+  USHORT Length;
+  USHORT MaximumLength;
+  DWORD  Buffer;
+} UNICODE_STRING32;
+
+typedef struct _LDR_MODULE32
+{
+    LIST_ENTRY32        InLoadOrderModuleList;
+    LIST_ENTRY32        InMemoryOrderModuleList;
+    LIST_ENTRY32        InInitializationOrderModuleList;
+    DWORD               BaseAddress;
+    DWORD               EntryPoint;
+    ULONG               SizeOfImage;
+    UNICODE_STRING32    FullDllName;
+    UNICODE_STRING32    BaseDllName;
+} LDR_MODULE32;
+
 typedef struct {
     HANDLE process;
     PLIST_ENTRY head, current;
     LDR_MODULE ldr_module;
+    BOOL wow64;
+    LDR_MODULE32 ldr_module32;
 } MODULE_ITERATOR;
 
 static BOOL init_module_iterator(MODULE_ITERATOR *iter, HANDLE process)
@@ -1369,6 +1551,9 @@ static BOOL init_module_iterator(MODULE_ITERATOR *iter, HANDLE process)
     PPEB_LDR_DATA ldr_data;
     NTSTATUS status;
 
+    if (!IsWow64Process(process, &iter->wow64))
+        return FALSE;
+
     /* Get address of PEB */
     status = NtQueryInformationProcess(process, ProcessBasicInformation,
                                        &pbi, sizeof(pbi), NULL);
@@ -1376,6 +1561,30 @@ static BOOL init_module_iterator(MODULE_ITERATOR *iter, HANDLE process)
     {
         SetLastError(RtlNtStatusToDosError(status));
         return FALSE;
+    }
+
+    if (sizeof(void *) == 8 && iter->wow64)
+    {
+        PEB_LDR_DATA32 *ldr_data32_ptr;
+        DWORD ldr_data32, first_module;
+        PEB32 *peb32;
+
+        peb32 = (PEB32 *)(DWORD_PTR)pbi.PebBaseAddress;
+
+        if (!ReadProcessMemory(process, &peb32->LdrData, &ldr_data32,
+                               sizeof(ldr_data32), NULL))
+            return FALSE;
+        ldr_data32_ptr = (PEB_LDR_DATA32 *)(DWORD_PTR) ldr_data32;
+
+        if (!ReadProcessMemory(process,
+                               &ldr_data32_ptr->InLoadOrderModuleList.Flink,
+                               &first_module, sizeof(first_module), NULL))
+            return FALSE;
+        iter->head = (LIST_ENTRY *)&ldr_data32_ptr->InLoadOrderModuleList;
+        iter->current = (LIST_ENTRY *)(DWORD_PTR) first_module;
+        iter->process = process;
+
+        return TRUE;
     }
 
     /* Read address of LdrData from PEB */
@@ -1399,6 +1608,19 @@ static int module_iterator_next(MODULE_ITERATOR *iter)
 {
     if (iter->current == iter->head)
         return 0;
+
+    if (sizeof(void *) == 8 && iter->wow64)
+    {
+        LIST_ENTRY32 *entry32 = (LIST_ENTRY32 *)iter->current;
+
+        if (!ReadProcessMemory(iter->process,
+                               CONTAINING_RECORD(entry32, LDR_MODULE32, InLoadOrderModuleList),
+                               &iter->ldr_module32, sizeof(iter->ldr_module32), NULL))
+            return -1;
+
+        iter->current = (LIST_ENTRY *)(DWORD_PTR) iter->ldr_module32.InLoadOrderModuleList.Flink;
+        return 1;
+    }
 
     if (!ReadProcessMemory(iter->process,
                            CONTAINING_RECORD(iter->current, LDR_MODULE, InLoadOrderModuleList),
@@ -1432,6 +1654,29 @@ static BOOL get_ldr_module(HANDLE process, HMODULE module, LDR_MODULE *ldr_modul
     return FALSE;
 }
 
+static BOOL get_ldr_module32(HANDLE process, HMODULE module, LDR_MODULE32 *ldr_module)
+{
+    MODULE_ITERATOR iter;
+    INT ret;
+
+    if (!init_module_iterator(&iter, process))
+        return FALSE;
+
+    while ((ret = module_iterator_next(&iter)) > 0)
+        /* When hModule is NULL we return the process image - which will be
+         * the first module since our iterator uses InLoadOrderModuleList */
+        if (!module || (DWORD)(DWORD_PTR) module == iter.ldr_module32.BaseAddress)
+        {
+            *ldr_module = iter.ldr_module32;
+            return TRUE;
+        }
+
+    if (ret == 0)
+        SetLastError(ERROR_INVALID_HANDLE);
+
+    return FALSE;
+}
+
 /***********************************************************************
  *           K32EnumProcessModules (KERNEL32.@)
  *
@@ -1442,28 +1687,37 @@ BOOL WINAPI K32EnumProcessModules(HANDLE process, HMODULE *lphModule,
                                   DWORD cb, DWORD *needed)
 {
     MODULE_ITERATOR iter;
+    DWORD size = 0;
     INT ret;
 
     if (!init_module_iterator(&iter, process))
         return FALSE;
 
-    if ((cb && !lphModule) || !needed)
+    if (cb && !lphModule)
     {
         SetLastError(ERROR_NOACCESS);
         return FALSE;
     }
 
-    *needed = 0;
-
     while ((ret = module_iterator_next(&iter)) > 0)
     {
         if (cb >= sizeof(HMODULE))
         {
-            *lphModule++ = iter.ldr_module.BaseAddress;
+            if (sizeof(void *) == 8 && iter.wow64)
+                *lphModule++ = (HMODULE) (DWORD_PTR)iter.ldr_module32.BaseAddress;
+            else
+                *lphModule++ = iter.ldr_module.BaseAddress;
             cb -= sizeof(HMODULE);
         }
-        *needed += sizeof(HMODULE);
+        size += sizeof(HMODULE);
     }
+
+    if (!needed)
+    {
+        SetLastError(ERROR_NOACCESS);
+        return FALSE;
+    }
+    *needed = size;
 
     return ret == 0;
 }
@@ -1489,14 +1743,33 @@ DWORD WINAPI K32GetModuleBaseNameW(HANDLE process, HMODULE module,
                                    LPWSTR base_name, DWORD size)
 {
     LDR_MODULE ldr_module;
+    BOOL wow64;
 
-    if (!get_ldr_module(process, module, &ldr_module))
+    if (!IsWow64Process(process, &wow64))
         return 0;
 
-    size = min(ldr_module.BaseDllName.Length / sizeof(WCHAR), size);
-    if (!ReadProcessMemory(process, ldr_module.BaseDllName.Buffer,
-                           base_name, size * sizeof(WCHAR), NULL))
-        return 0;
+    if (sizeof(void *) == 8 && wow64)
+    {
+        LDR_MODULE32 ldr_module32;
+
+        if (!get_ldr_module32(process, module, &ldr_module32))
+            return 0;
+
+        size = min(ldr_module32.BaseDllName.Length / sizeof(WCHAR), size);
+        if (!ReadProcessMemory(process, (void *)(DWORD_PTR)ldr_module32.BaseDllName.Buffer,
+                               base_name, size * sizeof(WCHAR), NULL))
+            return 0;
+    }
+    else
+    {
+        if (!get_ldr_module(process, module, &ldr_module))
+            return 0;
+
+        size = min(ldr_module.BaseDllName.Length / sizeof(WCHAR), size);
+        if (!ReadProcessMemory(process, ldr_module.BaseDllName.Buffer,
+                               base_name, size * sizeof(WCHAR), NULL))
+            return 0;
+    }
 
     base_name[size] = 0;
     return size;
@@ -1539,17 +1812,36 @@ DWORD WINAPI K32GetModuleFileNameExW(HANDLE process, HMODULE module,
                                      LPWSTR file_name, DWORD size)
 {
     LDR_MODULE ldr_module;
+    BOOL wow64;
     DWORD len;
 
     if (!size) return 0;
 
-    if(!get_ldr_module(process, module, &ldr_module))
+    if (!IsWow64Process(process, &wow64))
         return 0;
 
-    len = ldr_module.FullDllName.Length / sizeof(WCHAR);
-    if (!ReadProcessMemory(process, ldr_module.FullDllName.Buffer,
-                           file_name, min( len, size ) * sizeof(WCHAR), NULL))
-        return 0;
+    if (sizeof(void *) == 8 && wow64)
+    {
+        LDR_MODULE32 ldr_module32;
+
+        if (!get_ldr_module32(process, module, &ldr_module32))
+            return 0;
+
+        len = ldr_module32.FullDllName.Length / sizeof(WCHAR);
+        if (!ReadProcessMemory(process, (void *)(DWORD_PTR)ldr_module32.FullDllName.Buffer,
+                               file_name, min( len, size ) * sizeof(WCHAR), NULL))
+            return 0;
+    }
+    else
+    {
+        if (!get_ldr_module(process, module, &ldr_module))
+            return 0;
+
+        len = ldr_module.FullDllName.Length / sizeof(WCHAR);
+        if (!ReadProcessMemory(process, ldr_module.FullDllName.Buffer,
+                               file_name, min( len, size ) * sizeof(WCHAR), NULL))
+            return 0;
+    }
 
     if (len < size)
     {
@@ -1615,6 +1907,7 @@ BOOL WINAPI K32GetModuleInformation(HANDLE process, HMODULE module,
                                     MODULEINFO *modinfo, DWORD cb)
 {
     LDR_MODULE ldr_module;
+    BOOL wow64;
 
     if (cb < sizeof(MODULEINFO))
     {
@@ -1622,12 +1915,29 @@ BOOL WINAPI K32GetModuleInformation(HANDLE process, HMODULE module,
         return FALSE;
     }
 
-    if (!get_ldr_module(process, module, &ldr_module))
+    if (!IsWow64Process(process, &wow64))
         return FALSE;
 
-    modinfo->lpBaseOfDll = ldr_module.BaseAddress;
-    modinfo->SizeOfImage = ldr_module.SizeOfImage;
-    modinfo->EntryPoint  = ldr_module.EntryPoint;
+    if (sizeof(void *) == 8 && wow64)
+    {
+        LDR_MODULE32 ldr_module32;
+
+        if (!get_ldr_module32(process, module, &ldr_module32))
+            return FALSE;
+
+        modinfo->lpBaseOfDll = (void *)(DWORD_PTR)ldr_module32.BaseAddress;
+        modinfo->SizeOfImage = ldr_module32.SizeOfImage;
+        modinfo->EntryPoint  = (void *)(DWORD_PTR)ldr_module32.EntryPoint;
+    }
+    else
+    {
+        if (!get_ldr_module(process, module, &ldr_module))
+            return FALSE;
+
+        modinfo->lpBaseOfDll = ldr_module.BaseAddress;
+        modinfo->SizeOfImage = ldr_module.SizeOfImage;
+        modinfo->EntryPoint  = ldr_module.EntryPoint;
+    }
     return TRUE;
 }
 

@@ -75,7 +75,7 @@ static void d3drm_viewport_destroy(struct d3drm_viewport *viewport)
         IDirect3DRM_Release(viewport->d3drm);
     }
 
-    HeapFree(GetProcessHeap(), 0, viewport);
+    heap_free(viewport);
 }
 
 static HRESULT WINAPI d3drm_viewport2_QueryInterface(IDirect3DRMViewport2 *iface, REFIID riid, void **out)
@@ -339,6 +339,9 @@ static HRESULT WINAPI d3drm_viewport2_Init(IDirect3DRMViewport2 *iface, IDirect3
     if (FAILED(hr = IDirect3D_CreateViewport(d3d1, &viewport->d3d_viewport, NULL)))
         goto cleanup;
 
+    if (FAILED(hr = IDirect3DDevice_AddViewport(d3d_device, viewport->d3d_viewport)))
+        goto cleanup;
+
     vp.dwSize = sizeof(vp);
     vp.dwWidth = width;
     vp.dwHeight = height;
@@ -353,9 +356,6 @@ static HRESULT WINAPI d3drm_viewport2_Init(IDirect3DRMViewport2 *iface, IDirect3
     vp.dvMaxZ = 1.0f;
 
     if (FAILED(hr = IDirect3DViewport_SetViewport(viewport->d3d_viewport, &vp)))
-        goto cleanup;
-
-    if (FAILED(hr = IDirect3DDevice_AddViewport(d3d_device, viewport->d3d_viewport)))
         goto cleanup;
 
     if (FAILED(hr = IDirect3DRMFrame3_QueryInterface(camera, &IID_IDirect3DRMFrame, (void **)&viewport->camera)))
@@ -1022,7 +1022,7 @@ HRESULT d3drm_viewport_create(struct d3drm_viewport **viewport, IDirect3DRM *d3d
 
     TRACE("viewport %p, d3drm %p.\n", viewport, d3drm);
 
-    if (!(object = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*object))))
+    if (!(object = heap_alloc_zero(sizeof(*object))))
         return E_OUTOFMEMORY;
 
     object->IDirect3DRMViewport_iface.lpVtbl = &d3drm_viewport1_vtbl;

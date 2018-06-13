@@ -96,7 +96,9 @@ static DWORD (WINAPI *pConvertInterfaceLuidToNameW)(const NET_LUID*,WCHAR*,SIZE_
 static DWORD (WINAPI *pConvertInterfaceLuidToNameA)(const NET_LUID*,char*,SIZE_T);
 static DWORD (WINAPI *pConvertInterfaceNameToLuidA)(const char*,NET_LUID*);
 static DWORD (WINAPI *pConvertInterfaceNameToLuidW)(const WCHAR*,NET_LUID*);
+static DWORD (WINAPI *pConvertLengthToIpv4Mask)(ULONG,ULONG*);
 
+static PCHAR (WINAPI *pif_indextoname)(NET_IFINDEX,PCHAR);
 static NET_IFINDEX (WINAPI *pif_nametoindex)(const char*);
 
 static void loadIPHlpApi(void)
@@ -148,6 +150,8 @@ static void loadIPHlpApi(void)
     pConvertInterfaceLuidToNameW = (void *)GetProcAddress(hLibrary, "ConvertInterfaceLuidToNameW");
     pConvertInterfaceNameToLuidA = (void *)GetProcAddress(hLibrary, "ConvertInterfaceNameToLuidA");
     pConvertInterfaceNameToLuidW = (void *)GetProcAddress(hLibrary, "ConvertInterfaceNameToLuidW");
+    pConvertLengthToIpv4Mask = (void *)GetProcAddress(hLibrary, "ConvertLengthToIpv4Mask");
+    pif_indextoname = (void *)GetProcAddress(hLibrary, "if_indextoname");
     pif_nametoindex = (void *)GetProcAddress(hLibrary, "if_nametoindex");
   }
 }
@@ -1421,12 +1425,13 @@ static void test_GetAdaptersAddresses(void)
         ok(aa->Description != NULL, "Description is not a valid pointer\n");
         ok(aa->FriendlyName != NULL, "FriendlyName is not a valid pointer\n");
 
-        trace("\n");
-        trace("Length:                %u\n", S(U(*aa)).Length);
-        trace("IfIndex:               %u\n", S(U(*aa)).IfIndex);
-        trace("Next:                  %p\n", aa->Next);
-        trace("AdapterName:           %s\n", aa->AdapterName);
-        trace("FirstUnicastAddress:   %p\n", aa->FirstUnicastAddress);
+        for (i = 0; i < aa->PhysicalAddressLength; i++)
+            sprintf(temp + i * 3, "%02X-", aa->PhysicalAddress[i]);
+        temp[i ? i * 3 - 1 : 0] = '\0';
+        trace("idx %u name %s %s dns %s descr %s phys %s mtu %u flags %08x type %u\n",
+              S(U(*aa)).IfIndex, aa->AdapterName,
+              wine_dbgstr_w(aa->FriendlyName), wine_dbgstr_w(aa->DnsSuffix),
+              wine_dbgstr_w(aa->Description), temp, aa->Mtu, aa->Flags, aa->IfType );
         ua = aa->FirstUnicastAddress;
         while (ua)
         {
@@ -1448,79 +1453,29 @@ static void test_GetAdaptersAddresses(void)
             /* Is the address ok in the network (not duplicated)? */
             ok(ua->DadState != IpDadStateInvalid && ua->DadState != IpDadStateDuplicate,
                "bad address duplication value %d\n", ua->DadState);
-            trace("\tLength:                  %u\n", S(U(*ua)).Length);
-            trace("\tFlags:                   0x%08x\n", S(U(*ua)).Flags);
-            trace("\tNext:                    %p\n", ua->Next);
-            trace("\tAddress.lpSockaddr:      %p\n", ua->Address.lpSockaddr);
-            trace("\tAddress.iSockaddrLength: %d\n", ua->Address.iSockaddrLength);
-            trace("\tPrefixOrigin:            %u\n", ua->PrefixOrigin);
-            trace("\tSuffixOrigin:            %u\n", ua->SuffixOrigin);
-            trace("\tDadState:                %u\n", ua->DadState);
-            trace("\tValidLifetime:           %u seconds\n", ua->ValidLifetime);
-            trace("\tPreferredLifetime:       %u seconds\n", ua->PreferredLifetime);
-            trace("\tLeaseLifetime:           %u seconds\n", ua->LeaseLifetime);
-            if (S(U(*ua)).Length < sizeof(IP_ADAPTER_UNICAST_ADDRESS_LH))
-            {
-                trace("\n");
-                ua = ua->Next;
-                continue;
-            }
-            trace("\tOnLinkPrefixLength:      %u\n", ua->OnLinkPrefixLength);
-            trace("\n");
+            trace("  flags %08x origin %u/%u state %u lifetime %u/%u/%u prefix %u\n",
+                  S(U(*ua)).Flags, ua->PrefixOrigin, ua->SuffixOrigin, ua->DadState,
+                  ua->ValidLifetime, ua->PreferredLifetime, ua->LeaseLifetime,
+                  S(U(*ua)).Length < sizeof(IP_ADAPTER_UNICAST_ADDRESS_LH) ? 0 : ua->OnLinkPrefixLength);
             ua = ua->Next;
         }
-        trace("FirstAnycastAddress:   %p\n", aa->FirstAnycastAddress);
-        trace("FirstMulticastAddress: %p\n", aa->FirstMulticastAddress);
-        trace("FirstDnsServerAddress: %p\n", aa->FirstDnsServerAddress);
-        trace("DnsSuffix:             %s %p\n", wine_dbgstr_w(aa->DnsSuffix), aa->DnsSuffix);
-        trace("Description:           %s %p\n", wine_dbgstr_w(aa->Description), aa->Description);
-        trace("FriendlyName:          %s %p\n", wine_dbgstr_w(aa->FriendlyName), aa->FriendlyName);
-        trace("PhysicalAddressLength: %u\n", aa->PhysicalAddressLength);
-        for (i = 0; i < aa->PhysicalAddressLength; i++)
-            sprintf(temp + i * 3, "%02X-", aa->PhysicalAddress[i]);
-        temp[i ? i * 3 - 1 : 0] = '\0';
-        trace("PhysicalAddress:       %s\n", temp);
-        trace("Flags:                 0x%08x\n", aa->Flags);
-        trace("Mtu:                   %u\n", aa->Mtu);
-        trace("IfType:                %u\n", aa->IfType);
-        trace("OperStatus:            %u\n", aa->OperStatus);
-        trace("Ipv6IfIndex:           %u\n", aa->Ipv6IfIndex);
-        for (i = 0, temp[0] = '\0'; i < sizeof(aa->ZoneIndices) / sizeof(aa->ZoneIndices[0]); i++)
+        for (i = 0, temp[0] = '\0'; i < ARRAY_SIZE(aa->ZoneIndices); i++)
             sprintf(temp + strlen(temp), "%d ", aa->ZoneIndices[i]);
-        trace("ZoneIndices:           %s\n", temp);
-        trace("FirstPrefix:           %p\n", aa->FirstPrefix);
+        trace("status %u index %u zone %s\n", aa->OperStatus, aa->Ipv6IfIndex, temp );
         prefix = aa->FirstPrefix;
         while (prefix)
         {
-            trace("\tLength:                  %u\n", S(U(*prefix)).Length);
-            trace("\tFlags:                   0x%08x\n", S(U(*prefix)).Flags);
-            trace("\tNext:                    %p\n", prefix->Next);
-            trace("\tAddress.lpSockaddr:      %p\n", prefix->Address.lpSockaddr);
-            trace("\tAddress.iSockaddrLength: %d\n", prefix->Address.iSockaddrLength);
-            trace("\tPrefixLength:            %u\n", prefix->PrefixLength);
-            trace("\n");
+            trace( "  prefix %u/%u flags %08x\n", prefix->Address.iSockaddrLength,
+                   prefix->PrefixLength, S(U(*prefix)).Flags );
             prefix = prefix->Next;
         }
 
         if (S(U(*aa)).Length < sizeof(IP_ADAPTER_ADDRESSES_LH)) continue;
-        trace("TransmitLinkSpeed:     %s\n", wine_dbgstr_longlong(aa->TransmitLinkSpeed));
-        trace("ReceiveLinkSpeed:      %s\n", wine_dbgstr_longlong(aa->ReceiveLinkSpeed));
-        trace("FirstWinsServerAddress:%p\n", aa->FirstWinsServerAddress);
-        trace("FirstGatewayAddress:   %p\n", aa->FirstGatewayAddress);
-        trace("Ipv4Metric:            %u\n", aa->Ipv4Metric);
-        trace("Ipv6Metric:            %u\n", aa->Ipv6Metric);
-        trace("Luid:                  %p\n", &aa->Luid);
-        trace("Dhcpv4Server:          %p\n", &aa->Dhcpv4Server);
-        trace("CompartmentId:         %u\n", aa->CompartmentId);
-        trace("NetworkGuid:           %s\n", wine_dbgstr_guid((GUID*) &aa->NetworkGuid));
-        trace("ConnectionType:        %u\n", aa->ConnectionType);
-        trace("TunnelType:            %u\n", aa->TunnelType);
-        trace("Dhcpv6Server:          %p\n", &aa->Dhcpv6Server);
-        trace("Dhcpv6ClientDuidLength:%u\n", aa->Dhcpv6ClientDuidLength);
-        trace("Dhcpv6ClientDuid:      %p\n", aa->Dhcpv6ClientDuid);
-        trace("Dhcpv6Iaid:            %u\n", aa->Dhcpv6Iaid);
-        trace("FirstDnsSuffix:        %p\n", aa->FirstDnsSuffix);
-        trace("\n");
+        trace("speed %s/%s metrics %u/%u guid %s type %u/%u\n",
+              wine_dbgstr_longlong(aa->TransmitLinkSpeed),
+              wine_dbgstr_longlong(aa->ReceiveLinkSpeed),
+              aa->Ipv4Metric, aa->Ipv6Metric, wine_dbgstr_guid((GUID*) &aa->NetworkGuid),
+              aa->ConnectionType, aa->TunnelType);
 
         if (pConvertInterfaceLuidToGuid)
         {
@@ -1786,7 +1741,7 @@ static void test_interface_identifier_conversion(void)
     GUID guid;
     SIZE_T len;
     WCHAR nameW[IF_MAX_STRING_SIZE + 1];
-    char nameA[IF_MAX_STRING_SIZE + 1];
+    char nameA[IF_MAX_STRING_SIZE + 1], *name;
     NET_IFINDEX index, index2;
 
     if (!pConvertInterfaceIndexToLuid)
@@ -1881,7 +1836,7 @@ static void test_interface_identifier_conversion(void)
     ok( ret == ERROR_NOT_ENOUGH_MEMORY, "got %u\n", ret );
 
     nameW[0] = 0;
-    len = sizeof(nameW)/sizeof(nameW[0]);
+    len = ARRAY_SIZE(nameW);
     ret = pConvertInterfaceLuidToNameW( &luid, nameW, len );
     ok( !ret, "got %u\n", ret );
     ok( nameW[0], "name not set\n" );
@@ -1900,7 +1855,7 @@ static void test_interface_identifier_conversion(void)
     ok( ret == ERROR_NOT_ENOUGH_MEMORY, "got %u\n", ret );
 
     nameA[0] = 0;
-    len = sizeof(nameA)/sizeof(nameA[0]);
+    len = ARRAY_SIZE(nameA);
     ret = pConvertInterfaceLuidToNameA( &luid, nameA, len );
     ok( !ret, "got %u\n", ret );
     ok( nameA[0], "name not set\n" );
@@ -1947,22 +1902,37 @@ static void test_interface_identifier_conversion(void)
     ok( luid.Info.NetLuidIndex != 0xdead, "index not set\n" );
     ok( luid.Info.IfType == IF_TYPE_ETHERNET_CSMACD, "got %u\n", luid.Info.IfType );
 
-    /* if_nametoindex */
-    if (pif_nametoindex)
+    if (!pif_nametoindex || !pif_indextoname)
     {
-        index2 = pif_nametoindex( NULL );
-        ok( !index2, "Got unexpected index %u\n", index2 );
-        index2 = pif_nametoindex( nameA );
-        ok( index2 == index, "Got index %u for %s, expected %u\n", index2, nameA, index );
-        /* Wargaming.net Game Center passes a GUID-like string. */
-        index2 = pif_nametoindex( "{00000001-0000-0000-0000-000000000000}" );
-        ok( !index2, "Got unexpected index %u\n", index2 );
-        index2 = pif_nametoindex( wine_dbgstr_guid( &guid ) );
-        ok( !index2, "Got unexpected index %u for input %s\n", index2, wine_dbgstr_guid( &guid ) );
+        skip("if_nametoindex/if_indextoname not supported\n");
+        return;
     }
-    else
+
+    index2 = pif_nametoindex( NULL );
+    ok( !index2, "Got unexpected index %u\n", index2 );
+    index2 = pif_nametoindex( nameA );
+    ok( index2 == index, "Got index %u for %s, expected %u\n", index2, nameA, index );
+    /* Wargaming.net Game Center passes a GUID-like string. */
+    index2 = pif_nametoindex( "{00000001-0000-0000-0000-000000000000}" );
+    ok( !index2, "Got unexpected index %u\n", index2 );
+    index2 = pif_nametoindex( wine_dbgstr_guid( &guid ) );
+    ok( !index2, "Got unexpected index %u for input %s\n", index2, wine_dbgstr_guid( &guid ) );
+
+    name = pif_indextoname( 0, NULL );
+    ok( name == NULL, "got %s\n", name );
+
+    name = pif_indextoname( 0, nameA );
+    ok( name == NULL, "got %p\n", name );
+
+    name = pif_indextoname( ~0u, nameA );
+    ok( name == NULL, "got %p\n", name );
+
+    nameA[0] = 0;
+    name = pif_indextoname( 1, nameA );
+    if (name != NULL)
     {
-        skip("if_nametoindex not supported\n");
+        ok( name[0], "empty name\n" );
+        ok( name == nameA, "got %p\n", name );
     }
 }
 
@@ -2039,7 +2009,13 @@ static void test_GetIfTable2Ex(void)
     pFreeMibTable( table );
 
     table = NULL;
-    ret = pGetIfTable2Ex( 2, &table );
+    ret = pGetIfTable2Ex( MibIfTableNormalWithoutStatistics, &table );
+    ok( ret == NO_ERROR || broken(ret == ERROR_INVALID_PARAMETER), "got %u\n", ret );
+    ok( table != NULL || broken(!table), "table not set\n" );
+    pFreeMibTable( table );
+
+    table = NULL;
+    ret = pGetIfTable2Ex( 3, &table );
     ok( ret == ERROR_INVALID_PARAMETER, "got %u\n", ret );
     ok( !table, "table should not be set\n" );
     pFreeMibTable( table );
@@ -2206,6 +2182,39 @@ static void test_GetUnicastIpAddressTable(void)
     pFreeMibTable(table);
 }
 
+static void test_ConvertLengthToIpv4Mask(void)
+{
+    DWORD ret;
+    DWORD n;
+    ULONG mask;
+    ULONG expected;
+
+    if (!pConvertLengthToIpv4Mask)
+    {
+        win_skip( "ConvertLengthToIpv4Mask not available\n" );
+        return;
+    }
+
+    for (n = 0; n <= 32; n++)
+    {
+        mask = 0xdeadbeef;
+        if (n > 0)
+            expected = htonl( ~0u << (32 - n) );
+        else
+            expected = 0;
+
+        ret = pConvertLengthToIpv4Mask( n, &mask );
+        ok( ret == NO_ERROR, "ConvertLengthToIpv4Mask returned 0x%08x, expected 0x%08x\n", ret, NO_ERROR );
+        ok( mask == expected, "ConvertLengthToIpv4Mask mask value 0x%08x, expected 0x%08x\n", mask, expected );
+    }
+
+    /* Testing for out of range. In this case both mask and return are changed to indicate error. */
+    mask = 0xdeadbeef;
+    ret = pConvertLengthToIpv4Mask( 33, &mask );
+    ok( ret == ERROR_INVALID_PARAMETER, "ConvertLengthToIpv4Mask returned 0x%08x, expected 0x%08x\n", ret, ERROR_INVALID_PARAMETER );
+    ok( mask == INADDR_NONE, "ConvertLengthToIpv4Mask mask value 0x%08x, expected 0x%08x\n", mask, INADDR_NONE );
+}
+
 START_TEST(iphlpapi)
 {
 
@@ -2233,6 +2242,7 @@ START_TEST(iphlpapi)
     test_GetIfTable2Ex();
     test_GetUnicastIpAddressEntry();
     test_GetUnicastIpAddressTable();
+    test_ConvertLengthToIpv4Mask();
     freeIPHlpApi();
   }
 }

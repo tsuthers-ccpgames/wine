@@ -25,25 +25,6 @@ struct _RTF_Info;
 
 extern HANDLE me_heap DECLSPEC_HIDDEN;
 
-static inline void * __WINE_ALLOC_SIZE(1) heap_alloc( size_t len )
-{
-    return HeapAlloc( me_heap, 0, len );
-}
-
-static inline BOOL heap_free( void *ptr )
-{
-    return HeapFree( me_heap, 0, ptr );
-}
-
-static inline void * __WINE_ALLOC_SIZE(2) heap_realloc( void *ptr, size_t len )
-{
-    return HeapReAlloc( me_heap, 0, ptr, len );
-}
-
-#define ALLOC_OBJ(type) heap_alloc(sizeof(type))
-#define ALLOC_N_OBJ(type, count) heap_alloc((count)*sizeof(type))
-#define FREE_OBJ(ptr) heap_free(ptr)
-
 #define RUN_IS_HIDDEN(run) ((run)->style->fmt.dwMask & CFM_HIDDEN \
                              && (run)->style->fmt.dwEffects & CFE_HIDDEN)
 
@@ -250,8 +231,8 @@ int ME_GetParaBorderWidth(const ME_Context *c, int flags) DECLSPEC_HIDDEN;
 LRESULT CreateIRichEditOle(IUnknown *outer_unk, ME_TextEditor *editor, LPVOID *ppvObj) DECLSPEC_HIDDEN;
 void ME_DrawOLE(ME_Context *c, int x, int y, ME_Run* run, BOOL selected) DECLSPEC_HIDDEN;
 void ME_GetOLEObjectSize(const ME_Context *c, ME_Run *run, SIZE *pSize) DECLSPEC_HIDDEN;
-void ME_CopyReObject(REOBJECT* dst, const REOBJECT* src) DECLSPEC_HIDDEN;
-void ME_DeleteReObject(REOBJECT* reo) DECLSPEC_HIDDEN;
+void ME_CopyReObject(REOBJECT *dst, const REOBJECT *src, DWORD flags) DECLSPEC_HIDDEN;
+void ME_DeleteReObject(struct re_object *re_object) DECLSPEC_HIDDEN;
 void ME_GetITextDocumentInterface(IRichEditOle *iface, LPVOID *ppvObj) DECLSPEC_HIDDEN;
 
 /* editor.c */

@@ -1334,6 +1334,40 @@ static void test_query_process_debug_port(int argc, char **argv)
     ok(ret, "CloseHandle failed, last error %#x.\n", GetLastError());
 }
 
+static void test_query_process_priority(void)
+{
+    PROCESS_PRIORITY_CLASS priority[2];
+    ULONG ReturnLength;
+    DWORD orig_priority;
+    NTSTATUS status;
+    BOOL ret;
+
+    status = pNtQueryInformationProcess(NULL, ProcessPriorityClass, NULL, sizeof(priority[0]), NULL);
+    ok(status == STATUS_ACCESS_VIOLATION || broken(status == STATUS_INVALID_HANDLE) /* w2k3 */,
+       "Expected STATUS_ACCESS_VIOLATION, got %08x\n", status);
+
+    status = pNtQueryInformationProcess(NULL, ProcessPriorityClass, &priority, sizeof(priority[0]), NULL);
+    ok(status == STATUS_INVALID_HANDLE, "Expected STATUS_INVALID_HANDLE, got %08x\n", status);
+
+    status = pNtQueryInformationProcess(GetCurrentProcess(), ProcessPriorityClass, &priority, 1, &ReturnLength);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "Expected STATUS_INFO_LENGTH_MISMATCH, got %08x\n", status);
+
+    status = pNtQueryInformationProcess(GetCurrentProcess(), ProcessPriorityClass, &priority, sizeof(priority), &ReturnLength);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "Expected STATUS_INFO_LENGTH_MISMATCH, got %08x\n", status);
+
+    orig_priority = GetPriorityClass(GetCurrentProcess());
+    ret = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
+    ok(ret, "Failed to set priority class: %u\n", GetLastError());
+
+    status = pNtQueryInformationProcess(GetCurrentProcess(), ProcessPriorityClass, &priority, sizeof(priority[0]), &ReturnLength);
+    ok(status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status);
+    ok(priority[0].PriorityClass == PROCESS_PRIOCLASS_BELOW_NORMAL,
+       "Expected PROCESS_PRIOCLASS_BELOW_NORMAL, got %u\n", priority[0].PriorityClass);
+
+    ret = SetPriorityClass(GetCurrentProcess(), orig_priority);
+    ok(ret, "Failed to reset priority class: %u\n", GetLastError());
+}
+
 static void test_query_process_handlecount(void)
 {
     NTSTATUS status;
@@ -1382,12 +1416,11 @@ static void test_query_process_handlecount(void)
 
 static void test_query_process_image_file_name(void)
 {
+    static const WCHAR deviceW[] = {'\\','D','e','v','i','c','e','\\'};
     NTSTATUS status;
     ULONG ReturnLength;
     UNICODE_STRING image_file_name;
-    void *buffer;
-    char *file_nameA;
-    INT len;
+    UNICODE_STRING *buffer = NULL;
 
     status = pNtQueryInformationProcess(NULL, ProcessImageFileName, &image_file_name, sizeof(image_file_name), NULL);
     if (status == STATUS_INVALID_INFO_CLASS)
@@ -1403,18 +1436,36 @@ static void test_query_process_image_file_name(void)
     status = pNtQueryInformationProcess( GetCurrentProcess(), ProcessImageFileName, &image_file_name, sizeof(image_file_name), &ReturnLength);
     ok( status == STATUS_INFO_LENGTH_MISMATCH, "Expected STATUS_INFO_LENGTH_MISMATCH, got %08x\n", status);
 
-    buffer = HeapAlloc(GetProcessHeap(), 0, ReturnLength);
+    buffer = heap_alloc(ReturnLength);
     status = pNtQueryInformationProcess( GetCurrentProcess(), ProcessImageFileName, buffer, ReturnLength, &ReturnLength);
     ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status);
-    memcpy(&image_file_name, buffer, sizeof(image_file_name));
-    len = WideCharToMultiByte(CP_ACP, 0, image_file_name.Buffer, image_file_name.Length/sizeof(WCHAR), NULL, 0, NULL, NULL);
-    file_nameA = HeapAlloc(GetProcessHeap(), 0, len + 1);
-    WideCharToMultiByte(CP_ACP, 0, image_file_name.Buffer, image_file_name.Length/sizeof(WCHAR), file_nameA, len, NULL, NULL);
-    file_nameA[len] = '\0';
-    HeapFree(GetProcessHeap(), 0, buffer);
-    trace("process image file name: %s\n", file_nameA);
-    todo_wine ok(strncmp(file_nameA, "\\Device\\", 8) == 0, "Process image name should be an NT path beginning with \\Device\\ (is %s)\n", file_nameA);
-    HeapFree(GetProcessHeap(), 0, file_nameA);
+todo_wine
+    ok(!memcmp(buffer->Buffer, deviceW, sizeof(deviceW)),
+        "Expected image name to begin with \\Device\\, got %s\n",
+        wine_dbgstr_wn(buffer->Buffer, buffer->Length / sizeof(WCHAR)));
+    heap_free(buffer);
+
+    status = pNtQueryInformationProcess(NULL, ProcessImageFileNameWin32, &image_file_name, sizeof(image_file_name), NULL);
+    if (status == STATUS_INVALID_INFO_CLASS)
+    {
+        win_skip("ProcessImageFileNameWin32 is not supported\n");
+        return;
+    }
+    ok( status == STATUS_INVALID_HANDLE, "Expected STATUS_INVALID_HANDLE, got %08x\n", status);
+
+    status = pNtQueryInformationProcess( GetCurrentProcess(), ProcessImageFileNameWin32, &image_file_name, 2, &ReturnLength);
+    ok( status == STATUS_INFO_LENGTH_MISMATCH, "Expected STATUS_INFO_LENGTH_MISMATCH, got %08x\n", status);
+
+    status = pNtQueryInformationProcess( GetCurrentProcess(), ProcessImageFileNameWin32, &image_file_name, sizeof(image_file_name), &ReturnLength);
+    ok( status == STATUS_INFO_LENGTH_MISMATCH, "Expected STATUS_INFO_LENGTH_MISMATCH, got %08x\n", status);
+
+    buffer = heap_alloc(ReturnLength);
+    status = pNtQueryInformationProcess( GetCurrentProcess(), ProcessImageFileNameWin32, buffer, ReturnLength, &ReturnLength);
+    ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status);
+    ok(memcmp(buffer->Buffer, deviceW, sizeof(deviceW)),
+        "Expected image name not to begin with \\Device\\, got %s\n",
+        wine_dbgstr_wn(buffer->Buffer, buffer->Length / sizeof(WCHAR)));
+    heap_free(buffer);
 }
 
 static void test_query_process_debug_object_handle(int argc, char **argv)
@@ -1868,6 +1919,10 @@ static void test_queryvirtualmemory(void)
             "mbi.Protect is 0x%x\n", mbi.Protect);
     }
     else skip( "bss is outside of module\n" );  /* this can happen on Mac OS */
+
+    /* check error code when addr is higher than working set limit */
+    status = pNtQueryVirtualMemory(NtCurrentProcess(), (void *)~0, MemoryBasicInformation, &mbi, sizeof(mbi), &readcount);
+    ok(status == STATUS_INVALID_PARAMETER, "Expected STATUS_INVALID_PARAMETER, got %08x\n", status);
 }
 
 static void test_affinity(void)
@@ -2187,6 +2242,10 @@ START_TEST(info)
     /* 0x7 ProcessDebugPort */
     trace("Starting test_process_debug_port()\n");
     test_query_process_debug_port(argc, argv);
+
+    /* 0x12 ProcessPriorityClass */
+    trace("Starting test_query_process_priority()\n");
+    test_query_process_priority();
 
     /* 0x14 ProcessHandleCount */
     trace("Starting test_query_process_handlecount()\n");

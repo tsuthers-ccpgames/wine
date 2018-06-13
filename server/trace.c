@@ -664,6 +664,23 @@ static void dump_varargs_context( const char *prefix, data_size_t size )
                      ctx.ctl.arm_regs.pc, ctx.ctl.arm_regs.cpsr );
         if (ctx.flags & SERVER_CTX_INTEGER)
             for (i = 0; i < 13; i++) fprintf( stderr, ",r%u=%08x", i, ctx.integer.arm_regs.r[i] );
+        if (ctx.flags & SERVER_CTX_DEBUG_REGISTERS)
+        {
+            for (i = 0; i < 8; i++)
+                fprintf( stderr, ",bcr%u=%08x,bvr%u=%08x",
+                         i, ctx.debug.arm_regs.bcr[i], i, ctx.debug.arm_regs.bvr[i] );
+            fprintf( stderr, ",wcr0=%08x,wvr0=%08x",
+                     ctx.debug.arm_regs.wcr[0], ctx.debug.arm_regs.wvr[0] );
+        }
+        if (ctx.flags & SERVER_CTX_FLOATING_POINT)
+        {
+            for (i = 0; i < 32; i++)
+            {
+                fprintf( stderr, ",d%u=", i );
+                dump_uint64( "", &ctx.fp.arm_regs.d[i] );
+            }
+            fprintf( stderr, ",fpscr=%08x", ctx.fp.arm_regs.fpscr );
+        }
         break;
     case CPU_ARM64:
         if (ctx.flags & SERVER_CTX_CONTROL)
@@ -674,37 +691,33 @@ static void dump_varargs_context( const char *prefix, data_size_t size )
         }
         if (ctx.flags & SERVER_CTX_INTEGER)
         {
-            dump_uint64( ",x0=",  &ctx.integer.arm64_regs.x[0] );
-            dump_uint64( ",x1=",  &ctx.integer.arm64_regs.x[1] );
-            dump_uint64( ",x2=",  &ctx.integer.arm64_regs.x[2] );
-            dump_uint64( ",x3=",  &ctx.integer.arm64_regs.x[3] );
-            dump_uint64( ",x4=",  &ctx.integer.arm64_regs.x[4] );
-            dump_uint64( ",x5=",  &ctx.integer.arm64_regs.x[5] );
-            dump_uint64( ",x6=",  &ctx.integer.arm64_regs.x[6] );
-            dump_uint64( ",x7=",  &ctx.integer.arm64_regs.x[7] );
-            dump_uint64( ",x8=",  &ctx.integer.arm64_regs.x[8] );
-            dump_uint64( ",x9=",  &ctx.integer.arm64_regs.x[9] );
-            dump_uint64( ",x10=", &ctx.integer.arm64_regs.x[10] );
-            dump_uint64( ",x11=", &ctx.integer.arm64_regs.x[11] );
-            dump_uint64( ",x12=", &ctx.integer.arm64_regs.x[12] );
-            dump_uint64( ",x13=", &ctx.integer.arm64_regs.x[13] );
-            dump_uint64( ",x14=", &ctx.integer.arm64_regs.x[14] );
-            dump_uint64( ",x15=", &ctx.integer.arm64_regs.x[15] );
-            dump_uint64( ",x16=", &ctx.integer.arm64_regs.x[16] );
-            dump_uint64( ",x17=", &ctx.integer.arm64_regs.x[17] );
-            dump_uint64( ",x18=", &ctx.integer.arm64_regs.x[18] );
-            dump_uint64( ",x19=", &ctx.integer.arm64_regs.x[19] );
-            dump_uint64( ",x20=", &ctx.integer.arm64_regs.x[20] );
-            dump_uint64( ",x21=", &ctx.integer.arm64_regs.x[21] );
-            dump_uint64( ",x22=", &ctx.integer.arm64_regs.x[22] );
-            dump_uint64( ",x23=", &ctx.integer.arm64_regs.x[23] );
-            dump_uint64( ",x24=", &ctx.integer.arm64_regs.x[24] );
-            dump_uint64( ",x25=", &ctx.integer.arm64_regs.x[25] );
-            dump_uint64( ",x26=", &ctx.integer.arm64_regs.x[26] );
-            dump_uint64( ",x27=", &ctx.integer.arm64_regs.x[27] );
-            dump_uint64( ",x28=", &ctx.integer.arm64_regs.x[28] );
-            dump_uint64( ",x29=", &ctx.integer.arm64_regs.x[29] );
-            dump_uint64( ",x30=", &ctx.integer.arm64_regs.x[30] );
+            for (i = 0; i < 31; i++)
+            {
+                fprintf( stderr, ",x%u=", i );
+                dump_uint64( "", &ctx.integer.arm64_regs.x[i] );
+            }
+        }
+        if (ctx.flags & SERVER_CTX_DEBUG_REGISTERS)
+        {
+            for (i = 0; i < 8; i++)
+            {
+                fprintf( stderr, ",bcr%u=%08x,bvr%u=", i, ctx.debug.arm64_regs.bcr[i], i );
+                dump_uint64( "", &ctx.debug.arm64_regs.bvr[i] );
+            }
+            for (i = 0; i < 2; i++)
+            {
+                fprintf( stderr, ",wcr%u=%08x,wvr%u=", i, ctx.debug.arm64_regs.wcr[i], i );
+                dump_uint64( "", &ctx.debug.arm64_regs.wvr[i] );
+            }
+        }
+        if (ctx.flags & SERVER_CTX_FLOATING_POINT)
+        {
+            for (i = 0; i < 64; i++)
+            {
+                fprintf( stderr, ",d%u=", i );
+                dump_uint64( "", &ctx.fp.arm64_regs.d[i] );
+            }
+            fprintf( stderr, ",fpcr=%08x,fpsr=%08x", ctx.fp.arm64_regs.fpcr, ctx.fp.arm64_regs.fpsr );
         }
         break;
     }
@@ -1306,6 +1319,7 @@ static void dump_init_thread_reply( const struct init_thread_reply *req )
     fprintf( stderr, ", info_size=%u", req->info_size );
     fprintf( stderr, ", version=%d", req->version );
     fprintf( stderr, ", all_cpus=%08x", req->all_cpus );
+    fprintf( stderr, ", suspend=%d", req->suspend );
 }
 
 static void dump_terminate_process_request( const struct terminate_process_request *req )
@@ -1805,6 +1819,17 @@ static void dump_flush_request( const struct flush_request *req )
 static void dump_flush_reply( const struct flush_reply *req )
 {
     fprintf( stderr, " event=%04x", req->event );
+}
+
+static void dump_get_file_info_request( const struct get_file_info_request *req )
+{
+    fprintf( stderr, " handle=%04x", req->handle );
+    fprintf( stderr, ", info_class=%08x", req->info_class );
+}
+
+static void dump_get_file_info_reply( const struct get_file_info_reply *req )
+{
+    dump_varargs_bytes( " data=", cur_size );
 }
 
 static void dump_get_volume_info_request( const struct get_volume_info_request *req )
@@ -3013,6 +3038,8 @@ static void dump_create_window_request( const struct create_window_request *req 
     fprintf( stderr, ", owner=%08x", req->owner );
     fprintf( stderr, ", atom=%04x", req->atom );
     dump_uint64( ", instance=", &req->instance );
+    fprintf( stderr, ", dpi=%d", req->dpi );
+    fprintf( stderr, ", awareness=%d", req->awareness );
     dump_varargs_unicode_str( ", class=", cur_size );
 }
 
@@ -3023,6 +3050,8 @@ static void dump_create_window_reply( const struct create_window_reply *req )
     fprintf( stderr, ", owner=%08x", req->owner );
     fprintf( stderr, ", extra=%d", req->extra );
     dump_uint64( ", class_ptr=", &req->class_ptr );
+    fprintf( stderr, ", dpi=%d", req->dpi );
+    fprintf( stderr, ", awareness=%d", req->awareness );
 }
 
 static void dump_destroy_window_request( const struct destroy_window_request *req )
@@ -3066,6 +3095,8 @@ static void dump_get_window_info_reply( const struct get_window_info_reply *req 
     fprintf( stderr, ", tid=%04x", req->tid );
     fprintf( stderr, ", atom=%04x", req->atom );
     fprintf( stderr, ", is_unicode=%d", req->is_unicode );
+    fprintf( stderr, ", dpi=%d", req->dpi );
+    fprintf( stderr, ", awareness=%d", req->awareness );
 }
 
 static void dump_set_window_info_request( const struct set_window_info_request *req )
@@ -3103,6 +3134,8 @@ static void dump_set_parent_reply( const struct set_parent_reply *req )
 {
     fprintf( stderr, " old_parent=%08x", req->old_parent );
     fprintf( stderr, ", full_parent=%08x", req->full_parent );
+    fprintf( stderr, ", dpi=%d", req->dpi );
+    fprintf( stderr, ", awareness=%d", req->awareness );
 }
 
 static void dump_get_window_parents_request( const struct get_window_parents_request *req )
@@ -3189,7 +3222,6 @@ static void dump_get_window_rectangles_request( const struct get_window_rectangl
 static void dump_get_window_rectangles_reply( const struct get_window_rectangles_reply *req )
 {
     dump_rectangle( " window=", &req->window );
-    dump_rectangle( ", visible=", &req->visible );
     dump_rectangle( ", client=", &req->client );
 }
 
@@ -3200,7 +3232,8 @@ static void dump_get_window_text_request( const struct get_window_text_request *
 
 static void dump_get_window_text_reply( const struct get_window_text_reply *req )
 {
-    dump_varargs_unicode_str( " text=", cur_size );
+    fprintf( stderr, " length=%u", req->length );
+    dump_varargs_unicode_str( ", text=", cur_size );
 }
 
 static void dump_set_window_text_request( const struct set_window_text_request *req )
@@ -3725,6 +3758,7 @@ static void dump_create_class_request( const struct create_class_request *req )
     fprintf( stderr, ", extra=%d", req->extra );
     fprintf( stderr, ", win_extra=%d", req->win_extra );
     dump_uint64( ", client_ptr=", &req->client_ptr );
+    fprintf( stderr, ", name_offset=%u", req->name_offset );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
@@ -4544,6 +4578,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_get_handle_fd_request,
     (dump_func)dump_get_directory_cache_entry_request,
     (dump_func)dump_flush_request,
+    (dump_func)dump_get_file_info_request,
     (dump_func)dump_get_volume_info_request,
     (dump_func)dump_lock_file_request,
     (dump_func)dump_unlock_file_request,
@@ -4835,6 +4870,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_get_handle_fd_reply,
     (dump_func)dump_get_directory_cache_entry_reply,
     (dump_func)dump_flush_reply,
+    (dump_func)dump_get_file_info_reply,
     (dump_func)dump_get_volume_info_reply,
     (dump_func)dump_lock_file_reply,
     NULL,
@@ -5126,6 +5162,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "get_handle_fd",
     "get_directory_cache_entry",
     "flush",
+    "get_file_info",
     "get_volume_info",
     "lock_file",
     "unlock_file",
@@ -5433,6 +5470,7 @@ static const struct
     { "INVALID_LOCK_SEQUENCE",       STATUS_INVALID_LOCK_SEQUENCE },
     { "INVALID_OWNER",               STATUS_INVALID_OWNER },
     { "INVALID_PARAMETER",           STATUS_INVALID_PARAMETER },
+    { "INVALID_READ_MODE",           STATUS_INVALID_READ_MODE },
     { "INVALID_SECURITY_DESCR",      STATUS_INVALID_SECURITY_DESCR },
     { "IO_TIMEOUT",                  STATUS_IO_TIMEOUT },
     { "KEY_DELETED",                 STATUS_KEY_DELETED },
@@ -5468,6 +5506,7 @@ static const struct
     { "OBJECT_TYPE_MISMATCH",        STATUS_OBJECT_TYPE_MISMATCH },
     { "PENDING",                     STATUS_PENDING },
     { "PIPE_BROKEN",                 STATUS_PIPE_BROKEN },
+    { "PIPE_BUSY",                   STATUS_PIPE_BUSY },
     { "PIPE_CONNECTED",              STATUS_PIPE_CONNECTED },
     { "PIPE_DISCONNECTED",           STATUS_PIPE_DISCONNECTED },
     { "PIPE_LISTENING",              STATUS_PIPE_LISTENING },

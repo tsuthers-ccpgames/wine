@@ -34,7 +34,7 @@
 #include "oleauto.h"
 
 #include "msipriv.h"
-#include "msiserver.h"
+#include "winemsi.h"
 #include "wine/unicode.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(msi);
@@ -907,46 +907,29 @@ UINT WINAPI MsiFormatRecordW( MSIHANDLE hInstall, MSIHANDLE hRecord,
 
     TRACE("%d %d %p %p\n", hInstall, hRecord, szResult, sz);
 
+    record = msihandle2msiinfo(hRecord, MSIHANDLETYPE_RECORD);
+    if (!record)
+        return ERROR_INVALID_HANDLE;
+
     package = msihandle2msiinfo( hInstall, MSIHANDLETYPE_PACKAGE );
     if (!package)
     {
-        HRESULT hr;
-        IWineMsiRemotePackage *remote_package;
-        BSTR value = NULL;
-        awstring wstr;
+        LPWSTR value = NULL;
+        MSIHANDLE remote;
 
-        remote_package = (IWineMsiRemotePackage *)msi_get_remote( hInstall );
-        if (remote_package)
+        if ((remote = msi_get_remote(hInstall)))
         {
-            hr = IWineMsiRemotePackage_FormatRecord( remote_package, hRecord,
-                                                     &value );
-            if (FAILED(hr))
-                goto done;
+            r = remote_FormatRecord(remote, (struct wire_record *)&record->count, &value);
 
-            wstr.unicode = TRUE;
-            wstr.str.w = szResult;
-            r = msi_strcpy_to_awstring( value, SysStringLen(value), &wstr, sz );
+            if (!r)
+                r = msi_strncpyW(value, -1, szResult, sz);
 
-done:
-            IWineMsiRemotePackage_Release( remote_package );
-            SysFreeString( value );
-
-            if (FAILED(hr))
-            {
-                if (HRESULT_FACILITY(hr) == FACILITY_WIN32)
-                    return HRESULT_CODE(hr);
-
-                return ERROR_FUNCTION_FAILED;
-            }
-
+            midl_user_free(value);
+            msiobj_release(&record->hdr);
             return r;
         }
     }
 
-    record = msihandle2msiinfo( hRecord, MSIHANDLETYPE_RECORD );
-
-    if (!record)
-        return ERROR_INVALID_HANDLE;
     if (!sz)
     {
         msiobj_release( &record->hdr );
@@ -963,52 +946,55 @@ done:
     return r;
 }
 
-UINT WINAPI MsiFormatRecordA( MSIHANDLE hInstall, MSIHANDLE hRecord,
-                              LPSTR szResult, LPDWORD sz )
+UINT WINAPI MsiFormatRecordA(MSIHANDLE hinst, MSIHANDLE hrec, char *buf, DWORD *sz)
 {
-    UINT r;
-    DWORD len, save;
+    MSIPACKAGE *package;
+    MSIRECORD *rec;
     LPWSTR value;
+    DWORD len;
+    UINT r;
 
-    TRACE("%d %d %p %p\n", hInstall, hRecord, szResult, sz);
+    TRACE("%d %d %p %p\n", hinst, hrec, buf, sz);
 
-    if (!hRecord)
+    rec = msihandle2msiinfo(hrec, MSIHANDLETYPE_RECORD);
+    if (!rec)
         return ERROR_INVALID_HANDLE;
 
-    if (!sz)
+    package = msihandle2msiinfo(hinst, MSIHANDLETYPE_PACKAGE);
+    if (!package)
     {
-        if (szResult)
-            return ERROR_INVALID_PARAMETER;
-        else
-            return ERROR_SUCCESS;
+        LPWSTR value = NULL;
+        MSIHANDLE remote;
+
+        if ((remote = msi_get_remote(hinst)))
+        {
+            r = remote_FormatRecord(remote, (struct wire_record *)&rec->count, &value);
+
+            if (!r)
+                r = msi_strncpyWtoA(value, -1, buf, sz, TRUE);
+
+            midl_user_free(value);
+            msiobj_release(&rec->hdr);
+            return r;
+        }
     }
 
-    r = MsiFormatRecordW( hInstall, hRecord, NULL, &len );
+    r = MSI_FormatRecordW(package, rec, NULL, &len);
     if (r != ERROR_SUCCESS)
         return r;
 
     value = msi_alloc(++len * sizeof(WCHAR));
     if (!value)
-        return ERROR_OUTOFMEMORY;
-
-    r = MsiFormatRecordW( hInstall, hRecord, value, &len );
-    if (r != ERROR_SUCCESS)
         goto done;
 
-    save = len + 1;
-    len = WideCharToMultiByte(CP_ACP, 0, value, len + 1, NULL, 0, NULL, NULL);
-    WideCharToMultiByte(CP_ACP, 0, value, len, szResult, *sz, NULL, NULL);
+    r = MSI_FormatRecordW(package, rec, value, &len);
+    if (!r)
+        r = msi_strncpyWtoA(value, len, buf, sz, FALSE);
 
-    if (szResult && len > *sz)
-    {
-        if (*sz) szResult[*sz - 1] = '\0';
-        r = ERROR_MORE_DATA;
-    }
-
-    *sz = save - 1;
-
-done:
     msi_free(value);
+done:
+    msiobj_release(&rec->hdr);
+    if (package) msiobj_release(&package->hdr);
     return r;
 }
 

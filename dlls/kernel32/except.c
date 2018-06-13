@@ -143,16 +143,6 @@ static int format_exception_msg( const EXCEPTION_POINTERS *ptr, char *buffer, in
     case EXCEPTION_WINE_ASSERTION:
         len = snprintf( buffer, size, "Assertion failed" );
         break;
-    case EXCEPTION_VM86_INTx:
-        len = snprintf( buffer, size, "Unhandled interrupt %02lx in vm86 mode",
-                 rec->ExceptionInformation[0]);
-        break;
-    case EXCEPTION_VM86_STI:
-        len = snprintf( buffer, size, "Unhandled sti in vm86 mode");
-        break;
-    case EXCEPTION_VM86_PICRETURN:
-        len = snprintf( buffer, size, "Unhandled PIC return in vm86 mode");
-        break;
     default:
         len = snprintf( buffer, size, "Unhandled exception 0x%08x in thread %x", rec->ExceptionCode, GetCurrentThreadId());
         break;
@@ -160,9 +150,9 @@ static int format_exception_msg( const EXCEPTION_POINTERS *ptr, char *buffer, in
     if ((len<0) || (len>=size))
         return -1;
 #ifdef __i386__
-    if (ptr->ContextRecord->SegCs != wine_get_cs())
+    if (LOWORD(ptr->ContextRecord->SegCs) != wine_get_cs())
         len2 = snprintf(buffer+len, size-len, " at address 0x%04x:0x%08x",
-                        ptr->ContextRecord->SegCs,
+                        LOWORD(ptr->ContextRecord->SegCs),
                         (DWORD)ptr->ExceptionRecord->ExceptionAddress);
     else
 #endif

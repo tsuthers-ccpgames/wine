@@ -166,6 +166,8 @@ static inline NSUInteger adjusted_modifiers_for_option_behavior(NSUInteger modif
 
     NSTimeInterval _actualRefreshPeriod;
     NSTimeInterval _nominalRefreshPeriod;
+
+    NSTimeInterval _lastDisplayTime;
 }
 
     - (id) initWithDisplayID:(CGDirectDisplayID)displayID;
@@ -218,25 +220,25 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (void) addWindow:(WineWindow*)window
     {
-        BOOL needsStart;
+        BOOL firstWindow;
         @synchronized(self) {
-            needsStart = !_windows.count;
+            firstWindow = !_windows.count;
             [_windows addObject:window];
         }
-        if (needsStart)
-            CVDisplayLinkStart(_link);
+        if (firstWindow || !CVDisplayLinkIsRunning(_link))
+            [self start];
     }
 
     - (void) removeWindow:(WineWindow*)window
     {
-        BOOL shouldStop = FALSE;
+        BOOL lastWindow = FALSE;
         @synchronized(self) {
-            BOOL wasRunning = _windows.count > 0;
+            BOOL hadWindows = _windows.count > 0;
             [_windows removeObject:window];
-            if (wasRunning && !_windows.count)
-                shouldStop = TRUE;
+            if (hadWindows && !_windows.count)
+                lastWindow = TRUE;
         }
-        if (shouldStop)
+        if (lastWindow && CVDisplayLinkIsRunning(_link))
             CVDisplayLinkStop(_link);
     }
 
@@ -256,7 +258,11 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                     anyDisplayed = YES;
                 }
             }
-            if (!anyDisplayed)
+
+            NSTimeInterval now = [[NSProcessInfo processInfo] systemUptime];
+            if (anyDisplayed)
+                _lastDisplayTime = now;
+            else if (_lastDisplayTime + 2.0 < now)
                 CVDisplayLinkStop(_link);
         });
         [windows release];
@@ -279,6 +285,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 
     - (void) start
     {
+        _lastDisplayTime = [[NSProcessInfo processInfo] systemUptime];
         CVDisplayLinkStart(_link);
     }
 
@@ -1583,14 +1590,17 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                                 [ancestor orderWindow:orderingMode relativeTo:[ancestorOfOther windowNumber]];
                         }
 
-                        for (child = self;
-                             (parent = (WineWindow*)child.parentWindow);
-                             child = parent)
+                        if (!ancestorOfOther || ancestor != self)
                         {
-                            if ([parent isKindOfClass:[WineWindow class]])
-                                [parent order:-orderingMode childWindow:child relativeTo:nil];
-                            if (parent == ancestor)
-                                break;
+                            for (child = self;
+                                 (parent = (WineWindow*)child.parentWindow);
+                                 child = parent)
+                            {
+                                if ([parent isKindOfClass:[WineWindow class]])
+                                    [parent order:-orderingMode childWindow:child relativeTo:nil];
+                                if (parent == ancestor)
+                                    break;
+                            }
                         }
 
                         [self checkWineDisplayLink];
@@ -2427,6 +2437,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
                     _lastDisplayTime = now;
                 }
             }
+            else
+                [self setAutodisplay:YES];
         }
         [super setViewsNeedDisplay:value];
     }
@@ -2435,14 +2447,30 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     {
         _lastDisplayTime = [[NSProcessInfo processInfo] systemUptime];
         [super display];
-        [self setAutodisplay:NO];
+        if (_lastDisplayID)
+            [self setAutodisplay:NO];
     }
 
     - (void) displayIfNeeded
     {
         _lastDisplayTime = [[NSProcessInfo processInfo] systemUptime];
         [super displayIfNeeded];
-        [self setAutodisplay:NO];
+        if (_lastDisplayID)
+            [self setAutodisplay:NO];
+    }
+
+    - (void) setFrame:(NSRect)frameRect display:(BOOL)flag
+    {
+        if (flag)
+            [self setAutodisplay:YES];
+        [super setFrame:frameRect display:flag];
+    }
+
+    - (void) setFrame:(NSRect)frameRect display:(BOOL)displayFlag animate:(BOOL)animateFlag
+    {
+        if (displayFlag)
+            [self setAutodisplay:YES];
+        [super setFrame:frameRect display:displayFlag animate:animateFlag];
     }
 
     - (void) windowDidDrawContent

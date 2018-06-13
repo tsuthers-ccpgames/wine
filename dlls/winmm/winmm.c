@@ -912,12 +912,15 @@ typedef struct WINE_MIDIStream {
     HMIDIOUT			hDevice;
     HANDLE			hThread;
     DWORD			dwThreadID;
+    CRITICAL_SECTION		lock;
     DWORD			dwTempo;
     DWORD			dwTimeDiv;
     DWORD			dwPositionMS;
     DWORD			dwPulses;
     DWORD			dwStartTicks;
+    DWORD			dwElapsedMS;
     WORD			wFlags;
+    WORD			status;
     HANDLE			hEvent;
     LPMIDIHDR			lpMidiHdr;
 } WINE_MIDIStream;
@@ -926,6 +929,10 @@ typedef struct WINE_MIDIStream {
 #define WINE_MSM_STOP		(WM_USER+1)
 #define WINE_MSM_PAUSE		(WM_USER+2)
 #define WINE_MSM_RESUME		(WM_USER+3)
+
+#define MSM_STATUS_STOPPED	WINE_MSM_STOP
+#define MSM_STATUS_PAUSED	WINE_MSM_PAUSE
+#define MSM_STATUS_PLAYING	WINE_MSM_RESUME
 
 /**************************************************************************
  * 				MMSYSTEM_GetMidiStream		[internal]
@@ -956,7 +963,7 @@ static	DWORD	MMSYSTEM_MidiStream_Convert(WINE_MIDIStream* lpMidiStrm, DWORD puls
     if (lpMidiStrm->dwTimeDiv == 0) {
 	FIXME("Shouldn't happen. lpMidiStrm->dwTimeDiv = 0\n");
     } else if (lpMidiStrm->dwTimeDiv > 0x8000) { /* SMPTE, unchecked FIXME? */
-	int	nf = -(char)HIBYTE(lpMidiStrm->dwTimeDiv);	/* number of frames     */
+	int	nf = 256 - HIBYTE(lpMidiStrm->dwTimeDiv);	/* number of frames     */
 	int	nsf = LOBYTE(lpMidiStrm->dwTimeDiv);		/* number of sub-frames */
 	ret = (pulse * 1000) / (nf * nsf);
     } else {
@@ -967,6 +974,20 @@ static	DWORD	MMSYSTEM_MidiStream_Convert(WINE_MIDIStream* lpMidiStrm, DWORD puls
     return ret;
 }
 
+static DWORD midistream_get_playing_position(WINE_MIDIStream* lpMidiStrm)
+{
+    switch (lpMidiStrm->status) {
+    case MSM_STATUS_STOPPED:
+    case MSM_STATUS_PAUSED:
+        return lpMidiStrm->dwElapsedMS;
+    case MSM_STATUS_PLAYING:
+        return GetTickCount() - lpMidiStrm->dwStartTicks;
+    default:
+        FIXME("Unknown playing status %hu\n", lpMidiStrm->status);
+        return 0;
+    }
+}
+
 /**************************************************************************
  * 			MMSYSTEM_MidiStream_MessageHandler	[internal]
  */
@@ -975,7 +996,6 @@ static	BOOL	MMSYSTEM_MidiStream_MessageHandler(WINE_MIDIStream* lpMidiStrm, LPWI
     LPMIDIHDR	lpMidiHdr;
     LPMIDIHDR*	lpmh;
     LPBYTE	lpData;
-    BOOL	paused = FALSE;
 
     for (;;) {
         switch (msg->message) {
@@ -983,6 +1003,11 @@ static	BOOL	MMSYSTEM_MidiStream_MessageHandler(WINE_MIDIStream* lpMidiStrm, LPWI
             return FALSE;
         case WINE_MSM_STOP:
             TRACE("STOP\n");
+            EnterCriticalSection(&lpMidiStrm->lock);
+            lpMidiStrm->status = MSM_STATUS_STOPPED;
+            lpMidiStrm->dwPulses = 0;
+            lpMidiStrm->dwElapsedMS = 0;
+            LeaveCriticalSection(&lpMidiStrm->lock);
             /* this is not quite what MS doc says... */
             midiOutReset(lpMidiStrm->hDevice);
             /* empty list of already submitted buffers */
@@ -998,14 +1023,27 @@ static	BOOL	MMSYSTEM_MidiStream_MessageHandler(WINE_MIDIStream* lpMidiStrm, LPWI
                                (HDRVR)lpMidiStrm->hDevice, MM_MOM_DONE,
                                lpwm->mod.dwInstance, (DWORD_PTR)lphdr, 0);
             }
+            SetEvent((HANDLE)msg->wParam);
             return TRUE;
         case WINE_MSM_RESUME:
             /* FIXME: send out cc64 0 (turn off sustain pedal) on every channel */
-            lpMidiStrm->dwStartTicks = GetTickCount() - lpMidiStrm->dwPositionMS;
+            if (lpMidiStrm->status != MSM_STATUS_PLAYING) {
+                EnterCriticalSection(&lpMidiStrm->lock);
+                lpMidiStrm->dwStartTicks = GetTickCount() - lpMidiStrm->dwElapsedMS;
+                lpMidiStrm->status = MSM_STATUS_PLAYING;
+                LeaveCriticalSection(&lpMidiStrm->lock);
+            }
+            SetEvent((HANDLE)msg->wParam);
             return TRUE;
         case WINE_MSM_PAUSE:
             /* FIXME: send out cc64 0 (turn off sustain pedal) on every channel */
-            paused = TRUE;
+            if (lpMidiStrm->status != MSM_STATUS_PAUSED) {
+                EnterCriticalSection(&lpMidiStrm->lock);
+                lpMidiStrm->dwElapsedMS = GetTickCount() - lpMidiStrm->dwStartTicks;
+                lpMidiStrm->status = MSM_STATUS_PAUSED;
+                LeaveCriticalSection(&lpMidiStrm->lock);
+            }
+            SetEvent((HANDLE)msg->wParam);
             break;
 	/* FIXME(EPP): "I don't understand the content of the first MIDIHDR sent
 	 * by native mcimidi, it doesn't look like a correct one".
@@ -1086,7 +1124,7 @@ static	BOOL	MMSYSTEM_MidiStream_MessageHandler(WINE_MIDIStream* lpMidiStrm, LPWI
             FIXME("Unknown message %d\n", msg->message);
             break;
         }
-        if (!paused)
+        if (lpMidiStrm->status != MSM_STATUS_PAUSED)
             return TRUE;
         GetMessageA(msg, 0, 0, 0);
     }
@@ -1140,8 +1178,10 @@ start_header:
 
 	/* do we have to wait ? */
 	if (me->dwDeltaTime) {
+	    EnterCriticalSection(&lpMidiStrm->lock);
 	    lpMidiStrm->dwPositionMS += MMSYSTEM_MidiStream_Convert(lpMidiStrm, me->dwDeltaTime);
 	    lpMidiStrm->dwPulses += me->dwDeltaTime;
+	    LeaveCriticalSection(&lpMidiStrm->lock);
 
 	    dwToGo = lpMidiStrm->dwStartTicks + lpMidiStrm->dwPositionMS;
 
@@ -1157,6 +1197,8 @@ start_header:
 			    goto start_header;
 			}
 		    }
+		    /* reset dwToGo because dwStartTicks might be updated */
+		    dwToGo = lpMidiStrm->dwStartTicks + lpMidiStrm->dwPositionMS;
 		} else {
 		    /* timeout, so me->dwDeltaTime is elapsed, can break the while loop */
 		    break;
@@ -1169,15 +1211,25 @@ start_header:
 	    /* do nothing, skip bytes */
 	    break;
 	case MEVT_LONGMSG:
-	    midiOutLongMsg(lpMidiStrm->hDevice, lpMidiStrm->lpMidiHdr, MEVT_EVENTPARM(me->dwEvent));
-	    break;
+        {
+            MIDIHDR mh;
+            memset(&mh, 0, sizeof(mh));
+            mh.lpData = (LPSTR)me->dwParms;
+            mh.dwBufferLength = MEVT_EVENTPARM(me->dwEvent);
+            midiOutPrepareHeader(lpMidiStrm->hDevice, &mh, sizeof(mh));
+            midiOutLongMsg(lpMidiStrm->hDevice, &mh, sizeof(mh));
+            midiOutUnprepareHeader(lpMidiStrm->hDevice, &mh, sizeof(mh));
+            break;
+        }
 	case MEVT_NOP:
 	    break;
 	case MEVT_SHORTMSG:
 	    midiOutShortMsg(lpMidiStrm->hDevice, MEVT_EVENTPARM(me->dwEvent));
 	    break;
 	case MEVT_TEMPO:
+	    EnterCriticalSection(&lpMidiStrm->lock);
 	    lpMidiStrm->dwTempo = MEVT_EVENTPARM(me->dwEvent);
+	    LeaveCriticalSection(&lpMidiStrm->lock);
 	    break;
 	case MEVT_VERSION:
 	    break;
@@ -1216,12 +1268,13 @@ the_end:
  */
 MMRESULT WINAPI midiStreamClose(HMIDISTRM hMidiStrm)
 {
+    WINE_MIDI*		lpwm;
     WINE_MIDIStream*	lpMidiStrm;
     MMRESULT		ret = 0;
 
     TRACE("(%p)!\n", hMidiStrm);
 
-    if (!MMSYSTEM_GetMidiStream(hMidiStrm, &lpMidiStrm, NULL))
+    if (!MMSYSTEM_GetMidiStream(hMidiStrm, &lpMidiStrm, &lpwm))
 	return MMSYSERR_INVALHANDLE;
 
     midiStreamStop(hMidiStrm);
@@ -1236,8 +1289,14 @@ MMRESULT WINAPI midiStreamClose(HMIDISTRM hMidiStrm)
         }
         CloseHandle(lpMidiStrm->hThread);
     }
-    if(!ret)
+    DriverCallback(lpwm->mod.dwCallback, lpMidiStrm->wFlags,
+                   (HDRVR)lpMidiStrm->hDevice, MM_MOM_CLOSE,
+                   lpwm->mod.dwInstance, 0, 0);
+    if(!ret) {
+        lpMidiStrm->lock.DebugInfo->Spare[0] = 0;
+        DeleteCriticalSection(&lpMidiStrm->lock);
         HeapFree(GetProcessHeap(), 0, lpMidiStrm);
+    }
 
     return midiOutClose((HMIDIOUT)hMidiStrm);
 }
@@ -1269,9 +1328,11 @@ MMRESULT WINAPI midiStreamOpen(HMIDISTRM* lphMidiStrm, LPUINT lpuDeviceID,
     if (!lpMidiStrm)
 	return MMSYSERR_NOMEM;
 
-    lpMidiStrm->dwTempo = 500000;
-    lpMidiStrm->dwTimeDiv = 480; 	/* 480 is 120 quarter notes per minute *//* FIXME ??*/
+    lpMidiStrm->dwTempo = 500000;  /* micro seconds per quarter note, i.e. 120 BPM */
+    lpMidiStrm->dwTimeDiv = 24;    /* ticks per quarter note */
     lpMidiStrm->dwPositionMS = 0;
+    lpMidiStrm->status = MSM_STATUS_PAUSED;
+    lpMidiStrm->dwElapsedMS = 0;
 
     mosm.dwStreamID = (DWORD)lpMidiStrm;
     /* FIXME: the correct value is not allocated yet for MAPPER */
@@ -1286,12 +1347,16 @@ MMRESULT WINAPI midiStreamOpen(HMIDISTRM* lphMidiStrm, LPUINT lpuDeviceID,
 
     lpwm->mld.uDeviceID = *lpuDeviceID;
 
-    ret = MMDRV_Open(&lpwm->mld, MODM_OPEN, (DWORD_PTR)&lpwm->mod, fdwOpen);
+    /* don't rely on midiOut callbacks */
+    ret = MMDRV_Open(&lpwm->mld, MODM_OPEN, (DWORD_PTR)&lpwm->mod, CALLBACK_NULL);
     if (ret != MMSYSERR_NOERROR) {
 	MMDRV_Free(hMidiOut, &lpwm->mld);
 	HeapFree(GetProcessHeap(), 0, lpMidiStrm);
 	return ret;
     }
+
+    InitializeCriticalSection(&lpMidiStrm->lock);
+    lpMidiStrm->lock.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": WINMM_MidiStream.lock");
 
     lpMidiStrm->hEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
     lpMidiStrm->wFlags = HIWORD(fdwOpen);
@@ -1308,10 +1373,12 @@ MMRESULT WINAPI midiStreamOpen(HMIDISTRM* lphMidiStrm, LPUINT lpuDeviceID,
     /* wait for thread to have started, and for its queue to be created */
     WaitForSingleObject(lpMidiStrm->hEvent, INFINITE);
 
-    PostThreadMessageA(lpMidiStrm->dwThreadID, WINE_MSM_PAUSE, 0, 0);
-
     TRACE("=> (%u/%d) hMidi=%p ret=%d lpMidiStrm=%p\n",
 	  *lpuDeviceID, lpwm->mld.uDeviceID, *lphMidiStrm, ret, lpMidiStrm);
+
+    DriverCallback(lpwm->mod.dwCallback, lpMidiStrm->wFlags,
+                   (HDRVR)lpMidiStrm->hDevice, MM_MOM_OPEN,
+                   lpwm->mod.dwInstance, 0, 0);
     return ret;
 }
 
@@ -1354,20 +1421,49 @@ MMRESULT WINAPI midiStreamOut(HMIDISTRM hMidiStrm, LPMIDIHDR lpMidiHdr,
     return ret;
 }
 
+static MMRESULT midistream_post_message_and_wait(WINE_MIDIStream* lpMidiStrm, UINT msg, LPARAM lParam)
+{
+    HANDLE hObjects[2];
+
+    hObjects[0] = CreateEventW(NULL, FALSE, FALSE, NULL);
+    if (!hObjects[0])
+        return MMSYSERR_ERROR;
+
+    if (!PostThreadMessageA(lpMidiStrm->dwThreadID, msg, (WPARAM)hObjects[0], lParam)) {
+        WARN("bad PostThreadMessage\n");
+        CloseHandle(hObjects[0]);
+        return MMSYSERR_ERROR;
+    }
+
+    if (GetCurrentThreadId() != lpMidiStrm->dwThreadID) {
+        DWORD ret;
+        hObjects[1] = lpMidiStrm->hThread;
+        ret = WaitForMultipleObjects(sizeof(hObjects)/sizeof(hObjects[0]), hObjects,
+                                     FALSE, INFINITE);
+        if (ret != WAIT_OBJECT_0) {
+            CloseHandle(hObjects[0]);
+            WARN("bad WaitForSingleObject (%u)\n", ret);
+            return MMSYSERR_ERROR;
+        }
+    }
+
+    CloseHandle(hObjects[0]);
+
+    return MMSYSERR_NOERROR;
+}
+
 /**************************************************************************
  * 				midiStreamPause			[WINMM.@]
  */
 MMRESULT WINAPI midiStreamPause(HMIDISTRM hMidiStrm)
 {
     WINE_MIDIStream*	lpMidiStrm;
-    DWORD		ret = MMSYSERR_NOERROR;
 
     TRACE("(%p)!\n", hMidiStrm);
 
     if (!MMSYSTEM_GetMidiStream(hMidiStrm, &lpMidiStrm, NULL))
         return MMSYSERR_INVALHANDLE;
-    PostThreadMessageA(lpMidiStrm->dwThreadID, WINE_MSM_PAUSE, 0, 0);
-    return ret;
+    return midistream_post_message_and_wait(lpMidiStrm, WINE_MSM_PAUSE, 0);
 }
 
 /**************************************************************************
@@ -1385,6 +1481,7 @@ MMRESULT WINAPI midiStreamPosition(HMIDISTRM hMidiStrm, LPMMTIME lpMMT, UINT cbm
     } else if (lpMMT == NULL || cbmmt != sizeof(MMTIME)) {
 	ret = MMSYSERR_INVALPARAM;
     } else {
+	EnterCriticalSection(&lpMidiStrm->lock);
 	switch (lpMMT->wType) {
 	default:
 	    FIXME("Unsupported time type %x\n", lpMMT->wType);
@@ -1394,7 +1491,7 @@ MMRESULT WINAPI midiStreamPosition(HMIDISTRM hMidiStrm, LPMMTIME lpMMT, UINT cbm
 	    lpMMT->wType = TIME_MS;
 	    /* fall through to alternative format */
 	case TIME_MS:
-	    lpMMT->u.ms = lpMidiStrm->dwPositionMS;
+	    lpMMT->u.ms = midistream_get_playing_position(lpMidiStrm);
 	    TRACE("=> %d ms\n", lpMMT->u.ms);
 	    break;
 	case TIME_TICKS:
@@ -1402,6 +1499,7 @@ MMRESULT WINAPI midiStreamPosition(HMIDISTRM hMidiStrm, LPMMTIME lpMMT, UINT cbm
 	    TRACE("=> %d ticks\n", lpMMT->u.ticks);
 	    break;
 	}
+	LeaveCriticalSection(&lpMidiStrm->lock);
     }
     return ret;
 }
@@ -1423,6 +1521,7 @@ MMRESULT WINAPI midiStreamProperty(HMIDISTRM hMidiStrm, LPBYTE lpPropData, DWORD
     } else if (dwProperty & MIDIPROP_TEMPO) {
 	MIDIPROPTEMPO*	mpt = (MIDIPROPTEMPO*)lpPropData;
 
+	EnterCriticalSection(&lpMidiStrm->lock);
 	if (sizeof(MIDIPROPTEMPO) != mpt->cbStruct) {
 	    ret = MMSYSERR_INVALPARAM;
 	} else if (dwProperty & MIDIPROP_SET) {
@@ -1432,13 +1531,16 @@ MMRESULT WINAPI midiStreamProperty(HMIDISTRM hMidiStrm, LPBYTE lpPropData, DWORD
 	    mpt->dwTempo = lpMidiStrm->dwTempo;
 	    TRACE("Getting tempo <= %d\n", mpt->dwTempo);
 	}
+	LeaveCriticalSection(&lpMidiStrm->lock);
     } else if (dwProperty & MIDIPROP_TIMEDIV) {
 	MIDIPROPTIMEDIV*	mptd = (MIDIPROPTIMEDIV*)lpPropData;
 
 	if (sizeof(MIDIPROPTIMEDIV) != mptd->cbStruct) {
 	    ret = MMSYSERR_INVALPARAM;
 	} else if (dwProperty & MIDIPROP_SET) {
+	    EnterCriticalSection(&lpMidiStrm->lock);
 	    lpMidiStrm->dwTimeDiv = mptd->dwTimeDiv;
+	    LeaveCriticalSection(&lpMidiStrm->lock);
 	    TRACE("Setting time div to %d\n", mptd->dwTimeDiv);
 	} else if (dwProperty & MIDIPROP_GET) {
 	    mptd->dwTimeDiv = lpMidiStrm->dwTimeDiv;
@@ -1457,14 +1559,12 @@ MMRESULT WINAPI midiStreamProperty(HMIDISTRM hMidiStrm, LPBYTE lpPropData, DWORD
 MMRESULT WINAPI midiStreamRestart(HMIDISTRM hMidiStrm)
 {
     WINE_MIDIStream*	lpMidiStrm;
-    MMRESULT		ret = MMSYSERR_NOERROR;
 
     TRACE("(%p)!\n", hMidiStrm);
 
     if (!MMSYSTEM_GetMidiStream(hMidiStrm, &lpMidiStrm, NULL))
         return MMSYSERR_INVALHANDLE;
-    PostThreadMessageA(lpMidiStrm->dwThreadID, WINE_MSM_RESUME, 0, 0);
-    return ret;
+    return midistream_post_message_and_wait(lpMidiStrm, WINE_MSM_RESUME, 0);
 }
 
 /**************************************************************************
@@ -1473,14 +1573,12 @@ MMRESULT WINAPI midiStreamRestart(HMIDISTRM hMidiStrm)
 MMRESULT WINAPI midiStreamStop(HMIDISTRM hMidiStrm)
 {
     WINE_MIDIStream*	lpMidiStrm;
-    MMRESULT		ret = MMSYSERR_NOERROR;
 
     TRACE("(%p)!\n", hMidiStrm);
 
     if (!MMSYSTEM_GetMidiStream(hMidiStrm, &lpMidiStrm, NULL))
         return MMSYSERR_INVALHANDLE;
-    PostThreadMessageA(lpMidiStrm->dwThreadID, WINE_MSM_STOP, 0, 0);
-    return ret;
+    return midistream_post_message_and_wait(lpMidiStrm, WINE_MSM_STOP, 0);
 }
 
 struct mm_starter

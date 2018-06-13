@@ -41,8 +41,6 @@ static float get_nan(void)
 #define NAN get_nan()
 #endif
 
-#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(*arr))
-
 /* helper functions */
 static BOOL compare_float(FLOAT f, FLOAT g, UINT ulps)
 {
@@ -147,6 +145,103 @@ static void set_number(void *outdata, D3DXPARAMETER_TYPE outtype, const void *in
             *(INT *)outdata = 0;
             break;
     }
+}
+
+static IDirect3DDevice9 *create_device(HWND *window)
+{
+    D3DPRESENT_PARAMETERS present_parameters = { 0 };
+    IDirect3DDevice9 *device;
+    IDirect3D9 *d3d;
+    HRESULT hr;
+    HWND wnd;
+
+    *window = NULL;
+
+    if (!(wnd = CreateWindowA("static", "d3dx9_test", WS_OVERLAPPEDWINDOW, 0, 0,
+            640, 480, NULL, NULL, NULL, NULL)))
+    {
+        skip("Couldn't create application window.\n");
+        return NULL;
+    }
+
+    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
+    {
+        skip("Couldn't create IDirect3D9 object.\n");
+        DestroyWindow(wnd);
+        return NULL;
+    }
+
+    present_parameters.Windowed = TRUE;
+    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, wnd, D3DCREATE_HARDWARE_VERTEXPROCESSING,
+            &present_parameters, &device);
+    IDirect3D9_Release(d3d);
+    if (FAILED(hr))
+    {
+        skip("Failed to create IDirect3DDevice9 object %#x.\n", hr);
+        DestroyWindow(wnd);
+        return NULL;
+    }
+
+    *window = wnd;
+    return device;
+}
+
+static char temp_path[MAX_PATH];
+
+static BOOL create_file(const char *filename, const char *data, const unsigned int size, char *out_path)
+{
+    DWORD written;
+    HANDLE hfile;
+    char path[MAX_PATH];
+
+    if (!*temp_path)
+        GetTempPathA(sizeof(temp_path), temp_path);
+
+    strcpy(path, temp_path);
+    strcat(path, filename);
+    hfile = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hfile == INVALID_HANDLE_VALUE)
+        return FALSE;
+
+    if (WriteFile(hfile, data, size, &written, NULL))
+    {
+        CloseHandle(hfile);
+
+        if (out_path)
+            strcpy(out_path, path);
+        return TRUE;
+    }
+
+    CloseHandle(hfile);
+    return FALSE;
+}
+
+static void delete_file(const char *filename)
+{
+    char path[MAX_PATH];
+
+    strcpy(path, temp_path);
+    strcat(path, filename);
+    DeleteFileA(path);
+}
+
+static BOOL create_directory(const char *name)
+{
+    char path[MAX_PATH];
+
+    strcpy(path, temp_path);
+    strcat(path, name);
+    return CreateDirectoryA(path, NULL);
+}
+
+static void delete_directory(const char *name)
+{
+    char path[MAX_PATH];
+
+    strcpy(path, temp_path);
+    strcat(path, name);
+    RemoveDirectoryA(path);
 }
 
 static const char effect_desc[] =
@@ -291,7 +386,7 @@ static void test_create_effect_compiler(void)
     ok(hr == D3DERR_INVALIDCALL, "Got result %x, expected %x (D3D_INVALIDCALL)\n", hr, D3DERR_INVALIDCALL);
 
     hr = D3DXCreateEffectCompiler(effect_desc, 0, NULL, NULL, 0, &compiler, NULL);
-    todo_wine ok(hr == D3D_OK, "Got result %x, expected %x (D3D_OK)\n", hr, D3D_OK);
+    ok(hr == D3D_OK, "Got result %x, expected %x (D3D_OK)\n", hr, D3D_OK);
     if (FAILED(hr))
     {
         skip("D3DXCreateEffectCompiler failed, skipping test.\n");
@@ -896,7 +991,7 @@ struct test_effect_parameter_value_result test_effect_parameter_value_result_spe
     test_effect_parameter_value_blob_ ## x,\
     sizeof(test_effect_parameter_value_blob_ ## x),\
     test_effect_parameter_value_result_ ## x,\
-    sizeof(test_effect_parameter_value_result_ ## x)/sizeof(*test_effect_parameter_value_result_ ## x),\
+    ARRAY_SIZE(test_effect_parameter_value_result_ ## x),\
 }
 
 static const struct
@@ -1296,15 +1391,20 @@ static void test_effect_parameter_value_GetMatrix(const struct test_effect_param
     const D3DXPARAMETER_DESC *res_desc = &res->desc;
     const char *res_full_name = res->full_name;
     HRESULT hr;
-    DWORD cmp = 0xabababab;
-    FLOAT fvalue[16];
+    union
+    {
+        DWORD d;
+        float f;
+    } cmp;
+    float fvalue[16];
     UINT l, k, err = 0;
 
+    cmp.d = 0xabababab;
     memset(fvalue, 0xab, sizeof(fvalue));
     hr = effect->lpVtbl->GetMatrix(effect, parameter, (D3DXMATRIX *)&fvalue);
     if (!res_desc->Elements && res_desc->Class == D3DXPC_MATRIX_ROWS)
     {
-        ok(hr == D3D_OK, "%u - %s: GetMatrix failed, got %#x, expected %#x\n", i, res_full_name, hr, D3D_OK);
+        ok(hr == D3D_OK, "%u - %s: GetMatrix failed, got %#x, expected %#x.\n", i, res_full_name, hr, D3D_OK);
 
         for (k = 0; k < 4; ++k)
         {
@@ -1322,12 +1422,14 @@ static void test_effect_parameter_value_GetMatrix(const struct test_effect_param
     }
     else
     {
-        ok(hr == D3DERR_INVALIDCALL, "%u - %s: GetMatrix failed, got %#x, expected %#x\n",
+        ok(hr == D3DERR_INVALIDCALL, "%u - %s: GetMatrix failed, got %#x, expected %#x.\n",
                 i, res_full_name, hr, D3DERR_INVALIDCALL);
 
-        for (l = 0; l < sizeof(fvalue) / sizeof(*fvalue); ++l) if (fvalue[l] != *(FLOAT *)&cmp) ++err;
+        for (l = 0; l < ARRAY_SIZE(fvalue); ++l)
+            if (fvalue[l] != cmp.f)
+                ++err;
     }
-    ok(!err, "%u - %s: GetMatrix failed with %u errors\n", i, res_full_name, err);
+    ok(!err, "%u - %s: GetMatrix failed with %u errors.\n", i, res_full_name, err);
 }
 
 static void test_effect_parameter_value_GetMatrixArray(const struct test_effect_parameter_value_result *res,
@@ -1451,15 +1553,20 @@ static void test_effect_parameter_value_GetMatrixTranspose(const struct test_eff
     const D3DXPARAMETER_DESC *res_desc = &res->desc;
     const char *res_full_name = res->full_name;
     HRESULT hr;
-    DWORD cmp = 0xabababab;
-    FLOAT fvalue[16];
+    union
+    {
+        DWORD d;
+        float f;
+    } cmp;
+    float fvalue[16];
     UINT l, k, err = 0;
 
+    cmp.d = 0xabababab;
     memset(fvalue, 0xab, sizeof(fvalue));
     hr = effect->lpVtbl->GetMatrixTranspose(effect, parameter, (D3DXMATRIX *)&fvalue);
     if (!res_desc->Elements && res_desc->Class == D3DXPC_MATRIX_ROWS)
     {
-        ok(hr == D3D_OK, "%u - %s: GetMatrixTranspose failed, got %#x, expected %#x\n", i, res_full_name, hr, D3D_OK);
+        ok(hr == D3D_OK, "%u - %s: GetMatrixTranspose failed, got %#x, expected %#x.\n", i, res_full_name, hr, D3D_OK);
 
         for (k = 0; k < 4; ++k)
         {
@@ -1477,7 +1584,7 @@ static void test_effect_parameter_value_GetMatrixTranspose(const struct test_eff
     }
     else if (!res_desc->Elements && (res_desc->Class == D3DXPC_VECTOR || res_desc->Class == D3DXPC_SCALAR))
     {
-        ok(hr == D3D_OK, "%u - %s: GetMatrixTranspose failed, got %#x, expected %#x\n", i, res_full_name, hr, D3D_OK);
+        ok(hr == D3D_OK, "%u - %s: GetMatrixTranspose failed, got %#x, expected %#x.\n", i, res_full_name, hr, D3D_OK);
 
         for (k = 0; k < 4; ++k)
         {
@@ -1495,12 +1602,14 @@ static void test_effect_parameter_value_GetMatrixTranspose(const struct test_eff
     }
     else
     {
-        ok(hr == D3DERR_INVALIDCALL, "%u - %s: GetMatrixTranspose failed, got %#x, expected %#x\n",
+        ok(hr == D3DERR_INVALIDCALL, "%u - %s: GetMatrixTranspose failed, got %#x, expected %#x.\n",
                 i, res_full_name, hr, D3DERR_INVALIDCALL);
 
-        for (l = 0; l < sizeof(fvalue) / sizeof(*fvalue); ++l) if (fvalue[l] != *(FLOAT *)&cmp) ++err;
+        for (l = 0; l < ARRAY_SIZE(fvalue); ++l)
+            if (fvalue[l] != cmp.f)
+                ++err;
     }
-    ok(!err, "%u - %s: GetMatrixTranspose failed with %u errors\n", i, res_full_name, err);
+    ok(!err, "%u - %s: GetMatrixTranspose failed with %u errors.\n", i, res_full_name, err);
 }
 
 static void test_effect_parameter_value_GetMatrixTransposeArray(const struct test_effect_parameter_value_result *res,
@@ -1674,8 +1783,7 @@ static void test_effect_parameter_value_ResetValue(const struct test_effect_para
 
 static void test_effect_parameter_value(IDirect3DDevice9 *device)
 {
-    UINT i;
-    UINT effect_count = sizeof(test_effect_parameter_value_data) / sizeof(*test_effect_parameter_value_data);
+    unsigned int effect_count = ARRAY_SIZE(test_effect_parameter_value_data), i;
 
     for (i = 0; i < effect_count; ++i)
     {
@@ -2971,7 +3079,7 @@ static void test_effect_states(IDirect3DDevice9 *device)
         ok(!bval, "Got result %u, expected 0.\n", bval);
 
     hr = IDirect3DDevice9_SetTransform(device, D3DTS_WORLDMATRIX(1), &test_mat);
-    hr = effect->lpVtbl->Begin(effect, &npasses, 0);
+    hr = effect->lpVtbl->Begin(effect, NULL, 0);
     ok(hr == D3D_OK, "Got result %x, expected 0 (D3D_OK).\n", hr);
 
     hr = IDirect3DDevice9_GetTransform(device, D3DTS_WORLDMATRIX(1), &mat);
@@ -5321,13 +5429,13 @@ static void test_effect_commitchanges(IDirect3DDevice9 *device)
             ok(hr == D3D_OK, "Got result %#x, i %u, j %u.\n", hr, i, j);
         }
         param = effect->lpVtbl->GetParameterByName(effect, NULL, check_op_parameters[i].param_name);
-        ok(!!param, "GetParameterByName failed.\n");
+        ok(!!param, "Failed to get parameter (test %u).\n", i);
         hr = effect->lpVtbl->GetValue(effect, param, &fvect, sizeof(fvect));
-        ok(hr == D3D_OK, "Got result %#x.\n", hr);
+        ok(hr == D3D_OK, "Failed to get parameter value, hr %#x (test %u).\n", hr, i);
         hr = effect->lpVtbl->SetValue(effect, param, &fvect, sizeof(fvect));
-        ok(hr == D3D_OK, "Got result %#x.\n", hr);
+        ok(hr == D3D_OK, "Failed to set parameter value, hr %#x (test %u).\n", hr, i);
         hr = effect->lpVtbl->CommitChanges(effect);
-        ok(hr == D3D_OK, "Got result %#x.\n", hr);
+        ok(hr == D3D_OK, "Failed to commit changes, hr %#x (test %u).\n", hr, i);
 
         test_effect_preshader_op_results(device, check_op_parameters[i].state_updated,
                 check_op_parameters[i].param_name);
@@ -7050,40 +7158,18 @@ static const DWORD test_effect_unsupported_shader_blob[] =
 
 static void test_effect_unsupported_shader(void)
 {
-    D3DPRESENT_PARAMETERS present_parameters = {0};
     IDirect3DVertexShader9 *vshader;
     unsigned int passes_count;
     IDirect3DDevice9 *device;
     UINT byte_code_size;
     ID3DXEffect *effect;
-    IDirect3D9 *d3d;
     void *byte_code;
     ULONG refcount;
     HWND window;
     HRESULT hr;
 
-    if (!(window = CreateWindowA("static", "d3dx9_test", WS_OVERLAPPEDWINDOW, 0, 0,
-            640, 480, NULL, NULL, NULL, NULL)))
-    {
-        skip("Couldn't create application window\n");
+    if (!(device = create_device(&window)))
         return;
-    }
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Couldn't create IDirect3D9 object\n");
-        DestroyWindow(window);
-        return;
-    }
-    present_parameters.Windowed = TRUE;
-    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
-    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window,
-            D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device);
-    if (FAILED(hr)) {
-        skip("Failed to create IDirect3DDevice9 object, hr %#x\n", hr);
-        IDirect3D9_Release(d3d);
-        DestroyWindow(window);
-        return;
-    }
 
     hr = D3DXCreateEffectEx(device, test_effect_unsupported_shader_blob, sizeof(test_effect_unsupported_shader_blob),
             NULL, NULL, NULL, 0, NULL, &effect, NULL);
@@ -7155,7 +7241,6 @@ static void test_effect_unsupported_shader(void)
 
     refcount = IDirect3DDevice9_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
-    IDirect3D9_Release(d3d);
     DestroyWindow(window);
 }
 
@@ -7204,11 +7289,9 @@ static const DWORD test_effect_null_shader_blob[] =
 
 static void test_effect_null_shader(void)
 {
-    D3DPRESENT_PARAMETERS present_parameters = {0};
     IDirect3DDevice9 *device;
     ID3DXEffect *effect;
     D3DXPASS_DESC desc;
-    IDirect3D9 *d3d;
     D3DXHANDLE pass;
     ULONG refcount;
     HWND window;
@@ -7217,29 +7300,8 @@ static void test_effect_null_shader(void)
     /* Creating a fresh device because the existing device can have invalid
      * render states from previous tests. If IDirect3DDevice9_ValidateDevice()
      * returns certain error codes, native ValidateTechnique() fails. */
-    if (!(window = CreateWindowA("static", "d3dx9_test", WS_OVERLAPPEDWINDOW, 0, 0,
-            640, 480, NULL, NULL, NULL, NULL)))
-    {
-        skip("Failed to create window.\n");
+    if (!(device = create_device(&window)))
         return;
-    }
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Failed to create IDirect3D9 object.\n");
-        DestroyWindow(window);
-        return;
-    }
-    present_parameters.Windowed = TRUE;
-    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
-    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window,
-            D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device);
-    if (FAILED(hr))
-    {
-        skip("Failed to create IDirect3DDevice9 object, hr %#x.\n", hr);
-        IDirect3D9_Release(d3d);
-        DestroyWindow(window);
-        return;
-    }
 
     hr = D3DXCreateEffectEx(device, test_effect_null_shader_blob,
             sizeof(test_effect_null_shader_blob), NULL, NULL, NULL, 0, NULL, &effect, NULL);
@@ -7277,42 +7339,648 @@ static void test_effect_null_shader(void)
 
     refcount = IDirect3DDevice9_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
+    DestroyWindow(window);
+}
+
+static void test_effect_clone(void)
+{
+    IDirect3DDevice9 *device, *device2, *device3;
+    ID3DXEffect *effect, *cloned;
+    HWND window, window2;
+    ULONG refcount;
+    HRESULT hr;
+
+    if (!(device = create_device(&window)))
+        return;
+
+    /* D3DXFX_NOT_CLONEABLE */
+    hr = D3DXCreateEffect(device, test_effect_preshader_effect_blob, sizeof(test_effect_preshader_effect_blob),
+            NULL, NULL, D3DXFX_NOT_CLONEABLE, NULL, &effect, NULL);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+
+    hr = effect->lpVtbl->CloneEffect(effect, NULL, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got result %#x.\n", hr);
+
+    cloned = (void *)0xdeadbeef;
+    hr = effect->lpVtbl->CloneEffect(effect, NULL, &cloned);
+    ok(hr == E_FAIL, "Got result %#x.\n", hr);
+    ok(cloned == (void *)0xdeadbeef, "Unexpected effect pointer.\n");
+
+    hr = effect->lpVtbl->CloneEffect(effect, device, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got result %#x.\n", hr);
+
+    cloned = (void *)0xdeadbeef;
+    hr = effect->lpVtbl->CloneEffect(effect, device, &cloned);
+    ok(hr == E_FAIL, "Got result %#x.\n", hr);
+    ok(cloned == (void *)0xdeadbeef, "Unexpected effect pointer.\n");
+
+    effect->lpVtbl->Release(effect);
+
+    hr = D3DXCreateEffect(device, test_effect_preshader_effect_blob, sizeof(test_effect_preshader_effect_blob),
+            NULL, NULL, 0, NULL, &effect, NULL);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+
+    hr = effect->lpVtbl->CloneEffect(effect, NULL, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got result %#x.\n", hr);
+
+    cloned = (void *)0xdeadbeef;
+    hr = effect->lpVtbl->CloneEffect(effect, NULL, &cloned);
+    ok(hr == D3DERR_INVALIDCALL, "Got result %#x.\n", hr);
+    ok(cloned == (void *)0xdeadbeef, "Unexpected effect pointer.\n");
+
+    hr = effect->lpVtbl->CloneEffect(effect, device, NULL);
+    ok(hr == D3DERR_INVALIDCALL, "Got result %#x.\n", hr);
+
+    hr = effect->lpVtbl->CloneEffect(effect, device, &cloned);
+todo_wine
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+if (hr == D3D_OK)
+{
+    ok(cloned != effect, "Expected new effect instance.\n");
+    cloned->lpVtbl->Release(cloned);
+}
+    /* Try with different device. */
+    device2 = create_device(&window2);
+    hr = effect->lpVtbl->CloneEffect(effect, device2, &cloned);
+todo_wine
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+if (hr == D3D_OK)
+{
+    ok(cloned != effect, "Expected new effect instance.\n");
+
+    hr = cloned->lpVtbl->GetDevice(cloned, &device3);
+    ok(hr == S_OK, "Failed to get effect device.\n");
+    ok(device3 == device2, "Unexpected device instance.\n");
+    IDirect3DDevice9_Release(device3);
+
+    cloned->lpVtbl->Release(cloned);
+}
+    IDirect3DDevice9_Release(device2);
+    DestroyWindow(window2);
+    effect->lpVtbl->Release(effect);
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    DestroyWindow(window);
+}
+
+static unsigned int get_texture_refcount(IDirect3DTexture9 *iface)
+{
+    IDirect3DTexture9_AddRef(iface);
+    return IDirect3DTexture9_Release(iface);
+}
+
+static void test_refcount(void)
+{
+    IDirect3DTexture9 *texture, *cur_texture, *managed_texture, *sysmem_texture;
+    unsigned int passes_count;
+    IDirect3DDevice9 *device;
+    ID3DXEffect *effect;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+
+    if (!(device = create_device(&window)))
+        return;
+
+    hr = IDirect3DDevice9_CreateTexture(device, 16, 16, 1, 0, D3DFMT_X8R8G8B8, D3DPOOL_DEFAULT, &texture, NULL);
+    ok(hr == D3D_OK, "Failed to create texture, hr %#x.\n", hr);
+
+    hr = D3DXCreateEffect(device, test_effect_preshader_effect_blob,
+            sizeof(test_effect_preshader_effect_blob), NULL, NULL,
+            D3DXFX_DONOTSAVESTATE, NULL, &effect, NULL);
+    ok(hr == D3D_OK, "Failed to create effect, hr %#x.\n", hr);
+
+    hr = effect->lpVtbl->SetTexture(effect, "tex1", (IDirect3DBaseTexture9 *)texture);
+    ok(hr == D3D_OK, "Failed to set texture parameter, hr %#x.\n", hr);
+
+    hr = effect->lpVtbl->Begin(effect, &passes_count, D3DXFX_DONOTSAVESTATE);
+    ok(hr == D3D_OK, "Begin() failed, hr %#x.\n", hr);
+
+    hr = effect->lpVtbl->BeginPass(effect, 0);
+    ok(hr == D3D_OK, "BeginPass() failed, hr %#x.\n", hr);
+
+    IDirect3DDevice9_GetTexture(device, 0, (IDirect3DBaseTexture9 **)&cur_texture);
+    ok(cur_texture == texture, "Unexpected current texture %p.\n", cur_texture);
+    IDirect3DTexture9_Release(cur_texture);
+
+    IDirect3DDevice9_SetTexture(device, 0, NULL);
+    effect->lpVtbl->CommitChanges(effect);
+
+    IDirect3DDevice9_GetTexture(device, 0, (IDirect3DBaseTexture9 **)&cur_texture);
+    ok(cur_texture == NULL, "Unexpected current texture %p.\n", cur_texture);
+
+    hr = effect->lpVtbl->EndPass(effect);
+    ok(hr == D3D_OK, "EndPass() failed, hr %#x.\n", hr);
+
+    hr = effect->lpVtbl->BeginPass(effect, 0);
+    ok(hr == D3D_OK, "BeginPass() failed, hr %#x.\n", hr);
+
+    IDirect3DDevice9_GetTexture(device, 0, (IDirect3DBaseTexture9 **)&cur_texture);
+    ok(cur_texture == texture, "Unexpected current texture %p.\n", cur_texture);
+    IDirect3DTexture9_Release(cur_texture);
+
+    hr = effect->lpVtbl->EndPass(effect);
+    ok(hr == D3D_OK, "EndPass() failed, hr %#x.\n", hr);
+    hr = effect->lpVtbl->End(effect);
+    ok(hr == D3D_OK, "End() failed, hr %#x.\n", hr);
+
+    IDirect3DDevice9_GetTexture(device, 0, (IDirect3DBaseTexture9 **)&cur_texture);
+    ok(cur_texture == texture, "Unexpected current texture %p.\n", cur_texture);
+    IDirect3DTexture9_Release(cur_texture);
+    refcount = get_texture_refcount(texture);
+    ok(refcount == 2, "Unexpected texture refcount %u.\n", refcount);
+
+    hr = effect->lpVtbl->OnLostDevice(effect);
+    ok(hr == D3D_OK, "OnLostDevice() failed, hr %#x.\n", hr);
+    refcount = get_texture_refcount(texture);
+    ok(refcount == 1, "Unexpected texture refcount %u.\n", refcount);
+
+    hr = IDirect3DDevice9_CreateTexture(device, 16, 16, 1, 0, D3DFMT_X8R8G8B8, D3DPOOL_MANAGED,
+            &managed_texture, NULL);
+    ok(hr == D3D_OK, "Failed to create texture, hr %#x.\n", hr);
+    effect->lpVtbl->SetTexture(effect, "tex1", (IDirect3DBaseTexture9 *)managed_texture);
+
+    refcount = get_texture_refcount(managed_texture);
+    ok(refcount == 2, "Unexpected texture refcount %u.\n", refcount);
+    hr = effect->lpVtbl->OnLostDevice(effect);
+    ok(hr == D3D_OK, "OnLostDevice() failed, hr %#x.\n", hr);
+    refcount = get_texture_refcount(managed_texture);
+    ok(refcount == 2, "Unexpected texture refcount %u.\n", refcount);
+
+    hr = IDirect3DDevice9_CreateTexture(device, 16, 16, 1, 0, D3DFMT_X8R8G8B8, D3DPOOL_SYSTEMMEM,
+            &sysmem_texture, NULL);
+    ok(hr == D3D_OK, "Failed to create texture, hr %#x.\n", hr);
+    effect->lpVtbl->SetTexture(effect, "tex1", (IDirect3DBaseTexture9 *)sysmem_texture);
+
+    refcount = get_texture_refcount(managed_texture);
+    ok(refcount == 1, "Unexpected texture refcount %u.\n", refcount);
+    IDirect3DTexture9_Release(managed_texture);
+    refcount = get_texture_refcount(sysmem_texture);
+    ok(refcount == 2, "Unexpected texture refcount %u.\n", refcount);
+    hr = effect->lpVtbl->OnLostDevice(effect);
+    ok(hr == D3D_OK, "OnLostDevice() failed, hr %#x.\n", hr);
+    refcount = get_texture_refcount(sysmem_texture);
+    ok(refcount == 2, "Unexpected texture refcount %u.\n", refcount);
+
+    effect->lpVtbl->Release(effect);
+
+    refcount = get_texture_refcount(sysmem_texture);
+    ok(refcount == 1, "Unexpected texture refcount %u.\n", refcount);
+    IDirect3DTexture9_Release(sysmem_texture);
+
+    IDirect3DDevice9_GetTexture(device, 0, (IDirect3DBaseTexture9 **)&cur_texture);
+    ok(cur_texture == texture, "Unexpected current texture %p.\n", cur_texture);
+    IDirect3DTexture9_Release(cur_texture);
+    refcount = get_texture_refcount(texture);
+    ok(refcount == 1, "Unexpected texture refcount %u.\n", refcount);
+    IDirect3DTexture9_Release(texture);
+
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    DestroyWindow(window);
+}
+
+static HRESULT WINAPI d3dxinclude_open(ID3DXInclude *iface, D3DXINCLUDE_TYPE include_type,
+        const char *filename, const void *parent_data, const void **data, UINT *bytes)
+{
+    static const char include1[] =
+        "float4 light;\n"
+        "float4x4 mat;\n"
+        "float4 color;\n"
+        "\n"
+        "struct vs_input\n"
+        "{\n"
+        "    float4 position : POSITION;\n"
+        "    float3 normal : NORMAL;\n"
+        "};\n"
+        "\n"
+        "struct vs_output\n"
+        "{\n"
+        "    float4 position : POSITION;\n"
+        "    float4 diffuse : COLOR;\n"
+        "};\n";
+    static const char include2[] =
+        "#include \"include1.h\"\n"
+        "\n"
+        "vs_output vs_main(const vs_input v)\n"
+        "{\n"
+        "    vs_output o;\n"
+        "    const float4 scaled_color = 0.5 * color;\n"
+        "\n"
+        "    o.position = mul(v.position, mat);\n"
+        "    o.diffuse = dot((float3)light, v.normal) * scaled_color;\n"
+        "\n"
+        "    return o;\n"
+        "}\n";
+    static const char effect2[] =
+        "#include \"include\\include2.h\"\n"
+        "\n"
+        "technique t\n"
+        "{\n"
+        "    pass p\n"
+        "    {\n"
+        "        VertexShader = compile vs_2_0 vs_main();\n"
+        "    }\n"
+        "}\n";
+    char *buffer;
+
+    trace("filename %s.\n", filename);
+    trace("parent_data %p: %s.\n", parent_data, parent_data ? (char *)parent_data : "(null)");
+
+    if (!strcmp(filename, "effect2.fx"))
+    {
+        buffer = HeapAlloc(GetProcessHeap(), 0, sizeof(effect2));
+        memcpy(buffer, effect2, sizeof(effect2));
+        *bytes = sizeof(effect2);
+        ok(!parent_data, "Unexpected parent_data value.\n");
+    }
+    else if (!strcmp(filename, "include1.h"))
+    {
+        buffer = HeapAlloc(GetProcessHeap(), 0, sizeof(include1));
+        memcpy(buffer, include1, sizeof(include1));
+        *bytes = sizeof(include1);
+        ok(!strncmp(parent_data, include2, strlen(include2)), "Unexpected parent_data value.\n");
+    }
+    else if (!strcmp(filename, "include\\include2.h"))
+    {
+        buffer = HeapAlloc(GetProcessHeap(), 0, sizeof(include2));
+        memcpy(buffer, include2, sizeof(include2));
+        *bytes = sizeof(include2);
+        todo_wine ok(parent_data && !strncmp(parent_data, effect2, strlen(effect2)),
+                "unexpected parent_data value.\n");
+    }
+    else
+    {
+        ok(0, "Unexpected #include for file %s.\n", filename);
+        return D3DERR_INVALIDCALL;
+    }
+    *data = buffer;
+    return S_OK;
+}
+
+static HRESULT WINAPI d3dxinclude_close(ID3DXInclude *iface, const void *data)
+{
+    HeapFree(GetProcessHeap(), 0, (void *)data);
+    return S_OK;
+}
+
+static const struct ID3DXIncludeVtbl d3dxinclude_vtbl =
+{
+    d3dxinclude_open,
+    d3dxinclude_close
+};
+
+struct d3dxinclude
+{
+    ID3DXInclude ID3DXInclude_iface;
+};
+
+static void test_create_effect_from_file(void)
+{
+    static const char effect1[] =
+        "float4 light;\n"
+        "float4x4 mat;\n"
+        "float4 color;\n"
+        "\n"
+        "struct vs_input\n"
+        "{\n"
+        "    float4 position : POSITION;\n"
+        "    float3 normal : NORMAL;\n"
+        "};\n"
+        "\n"
+        "struct vs_output\n"
+        "{\n"
+        "    float4 position : POSITION;\n"
+        "    float4 diffuse : COLOR;\n"
+        "};\n"
+        "\n"
+        "vs_output vs_main(const vs_input v)\n"
+        "{\n"
+        "    vs_output o;\n"
+        "    const float4 scaled_color = 0.5 * color;\n"
+        "\n"
+        "    o.position = mul(v.position, mat);\n"
+        "    o.diffuse = dot((float3)light, v.normal) * scaled_color;\n"
+        "\n"
+        "    return o;\n"
+        "}\n"
+        "\n"
+        "technique t\n"
+        "{\n"
+        "    pass p\n"
+        "    {\n"
+        "        VertexShader = compile vs_2_0 vs_main();\n"
+        "    }\n"
+        "}\n";
+    static const char include1[] =
+        "float4 light;\n"
+        "float4x4 mat;\n"
+        "float4 color;\n"
+        "\n"
+        "struct vs_input\n"
+        "{\n"
+        "    float4 position : POSITION;\n"
+        "    float3 normal : NORMAL;\n"
+        "};\n"
+        "\n"
+        "struct vs_output\n"
+        "{\n"
+        "    float4 position : POSITION;\n"
+        "    float4 diffuse : COLOR;\n"
+        "};\n";
+    static const char include1_wrong[] =
+        "#error \"wrong include\"\n";
+    static const char include2[] =
+        "#include \"include1.h\"\n"
+        "\n"
+        "vs_output vs_main(const vs_input v)\n"
+        "{\n"
+        "    vs_output o;\n"
+        "    const float4 scaled_color = 0.5 * color;\n"
+        "\n"
+        "    o.position = mul(v.position, mat);\n"
+        "    o.diffuse = dot((float3)light, v.normal) * scaled_color;\n"
+        "\n"
+        "    return o;\n"
+        "}\n";
+    static const char effect2[] =
+        "#include \"include\\include2.h\"\n"
+        "\n"
+        "technique t\n"
+        "{\n"
+        "    pass p\n"
+        "    {\n"
+        "        VertexShader = compile vs_2_0 vs_main();\n"
+        "    }\n"
+        "}\n";
+    static const WCHAR effect1_filename_w[] = {'e','f','f','e','c','t','1','.','f','x',0};
+    static const WCHAR effect2_filename_w[] = {'e','f','f','e','c','t','2','.','f','x',0};
+    WCHAR effect_path_w[MAX_PATH], filename_w[MAX_PATH];
+    char effect_path[MAX_PATH], filename[MAX_PATH];
+    D3DPRESENT_PARAMETERS present_parameters = {0};
+    unsigned int filename_size;
+    struct d3dxinclude include;
+    IDirect3DDevice9 *device;
+    ID3DXBuffer *messages;
+    ID3DXEffect *effect;
+    IDirect3D9 *d3d;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+
+    if (!(window = CreateWindowA("static", "d3dx9_test", WS_OVERLAPPEDWINDOW, 0, 0,
+            640, 480, NULL, NULL, NULL, NULL)))
+    {
+        skip("Failed to create window.\n");
+        return;
+    }
+    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
+    {
+        skip("Failed to create IDirect3D9 object.\n");
+        DestroyWindow(window);
+        return;
+    }
+    present_parameters.Windowed = TRUE;
+    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window,
+            D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device);
+    if (FAILED(hr))
+    {
+        skip("Failed to create IDirect3DDevice9 object, hr %#x.\n", hr);
+        IDirect3D9_Release(d3d);
+        DestroyWindow(window);
+        return;
+    }
+
+    if (!create_file("effect1.fx", effect1, sizeof(effect1) - 1, filename))
+    {
+        skip("Couldn't create temporary file, skipping test.\n");
+        return;
+    }
+
+    filename_size = strlen(filename);
+    filename_size -= sizeof("effect1.fx") - 1;
+    memcpy(effect_path, filename, filename_size);
+    effect_path[filename_size] = 0;
+    MultiByteToWideChar(CP_ACP, 0, effect_path, -1, effect_path_w, sizeof(effect_path_w));
+
+    create_directory("include");
+    create_file("effect2.fx", effect2, sizeof(effect2) - 1, NULL);
+    create_file("include\\include1.h", include1, sizeof(include1) - 1, NULL);
+    create_file("include\\include2.h", include2, sizeof(include2) - 1, NULL);
+    create_file("include1.h", include1_wrong, sizeof(include1_wrong) - 1, NULL);
+
+    lstrcpyW(filename_w, effect_path_w);
+    lstrcatW(filename_w, effect1_filename_w);
+    effect = NULL;
+    messages = NULL;
+    hr = D3DXCreateEffectFromFileExW(device, filename_w, NULL, NULL, NULL,
+            0, NULL, &effect, &messages);
+    todo_wine ok(hr == D3D_OK, "Unexpected hr %#x.\n", hr);
+    if (messages)
+    {
+        trace("D3DXCreateEffectFromFileExW messages:\n%s", (char *)ID3DXBuffer_GetBufferPointer(messages));
+        ID3DXBuffer_Release(messages);
+    }
+    if (effect)
+        effect->lpVtbl->Release(effect);
+
+    lstrcpyW(filename_w, effect_path_w);
+    lstrcatW(filename_w, effect2_filename_w);
+    effect = NULL;
+    messages = NULL;
+    /* This is apparently broken on native, it ends up using the wrong include. */
+    hr = D3DXCreateEffectFromFileExW(device, filename_w, NULL, NULL, NULL,
+            0, NULL, &effect, &messages);
+    todo_wine ok(hr == E_FAIL, "Unexpected error, hr %#x.\n", hr);
+    if (messages)
+    {
+        trace("D3DXCreateEffectFromFileExW messages:\n%s", (char *)ID3DXBuffer_GetBufferPointer(messages));
+        ID3DXBuffer_Release(messages);
+    }
+    if (effect)
+        effect->lpVtbl->Release(effect);
+
+    delete_file("effect1.fx");
+    delete_file("effect2.fx");
+    delete_file("include\\include1.h");
+    delete_file("include\\include2.h");
+    delete_file("include2.h");
+    delete_directory("include");
+
+    lstrcpyW(filename_w, effect2_filename_w);
+    effect = NULL;
+    messages = NULL;
+    include.ID3DXInclude_iface.lpVtbl = &d3dxinclude_vtbl;
+    /* This is actually broken in native d3dx9 (manually tried multiple
+     * versions, all are affected). For reference, the message printed below
+     * is "ID3DXEffectCompiler: There were no techniques" */
+    hr = D3DXCreateEffectFromFileExW(device, filename_w, NULL, &include.ID3DXInclude_iface, NULL,
+            0, NULL, &effect, &messages);
+    todo_wine ok(hr == E_FAIL, "D3DXInclude test failed with error %#x.\n", hr);
+    if (messages)
+    {
+        trace("D3DXCreateEffectFromFileExW messages:\n%s", (char *)ID3DXBuffer_GetBufferPointer(messages));
+        ID3DXBuffer_Release(messages);
+    }
+
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
+    IDirect3D9_Release(d3d);
+    DestroyWindow(window);
+}
+
+#if 0
+technique tech0
+{
+    pass p0
+    {
+        LightEnable[0] = FALSE;
+        FogEnable = FALSE;
+    }
+}
+technique tech1
+{
+    pass p0
+    {
+        LightEnable[0] = TRUE;
+        FogEnable = TRUE;
+    }
+}
+#endif
+static const DWORD test_two_techniques_blob[] =
+{
+    0xfeff0901, 0x000000ac, 0x00000000, 0x00000000, 0x00000002, 0x00000002, 0x00000000, 0x00000000,
+    0x00000000, 0x00000001, 0x00000001, 0x00000000, 0x00000002, 0x00000002, 0x00000000, 0x00000000,
+    0x00000000, 0x00000001, 0x00000001, 0x00000003, 0x00003070, 0x00000006, 0x68636574, 0x00000030,
+    0x00000001, 0x00000002, 0x00000002, 0x00000000, 0x00000000, 0x00000000, 0x00000001, 0x00000001,
+    0x00000001, 0x00000002, 0x00000002, 0x00000000, 0x00000000, 0x00000000, 0x00000001, 0x00000001,
+    0x00000003, 0x00003070, 0x00000006, 0x68636574, 0x00000031, 0x00000000, 0x00000002, 0x00000002,
+    0x00000001, 0x0000004c, 0x00000000, 0x00000001, 0x00000044, 0x00000000, 0x00000002, 0x00000091,
+    0x00000000, 0x00000008, 0x00000004, 0x0000000e, 0x00000000, 0x00000028, 0x00000024, 0x000000a0,
+    0x00000000, 0x00000001, 0x00000098, 0x00000000, 0x00000002, 0x00000091, 0x00000000, 0x0000005c,
+    0x00000058, 0x0000000e, 0x00000000, 0x0000007c, 0x00000078, 0x00000000, 0x00000000,
+};
+
+static void test_effect_find_next_valid_technique(void)
+{
+    D3DPRESENT_PARAMETERS present_parameters = {0};
+    IDirect3DDevice9 *device;
+    D3DXTECHNIQUE_DESC desc;
+    ID3DXEffect *effect;
+    IDirect3D9 *d3d;
+    D3DXHANDLE tech;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+
+    if (!(window = CreateWindowA("static", "d3dx9_test", WS_OVERLAPPEDWINDOW, 0, 0,
+            640, 480, NULL, NULL, NULL, NULL)))
+    {
+        skip("Failed to create window.\n");
+        return;
+    }
+    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
+    {
+        skip("Failed to create IDirect3D9 object.\n");
+        DestroyWindow(window);
+        return;
+    }
+    present_parameters.Windowed = TRUE;
+    present_parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window,
+            D3DCREATE_HARDWARE_VERTEXPROCESSING, &present_parameters, &device);
+    if (FAILED(hr))
+    {
+        skip("Failed to create IDirect3DDevice9 object, hr %#x.\n", hr);
+        IDirect3D9_Release(d3d);
+        DestroyWindow(window);
+        return;
+    }
+
+    hr = D3DXCreateEffectEx(device, test_two_techniques_blob, sizeof(test_two_techniques_blob),
+            NULL, NULL, NULL, 0, NULL, &effect, NULL);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, NULL, &tech);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    hr = effect->lpVtbl->GetTechniqueDesc(effect, tech, &desc);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(!strcmp(desc.Name, "tech0"), "Got unexpected technique %s.\n", desc.Name);
+
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, tech, &tech);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    hr = effect->lpVtbl->GetTechniqueDesc(effect, tech, &desc);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(!strcmp(desc.Name, "tech1"), "Got unexpected technique %s.\n", desc.Name);
+
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, tech, &tech);
+    ok(hr == S_FALSE, "Got result %#x.\n", hr);
+    hr = effect->lpVtbl->GetTechniqueDesc(effect, tech, &desc);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(!strcmp(desc.Name, "tech0"), "Got unexpected technique %s.\n", desc.Name);
+
+    effect->lpVtbl->Release(effect);
+
+    hr = D3DXCreateEffectEx(device, test_effect_unsupported_shader_blob, sizeof(test_effect_unsupported_shader_blob),
+            NULL, NULL, NULL, 0, NULL, &effect, NULL);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, NULL, &tech);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    hr = effect->lpVtbl->GetTechniqueDesc(effect, tech, &desc);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(!strcmp(desc.Name, "tech1"), "Got unexpected technique %s.\n", desc.Name);
+
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, tech, &tech);
+    ok(hr == S_FALSE, "Got result %#x.\n", hr);
+    hr = effect->lpVtbl->GetTechniqueDesc(effect, tech, &desc);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(!strcmp(desc.Name, "tech0"), "Got unexpected technique %s.\n", desc.Name);
+
+    effect->lpVtbl->SetInt(effect, "i", 1);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+
+    tech = (D3DXHANDLE)0xdeadbeef;
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, NULL, &tech);
+    ok(hr == S_FALSE, "Got result %#x.\n", hr);
+    hr = effect->lpVtbl->GetTechniqueDesc(effect, tech, &desc);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(!strcmp(desc.Name, "tech0"), "Got unexpected technique %s.\n", desc.Name);
+
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, tech, &tech);
+    ok(hr == S_FALSE, "Got result %#x.\n", hr);
+
+    effect->lpVtbl->SetInt(effect, "i", 0);
+
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, tech, &tech);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    hr = effect->lpVtbl->GetTechniqueDesc(effect, tech, &desc);
+    ok(hr == D3D_OK, "Got result %#x.\n", hr);
+    ok(!strcmp(desc.Name, "tech1"), "Got unexpected technique %s.\n", desc.Name);
+
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, tech, &tech);
+    ok(hr == S_FALSE, "Got result %#x.\n", hr);
+
+    hr = effect->lpVtbl->FindNextValidTechnique(effect, "nope", &tech);
+    ok(hr == D3DERR_INVALIDCALL, "Got result %#x.\n", hr);
+
+    effect->lpVtbl->Release(effect);
+
+    refcount = IDirect3DDevice9_Release(device);
+    ok(!refcount, "Device has %u references left.\n", refcount);
     IDirect3D9_Release(d3d);
     DestroyWindow(window);
 }
 
 START_TEST(effect)
 {
-    HWND wnd;
-    IDirect3D9 *d3d;
     IDirect3DDevice9 *device;
-    D3DPRESENT_PARAMETERS d3dpp;
-    HRESULT hr;
     ULONG refcount;
+    HWND wnd;
 
-    if (!(wnd = CreateWindowA("static", "d3dx9_test", WS_OVERLAPPEDWINDOW, 0, 0,
-            640, 480, NULL, NULL, NULL, NULL)))
-    {
-        skip("Couldn't create application window\n");
+    if (!(device = create_device(&wnd)))
         return;
-    }
-    if (!(d3d = Direct3DCreate9(D3D_SDK_VERSION)))
-    {
-        skip("Couldn't create IDirect3D9 object\n");
-        DestroyWindow(wnd);
-        return;
-    }
-
-    ZeroMemory(&d3dpp, sizeof(d3dpp));
-    d3dpp.Windowed = TRUE;
-    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-    hr = IDirect3D9_CreateDevice(d3d, D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, wnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &device);
-    if (FAILED(hr)) {
-        skip("Failed to create IDirect3DDevice9 object %#x\n", hr);
-        IDirect3D9_Release(d3d);
-        DestroyWindow(wnd);
-        return;
-    }
 
     test_create_effect_and_pool(device);
     test_create_effect_compiler();
@@ -7336,10 +8004,12 @@ START_TEST(effect)
 
     refcount = IDirect3DDevice9_Release(device);
     ok(!refcount, "Device has %u references left.\n", refcount);
-    refcount = IDirect3D9_Release(d3d);
-    ok(!refcount, "D3D9 object has %u references left.\n", refcount);
     DestroyWindow(wnd);
 
     test_effect_unsupported_shader();
     test_effect_null_shader();
+    test_effect_clone();
+    test_refcount();
+    test_create_effect_from_file();
+    test_effect_find_next_valid_technique();
 }

@@ -59,7 +59,7 @@ typedef struct __catchblock_info
     UINT             flags;         /* flags (see below) */
     const type_info *type_info;     /* C++ type caught by this block */
     int              offset;        /* stack offset to copy exception object to */
-    void           (*handler)(void);/* catch block handler code */
+    void *         (*handler)(void);/* catch block handler code */
 } catchblock_info;
 #define TYPE_FLAG_CONST      1
 #define TYPE_FLAG_VOLATILE   2
@@ -78,8 +78,8 @@ typedef struct __tryblock_info
 /* info about the unwind handler for a given trylevel */
 typedef struct __unwind_info
 {
-    int    prev;          /* prev trylevel unwind handler, to run after this one */
-    void (*handler)(void);/* unwind handler */
+    int      prev;          /* prev trylevel unwind handler, to run after this one */
+    void * (*handler)(void);/* unwind handler */
 } unwind_info;
 
 /* descriptor of all try blocks of a given function */
@@ -107,7 +107,7 @@ typedef struct _SCOPETABLE
 {
   int previousTryLevel;
   int (*lpfnFilter)(PEXCEPTION_POINTERS);
-  int (*lpfnHandler)(void);
+  void * (*lpfnHandler)(void);
 } SCOPETABLE, *PSCOPETABLE;
 
 typedef struct _MSVCRT_EXCEPTION_FRAME
@@ -137,77 +137,65 @@ DWORD CDECL cxx_frame_handler( PEXCEPTION_RECORD rec, cxx_exception_frame* frame
                                const cxx_function_descr *descr,
                                EXCEPTION_REGISTRATION_RECORD* nested_frame, int nested_trylevel ) DECLSPEC_HIDDEN;
 
-/* call a function with a given ebp */
-static inline void *call_ebp_func( void *func, void *ebp )
-{
-    void *ret;
-    int dummy;
-    __asm__ __volatile__ ("pushl %%ebx\n\t"
-                          "pushl %%ebp\n\t"
-                          "movl %4,%%ebp\n\t"
-                          "call *%%eax\n\t"
-                          "popl %%ebp\n\t"
-                          "popl %%ebx"
-                          : "=a" (ret), "=S" (dummy), "=D" (dummy)
-                          : "0" (func), "1" (ebp) : "ecx", "edx", "memory" );
-    return ret;
-}
-
 /* call a copy constructor */
-static inline void call_copy_ctor( void *func, void *this, void *src, int has_vbase )
-{
-    TRACE( "calling copy ctor %p object %p src %p\n", func, this, src );
-    if (has_vbase)
-        /* in that case copy ctor takes an extra bool indicating whether to copy the base class */
-        __asm__ __volatile__("pushl $1; pushl %2; call *%0"
-                             : : "r" (func), "c" (this), "r" (src) : "eax", "edx", "memory" );
-    else
-        __asm__ __volatile__("pushl %2; call *%0"
-                             : : "r" (func), "c" (this), "r" (src) : "eax", "edx", "memory" );
-}
+extern void call_copy_ctor( void *func, void *this, void *src, int has_vbase );
+
+__ASM_GLOBAL_FUNC( call_copy_ctor,
+                   "pushl %ebp\n\t"
+                   __ASM_CFI(".cfi_adjust_cfa_offset 4\n\t")
+                   __ASM_CFI(".cfi_rel_offset %ebp,0\n\t")
+                   "movl %esp, %ebp\n\t"
+                   __ASM_CFI(".cfi_def_cfa_register %ebp\n\t")
+                   "pushl $1\n\t"
+                   "movl 12(%ebp), %ecx\n\t"
+                   "pushl 16(%ebp)\n\t"
+                   "call *8(%ebp)\n\t"
+                   "leave\n"
+                   __ASM_CFI(".cfi_def_cfa %esp,4\n\t")
+                   __ASM_CFI(".cfi_same_value %ebp\n\t")
+                   "ret" );
 
 /* continue execution to the specified address after exception is caught */
-static inline void DECLSPEC_NORETURN continue_after_catch( cxx_exception_frame* frame, void *addr )
-{
-    __asm__ __volatile__("movl -4(%0),%%esp; leal 12(%0),%%ebp; jmp *%1"
-                         : : "r" (frame), "a" (addr) );
-    for (;;) ; /* unreached */
-}
+extern void DECLSPEC_NORETURN continue_after_catch( cxx_exception_frame* frame, void *addr );
 
-static inline void call_finally_block( void *code_block, void *base_ptr )
-{
-    __asm__ __volatile__ ("movl %1,%%ebp; call *%%eax"
-                          : : "a" (code_block), "g" (base_ptr));
-}
+__ASM_GLOBAL_FUNC( continue_after_catch,
+                   "movl 4(%esp), %edx\n\t"
+                   "movl 8(%esp), %eax\n\t"
+                   "movl -4(%edx), %esp\n\t"
+                   "leal 12(%edx), %ebp\n\t"
+                   "jmp *%eax" );
 
-static inline int call_filter( int (*func)(PEXCEPTION_POINTERS), void *arg, void *ebp )
-{
-    int ret;
-    __asm__ __volatile__ ("pushl %%ebp; pushl %3; movl %2,%%ebp; call *%%eax; popl %%ebp; popl %%ebp"
-                          : "=a" (ret)
-                          : "0" (func), "r" (ebp), "r" (arg)
-                          : "ecx", "edx", "memory" );
-    return ret;
-}
+extern void DECLSPEC_NORETURN call_finally_block( void *code_block, void *base_ptr );
 
-static inline int call_unwind_func( int (*func)(void), void *ebp )
-{
-    int ret;
-    __asm__ __volatile__ ("pushl %%ebp\n\t"
-                          "pushl %%ebx\n\t"
-                          "pushl %%esi\n\t"
-                          "pushl %%edi\n\t"
-                          "movl %2,%%ebp\n\t"
-                          "call *%0\n\t"
-                          "popl %%edi\n\t"
-                          "popl %%esi\n\t"
-                          "popl %%ebx\n\t"
-                          "popl %%ebp"
-                          : "=a" (ret)
-                          : "0" (func), "r" (ebp)
-                          : "ecx", "edx", "memory" );
-    return ret;
-}
+__ASM_GLOBAL_FUNC( call_finally_block,
+                   "movl 8(%esp), %ebp\n\t"
+                   "jmp *4(%esp)" );
+
+extern int call_filter( int (*func)(PEXCEPTION_POINTERS), void *arg, void *ebp );
+
+__ASM_GLOBAL_FUNC( call_filter,
+                   "pushl %ebp\n\t"
+                   "pushl 12(%esp)\n\t"
+                   "movl 20(%esp), %ebp\n\t"
+                   "call *12(%esp)\n\t"
+                   "popl %ebp\n\t"
+                   "popl %ebp\n\t"
+                   "ret" );
+
+extern void *call_handler( void * (*func)(void), void *ebp );
+
+__ASM_GLOBAL_FUNC( call_handler,
+                   "pushl %ebp\n\t"
+                   "pushl %ebx\n\t"
+                   "pushl %esi\n\t"
+                   "pushl %edi\n\t"
+                   "movl 24(%esp), %ebp\n\t"
+                   "call *20(%esp)\n\t"
+                   "popl %edi\n\t"
+                   "popl %esi\n\t"
+                   "popl %ebx\n\t"
+                   "popl %ebp\n\t"
+                   "ret" );
 
 static inline void dump_type( const cxx_type_info *type )
 {
@@ -322,7 +310,7 @@ static void copy_exception( void *object, cxx_exception_frame *frame,
 /* unwind the local function up to a given trylevel */
 static void cxx_local_unwind( cxx_exception_frame* frame, const cxx_function_descr *descr, int last_level)
 {
-    void (*handler)(void);
+    void * (*handler)(void);
     int trylevel = frame->trylevel;
 
     while (trylevel != last_level)
@@ -337,7 +325,7 @@ static void cxx_local_unwind( cxx_exception_frame* frame, const cxx_function_des
         {
             TRACE( "calling unwind handler %p trylevel %d last %d ebp %p\n",
                    handler, trylevel, last_level, &frame->ebp );
-            call_ebp_func( handler, &frame->ebp );
+            call_handler( handler, &frame->ebp );
         }
         trylevel = descr->unwind_table[trylevel].prev;
     }
@@ -400,7 +388,8 @@ static DWORD catch_function_nested_handler( EXCEPTION_RECORD *rec, EXCEPTION_REG
 
 /* find and call the appropriate catch block for an exception */
 /* returns the address to continue execution to after the catch block was called */
-static inline void call_catch_block( PEXCEPTION_RECORD rec, cxx_exception_frame *frame,
+static inline void call_catch_block( PEXCEPTION_RECORD rec, CONTEXT *context,
+                                     cxx_exception_frame *frame,
                                      const cxx_function_descr *descr, int nested_trylevel,
                                      EXCEPTION_REGISTRATION_RECORD *catch_frame,
                                      cxx_exception_type *info )
@@ -411,8 +400,9 @@ static inline void call_catch_block( PEXCEPTION_RECORD rec, cxx_exception_frame 
     struct catch_func_nested_frame nested_frame;
     int trylevel = frame->trylevel;
     DWORD save_esp = ((DWORD*)frame)[-1];
-    thread_data_t *data;
+    thread_data_t *data = msvcrt_get_thread_data();
 
+    data->processing_throw++;
     for (i = 0; i < descr->tryblock_count; i++)
     {
         const tryblock_info *tryblock = &descr->tryblock[i];
@@ -455,9 +445,11 @@ static inline void call_catch_block( PEXCEPTION_RECORD rec, cxx_exception_frame 
             cxx_local_unwind( frame, descr, tryblock->start_level );
             frame->trylevel = tryblock->end_level + 1;
 
-            data = msvcrt_get_thread_data();
             nested_frame.frame_info.rec = data->exc_record;
+            nested_frame.frame_info.context = data->ctx_record;
             data->exc_record = rec;
+            data->ctx_record = context;
+            data->processing_throw--;
 
             /* call the catch block */
             TRACE( "calling catch block %p addr %p ebp %p\n",
@@ -470,7 +462,7 @@ static inline void call_catch_block( PEXCEPTION_RECORD rec, cxx_exception_frame 
             nested_frame.trylevel  = nested_trylevel + 1;
 
             __wine_push_frame( &nested_frame.frame );
-            addr = call_ebp_func( catchblock->handler, &frame->ebp );
+            addr = call_handler( catchblock->handler, &frame->ebp );
             __wine_pop_frame( &nested_frame.frame );
 
             ((DWORD*)frame)[-1] = save_esp;
@@ -480,6 +472,7 @@ static inline void call_catch_block( PEXCEPTION_RECORD rec, cxx_exception_frame 
             continue_after_catch( frame, addr );
         }
     }
+    data->processing_throw--;
 }
 
 /*********************************************************************
@@ -552,7 +545,7 @@ static LONG CALLBACK se_translation_filter( EXCEPTION_POINTERS *ep, void *c )
     }
 
     exc_type = (cxx_exception_type *)rec->ExceptionInformation[2];
-    call_catch_block( rec, ctx->frame, ctx->descr,
+    call_catch_block( rec, ep->ContextRecord, ctx->frame, ctx->descr,
             ctx->frame->trylevel, ctx->nested_frame, exc_type );
 
     __DestructExceptionObject( rec );
@@ -649,7 +642,8 @@ DWORD CDECL cxx_frame_handler( PEXCEPTION_RECORD rec, cxx_exception_frame* frame
         }
     }
 
-    call_catch_block( rec, frame, descr, frame->trylevel, nested_frame, exc_type );
+    call_catch_block( rec, context, frame, descr,
+            frame->trylevel, nested_frame, exc_type );
     return ExceptionContinueSearch;
 }
 
@@ -792,7 +786,7 @@ static void msvcrt_local_unwind2(MSVCRT_EXCEPTION_FRAME* frame, int trylevel, vo
       {
           TRACE( "__try block cleanup level %d handler %p ebp %p\n",
                  level, frame->scopetable[level].lpfnHandler, ebp );
-          call_unwind_func( frame->scopetable[level].lpfnHandler, ebp );
+          call_handler( frame->scopetable[level].lpfnHandler, ebp );
       }
   }
   __wine_pop_frame(&reg);
@@ -819,7 +813,7 @@ static void msvcrt_local_unwind4( ULONG *cookie, MSVCRT_EXCEPTION_FRAME* frame, 
         {
             TRACE( "__try block cleanup level %d handler %p ebp %p\n",
                    level, scopetable->entries[level].lpfnHandler, ebp );
-            call_unwind_func( scopetable->entries[level].lpfnHandler, ebp );
+            call_handler( scopetable->entries[level].lpfnHandler, ebp );
         }
     }
     __wine_pop_frame(&reg);
@@ -925,7 +919,6 @@ int CDECL _except_handler3(PEXCEPTION_RECORD rec,
           frame->trylevel = pScopeTable[trylevel].previousTryLevel;
           TRACE("__finally block %p\n",pScopeTable[trylevel].lpfnHandler);
           call_finally_block(pScopeTable[trylevel].lpfnHandler, &frame->_ebp);
-          ERR("Returned from __finally block - expect crash!\n");
        }
       }
       trylevel = pScopeTable[trylevel].previousTryLevel;
@@ -999,7 +992,6 @@ int CDECL _except_handler4_common( ULONG *cookie, void (*check_cookie)(void),
                     frame->trylevel = scope_table->entries[trylevel].previousTryLevel;
                     TRACE("__finally block %p\n",scope_table->entries[trylevel].lpfnHandler);
                     call_finally_block(scope_table->entries[trylevel].lpfnHandler, &frame->_ebp);
-                    ERR("Returned from __finally block - expect crash!\n");
                 }
             }
             trylevel = scope_table->entries[trylevel].previousTryLevel;

@@ -720,7 +720,7 @@ static void InternetReadFile_test(int flags, const test_data_t *test)
     res = InternetQueryOptionA(hor,INTERNET_OPTION_URL,buffer,&length);
     ok(res, "InternetQueryOptionA(INTERNET_OPTION_URL) failed with error %d\n", GetLastError());
 
-    length = sizeof(buffer)-1;
+    length = sizeof(buffer)-2;
     memset(buffer, 0x77, sizeof(buffer));
     res = HttpQueryInfoA(hor,HTTP_QUERY_RAW_HEADERS,buffer,&length,0x0);
     ok(res, "HttpQueryInfoA(HTTP_QUERY_RAW_HEADERS) failed with error %d\n", GetLastError());
@@ -744,7 +744,7 @@ static void InternetReadFile_test(int flags, const test_data_t *test)
     ok(buffer[length2+1] == 0x77, "Expected 0x77, got %02X\n", buffer[length2+1]);
     ok(length2 == length, "Value should not have changed: %d != %d\n", length2, length);
 
-    length = sizeof(wbuffer)-sizeof(WCHAR);
+    length = sizeof(wbuffer)-2*sizeof(WCHAR);
     memset(wbuffer, 0x77, sizeof(wbuffer));
     res = HttpQueryInfoW(hor, HTTP_QUERY_RAW_HEADERS, wbuffer, &length, 0x0);
     ok(res, "HttpQueryInfoW(HTTP_QUERY_RAW_HEADERS) failed with error %d\n", GetLastError());
@@ -5459,7 +5459,10 @@ static void test_http_connection(void)
     r = WaitForSingleObject(si.hEvent, 10000);
     ok (r == WAIT_OBJECT_0, "failed to start wininet test server\n");
     if (r != WAIT_OBJECT_0)
+    {
+        CloseHandle(hThread);
         return;
+    }
 
     test_basic_request(si.port, "GET", "/test1");
     test_proxy_indirect(si.port);
@@ -5523,11 +5526,22 @@ typedef struct {
 } cert_struct_test_t;
 
 static const cert_struct_test_t test_winehq_org_cert = {
+    "US\r\n"
+    "55114\r\n"
+    "MN\r\n"
+    "Saint Paul\r\n"
+    "Ste 120\r\n"
+    "700 Raymond Ave\r\n"
+    "CodeWeavers\r\n"
+    "IT\r\n"
+    "Secure Link SSL Wildcard\r\n"
     "*.winehq.org",
 
     "US\r\n"
-    "GeoTrust Inc.\r\n"
-    "RapidSSL SHA256 CA"
+    "VA\r\n"
+    "Herndon\r\n"
+    "Network Solutions L.L.C.\r\n"
+    "Network Solutions OV Server CA 2"
 };
 
 static const cert_struct_test_t test_winehq_com_cert = {
@@ -5590,6 +5604,18 @@ static void _test_security_info(unsigned line, const char *urlc, DWORD error, DW
         ok_(__FILE__,line)(chain != NULL, "chain = NULL\n");
         ok_(__FILE__,line)(flags == ex_flags, "flags = %x\n", flags);
         CertFreeCertificateChain(chain);
+
+        SetLastError(0xdeadbeef);
+        res = pInternetGetSecurityInfoByURLA(url, NULL, NULL);
+        ok_(__FILE__,line)(!res && GetLastError() == ERROR_INVALID_PARAMETER,
+                           "InternetGetSecurityInfoByURLA returned: %x(%u)\n", res, GetLastError());
+
+        res = pInternetGetSecurityInfoByURLA(url, &chain, NULL);
+        ok_(__FILE__,line)(res, "InternetGetSecurityInfoByURLA failed: %u\n", GetLastError());
+        CertFreeCertificateChain(chain);
+
+        res = pInternetGetSecurityInfoByURLA(url, NULL, &flags);
+        ok_(__FILE__,line)(res, "InternetGetSecurityInfoByURLA failed: %u\n", GetLastError());
     }else {
         ok_(__FILE__,line)(!res && GetLastError() == error,
                            "InternetGetSecurityInfoByURLA returned: %x(%u), expected %u\n", res, GetLastError(), error);

@@ -62,9 +62,27 @@ function test_doc_props() {
     test_exposed("addEventListener", v >= 9);
     test_exposed("removeEventListener", v >= 9);
     test_exposed("dispatchEvent", v >= 9);
+    test_exposed("createEvent", v >= 9);
 
     test_exposed("parentWindow", true);
     if(v >= 9) ok(document.defaultView === document.parentWindow, "defaultView != parentWindow");
+
+    next_test();
+}
+
+function test_docfrag_props() {
+    var docfrag = document.createDocumentFragment();
+
+    function test_exposed(prop, expect) {
+        if(expect)
+            ok(prop in docfrag, prop + " not found in document fragent.");
+        else
+            ok(!(prop in docfrag), prop + " found in document fragent.");
+    }
+
+    var v = document.documentMode;
+
+    test_exposed("compareDocumentPosition", v >= 9);
 
     next_test();
 }
@@ -79,9 +97,12 @@ function test_window_props() {
 
     var v = document.documentMode;
 
+    test_exposed("postMessage", true);
     test_exposed("addEventListener", v >= 9);
     test_exposed("removeEventListener", v >= 9);
     test_exposed("dispatchEvent", v >= 9);
+    test_exposed("getSelection", v >= 9);
+    test_exposed("onfocusout", v >= 9);
 
     next_test();
 }
@@ -101,6 +122,55 @@ function test_xhr_props() {
     test_exposed("addEventListener", v >= 9);
     test_exposed("removeEventListener", v >= 9);
     test_exposed("dispatchEvent", v >= 9);
+
+    next_test();
+}
+
+function test_javascript() {
+    var g = window;
+
+    function test_exposed(func, obj, expect) {
+        if(expect)
+            ok(func in obj, func + " not found in " + obj);
+        else
+            ok(!(func in obj), func + " found in " + obj);
+    }
+
+    function test_parses(code, expect) {
+        var success;
+        try {
+            eval(code);
+            success = true;
+        }catch(e) {
+            success = false;
+        }
+        if(expect)
+            ok(success === true, code + " did not parse");
+        else
+            ok(success === false, code + " parsed");
+    }
+
+    var v = document.documentMode;
+
+    test_exposed("ScriptEngineMajorVersion", g, true);
+
+    test_exposed("JSON", g, v >= 8);
+    test_exposed("now", Date, true);
+    test_exposed("toISOString", Date.prototype, v >= 9);
+    test_exposed("isArray", Array, v >= 9);
+    test_exposed("indexOf", Array.prototype, v >= 9);
+    test_exposed("trim", String.prototype, v >= 9);
+
+    /* FIXME: IE8 implements weird semi-functional property descriptors. */
+    if(v != 8) {
+        test_exposed("getOwnPropertyDescriptor", Object, v >= 8);
+        test_exposed("defineProperty", Object, v >= 8);
+        test_exposed("defineProperties", Object, v >= 8);
+    }
+
+    test_parses("if(false) { o.default; }", v >= 9);
+    test_parses("if(false) { o.with; }", v >= 9);
+    test_parses("if(false) { o.if; }", v >= 9);
 
     next_test();
 }
@@ -164,10 +234,6 @@ function test_conditional_comments() {
     function test_version(v) {
         var version = compat_version ? compat_version : 7;
 
-        /* Uncomment and fix tests below once we support that. */
-        if(version >= 9)
-            return;
-
         div.innerHTML = "<!--[if lte IE " + v + "]>true<![endif]-->";
         ok(div.innerText === (version <= v ? "true" : ""),
            "div.innerText = " + div.innerText + " for version (<=) " + v);
@@ -177,11 +243,11 @@ function test_conditional_comments() {
            "div.innerText = " + div.innerText + " for version (<) " + v);
 
         div.innerHTML = "<!--[if gte IE " + v + "]>true<![endif]-->";
-        ok(div.innerText === (version >= v ? "true" : ""),
+        ok(div.innerText === (version >= v && version < 10 ? "true" : ""),
            "div.innerText = " + div.innerText + " for version (>=) " + v);
 
         div.innerHTML = "<!--[if gt IE " + v + "]>true<![endif]-->";
-        ok(div.innerText === (version > v ? "true" : ""),
+        ok(div.innerText === (version > v && version < 10 ? "true" : ""),
            "div.innerText = " + div.innerText + " for version (>) " + v);
     }
 
@@ -198,7 +264,9 @@ var tests = [
     test_iframe_doc_mode,
     test_elem_props,
     test_doc_props,
+    test_docfrag_props,
     test_window_props,
+    test_javascript,
     test_xhr_props,
     test_elem_by_id,
     test_conditional_comments

@@ -479,6 +479,8 @@ struct apartment_loaded_dll
 
 static const WCHAR wszAptWinClass[] = {'O','l','e','M','a','i','n','T','h','r','e','a','d','W','n','d','C','l','a','s','s',0};
 
+static ATOM apt_win_class;
+
 /*****************************************************************************
  * This section contains OpenDllList implementation
  */
@@ -715,6 +717,36 @@ static APARTMENT *apartment_get_or_create(DWORD model)
 static inline BOOL apartment_is_model(const APARTMENT *apt, DWORD model)
 {
     return (apt->multi_threaded == !(model & COINIT_APARTMENTTHREADED));
+}
+
+/* gets the multi-threaded apartment if it exists. The caller must
+ * release the reference from the apartment as soon as the apartment pointer
+ * is no longer required. */
+static APARTMENT *apartment_find_mta(void)
+{
+    APARTMENT *apt;
+
+    EnterCriticalSection(&csApartment);
+
+    if ((apt = MTA))
+        apartment_addref(apt);
+
+    LeaveCriticalSection(&csApartment);
+
+    return apt;
+}
+
+/* Return the current apartment if it exists, or, failing that, the MTA. Caller
+ * must free the returned apartment in either case. */
+APARTMENT *apartment_get_current_or_mta(void)
+{
+    APARTMENT *apt = COM_CurrentApt();
+    if (apt)
+    {
+        apartment_addref(apt);
+        return apt;
+    }
+    return apartment_find_mta();
 }
 
 static void COM_RevokeRegisteredClassObject(RegisteredClass *curClass)
@@ -1059,8 +1091,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoRevokeClassObject(
 
   TRACE("(%08x)\n",dwRegister);
 
-  apt = COM_CurrentApt();
-  if (!apt)
+  if (!(apt = apartment_get_current_or_mta()))
   {
     ERR("COM was not initialized\n");
     return CO_E_NOTINITIALIZED;
@@ -1091,7 +1122,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoRevokeClassObject(
   }
 
   LeaveCriticalSection( &csRegisteredClassList );
-
+  apartment_release(apt);
   return hr;
 }
 
@@ -1145,9 +1176,17 @@ DWORD apartment_release(struct apartment *apt)
 
     ret = InterlockedDecrement(&apt->refs);
     TRACE("%s: after = %d\n", wine_dbgstr_longlong(apt->oxid), ret);
+
+    if (apt->being_destroyed)
+    {
+        LeaveCriticalSection(&csApartment);
+        return ret;
+    }
+
     /* destruction stuff that needs to happen under csApartment CS */
     if (ret == 0)
     {
+        apt->being_destroyed = TRUE;
         if (apt == MTA) MTA = NULL;
         else if (apt == MainApartment) MainApartment = NULL;
         list_remove(&apt->entry);
@@ -1295,31 +1334,6 @@ static APARTMENT *apartment_findmain(void)
     return result;
 }
 
-/* gets the multi-threaded apartment if it exists. The caller must
- * release the reference from the apartment as soon as the apartment pointer
- * is no longer required. */
-static APARTMENT *apartment_find_multi_threaded(void)
-{
-    APARTMENT *result = NULL;
-    struct list *cursor;
-
-    EnterCriticalSection(&csApartment);
-
-    LIST_FOR_EACH( cursor, &apts )
-    {
-        struct apartment *apt = LIST_ENTRY( cursor, struct apartment, entry );
-        if (apt->multi_threaded)
-        {
-            result = apt;
-            apartment_addref(result);
-            break;
-        }
-    }
-
-    LeaveCriticalSection(&csApartment);
-    return result;
-}
-
 /* gets the specified class object by loading the appropriate DLL, if
  * necessary and calls the DllGetClassObject function for the DLL */
 static HRESULT apartment_getclassobject(struct apartment *apt, LPCWSTR dllpath,
@@ -1339,7 +1353,7 @@ static HRESULT apartment_getclassobject(struct apartment *apt, LPCWSTR dllpath,
         hr = DllGetClassObject(rclsid, riid, ppv);
 
         if (hr != S_OK)
-            ERR("DllGetClassObject returned error 0x%08x\n", hr);
+            ERR("DllGetClassObject returned error 0x%08x for dll %s\n", hr, debugstr_w(dllpath));
 
         return hr;
     }
@@ -1388,7 +1402,7 @@ static HRESULT apartment_getclassobject(struct apartment *apt, LPCWSTR dllpath,
         hr = apartment_loaded_dll->dll->DllGetClassObject(rclsid, riid, ppv);
 
         if (hr != S_OK)
-            ERR("DllGetClassObject returned error 0x%08x\n", hr);
+            ERR("DllGetClassObject returned error 0x%08x for dll %s\n", hr, debugstr_w(dllpath));
     }
 
     return hr;
@@ -1683,7 +1697,7 @@ static BOOL WINAPI register_class( INIT_ONCE *once, void *param, void **context 
     wclass.lpfnWndProc = apartment_wndproc;
     wclass.hInstance = hProxyDll;
     wclass.lpszClassName = wszAptWinClass;
-    RegisterClassW(&wclass);
+    apt_win_class = RegisterClassW(&wclass);
     return TRUE;
 }
 
@@ -2059,9 +2073,11 @@ HRESULT WINAPI CoDisconnectObject( LPUNKNOWN lpUnk, DWORD reserved )
         return hr;
     }
 
-    apt = COM_CurrentApt();
-    if (!apt)
+    if (!(apt = apartment_get_current_or_mta()))
+    {
+        ERR("apartment not initialised\n");
         return CO_E_NOTINITIALIZED;
+    }
 
     manager = get_stub_manager_from_object(apt, lpUnk, FALSE);
     if (manager) {
@@ -2076,6 +2092,7 @@ HRESULT WINAPI CoDisconnectObject( LPUNKNOWN lpUnk, DWORD reserved )
      * not found, making apps think that the object was disconnected, when
      * it actually wasn't */
 
+    apartment_release(apt);
     return S_OK;
 }
 
@@ -2583,7 +2600,7 @@ HRESULT WINAPI CoGetPSClsid(REFIID riid, CLSID *pclsid)
     static const WCHAR wszInterface[] = {'I','n','t','e','r','f','a','c','e','\\',0};
     static const WCHAR wszPSC[] = {'\\','P','r','o','x','y','S','t','u','b','C','l','s','i','d','3','2',0};
     WCHAR path[ARRAYSIZE(wszInterface) - 1 + CHARS_IN_GUID - 1 + ARRAYSIZE(wszPSC)];
-    APARTMENT *apt = COM_CurrentApt();
+    APARTMENT *apt;
     struct registered_psclsid *registered_psclsid;
     ACTCTX_SECTION_KEYED_DATA data;
     HRESULT hr;
@@ -2592,11 +2609,12 @@ HRESULT WINAPI CoGetPSClsid(REFIID riid, CLSID *pclsid)
 
     TRACE("() riid=%s, pclsid=%p\n", debugstr_guid(riid), pclsid);
 
-    if (!apt)
+    if (!(apt = apartment_get_current_or_mta()))
     {
         ERR("apartment not initialised\n");
         return CO_E_NOTINITIALIZED;
     }
+    apartment_release(apt);
 
     if (!pclsid)
         return E_INVALIDARG;
@@ -2667,16 +2685,17 @@ HRESULT WINAPI CoGetPSClsid(REFIID riid, CLSID *pclsid)
  */
 HRESULT WINAPI CoRegisterPSClsid(REFIID riid, REFCLSID rclsid)
 {
-    APARTMENT *apt = COM_CurrentApt();
+    APARTMENT *apt;
     struct registered_psclsid *registered_psclsid;
 
     TRACE("(%s, %s)\n", debugstr_guid(riid), debugstr_guid(rclsid));
 
-    if (!apt)
+    if (!(apt = apartment_get_current_or_mta()))
     {
         ERR("apartment not initialised\n");
         return CO_E_NOTINITIALIZED;
     }
+    apartment_release(apt);
 
     EnterCriticalSection(&cs_registered_psclsid_list);
 
@@ -2802,8 +2821,7 @@ HRESULT WINAPI CoRegisterClassObject(
   if ( (lpdwRegister==0) || (pUnk==0) )
     return E_INVALIDARG;
 
-  apt = COM_CurrentApt();
-  if (!apt)
+  if (!(apt = apartment_get_current_or_mta()))
   {
       ERR("COM was not initialized\n");
       return CO_E_NOTINITIALIZED;
@@ -2826,16 +2844,21 @@ HRESULT WINAPI CoRegisterClassObject(
       if (dwClsContext & CLSCTX_LOCAL_SERVER)
         hr = CoLockObjectExternal(foundObject, TRUE, FALSE);
       IUnknown_Release(foundObject);
+      apartment_release(apt);
       return hr;
     }
     IUnknown_Release(foundObject);
     ERR("object already registered for class %s\n", debugstr_guid(rclsid));
+    apartment_release(apt);
     return CO_E_OBJISREG;
   }
 
   newClass = HeapAlloc(GetProcessHeap(), 0, sizeof(RegisteredClass));
   if ( newClass == NULL )
+  {
+    apartment_release(apt);
     return E_OUTOFMEMORY;
+  }
 
   newClass->classIdentifier = *rclsid;
   newClass->apartment_id    = apt->oxid;
@@ -2864,7 +2887,10 @@ HRESULT WINAPI CoRegisterClassObject(
 
       hr = get_local_server_stream(apt, &marshal_stream);
       if(FAILED(hr))
+      {
+          apartment_release(apt);
           return hr;
+      }
 
       hr = RPC_StartLocalServer(&newClass->classIdentifier,
                                 marshal_stream,
@@ -2872,6 +2898,7 @@ HRESULT WINAPI CoRegisterClassObject(
                                 &newClass->RpcRegistration);
       IStream_Release(marshal_stream);
   }
+  apartment_release(apt);
   return S_OK;
 }
 
@@ -2989,7 +3016,6 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetClassObject(
     IUnknown *regClassObject;
     HRESULT	hres = E_UNEXPECTED;
     APARTMENT  *apt;
-    BOOL release_apt = FALSE;
 
     TRACE("CLSID: %s,IID: %s\n", debugstr_guid(rclsid), debugstr_guid(iid));
 
@@ -2998,14 +3024,10 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetClassObject(
 
     *ppv = NULL;
 
-    if (!(apt = COM_CurrentApt()))
+    if (!(apt = apartment_get_current_or_mta()))
     {
-        if (!(apt = apartment_find_multi_threaded()))
-        {
-            ERR("apartment not initialised\n");
-            return CO_E_NOTINITIALIZED;
-        }
-        release_apt = TRUE;
+        ERR("apartment not initialised\n");
+        return CO_E_NOTINITIALIZED;
     }
 
     if (pServerInfo) {
@@ -3017,7 +3039,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetClassObject(
     {
         if (IsEqualCLSID(rclsid, &CLSID_InProcFreeMarshaler))
         {
-            if (release_apt) apartment_release(apt);
+            apartment_release(apt);
             return FTMarshalCF_Create(iid, ppv);
         }
         if (IsEqualCLSID(rclsid, &CLSID_GlobalOptions))
@@ -3043,7 +3065,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetClassObject(
 
             hres = get_inproc_class_object(apt, &clsreg, &comclass->clsid, iid, !(dwClsContext & WINE_CLSCTX_DONT_HOST), ppv);
             ReleaseActCtx(data.hActCtx);
-            if (release_apt) apartment_release(apt);
+            apartment_release(apt);
             return hres;
         }
     }
@@ -3064,7 +3086,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetClassObject(
        * is good since we are not returning it in the "out" parameter.
        */
       IUnknown_Release(regClassObject);
-      if (release_apt) apartment_release(apt);
+      apartment_release(apt);
       return hres;
     }
 
@@ -3099,7 +3121,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetClassObject(
          * other types */
         if (SUCCEEDED(hres))
         {
-            if (release_apt) apartment_release(apt);
+            apartment_release(apt);
             return hres;
         }
     }
@@ -3135,11 +3157,11 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoGetClassObject(
          * other types */
         if (SUCCEEDED(hres))
         {
-            if (release_apt) apartment_release(apt);
+            apartment_release(apt);
             return hres;
         }
     }
-    if (release_apt) apartment_release(apt);
+    apartment_release(apt);
 
     /* Next try out of process */
     if (CLSCTX_LOCAL_SERVER & dwClsContext)
@@ -3298,15 +3320,12 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoCreateInstanceEx(
     if(FAILED(hres))
         clsid = *rclsid;
 
-    if (!(apt = COM_CurrentApt()))
+    if (!(apt = apartment_get_current_or_mta()))
     {
-        if (!(apt = apartment_find_multi_threaded()))
-        {
-            ERR("apartment not initialised\n");
-            return CO_E_NOTINITIALIZED;
-        }
-        apartment_release(apt);
+        ERR("apartment not initialised\n");
+        return CO_E_NOTINITIALIZED;
     }
+    apartment_release(apt);
 
     /*
      * The Standard Global Interface Table (GIT) object is a process-wide singleton.
@@ -3640,8 +3659,11 @@ HRESULT WINAPI CoLockObjectExternal(
     TRACE("pUnk=%p, fLock=%s, fLastUnlockReleases=%s\n",
           pUnk, fLock ? "TRUE" : "FALSE", fLastUnlockReleases ? "TRUE" : "FALSE");
 
-    apt = COM_CurrentApt();
-    if (!apt) return CO_E_NOTINITIALIZED;
+    if (!(apt = apartment_get_current_or_mta()))
+    {
+        ERR("apartment not initialised\n");
+        return CO_E_NOTINITIALIZED;
+    }
 
     stubmgr = get_stub_manager_from_object(apt, pUnk, fLock);
     if (!stubmgr)
@@ -3650,6 +3672,7 @@ HRESULT WINAPI CoLockObjectExternal(
         /* Note: native is pretty broken here because it just silently
          * fails, without returning an appropriate error code, making apps
          * think that the object was disconnected, when it actually wasn't */
+        apartment_release(apt);
         return S_OK;
     }
 
@@ -3659,6 +3682,7 @@ HRESULT WINAPI CoLockObjectExternal(
         stub_manager_ext_release(stubmgr, 1, FALSE, fLastUnlockReleases);
 
     stub_manager_int_release(stubmgr);
+    apartment_release(apt);
     return S_OK;
 }
 
@@ -4467,6 +4491,8 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD dwFlags, DWORD dwTimeout,
     APARTMENT *apt = COM_CurrentApt();
     BOOL message_loop = apt && !apt->multi_threaded;
     BOOL check_apc = (dwFlags & COWAIT_ALERTABLE) != 0;
+    BOOL post_quit = FALSE;
+    UINT exit_code;
 
     TRACE("(0x%08x, 0x%08x, %d, %p, %p)\n", dwFlags, dwTimeout, cHandles,
         pHandles, lpdwindex);
@@ -4547,20 +4573,27 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD dwFlags, DWORD dwTimeout,
                     }
                 }
 
+                if (!apt->win)
+                {
+                    /* If window is NULL on apartment, peek at messages so that it will not trigger
+                     * MsgWaitForMultipleObjects next time. */
+                    PeekMessageW(NULL, NULL, 0, 0, PM_QS_POSTMESSAGE | PM_NOREMOVE | PM_NOYIELD);
+                }
                 /* some apps (e.g. Visio 2010) don't handle WM_PAINT properly and loop forever,
                  * so after processing 100 messages we go back to checking the wait handles */
                 while (count++ < 100 && COM_PeekMessage(apt, &msg))
                 {
-                    TRACE("received message whilst waiting for RPC: 0x%04x\n", msg.message);
-                    TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
                     if (msg.message == WM_QUIT)
                     {
-                        TRACE("resending WM_QUIT to outer message loop\n");
-                        PostQuitMessage(msg.wParam);
-                        /* no longer need to process messages */
-                        message_loop = FALSE;
-                        break;
+                        TRACE("received WM_QUIT message\n");
+                        post_quit = TRUE;
+                        exit_code = msg.wParam;
+                    }
+                    else
+                    {
+                        TRACE("received message whilst waiting for RPC: 0x%04x\n", msg.message);
+                        TranslateMessage(&msg);
+                        DispatchMessageW(&msg);
                     }
                 }
                 continue;
@@ -4589,6 +4622,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD dwFlags, DWORD dwTimeout,
         }
         break;
     }
+    if (post_quit) PostQuitMessage(exit_code);
     TRACE("-- 0x%08x\n", hr);
     return hr;
 }
@@ -4988,22 +5022,19 @@ HRESULT WINAPI CoGetObjectContext(REFIID riid, void **ppv)
 HRESULT WINAPI CoGetContextToken( ULONG_PTR *token )
 {
     struct oletls *info = COM_CurrentInfo();
+    APARTMENT *apt;
 
     TRACE("(%p)\n", token);
 
     if (!info)
         return E_OUTOFMEMORY;
 
-    if (!info->apt)
+    if (!(apt = apartment_get_current_or_mta()))
     {
-        APARTMENT *apt;
-        if (!(apt = apartment_find_multi_threaded()))
-        {
-            ERR("apartment not initialised\n");
-            return CO_E_NOTINITIALIZED;
-        }
-        apartment_release(apt);
+        ERR("apartment not initialised\n");
+        return CO_E_NOTINITIALIZED;
     }
+    apartment_release(apt);
 
     if (!token)
         return E_POINTER;
@@ -5079,8 +5110,9 @@ HRESULT Handler_DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
 HRESULT WINAPI CoGetApartmentType(APTTYPE *type, APTTYPEQUALIFIER *qualifier)
 {
     struct oletls *info = COM_CurrentInfo();
+    APARTMENT *apt;
 
-    FIXME("(%p, %p): semi-stub\n", type, qualifier);
+    TRACE("(%p, %p)\n", type, qualifier);
 
     if (!type || !qualifier)
         return E_INVALIDARG;
@@ -5098,6 +5130,13 @@ HRESULT WINAPI CoGetApartmentType(APTTYPE *type, APTTYPEQUALIFIER *qualifier)
         *type = APTTYPE_STA;
 
     *qualifier = APTTYPEQUALIFIER_NONE;
+
+    if (!info->apt && (apt = apartment_find_mta()))
+    {
+        apartment_release(apt);
+        *type = APTTYPE_MTA;
+        *qualifier = APTTYPEQUALIFIER_IMPLICIT_MTA;
+    }
 
     return info->apt ? S_OK : CO_E_NOTINITIALIZED;
 }
@@ -5233,7 +5272,8 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID reserved)
     case DLL_PROCESS_DETACH:
         if (reserved) break;
         release_std_git();
-        UnregisterClassW( wszAptWinClass, hProxyDll );
+        if(apt_win_class)
+            UnregisterClassW( (const WCHAR*)MAKEINTATOM(apt_win_class), hProxyDll );
         RPC_UnregisterAllChannelHooks();
         COMPOBJ_DllList_Free();
         DeleteCriticalSection(&csRegisteredClassList);

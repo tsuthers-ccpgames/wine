@@ -1147,8 +1147,8 @@ static unsigned int get_context_system_regs( enum cpu_type cpu )
     case CPU_x86:     return SERVER_CTX_DEBUG_REGISTERS;
     case CPU_x86_64:  return SERVER_CTX_DEBUG_REGISTERS;
     case CPU_POWERPC: return 0;
-    case CPU_ARM:     return 0;
-    case CPU_ARM64:   return 0;
+    case CPU_ARM:     return SERVER_CTX_DEBUG_REGISTERS;
+    case CPU_ARM64:   return SERVER_CTX_DEBUG_REGISTERS;
     }
     return 0;
 }
@@ -1232,6 +1232,12 @@ int is_cpu_supported( enum cpu_type cpu )
     else
         set_error( STATUS_INVALID_IMAGE_FORMAT );
     return 0;
+}
+
+/* return the cpu mask for supported cpus */
+unsigned int get_supported_cpu_mask(void)
+{
+    return supported_cpus & get_prefix_cpu_mask();
 }
 
 /* create a new thread */
@@ -1323,7 +1329,6 @@ DECL_HANDLER(init_thread)
         if (process->unix_pid != current->unix_pid)
             process->unix_pid = -1;  /* can happen with linuxthreads */
         init_thread_context( current );
-        stop_thread_if_suspended( current );
         generate_debug_event( current, CREATE_THREAD_DEBUG_EVENT, &req->entry );
         set_thread_affinity( current, current->affinity );
     }
@@ -1334,6 +1339,7 @@ DECL_HANDLER(init_thread)
     reply->version = SERVER_PROTOCOL_VERSION;
     reply->server_start = server_start_time;
     reply->all_cpus     = supported_cpus & get_prefix_cpu_mask();
+    reply->suspend      = (current->suspend || process->suspend);
     return;
 
  error:
@@ -1715,7 +1721,10 @@ DECL_HANDLER(get_suspend_context)
 
     if (current->suspend_context)
     {
-        set_reply_data_ptr( current->suspend_context, sizeof(context_t) );
+        if (current->suspend_context->flags)
+            set_reply_data_ptr( current->suspend_context, sizeof(context_t) );
+        else
+            free( current->suspend_context );
         if (current->context == current->suspend_context)
         {
             current->context = NULL;
@@ -1745,6 +1754,7 @@ DECL_HANDLER(set_suspend_context)
     else if ((current->suspend_context = mem_alloc( sizeof(context_t) )))
     {
         memcpy( current->suspend_context, get_req_data(), sizeof(context_t) );
+        current->suspend_context->flags = 0;  /* to keep track of what is modified */
         current->context = current->suspend_context;
         if (current->debug_break) break_thread( current );
     }

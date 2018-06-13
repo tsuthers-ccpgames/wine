@@ -18,6 +18,8 @@
 #ifndef _SCRRUN_PRIVATE_H_
 #define _SCRRUN_PRIVATE_H_
 
+#define ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
+
 extern HRESULT WINAPI FileSystem_CreateInstance(IClassFactory*,IUnknown*,REFIID,void**) DECLSPEC_HIDDEN;
 extern HRESULT WINAPI Dictionary_CreateInstance(IClassFactory*,IUnknown*,REFIID,void**) DECLSPEC_HIDDEN;
 
@@ -45,15 +47,5 @@ struct provideclassinfo {
 };
 
 extern void init_classinfo(const GUID *guid, IUnknown *outer, struct provideclassinfo *classinfo) DECLSPEC_HIDDEN;
-
-static inline void* __WINE_ALLOC_SIZE(1) heap_alloc(size_t len)
-{
-    return HeapAlloc(GetProcessHeap(), 0, len);
-}
-
-static inline BOOL heap_free(void *mem)
-{
-    return HeapFree(GetProcessHeap(), 0, mem);
-}
 
 #endif
