@@ -1,4 +1,5 @@
 #!/bin/bash
+# TODO: as per these instructions get the 32bit libs from somewhere: https://wiki.winehq.org/Building_Wine#Shared_WoW64
 ./configure \
 	CC="clang" \
 	CXX="clang++" \
@@ -6,4 +7,4 @@
 	LDFLAGS="-L/usr/local/opt/libxml2/lib" \
 	CPPFLAGS="-I/usr/local/opt/libxml2/include/libxml2" \
 	prefix=$1 \
-        --enable-win64
+        --with-wine64=../wine64-build
