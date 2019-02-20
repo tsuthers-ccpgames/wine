@@ -1,5 +1,5 @@
 #!/bin/bash
-../configure \
+./configure \
 	CC="clang" \
 	CXX="clang++" \
 	CFLAGS="-std=gnu89 -g -DWINE_NO_DEBUG_MSGS=1" \
