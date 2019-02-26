@@ -25,6 +25,97 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 
+static void wined3d_query_buffer_invalidate(struct wined3d_query *query)
+{
+    /* map[0] != map[1]: exact values do not have any significance. */
+    query->map_ptr[0] = 0;
+    query->map_ptr[1] = ~(UINT64)0;
+}
+
+static BOOL wined3d_query_buffer_is_valid(struct wined3d_query *query)
+{
+    return query->map_ptr[0] == query->map_ptr[1];
+}
+
+static void wined3d_query_create_buffer_object(struct wined3d_context *context, struct wined3d_query *query)
+{
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+    const GLuint map_flags = GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+    GLuint buffer_object;
+
+    GL_EXTCALL(glGenBuffers(1, &buffer_object));
+    GL_EXTCALL(glBindBuffer(GL_QUERY_BUFFER, buffer_object));
+    GL_EXTCALL(glBufferStorage(GL_QUERY_BUFFER, sizeof(query->map_ptr[0]) * 2, NULL, map_flags));
+    query->map_ptr = GL_EXTCALL(glMapBufferRange(GL_QUERY_BUFFER, 0, sizeof(query->map_ptr[0]) * 2, map_flags));
+    GL_EXTCALL(glBindBuffer(GL_QUERY_BUFFER, 0));
+    checkGLcall("query buffer object creation");
+
+    wined3d_query_buffer_invalidate(query);
+    query->buffer_object = buffer_object;
+}
+
+static void wined3d_query_destroy_buffer_object(struct wined3d_context *context, struct wined3d_query *query)
+{
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+
+    GL_EXTCALL(glDeleteBuffers(1, &query->buffer_object));
+    checkGLcall("query buffer object destruction");
+
+    query->buffer_object = 0;
+    query->map_ptr = NULL;
+}
+
+/* From ARB_occlusion_query: "Querying the state for a given occlusion query
+ * forces that occlusion query to complete within a finite amount of time."
+ * In practice, that means drivers flush when retrieving
+ * GL_QUERY_RESULT_AVAILABLE, which can be undesirable when applications use a
+ * significant number of queries. Using a persistently mapped query buffer
+ * object allows us to avoid these implicit flushes. An additional benefit is
+ * that it allows us to poll the query status from the application-thread
+ * instead of from the csmt-thread. */
+static BOOL wined3d_query_buffer_queue_result(struct wined3d_context *context, struct wined3d_query *query, GLuint id)
+{
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+    GLsync tmp_sync;
+
+    if (!gl_info->supported[ARB_QUERY_BUFFER_OBJECT] || !gl_info->supported[ARB_BUFFER_STORAGE])
+        return FALSE;
+    /* Don't use query buffers without CSMT, mainly for simplicity. */
+    if (!context->device->cs->thread)
+        return FALSE;
+
+    if (query->buffer_object)
+    {
+        /* If there's still a query result in-flight for the existing buffer
+         * object (i.e., the query was restarted before we received its
+         * result), we can't reuse the existing buffer object. */
+        if (wined3d_query_buffer_is_valid(query))
+            wined3d_query_buffer_invalidate(query);
+        else
+            wined3d_query_destroy_buffer_object(context, query);
+    }
+
+    if (!query->buffer_object)
+        wined3d_query_create_buffer_object(context, query);
+
+    GL_EXTCALL(glBindBuffer(GL_QUERY_BUFFER, query->buffer_object));
+    /* Read the same value twice. We know we have the result if map_ptr[0] == map_ptr[1]. */
+    GL_EXTCALL(glGetQueryObjectui64v(id, GL_QUERY_RESULT, (void *)0));
+    GL_EXTCALL(glGetQueryObjectui64v(id, GL_QUERY_RESULT, (void *)sizeof(query->map_ptr[0])));
+    GL_EXTCALL(glBindBuffer(GL_QUERY_BUFFER, 0));
+    checkGLcall("queue query result");
+
+    /* ARB_buffer_storage requires the client to call FenceSync with
+     * SYNC_GPU_COMMANDS_COMPLETE after the server does a write. This behavior
+     * is not enforced by Mesa.
+     */
+    tmp_sync = GL_EXTCALL(glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0));
+    GL_EXTCALL(glDeleteSync(tmp_sync));
+    checkGLcall("query buffer sync");
+
+    return TRUE;
+}
+
 static UINT64 get_query_result64(GLuint id, const struct wined3d_gl_info *gl_info)
 {
     if (gl_info->supported[ARB_TIMER_QUERY])
@@ -339,6 +430,14 @@ static void wined3d_query_destroy_object(void *object)
     if (!list_empty(&query->poll_list_entry))
         list_remove(&query->poll_list_entry);
 
+    if (query->buffer_object)
+    {
+        struct wined3d_context *context;
+        context = context_acquire(query->device, NULL, 0);
+        wined3d_query_destroy_buffer_object(context, query);
+        context_release(context);
+    }
+
     /* Queries are specific to the GL context that created them. Not
      * deleting the query will obviously leak it, but that's still better
      * than potentially deleting a different query with the same id in this
@@ -382,15 +481,20 @@ HRESULT CDECL wined3d_query_get_data(struct wined3d_query *query,
         return WINED3DERR_INVALIDCALL;
     }
 
-    if (!query->device->cs->thread)
+    if (query->device->cs->thread)
     {
-        if (!query->query_ops->query_poll(query, flags))
+        if (query->counter_main != query->counter_retrieved
+                || (query->buffer_object && !wined3d_query_buffer_is_valid(query)))
+        {
+            if (flags & WINED3DGETDATA_FLUSH && !query->device->cs->queries_flushed)
+                wined3d_cs_emit_flush(query->device->cs);
             return S_FALSE;
+        }
+        if (query->buffer_object)
+            query->data = query->map_ptr;
     }
-    else if (query->counter_main != query->counter_retrieved)
+    else if (!query->query_ops->query_poll(query, flags))
     {
-        if (flags & WINED3DGETDATA_FLUSH && !query->device->cs->queries_flushed)
-            wined3d_cs_emit_flush(query->device->cs);
         return S_FALSE;
     }
 
@@ -526,7 +630,7 @@ static BOOL wined3d_occlusion_query_ops_issue(struct wined3d_query *query, DWORD
 {
     struct wined3d_occlusion_query *oq = wined3d_occlusion_query_from_query(query);
     struct wined3d_device *device = query->device;
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info;
     struct wined3d_context *context;
     BOOL poll = FALSE;
 
@@ -540,6 +644,7 @@ static BOOL wined3d_occlusion_query_ops_issue(struct wined3d_query *query, DWORD
         {
             if ((context = context_reacquire(device, oq->context)))
             {
+                gl_info = context->gl_info;
                 GL_EXTCALL(glEndQuery(GL_SAMPLES_PASSED));
                 checkGLcall("glEndQuery()");
             }
@@ -558,6 +663,7 @@ static BOOL wined3d_occlusion_query_ops_issue(struct wined3d_query *query, DWORD
             context = context_acquire(device, NULL, 0);
             context_alloc_occlusion_query(context, oq);
         }
+        gl_info = context->gl_info;
 
         GL_EXTCALL(glBeginQuery(GL_SAMPLES_PASSED, oq->id));
         checkGLcall("glBeginQuery()");
@@ -574,8 +680,10 @@ static BOOL wined3d_occlusion_query_ops_issue(struct wined3d_query *query, DWORD
         {
             if ((context = context_reacquire(device, oq->context)))
             {
+                gl_info = context->gl_info;
                 GL_EXTCALL(glEndQuery(GL_SAMPLES_PASSED));
                 checkGLcall("glEndQuery()");
+                wined3d_query_buffer_queue_result(context, query, oq->id);
 
                 context_release(context);
                 poll = TRUE;
@@ -709,11 +817,29 @@ static BOOL wined3d_so_statistics_query_ops_poll(struct wined3d_query *query, DW
     return written_available && generated_available;
 }
 
+static void wined3d_so_statistics_query_end(struct wined3d_so_statistics_query *query,
+        struct wined3d_context *context)
+{
+    const struct wined3d_gl_info *gl_info = context->gl_info;
+
+    if (gl_info->supported[ARB_TRANSFORM_FEEDBACK3])
+    {
+        GL_EXTCALL(glEndQueryIndexed(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, query->stream_idx));
+        GL_EXTCALL(glEndQueryIndexed(GL_PRIMITIVES_GENERATED, query->stream_idx));
+    }
+    else
+    {
+        GL_EXTCALL(glEndQuery(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN));
+        GL_EXTCALL(glEndQuery(GL_PRIMITIVES_GENERATED));
+    }
+    checkGLcall("end query");
+}
+
 static BOOL wined3d_so_statistics_query_ops_issue(struct wined3d_query *query, DWORD flags)
 {
     struct wined3d_so_statistics_query *pq = wined3d_so_statistics_query_from_query(query);
     struct wined3d_device *device = query->device;
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info;
     struct wined3d_context *context;
     BOOL poll = FALSE;
 
@@ -725,8 +851,7 @@ static BOOL wined3d_so_statistics_query_ops_issue(struct wined3d_query *query, D
         {
             if ((context = context_reacquire(device, pq->context)))
             {
-                GL_EXTCALL(glEndQueryIndexed(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, pq->stream_idx));
-                GL_EXTCALL(glEndQueryIndexed(GL_PRIMITIVES_GENERATED, pq->stream_idx));
+                wined3d_so_statistics_query_end(pq, context);
             }
             else
             {
@@ -743,11 +868,22 @@ static BOOL wined3d_so_statistics_query_ops_issue(struct wined3d_query *query, D
             context = context_acquire(device, NULL, 0);
             context_alloc_so_statistics_query(context, pq);
         }
+        gl_info = context->gl_info;
 
-        GL_EXTCALL(glBeginQueryIndexed(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN,
-                pq->stream_idx, pq->u.query.written));
-        GL_EXTCALL(glBeginQueryIndexed(GL_PRIMITIVES_GENERATED,
-                pq->stream_idx, pq->u.query.generated));
+        if (gl_info->supported[ARB_TRANSFORM_FEEDBACK3])
+        {
+            GL_EXTCALL(glBeginQueryIndexed(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN,
+                    pq->stream_idx, pq->u.query.written));
+            GL_EXTCALL(glBeginQueryIndexed(GL_PRIMITIVES_GENERATED,
+                    pq->stream_idx, pq->u.query.generated));
+        }
+        else
+        {
+            GL_EXTCALL(glBeginQuery(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN,
+                    pq->u.query.written));
+            GL_EXTCALL(glBeginQuery(GL_PRIMITIVES_GENERATED,
+                    pq->u.query.generated));
+        }
         checkGLcall("begin query");
 
         context_release(context);
@@ -759,9 +895,7 @@ static BOOL wined3d_so_statistics_query_ops_issue(struct wined3d_query *query, D
         {
             if ((context = context_reacquire(device, pq->context)))
             {
-                GL_EXTCALL(glEndQueryIndexed(GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN, pq->stream_idx));
-                GL_EXTCALL(glEndQueryIndexed(GL_PRIMITIVES_GENERATED, pq->stream_idx));
-                checkGLcall("end query");
+                wined3d_so_statistics_query_end(pq, context);
 
                 context_release(context);
                 poll = TRUE;
@@ -846,7 +980,7 @@ static BOOL wined3d_pipeline_query_ops_issue(struct wined3d_query *query, DWORD 
 {
     struct wined3d_pipeline_statistics_query *pq = wined3d_pipeline_statistics_query_from_query(query);
     struct wined3d_device *device = query->device;
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info;
     struct wined3d_context *context;
     BOOL poll = FALSE;
 
@@ -875,6 +1009,7 @@ static BOOL wined3d_pipeline_query_ops_issue(struct wined3d_query *query, DWORD 
             context = context_acquire(device, NULL, 0);
             context_alloc_pipeline_statistics_query(context, pq);
         }
+        gl_info = context->gl_info;
 
         GL_EXTCALL(glBeginQuery(GL_VERTICES_SUBMITTED_ARB, pq->u.query.vertices));
         GL_EXTCALL(glBeginQuery(GL_PRIMITIVES_SUBMITTED_ARB, pq->u.query.primitives));
@@ -1124,6 +1259,8 @@ static HRESULT wined3d_so_statistics_query_create(struct wined3d_device *device,
 
     if (WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM0 <= type && type <= WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM3)
         stream_idx = type - WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM0;
+    else if (type == WINED3D_QUERY_TYPE_SO_STATISTICS)
+        stream_idx = 0;
     else
         return WINED3DERR_NOTAVAILABLE;
 
@@ -1135,7 +1272,7 @@ static HRESULT wined3d_so_statistics_query_create(struct wined3d_device *device,
         WARN("OpenGL implementation does not support primitive queries.\n");
         return WINED3DERR_NOTAVAILABLE;
     }
-    if (!gl_info->supported[ARB_TRANSFORM_FEEDBACK3])
+    if (stream_idx && !gl_info->supported[ARB_TRANSFORM_FEEDBACK3])
     {
         WARN("OpenGL implementation does not support indexed queries.\n");
         return WINED3DERR_NOTAVAILABLE;
@@ -1218,6 +1355,7 @@ HRESULT CDECL wined3d_query_create(struct wined3d_device *device, enum wined3d_q
         case WINED3D_QUERY_TYPE_TIMESTAMP_FREQ:
             return wined3d_timestamp_disjoint_query_create(device, type, parent, parent_ops, query);
 
+        case WINED3D_QUERY_TYPE_SO_STATISTICS:
         case WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM0:
         case WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM1:
         case WINED3D_QUERY_TYPE_SO_STATISTICS_STREAM2:

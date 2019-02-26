@@ -20,6 +20,7 @@
 
 #include <stdarg.h>
 #include <limits.h>
+#include <errno.h>
 
 #include "msvcp90.h"
 
@@ -29,6 +30,218 @@
 #include "wine/debug.h"
 #include "wine/exception.h"
 WINE_DEFAULT_DEBUG_CHANNEL(msvcp);
+
+#if _MSVCP_VER >= 110
+/* error strings generated with glibc strerror */
+static const char str_EPERM[]           = "operation not permitted";
+static const char str_ENOENT[]          = "no such file or directory";
+static const char str_ESRCH[]           = "no such process";
+static const char str_EINTR[]           = "interrupted system call";
+static const char str_EIO[]             = "input/output error";
+static const char str_ENXIO[]           = "no such device or address";
+static const char str_E2BIG[]           = "argument list too long";
+static const char str_ENOEXEC[]         = "exec format error";
+static const char str_EBADF[]           = "bad file descriptor";
+static const char str_ECHILD[]          = "no child processes";
+static const char str_EAGAIN[]          = "resource temporarily unavailable";
+static const char str_ENOMEM[]          = "cannot allocate memory";
+static const char str_EACCES[]          = "permission denied";
+static const char str_EFAULT[]          = "bad address";
+static const char str_EBUSY[]           = "device or resource busy";
+static const char str_EEXIST[]          = "file exists";
+static const char str_EXDEV[]           = "invalid cross-device link";
+static const char str_ENODEV[]          = "no such device";
+static const char str_ENOTDIR[]         = "not a directory";
+static const char str_EISDIR[]          = "is a directory";
+static const char str_EINVAL[]          = "invalid argument";
+static const char str_ENFILE[]          = "too many open files in system";
+static const char str_EMFILE[]          = "too many open files";
+static const char str_ENOTTY[]          = "inappropriate ioctl for device";
+static const char str_EFBIG[]           = "file too large";
+static const char str_ENOSPC[]          = "no space left on device";
+static const char str_ESPIPE[]          = "illegal seek";
+static const char str_EROFS[]           = "read-only file system";
+static const char str_EMLINK[]          = "too many links";
+static const char str_EPIPE[]           = "broken pipe";
+static const char str_EDOM[]            = "numerical argument out of domain";
+static const char str_ERANGE[]          = "numerical result out of range";
+static const char str_EDEADLK[]         = "resource deadlock avoided";
+static const char str_ENAMETOOLONG[]    = "file name too long";
+static const char str_ENOLCK[]          = "no locks available";
+static const char str_ENOSYS[]          = "function not implemented";
+static const char str_ENOTEMPTY[]       = "directory not empty";
+static const char str_EILSEQ[]          = "invalid or incomplete multibyte or wide character";
+static const char str_EADDRINUSE[]      = "address already in use";
+static const char str_EADDRNOTAVAIL[]   = "cannot assign requested address";
+static const char str_EAFNOSUPPORT[]    = "address family not supported by protocol";
+static const char str_EALREADY[]        = "operation already in progress";
+static const char str_EBADMSG[]         = "not a data message";
+static const char str_ECANCELED[]       = "operation Canceled";
+static const char str_ECONNABORTED[]    = "software caused connection abort";
+static const char str_ECONNREFUSED[]    = "connection refused";
+static const char str_ECONNRESET[]      = "connection reset by peer";
+static const char str_EDESTADDRREQ[]    = "destination address required";
+static const char str_EHOSTUNREACH[]    = "no route to host";
+static const char str_EIDRM[]           = "identifier removed";
+static const char str_EINPROGRESS[]     = "operation now in progress";
+static const char str_EISCONN[]         = "transport endpoint is already connected";
+static const char str_ELOOP[]           = "too many symbolic links encountered";
+static const char str_EMSGSIZE[]        = "message too long";
+static const char str_ENETDOWN[]        = "network is down";
+static const char str_ENETRESET[]       = "network dropped connection because of reset";
+static const char str_ENETUNREACH[]     = "network is unreachable";
+static const char str_ENOBUFS[]         = "no buffer space available";
+static const char str_ENODATA[]         = "no data available";
+static const char str_ENOLINK[]         = "link has been severed";
+static const char str_ENOMSG[]          = "no message of desired type";
+static const char str_ENOPROTOOPT[]     = "protocol not available";
+static const char str_ENOSR[]           = "out of streams resources";
+static const char str_ENOSTR[]          = "device not a stream";
+static const char str_ENOTCONN[]        = "transport endpoint is not connected";
+static const char str_ENOTRECOVERABLE[] = "state not recoverable";
+static const char str_ENOTSOCK[]        = "socket operation on non-socket";
+static const char str_ENOTSUP[]         = "not supported";
+static const char str_EOPNOTSUPP[]      = "operation not supported on transport endpoint";
+static const char str_EOVERFLOW[]       = "value too large for defined data type";
+static const char str_EOWNERDEAD[]      = "owner died";
+static const char str_EPROTO[]          = "protocol error";
+static const char str_EPROTONOSUPPORT[] = "protocol not supported";
+static const char str_EPROTOTYPE[]      = "protocol wrong type for socket";
+static const char str_ETIME[]           = "timer expired";
+static const char str_ETIMEDOUT[]       = "connection timed out";
+static const char str_ETXTBSY[]         = "text file busy";
+static const char str_EWOULDBLOCK[]     = "operation would block";
+
+static const struct {
+    int err;
+    const char *str;
+} syserror_map[] =
+{
+    {EPERM, str_EPERM},
+    {ENOENT, str_ENOENT},
+    {ESRCH, str_ESRCH},
+    {EINTR, str_EINTR},
+    {EIO, str_EIO},
+    {ENXIO, str_ENXIO},
+    {E2BIG, str_E2BIG},
+    {ENOEXEC, str_ENOEXEC},
+    {EBADF, str_EBADF},
+    {ECHILD, str_ECHILD},
+    {EAGAIN, str_EAGAIN},
+    {ENOMEM, str_ENOMEM},
+    {EACCES, str_EACCES},
+    {EFAULT, str_EFAULT},
+    {EBUSY, str_EBUSY},
+    {EEXIST, str_EEXIST},
+    {EXDEV, str_EXDEV},
+    {ENODEV, str_ENODEV},
+    {ENOTDIR, str_ENOTDIR},
+    {EISDIR, str_EISDIR},
+    {EINVAL, str_EINVAL},
+    {ENFILE, str_ENFILE},
+    {EMFILE, str_EMFILE},
+    {ENOTTY, str_ENOTTY},
+    {EFBIG, str_EFBIG},
+    {ENOSPC, str_ENOSPC},
+    {ESPIPE, str_ESPIPE},
+    {EROFS, str_EROFS},
+    {EMLINK, str_EMLINK},
+    {EPIPE, str_EPIPE},
+    {EDOM, str_EDOM},
+    {ERANGE, str_ERANGE},
+    {EDEADLK, str_EDEADLK},
+    {ENAMETOOLONG, str_ENAMETOOLONG},
+    {ENOLCK, str_ENOLCK},
+    {ENOSYS, str_ENOSYS},
+    {ENOTEMPTY, str_ENOTEMPTY},
+    {EILSEQ, str_EILSEQ},
+    {EADDRINUSE, str_EADDRINUSE},
+    {EADDRNOTAVAIL, str_EADDRNOTAVAIL},
+    {EAFNOSUPPORT, str_EAFNOSUPPORT},
+    {EALREADY, str_EALREADY},
+    {EBADMSG, str_EBADMSG},
+    {ECANCELED, str_ECANCELED},
+    {ECONNABORTED, str_ECONNABORTED},
+    {ECONNREFUSED, str_ECONNREFUSED},
+    {ECONNRESET, str_ECONNRESET},
+    {EDESTADDRREQ, str_EDESTADDRREQ},
+    {EHOSTUNREACH, str_EHOSTUNREACH},
+    {EIDRM, str_EIDRM},
+    {EINPROGRESS, str_EINPROGRESS},
+    {EISCONN, str_EISCONN},
+    {ELOOP, str_ELOOP},
+    {EMSGSIZE, str_EMSGSIZE},
+    {ENETDOWN, str_ENETDOWN},
+    {ENETRESET, str_ENETRESET},
+    {ENETUNREACH, str_ENETUNREACH},
+    {ENOBUFS, str_ENOBUFS},
+    {ENODATA, str_ENODATA},
+    {ENOLINK, str_ENOLINK},
+    {ENOMSG, str_ENOMSG},
+    {ENOPROTOOPT, str_ENOPROTOOPT},
+    {ENOSR, str_ENOSR},
+    {ENOSTR, str_ENOSTR},
+    {ENOTCONN, str_ENOTCONN},
+    {ENOTRECOVERABLE, str_ENOTRECOVERABLE},
+    {ENOTSOCK, str_ENOTSOCK},
+    {ENOTSUP, str_ENOTSUP},
+    {EOPNOTSUPP, str_EOPNOTSUPP},
+    {EOVERFLOW, str_EOVERFLOW},
+    {EOWNERDEAD, str_EOWNERDEAD},
+    {EPROTO, str_EPROTO},
+    {EPROTONOSUPPORT, str_EPROTONOSUPPORT},
+    {EPROTOTYPE, str_EPROTOTYPE},
+    {ETIME, str_ETIME},
+    {ETIMEDOUT, str_ETIMEDOUT},
+    {ETXTBSY, str_ETXTBSY},
+    {EWOULDBLOCK, str_EWOULDBLOCK},
+};
+#endif
+
+#if _MSVCP_VER >= 140
+static const struct {
+    int winerr;
+    int doserr;
+} winerror_map[] =
+{
+    {ERROR_INVALID_FUNCTION, ENOSYS}, {ERROR_FILE_NOT_FOUND, ENOENT},
+    {ERROR_PATH_NOT_FOUND, ENOENT}, {ERROR_TOO_MANY_OPEN_FILES, EMFILE},
+    {ERROR_ACCESS_DENIED, EACCES}, {ERROR_INVALID_HANDLE, EINVAL},
+    {ERROR_NOT_ENOUGH_MEMORY, ENOMEM}, {ERROR_INVALID_ACCESS, EACCES},
+    {ERROR_OUTOFMEMORY, ENOMEM}, {ERROR_INVALID_DRIVE, ENODEV},
+    {ERROR_CURRENT_DIRECTORY, EACCES}, {ERROR_NOT_SAME_DEVICE, EXDEV},
+    {ERROR_WRITE_PROTECT, EACCES}, {ERROR_BAD_UNIT, ENODEV},
+    {ERROR_NOT_READY, EAGAIN}, {ERROR_SEEK, EIO}, {ERROR_WRITE_FAULT, EIO},
+    {ERROR_READ_FAULT, EIO}, {ERROR_SHARING_VIOLATION, EACCES},
+    {ERROR_LOCK_VIOLATION, ENOLCK}, {ERROR_HANDLE_DISK_FULL, ENOSPC},
+    {ERROR_NOT_SUPPORTED, ENOTSUP}, {ERROR_DEV_NOT_EXIST, ENODEV},
+    {ERROR_FILE_EXISTS, EEXIST}, {ERROR_CANNOT_MAKE, EACCES},
+    {ERROR_INVALID_PARAMETER, EINVAL}, {ERROR_OPEN_FAILED, EIO},
+    {ERROR_BUFFER_OVERFLOW, ENAMETOOLONG}, {ERROR_DISK_FULL, ENOSPC},
+    {ERROR_INVALID_NAME, EINVAL}, {ERROR_NEGATIVE_SEEK, EINVAL},
+    {ERROR_BUSY_DRIVE, EBUSY}, {ERROR_DIR_NOT_EMPTY, ENOTEMPTY},
+    {ERROR_BUSY, EBUSY}, {ERROR_ALREADY_EXISTS, EEXIST},
+    {ERROR_LOCKED, ENOLCK}, {ERROR_DIRECTORY, EINVAL},
+    {ERROR_OPERATION_ABORTED, ECANCELED}, {ERROR_NOACCESS, EACCES},
+    {ERROR_CANTOPEN, EIO}, {ERROR_CANTREAD, EIO}, {ERROR_CANTWRITE, EIO},
+    {ERROR_RETRY, EAGAIN}, {ERROR_OPEN_FILES, EBUSY},
+    {ERROR_DEVICE_IN_USE, EBUSY}, {ERROR_REPARSE_TAG_INVALID, EINVAL},
+    {WSAEINTR, EINTR}, {WSAEBADF, EBADF}, {WSAEACCES, EACCES},
+    {WSAEFAULT, EFAULT}, {WSAEINVAL, EINVAL}, {WSAEMFILE, EMFILE},
+    {WSAEWOULDBLOCK, EWOULDBLOCK}, {WSAEINPROGRESS, EINPROGRESS},
+    {WSAEALREADY, EALREADY}, {WSAENOTSOCK, ENOTSOCK},
+    {WSAEDESTADDRREQ, EDESTADDRREQ}, {WSAEMSGSIZE, EMSGSIZE},
+    {WSAEPROTOTYPE, EPROTOTYPE}, {WSAENOPROTOOPT, ENOPROTOOPT},
+    {WSAEPROTONOSUPPORT, EPROTONOSUPPORT}, {WSAEOPNOTSUPP, EOPNOTSUPP},
+    {WSAEAFNOSUPPORT, EAFNOSUPPORT}, {WSAEADDRINUSE, EADDRINUSE},
+    {WSAEADDRNOTAVAIL, EADDRNOTAVAIL}, {WSAENETDOWN, ENETDOWN},
+    {WSAENETUNREACH, ENETUNREACH}, {WSAENETRESET, ENETRESET},
+    {WSAECONNABORTED, ECONNABORTED}, {WSAECONNRESET, ECONNRESET},
+    {WSAENOBUFS, ENOBUFS}, {WSAEISCONN, EISCONN}, {WSAENOTCONN, ENOTCONN},
+    {WSAETIMEDOUT, ETIMEDOUT}, {WSAECONNREFUSED, ECONNREFUSED},
+    {WSAENAMETOOLONG, ENAMETOOLONG}, {WSAEHOSTUNREACH, EHOSTUNREACH}
+};
+#endif
 
 struct __Container_proxy;
 
@@ -223,7 +436,7 @@ unsigned short __cdecl wctype(const char *property)
     };
     unsigned int i;
 
-    for(i=0; i<sizeof(properties)/sizeof(properties[0]); i++)
+    for(i = 0; i < ARRAY_SIZE(properties); i++)
         if(!strcmp(property, properties[i].name))
             return properties[i].mask;
 
@@ -450,7 +663,7 @@ unsigned int __cdecl _Random_device(void)
 #endif
 
 #if _MSVCP_VER >= 110
-#if defined(__i386__) && !defined(__arm__)
+#if defined(__i386__)
 
 extern void *call_thiscall_func;
 __ASM_GLOBAL_FUNC(call_thiscall_func,
@@ -1603,6 +1816,7 @@ DEFINE_RTTI_DATA0(_Runtime_object, 0, ".?AV_Runtime_object@details@Concurrency@@
 
 #endif
 
+#if _MSVCP_VER >= 100
 typedef struct __Concurrent_vector_base_v4
 {
     void* (__cdecl *allocator)(struct __Concurrent_vector_base_v4 *, MSVCP_size_t);
@@ -1612,25 +1826,142 @@ typedef struct __Concurrent_vector_base_v4
     void **segment;
 } _Concurrent_vector_base_v4;
 
+#define STORAGE_SIZE ARRAY_SIZE(this->storage)
+#define SEGMENT_SIZE (sizeof(void*) * 8)
+
+typedef struct compact_block
+{
+    MSVCP_size_t first_block;
+    void *blocks[SEGMENT_SIZE];
+    int size_check;
+}compact_block;
+
+/* based on wined3d_log2i from wined3d.h */
+/* Return the integer base-2 logarithm of (x|1). Result is 0 for x == 0. */
+static inline unsigned int log2i(unsigned int x)
+{
+#ifdef HAVE___BUILTIN_CLZ
+    return __builtin_clz(x|1) ^ 0x1f;
+#else
+    static const unsigned int l[] =
+    {
+        ~0u, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+          4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+          5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+          5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+    };
+    unsigned int i;
+
+    x |= 1;
+    return (i = x >> 16) ? (x = i >> 8) ? l[x] + 24 : l[i] + 16 : (i = x >> 8) ? l[i] + 8 : l[x];
+#endif
+}
+
+/* ?_Segment_index_of@_Concurrent_vector_base_v4@details@Concurrency@@KAII@Z */
+/* ?_Segment_index_of@_Concurrent_vector_base_v4@details@Concurrency@@KA_K_K@Z */
+MSVCP_size_t __cdecl _vector_base_v4__Segment_index_of(MSVCP_size_t x)
+{
+    unsigned int half;
+
+    TRACE("(%lu)\n", x);
+
+    if((sizeof(x) == 8) && (half = x >> 32))
+        return log2i(half) + 32;
+
+    return log2i(x);
+}
+
+/* ?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IBEXI@Z */
+/* ?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IEBAX_K@Z */
+DEFINE_THISCALL_WRAPPER(_vector_base_v4__Internal_throw_exception, 8)
+void __thiscall _vector_base_v4__Internal_throw_exception(void/*_vector_base_v4*/ *this, MSVCP_size_t idx)
+{
+    static const struct {
+        exception_type type;
+        const char *msg;
+    } exceptions[] = {
+        { EXCEPTION_OUT_OF_RANGE, "Index out of range" },
+        { EXCEPTION_OUT_OF_RANGE, "Index out of segments table range" },
+        { EXCEPTION_RANGE_ERROR,  "Index is inside segment which failed to be allocated" },
+    };
+
+    TRACE("(%p %lu)\n", this, idx);
+
+    if(idx < ARRAY_SIZE(exceptions))
+        throw_exception(exceptions[idx].type, exceptions[idx].msg);
+}
+
+#ifdef _WIN64
+#define InterlockedCompareExchangeSizeT(dest, exchange, cmp) InterlockedCompareExchangeSize((MSVCP_size_t *)dest, (MSVCP_size_t)exchange, (MSVCP_size_t)cmp)
+static MSVCP_size_t InterlockedCompareExchangeSize(MSVCP_size_t volatile *dest, MSVCP_size_t exchange, MSVCP_size_t cmp)
+{
+    MSVCP_size_t v;
+
+    v = InterlockedCompareExchange64((LONGLONG*)dest, exchange, cmp);
+
+    return v;
+}
+#else
+#define InterlockedCompareExchangeSizeT(dest, exchange, cmp) InterlockedCompareExchange((LONG*)dest, (MSVCP_size_t)exchange, (MSVCP_size_t)cmp)
+#endif
+
+#define SEGMENT_ALLOC_MARKER ((void*)1)
+
+static void concurrent_vector_alloc_segment(_Concurrent_vector_base_v4 *this,
+        MSVCP_size_t seg, MSVCP_size_t element_size)
+{
+    int spin;
+
+    while(!this->segment[seg] || this->segment[seg] == SEGMENT_ALLOC_MARKER)
+    {
+        spin = 0;
+        while(this->segment[seg] == SEGMENT_ALLOC_MARKER)
+            spin_wait(&spin);
+        if(!InterlockedCompareExchangeSizeT((this->segment + seg),
+                    SEGMENT_ALLOC_MARKER, 0))
+        __TRY
+        {
+            if(seg == 0)
+                this->segment[seg] = this->allocator(this, element_size * (1 << this->first_block));
+            else if(seg < this->first_block)
+                this->segment[seg] = (BYTE**)this->segment[0]
+                        + element_size * (1 << seg);
+            else
+                this->segment[seg] = this->allocator(this, element_size * (1 << seg));
+        }
+        __EXCEPT_ALL
+        {
+            this->segment[seg] = NULL;
+            throw_exception(EXCEPTION_RERAISE, NULL);
+        }
+        __ENDTRY
+        if(!this->segment[seg])
+            _vector_base_v4__Internal_throw_exception(this, 2);
+    }
+}
+
 /* ??1_Concurrent_vector_base_v4@details@Concurrency@@IAE@XZ */
 /* ??1_Concurrent_vector_base_v4@details@Concurrency@@IEAA@XZ */
 DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4_dtor, 4)
 void __thiscall _Concurrent_vector_base_v4_dtor(
         _Concurrent_vector_base_v4 *this)
 {
-    FIXME("(%p) stub\n", this);
-}
+    TRACE("(%p)\n", this);
 
-/* ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z */
-/* ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAX1@ZP6AX2PEBX1@Z5@Z */
-DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_assign, 24)
-void __thiscall _Concurrent_vector_base_v4__Internal_assign(
-        _Concurrent_vector_base_v4 *this, const _Concurrent_vector_base_v4 *v,
-        MSVCP_size_t len, void (__cdecl *func0)(void*, MSVCP_size_t),
-        void (__cdecl *func1)(void*, const void*, MSVCP_size_t),
-        void (__cdecl *func2)(void*, const void*, MSVCP_size_t))
-{
-    FIXME("(%p %p %ld %p %p %p) stub\n", this, v, len, func0, func1, func2);
+    if(this->segment != this->storage)
+        free(this->segment);
 }
 
 /* ?_Internal_capacity@_Concurrent_vector_base_v4@details@Concurrency@@IBEIXZ */
@@ -1639,8 +1970,55 @@ DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_capacity, 4)
 MSVCP_size_t __thiscall _Concurrent_vector_base_v4__Internal_capacity(
         const _Concurrent_vector_base_v4 *this)
 {
-    FIXME("(%p) stub\n", this);
-    return 0;
+    MSVCP_size_t last_block;
+    int i;
+
+    TRACE("(%p)\n", this);
+
+    last_block = (this->segment == this->storage ? STORAGE_SIZE : SEGMENT_SIZE);
+    for(i = 0; i < last_block; i++)
+    {
+        if(!this->segment[i])
+            return !i ? 0 : 1 << i;
+    }
+    return 1 << i;
+}
+
+/* ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIII@Z */
+/* ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00@Z */
+DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_reserve, 16)
+void __thiscall _Concurrent_vector_base_v4__Internal_reserve(
+        _Concurrent_vector_base_v4 *this, MSVCP_size_t size,
+        MSVCP_size_t element_size, MSVCP_size_t max_size)
+{
+    MSVCP_size_t block_idx, capacity;
+    int i;
+    void **new_segment;
+
+    TRACE("(%p %ld %ld %ld)\n", this, size, element_size, max_size);
+
+    if(size > max_size) _vector_base_v4__Internal_throw_exception(this, 0);
+    capacity = _Concurrent_vector_base_v4__Internal_capacity(this);
+    if(size <= capacity) return;
+    block_idx = _vector_base_v4__Segment_index_of(size - 1);
+    if(!this->first_block)
+        InterlockedCompareExchangeSizeT(&this->first_block, block_idx + 1, 0);
+    i = _vector_base_v4__Segment_index_of(capacity);
+    if(this->storage == this->segment) {
+        for(; i <= block_idx && i < STORAGE_SIZE; i++)
+            concurrent_vector_alloc_segment(this, i, element_size);
+        if(block_idx >= STORAGE_SIZE) {
+            new_segment = malloc(SEGMENT_SIZE * sizeof(void*));
+            if(new_segment == NULL) _vector_base_v4__Internal_throw_exception(this, 2);
+            memset(new_segment, 0, SEGMENT_SIZE * sizeof(*new_segment));
+            memcpy(new_segment, this->storage, STORAGE_SIZE * sizeof(*new_segment));
+            if(InterlockedCompareExchangePointer((void*)&this->segment, new_segment,
+                        this->storage) != this->storage)
+                free(new_segment);
+        }
+    }
+    for(; i <= block_idx; i++)
+        concurrent_vector_alloc_segment(this, i, element_size);
 }
 
 /* ?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IAEIP6AXPAXI@Z@Z */
@@ -1649,20 +2027,80 @@ DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_clear, 8)
 MSVCP_size_t __thiscall _Concurrent_vector_base_v4__Internal_clear(
         _Concurrent_vector_base_v4 *this, void (__cdecl *clear)(void*, MSVCP_size_t))
 {
-    FIXME("(%p %p) stub\n", this, clear);
-    return 0;
+    MSVCP_size_t seg_no, elems;
+    int i;
+
+    TRACE("(%p %p)\n", this, clear);
+
+    seg_no = this->early_size  ? _vector_base_v4__Segment_index_of(this->early_size) + 1 : 0;
+    for(i = seg_no - 1; i >= 0; i--) {
+        elems = this->early_size - (1 << i & ~1);
+        clear(this->segment[i], elems);
+        this->early_size -= elems;
+    }
+    while(seg_no < (this->segment == this->storage ? STORAGE_SIZE : SEGMENT_SIZE)) {
+        if(!this->segment[seg_no]) break;
+        seg_no++;
+    }
+    return seg_no;
 }
 
 /* ?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIPAXP6AX0I@ZP6AX0PBXI@Z@Z */
 /* ?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KPEAXP6AX10@ZP6AX1PEBX0@Z@Z */
 DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_compact, 20)
 void * __thiscall _Concurrent_vector_base_v4__Internal_compact(
-        _Concurrent_vector_base_v4 *this, MSVCP_size_t len, void *v,
+        _Concurrent_vector_base_v4 *this, MSVCP_size_t element_size, void *v,
         void (__cdecl *clear)(void*, MSVCP_size_t),
         void (__cdecl *copy)(void*, const void*, MSVCP_size_t))
 {
-    FIXME("(%p %ld %p %p %p) stub\n", this, len, v, clear, copy);
-    return NULL;
+    compact_block *b;
+    MSVCP_size_t size, alloc_size, seg_no, alloc_seg, copy_element, clear_element;
+    int i;
+
+    TRACE("(%p %ld %p %p %p)\n", this, element_size, v, clear, copy);
+
+    size = this->early_size;
+    alloc_size = _Concurrent_vector_base_v4__Internal_capacity(this);
+    if(alloc_size == 0) return NULL;
+    alloc_seg = _vector_base_v4__Segment_index_of(alloc_size - 1);
+    if(!size) {
+        this->first_block = 0;
+        b = v;
+        b->first_block = alloc_seg + 1;
+        memset(b->blocks, 0, sizeof(b->blocks));
+        memcpy(b->blocks, this->segment,
+                (alloc_seg + 1) * sizeof(this->segment[0]));
+        memset(this->segment, 0, sizeof(this->segment[0]) * (alloc_seg + 1));
+        return v;
+    }
+    seg_no = _vector_base_v4__Segment_index_of(size - 1);
+    if(this->first_block == (seg_no + 1) && seg_no == alloc_seg) return NULL;
+    b = v;
+    b->first_block = this->first_block;
+    memset(b->blocks, 0, sizeof(b->blocks));
+    memcpy(b->blocks, this->segment,
+            (alloc_seg + 1) * sizeof(this->segment[0]));
+    if(this->first_block == (seg_no + 1) && seg_no != alloc_seg) {
+        memset(b->blocks, 0, sizeof(b->blocks[0]) * (seg_no + 1));
+        memset(&this->segment[seg_no + 1], 0, sizeof(this->segment[0]) * (alloc_seg - seg_no));
+        return v;
+    }
+    memset(this->segment, 0,
+            (alloc_seg + 1) * sizeof(this->segment[0]));
+    this->first_block = 0;
+    _Concurrent_vector_base_v4__Internal_reserve(this, size, element_size,
+            MSVCP_SIZE_T_MAX / element_size);
+    for(i = 0; i < seg_no; i++)
+        copy(this->segment[i], b->blocks[i], i ? 1 << i : 2);
+    copy_element = size - ((1 << seg_no) & ~1);
+    if(copy_element > 0)
+        copy(this->segment[seg_no], b->blocks[seg_no], copy_element);
+    for(i = 0; i < seg_no; i++)
+        clear(b->blocks[i], i ? 1 << i : 2);
+    clear_element = size - ((1 << seg_no) & ~1);
+    if(clear_element > 0)
+        clear(b->blocks[seg_no], clear_element);
+    return v;
 }
 
 /* ?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXPBXI@Z@Z */
@@ -1670,9 +2108,87 @@ void * __thiscall _Concurrent_vector_base_v4__Internal_compact(
 DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_copy, 16)
 void __thiscall _Concurrent_vector_base_v4__Internal_copy(
         _Concurrent_vector_base_v4 *this, const _Concurrent_vector_base_v4 *v,
-        MSVCP_size_t len, void (__cdecl *copy)(void*, const void*, MSVCP_size_t))
+        MSVCP_size_t element_size, void (__cdecl *copy)(void*, const void*, MSVCP_size_t))
 {
-    FIXME("(%p %p %ld %p) stub\n", this, v, len, copy);
+    MSVCP_size_t seg_no, v_size;
+    int i;
+
+    TRACE("(%p %p %ld %p)\n", this, v, element_size, copy);
+
+    v_size = v->early_size;
+    if(!v_size) {
+        this->early_size = 0;
+       return;
+    }
+    _Concurrent_vector_base_v4__Internal_reserve(this, v_size,
+            element_size, MSVCP_SIZE_T_MAX / element_size);
+    seg_no = _vector_base_v4__Segment_index_of(v_size - 1);
+    for(i = 0; i < seg_no; i++)
+        copy(this->segment[i], v->segment[i], i ? 1 << i : 2);
+    copy(this->segment[i], v->segment[i], v_size - (1 << i & ~1));
+    this->early_size = v_size;
+}
+
+/* ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z */
+/* ?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAX1@ZP6AX2PEBX1@Z5@Z */
+DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_assign, 24)
+void __thiscall _Concurrent_vector_base_v4__Internal_assign(
+        _Concurrent_vector_base_v4 *this, const _Concurrent_vector_base_v4 *v,
+        MSVCP_size_t element_size, void (__cdecl *clear)(void*, MSVCP_size_t),
+        void (__cdecl *assign)(void*, const void*, MSVCP_size_t),
+        void (__cdecl *copy)(void*, const void*, MSVCP_size_t))
+{
+    MSVCP_size_t v_size, seg_no, v_seg_no, remain_element;
+    int i;
+
+    TRACE("(%p %p %ld %p %p %p)\n", this, v, element_size, clear, assign, copy);
+
+    v_size = v->early_size;
+    if(!v_size) {
+        _Concurrent_vector_base_v4__Internal_clear(this, clear);
+        return;
+    }
+    if(!this->early_size) {
+        _Concurrent_vector_base_v4__Internal_copy(this, v, element_size, copy);
+        return;
+    }
+    seg_no = _vector_base_v4__Segment_index_of(this->early_size - 1);
+    v_seg_no = _vector_base_v4__Segment_index_of(v_size - 1);
+
+    for(i = 0; i < min(seg_no, v_seg_no); i++)
+        assign(this->segment[i], v->segment[i], i ? 1 << i : 2);
+    remain_element = min(this->early_size, v_size) - (1 << i & ~1);
+    if(remain_element != 0)
+        assign(this->segment[i], v->segment[i], remain_element);
+
+    if(this->early_size > v_size)
+    {
+        if((i ? 1 << i : 2) - remain_element > 0)
+            clear((BYTE**)this->segment[i] + element_size * remain_element,
+                    (i ? 1 << i : 2) - remain_element);
+        if(i < seg_no)
+        {
+            for(i++; i < seg_no; i++)
+                clear(this->segment[i], 1 << i);
+            clear(this->segment[i], this->early_size - (1 << i));
+        }
+    }
+    else if(this->early_size < v_size)
+    {
+        if((i ? 1 << i : 2) - remain_element > 0)
+            copy((BYTE**)this->segment[i] + element_size * remain_element,
+                    (BYTE**)v->segment[i] + element_size * remain_element,
+                    (i ? 1 << i : 2) - remain_element);
+        if(i < v_seg_no)
+        {
+            _Concurrent_vector_base_v4__Internal_reserve(this, v_size,
+                    element_size, MSVCP_SIZE_T_MAX / element_size);
+            for(i++; i < v_seg_no; i++)
+                copy(this->segment[i], v->segment[i], 1 << i);
+            copy(this->segment[i], v->segment[i], v->early_size - (1 << i));
+        }
+   }
+    this->early_size = v_size;
 }
 
 /* ?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z */
@@ -1682,8 +2198,30 @@ MSVCP_size_t __thiscall _Concurrent_vector_base_v4__Internal_grow_by(
         _Concurrent_vector_base_v4 *this, MSVCP_size_t count, MSVCP_size_t element_size,
         void (__cdecl *copy)(void*, const void*, MSVCP_size_t), const void *v)
 {
-    FIXME("(%p %ld %ld %p %p) stub\n", this, count, element_size, copy, v);
-    return 0;
+    MSVCP_size_t size, seg_no, last_seg_no, remain_size;
+
+    TRACE("(%p %ld %ld %p %p)\n", this, count, element_size, copy, v);
+
+    if(count == 0) return this->early_size;
+    do {
+        size = this->early_size;
+        _Concurrent_vector_base_v4__Internal_reserve(this, size + count, element_size,
+                MSVCP_SIZE_T_MAX / element_size);
+    } while(InterlockedCompareExchangeSizeT(&this->early_size, size + count, size) != size);
+
+    seg_no = size ? _vector_base_v4__Segment_index_of(size - 1) : 0;
+    last_seg_no = _vector_base_v4__Segment_index_of(size + count - 1);
+    remain_size = min(size + count, 1 << (seg_no + 1)) - size;
+    if(remain_size > 0)
+        copy(((BYTE**)this->segment[seg_no] + element_size * (size - ((1 << seg_no) & ~1))), v,
+            remain_size);
+    if(seg_no != last_seg_no)
+    {
+        for(seg_no++; seg_no < last_seg_no; seg_no++)
+            copy(this->segment[seg_no], v, 1 << seg_no);
+        copy(this->segment[last_seg_no], v, size + count - (1 << last_seg_no));
+    }
+    return size;
 }
 
 /* ?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z */
@@ -1693,49 +2231,112 @@ MSVCP_size_t __thiscall _Concurrent_vector_base_v4__Internal_grow_to_at_least_wi
         _Concurrent_vector_base_v4 *this, MSVCP_size_t count, MSVCP_size_t element_size,
         void (__cdecl *copy)(void*, const void*, MSVCP_size_t), const void *v)
 {
-    FIXME("(%p %ld %ld %p %p) stub\n", this, count, element_size, copy, v);
-    return 0;
+    MSVCP_size_t size, seg_no, last_seg_no, remain_size;
+
+    TRACE("(%p %ld %ld %p %p)\n", this, count, element_size, copy, v);
+
+    _Concurrent_vector_base_v4__Internal_reserve(this, count, element_size,
+            MSVCP_SIZE_T_MAX / element_size);
+    do {
+        size = this->early_size;
+        if(size >= count) return size;
+     } while(InterlockedCompareExchangeSizeT(&this->early_size, count, size) != size);
+
+    seg_no = size ? _vector_base_v4__Segment_index_of(size - 1) : 0;
+    last_seg_no = _vector_base_v4__Segment_index_of(count - 1);
+    remain_size = min(count, 1 << (seg_no + 1)) - size;
+    if(remain_size > 0)
+        copy(((BYTE**)this->segment[seg_no] + element_size * (size - ((1 << seg_no) & ~1))), v,
+            remain_size);
+    if(seg_no != last_seg_no)
+    {
+        for(seg_no++; seg_no < last_seg_no; seg_no++)
+            copy(this->segment[seg_no], v, 1 << seg_no);
+        copy(this->segment[last_seg_no], v, count - (1 << last_seg_no));
+    }
+    return size;
 }
 
 /* ?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIAAI@Z */
 /* ?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KAEA_K@Z */
 DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_push_back, 12)
 void * __thiscall _Concurrent_vector_base_v4__Internal_push_back(
-       _Concurrent_vector_base_v4 *this, MSVCP_size_t len1, MSVCP_size_t *len2)
+       _Concurrent_vector_base_v4 *this, MSVCP_size_t element_size, MSVCP_size_t *idx)
 {
-    FIXME("(%p %ld %p) stub\n", this, len1, len2);
-    return NULL;
-}
+    MSVCP_size_t index, seg, segment_base;
+    void *data;
 
-/* ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIII@Z */
-/* ?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00@Z */
-DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_reserve, 16)
-void __thiscall _Concurrent_vector_base_v4__Internal_reserve(
-        _Concurrent_vector_base_v4 *this, MSVCP_size_t len1,
-        MSVCP_size_t len2, MSVCP_size_t len3)
-{
-    FIXME("(%p %ld %ld %ld) stub\n", this, len1, len2, len3);
+    TRACE("(%p %ld %p)\n", this, element_size, idx);
+
+    do {
+        index = this->early_size;
+        _Concurrent_vector_base_v4__Internal_reserve(this, index + 1,
+                element_size, MSVCP_SIZE_T_MAX / element_size);
+    } while(InterlockedCompareExchangeSizeT(&this->early_size, index + 1, index) != index);
+    seg = _vector_base_v4__Segment_index_of(index);
+    segment_base = (seg == 0) ? 0 : (1 << seg);
+    data = (BYTE*)this->segment[seg] + element_size * (index - segment_base);
+    *idx = index;
+
+    return data;
 }
 
 /* ?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIIIP6AXPAXI@ZP6AX0PBXI@Z2@Z */
 /* ?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00P6AXPEAX0@ZP6AX1PEBX0@Z3@Z */
 DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_resize, 28)
 void __thiscall _Concurrent_vector_base_v4__Internal_resize(
-        _Concurrent_vector_base_v4 *this, MSVCP_size_t len1, MSVCP_size_t len2,
-        MSVCP_size_t len3, void (__cdecl *clear)(void*, MSVCP_size_t),
+        _Concurrent_vector_base_v4 *this, MSVCP_size_t resize, MSVCP_size_t element_size,
+        MSVCP_size_t max_size, void (__cdecl *clear)(void*, MSVCP_size_t),
         void (__cdecl *copy)(void*, const void*, MSVCP_size_t), const void *v)
 {
-    FIXME("(%p %ld %ld %ld %p %p %p) stub\n", this, len1, len2, len3, clear, copy, v);
+    MSVCP_size_t size, seg_no, end_seg_no, clear_element;
+
+    TRACE("(%p %ld %ld %ld %p %p %p)\n", this, resize, element_size, max_size, clear, copy, v);
+
+    if(resize > max_size) _vector_base_v4__Internal_throw_exception(this, 0);
+    size = this->early_size;
+    if(resize > size)
+        _Concurrent_vector_base_v4__Internal_grow_to_at_least_with_result(this,
+                resize, element_size, copy, v);
+    else if(resize == 0)
+        _Concurrent_vector_base_v4__Internal_clear(this, clear);
+    else if(resize < size)
+    {
+        seg_no = _vector_base_v4__Segment_index_of(size - 1);
+        end_seg_no = _vector_base_v4__Segment_index_of(resize - 1);
+        clear_element = size - (seg_no ? 1 << seg_no : 2);
+        if(clear_element > 0)
+            clear(this->segment[seg_no], clear_element);
+        if(seg_no) seg_no--;
+        for(; seg_no > end_seg_no; seg_no--)
+            clear(this->segment[seg_no], 1 << seg_no);
+        clear_element = (1 << (end_seg_no + 1)) - resize;
+        if(clear_element > 0)
+            clear((BYTE**)this->segment[end_seg_no] + element_size * (resize - ((1 << end_seg_no) & ~1)),
+                    clear_element);
+        this->early_size = resize;
+    }
 }
 
 /* ?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IAEXAAV123@@Z */
 /* ?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEAV123@@Z */
 DEFINE_THISCALL_WRAPPER(_Concurrent_vector_base_v4__Internal_swap, 8)
 void __thiscall _Concurrent_vector_base_v4__Internal_swap(
-        _Concurrent_vector_base_v4 *this, const _Concurrent_vector_base_v4 *v)
+        _Concurrent_vector_base_v4 *this, _Concurrent_vector_base_v4 *v)
 {
-    FIXME("(%p %p) stub\n", this, v);
+    _Concurrent_vector_base_v4 temp;
+
+    TRACE("(%p %p)\n", this, v);
+
+    temp = *this;
+    *this = *v;
+    *v = temp;
+    if(v->segment == this->storage)
+        v->segment = v->storage;
+    if(this->segment == v->storage)
+        this->segment = this->storage;
 }
+#endif
 
 #ifndef __GNUC__
 void __asm_dummy_vtables(void) {
@@ -2022,6 +2623,14 @@ MSVCP_bool __cdecl is_current_task_group_canceling(void)
 {
     return Context_IsCurrentTaskCollectionCanceling();
 }
+
+/* ?_GetCombinableSize@details@Concurrency@@YAIXZ */
+/* ?_GetCombinableSize@details@Concurrency@@YA_KXZ */
+MSVCP_size_t __cdecl _GetCombinableSize(void)
+{
+    FIXME("() stub\n");
+    return 11;
+}
 #endif
 
 #if _MSVCP_VER >= 140
@@ -2208,80 +2817,61 @@ _Ph _Ph_11 = {0}, _Ph_12 = {0}, _Ph_13 = {0}, _Ph_14 = {0}, _Ph_15 = {0};
 _Ph _Ph_16 = {0}, _Ph_17 = {0}, _Ph_18 = {0}, _Ph_19 = {0}, _Ph_20 = {0};
 #endif
 
-#if _MSVCP_VER >= 100
-/* based on wined3d_log2i from wined3d.h */
-/* Return the integer base-2 logarithm of (x|1). Result is 0 for x == 0. */
-static inline unsigned int log2i(unsigned int x)
-{
-#ifdef HAVE___BUILTIN_CLZ
-    return __builtin_clz(x|1) ^ 0x1f;
-#else
-    static const unsigned int l[] =
-    {
-        ~0u, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
-          4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-          5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-          5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-          6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
-          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-          7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-    };
-    unsigned int i;
-
-    x |= 1;
-    return (i = x >> 16) ? (x = i >> 8) ? l[x] + 24 : l[i] + 16 : (i = x >> 8) ? l[i] + 8 : l[x];
-#endif
-}
-
-/* ?_Segment_index_of@_Concurrent_vector_base_v4@details@Concurrency@@KAII@Z */
-/* ?_Segment_index_of@_Concurrent_vector_base_v4@details@Concurrency@@KA_K_K@Z */
-MSVCP_size_t __cdecl _vector_base_v4__Segment_index_of(MSVCP_size_t x)
-{
-    unsigned int half;
-
-    TRACE("(%lu)\n", x);
-
-    if((sizeof(x) == 8) && (half = x >> 32))
-        return log2i(half) + 32;
-
-    return log2i(x);
-}
-
-/* ?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IBEXI@Z */
-/* ?_Internal_throw_exception@_Concurrent_vector_base_v4@details@Concurrency@@IEBAX_K@Z */
-DEFINE_THISCALL_WRAPPER(_vector_base_v4__Internal_throw_exception, 8)
-void __thiscall _vector_base_v4__Internal_throw_exception(void/*_vector_base_v4*/ *this, MSVCP_size_t idx)
-{
-    static const struct {
-        exception_type type;
-        const char *msg;
-    } exceptions[] = {
-        { EXCEPTION_OUT_OF_RANGE, "Index out of range" },
-        { EXCEPTION_OUT_OF_RANGE, "Index out of segments table range" },
-        { EXCEPTION_RANGE_ERROR,  "Index is inside segment which failed to be allocated" },
-    };
-
-    TRACE("(%p %lu)\n", this, idx);
-
-    if(idx < sizeof(exceptions)/sizeof(exceptions[0]))
-        throw_exception(exceptions[idx].type, exceptions[idx].msg);
-}
-#endif
-
 #if _MSVCP_VER >= 140
 /* ?_IsNonBlockingThread@_Task_impl_base@details@Concurrency@@SA_NXZ */
 MSVCP_bool __cdecl _Task_impl_base__IsNonBlockingThread(void)
 {
     FIXME("() stub\n");
     return FALSE;
+}
+#endif
+
+#if _MSVCP_VER >= 110
+/* ?_Syserror_map@std@@YAPBDH@Z */
+/* ?_Syserror_map@std@@YAPEBDH@Z */
+const char* __cdecl _Syserror_map(int err)
+{
+    int i;
+
+    TRACE("(%d)\n", err);
+
+    for(i = 0; i < ARRAY_SIZE(syserror_map); i++)
+    {
+        if(syserror_map[i].err == err)
+            return syserror_map[i].str;
+    }
+    return NULL;
+}
+#endif
+
+#if _MSVCP_VER >= 140
+/* ?_Winerror_message@std@@YAKKPADK@Z */
+/* ?_Winerror_message@std@@YAKKPEADK@Z */
+ULONG __cdecl _Winerror_message(ULONG err, char *buf, ULONG size)
+{
+    TRACE("(%u %p %u)\n", err, buf, size);
+
+    return FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL, err, 0, buf, size, NULL);
+}
+
+/* ?_Winerror_map@std@@YAHH@Z */
+int __cdecl _Winerror_map(int err)
+{
+    int low = 0, high = ARRAY_SIZE(winerror_map) - 1, mid;
+
+    while(low <= high)
+    {
+        mid = (low + high) / 2;
+
+        if(err == winerror_map[mid].winerr)
+            return winerror_map[mid].doserr;
+        if(err > winerror_map[mid].winerr)
+            low = mid + 1;
+        else
+            high = mid - 1;
+    }
+
+    return 0;
 }
 #endif

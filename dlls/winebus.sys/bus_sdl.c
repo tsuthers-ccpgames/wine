@@ -59,24 +59,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(plugplay);
 
 #ifdef SONAME_LIBSDL2
 
-#define VID_MICROSOFT 0x045e
-
-static const WORD PID_XBOX_CONTROLLERS[] =  {
-    0x0202, /* Xbox Controller */
-    0x0285, /* Xbox Controller S */
-    0x0289, /* Xbox Controller S */
-    0x028e, /* Xbox360 Controller */
-    0x028f, /* Xbox360 Wireless Controller */
-    0x02d1, /* Xbox One Controller */
-    0x02dd, /* Xbox One Controller (Covert Forces/Firmware 2015) */
-    0x02e0, /* Xbox One X Controller */
-    0x02e3, /* Xbox One Elite Controller */
-    0x02e6, /* Wireless XBox Controller Dongle */
-    0x02ea, /* Xbox One S Controller */
-    0x02fd, /* Xbox One S Controller (Firmware 2017) */
-    0x0719, /* Xbox 360 Wireless Adapter */
-};
-
 WINE_DECLARE_DEBUG_CHANNEL(hid_report);
 
 static DRIVER_OBJECT *sdl_driver_obj = NULL;
@@ -155,10 +137,10 @@ static inline struct platform_private *impl_from_DEVICE_OBJECT(DEVICE_OBJECT *de
 }
 
 static const BYTE REPORT_AXIS_TAIL[] = {
-    0x16, 0x00, 0x80,   /* LOGICAL_MINIMUM (-32768) */
-    0x26, 0xff, 0x7f,   /* LOGICAL_MAXIMUM (32767) */
-    0x36, 0x00, 0x80,   /* PHYSICAL_MINIMUM (-32768) */
-    0x46, 0xff, 0x7f,   /* PHYSICAL_MAXIMUM (32767) */
+    0x17, 0x00, 0x00, 0x00, 0x00,   /* LOGICAL_MINIMUM (0) */
+    0x27, 0xff, 0xff, 0x00, 0x00,   /* LOGICAL_MAXIMUM (65535) */
+    0x37, 0x00, 0x00, 0x00, 0x00,   /* PHYSICAL_MINIMUM (0) */
+    0x47, 0xff, 0xff, 0x00, 0x00,   /* PHYSICAL_MAXIMUM (65535) */
     0x75, 0x10,         /* REPORT_SIZE (16) */
     0x95, 0x00,         /* REPORT_COUNT (?) */
     0x81, 0x02,         /* INPUT (Data,Var,Abs) */
@@ -188,10 +170,10 @@ static const BYTE CONTROLLER_AXIS [] = {
     0x09, 0x31,         /* USAGE (Y) */
     0x09, 0x33,         /* USAGE (RX) */
     0x09, 0x34,         /* USAGE (RY) */
-    0x16, 0x00, 0x80,   /* LOGICAL_MINIMUM (-32768) */
-    0x26, 0xff, 0x7f,   /* LOGICAL_MAXIMUM (32767) */
-    0x36, 0x00, 0x80,   /* PHYSICAL_MINIMUM (-32768) */
-    0x46, 0xff, 0x7f,   /* PHYSICAL_MAXIMUM (32767) */
+    0x17, 0x00, 0x00, 0x00, 0x00,   /* LOGICAL_MINIMUM (0) */
+    0x27, 0xff, 0xff, 0x00, 0x00,   /* LOGICAL_MAXIMUM (65535) */
+    0x37, 0x00, 0x00, 0x00, 0x00,   /* PHYSICAL_MINIMUM (0) */
+    0x47, 0xff, 0xff, 0x00, 0x00,   /* PHYSICAL_MAXIMUM (65535) */
     0x75, 0x10,         /* REPORT_SIZE (16) */
     0x95, 0x04,         /* REPORT_COUNT (4) */
     0x81, 0x02,         /* INPUT (Data,Var,Abs) */
@@ -263,7 +245,20 @@ static void set_axis_value(struct platform_private *ext, int index, short value)
 {
     int offset;
     offset = ext->axis_start + index * 2;
-    *((WORD*)&ext->report_buffer[offset]) = LE_WORD(value);
+
+    switch (index)
+    {
+    case SDL_CONTROLLER_AXIS_LEFTX:
+    case SDL_CONTROLLER_AXIS_LEFTY:
+    case SDL_CONTROLLER_AXIS_RIGHTX:
+    case SDL_CONTROLLER_AXIS_RIGHTY:
+        *((WORD*)&ext->report_buffer[offset]) = LE_WORD(value) + 32768;
+        break;
+    case SDL_CONTROLLER_AXIS_TRIGGERLEFT:
+    case SDL_CONTROLLER_AXIS_TRIGGERRIGHT:
+        *((WORD*)&ext->report_buffer[offset]) = LE_WORD(value);
+        break;
+    }
 }
 
 static void set_ball_value(struct platform_private *ext, int index, int value1, int value2)
@@ -818,25 +813,17 @@ static void try_add_device(SDL_JoystickID index)
         controller = pSDL_GameControllerOpen(index);
 
     id = pSDL_JoystickInstanceID(joystick);
-    if (controller)
-    {
-        vid = VID_MICROSOFT;
-        pid = PID_XBOX_CONTROLLERS[3];
-        version = 0x01;
+
+    if (pSDL_JoystickGetProductVersion != NULL) {
+        vid = pSDL_JoystickGetVendor(joystick);
+        pid = pSDL_JoystickGetProduct(joystick);
+        version = pSDL_JoystickGetProductVersion(joystick);
     }
     else
     {
-        if (pSDL_JoystickGetProductVersion != NULL) {
-            vid = pSDL_JoystickGetVendor(joystick);
-            pid = pSDL_JoystickGetProduct(joystick);
-            version = pSDL_JoystickGetProductVersion(joystick);
-        }
-        else
-        {
-            vid = 0x01;
-            pid = pSDL_JoystickInstanceID(joystick) + 1;
-            version = 0;
-        }
+        vid = 0x01;
+        pid = pSDL_JoystickInstanceID(joystick) + 1;
+        version = 0;
     }
 
     guid = pSDL_JoystickGetGUID(joystick);
@@ -857,7 +844,7 @@ static void try_add_device(SDL_JoystickID index)
               id, vid, pid, version, debugstr_w(serial));
 
         axis_count = pSDL_JoystickNumAxes(joystick);
-        button_count = pSDL_JoystickNumAxes(joystick);
+        button_count = pSDL_JoystickNumButtons(joystick);
         is_xbox_gamepad = (axis_count == 6  && button_count >= 14);
     }
 
@@ -925,6 +912,11 @@ static DWORD CALLBACK deviceloop_thread(void *args)
 
     TRACE("Device thread exiting\n");
     return 0;
+}
+
+void sdl_driver_unload( void )
+{
+    TRACE("Unload Driver\n");
 }
 
 NTSTATUS WINAPI sdl_driver_init(DRIVER_OBJECT *driver, UNICODE_STRING *registry_path)
@@ -1021,6 +1013,11 @@ NTSTATUS WINAPI sdl_driver_init(DRIVER_OBJECT *driver, UNICODE_STRING *registry_
 {
     WARN("compiled without SDL support\n");
     return STATUS_NOT_IMPLEMENTED;
+}
+
+void sdl_driver_unload( void )
+{
+    TRACE("Stub: Unload Driver\n");
 }
 
 #endif /* SONAME_LIBSDL2 */

@@ -847,21 +847,40 @@ static void test_D3DXLoadSurface(IDirect3DDevice9 *device)
 
     /* non-lockable render target */
     hr = IDirect3DDevice9_CreateRenderTarget(device, 256, 256, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, FALSE, &newsurf, NULL);
-    if (SUCCEEDED(hr)) {
-        hr = D3DXLoadSurfaceFromSurface(surf, NULL, NULL, newsurf, NULL, NULL, D3DX_FILTER_NONE, 0);
-        ok(hr == D3D_OK, "D3DXLoadSurfaceFromSurface returned %#x, expected %#x\n", hr, D3D_OK);
-
-        IDirect3DSurface9_Release(newsurf);
-    } else skip("Failed to create render target surface\n");
+    ok(hr == D3D_OK, "Unexpected hr %#x.\n", hr);
+    hr = D3DXLoadSurfaceFromSurface(surf, NULL, NULL, newsurf, NULL, NULL, D3DX_FILTER_NONE, 0);
+    ok(hr == D3D_OK, "Unexpected hr %#x.\n", hr);
+    IDirect3DSurface9_Release(newsurf);
 
     /* non-lockable multisampled render target */
     hr = IDirect3DDevice9_CreateRenderTarget(device, 256, 256, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_2_SAMPLES, 0, FALSE, &newsurf, NULL);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr))
+    {
        hr = D3DXLoadSurfaceFromSurface(surf, NULL, NULL, newsurf, NULL, NULL, D3DX_FILTER_NONE, 0);
-       ok(hr == D3D_OK, "D3DXLoadSurfaceFromSurface returned %#x, expected %#x\n", hr, D3D_OK);
+       ok(hr == D3D_OK, "Unexpected hr %#x.\n", hr);
 
        IDirect3DSurface9_Release(newsurf);
-    } else skip("Failed to create multisampled render target\n");
+    }
+    else
+    {
+        skip("Failed to create multisampled render target.\n");
+    }
+
+    hr = IDirect3DDevice9_GetRenderTarget(device, 0, &newsurf);
+    ok(hr == D3D_OK, "IDirect3DDevice9_GetRenderTarget returned %#x, expected %#x.\n", hr, D3D_OK);
+
+    hr = D3DXLoadSurfaceFromSurface(newsurf, NULL, NULL, surf, NULL, NULL, D3DX_FILTER_NONE, 0);
+    ok(hr == D3D_OK, "D3DXLoadSurfaceFromSurface returned %#x, expected %#x.\n", hr, D3D_OK);
+    hr = D3DXLoadSurfaceFromSurface(surf, NULL, NULL, newsurf, NULL, NULL, D3DX_FILTER_NONE, 0);
+    ok(hr == D3D_OK, "D3DXLoadSurfaceFromSurface returned %#x, expected %#x.\n", hr, D3D_OK);
+    hr = D3DXLoadSurfaceFromSurface(surf, NULL, NULL, newsurf, NULL, NULL, D3DX_FILTER_NONE, 0xff000000);
+    ok(hr == D3D_OK, "D3DXLoadSurfaceFromSurface returned %#x, expected %#x.\n", hr, D3D_OK);
+    hr = D3DXLoadSurfaceFromSurface(surf, NULL, NULL, newsurf, NULL, NULL, D3DX_FILTER_TRIANGLE | D3DX_FILTER_MIRROR, 0);
+    ok(hr == D3D_OK, "D3DXLoadSurfaceFromSurface returned %#x, expected %#x.\n", hr, D3D_OK);
+    hr = D3DXLoadSurfaceFromSurface(surf, NULL, NULL, newsurf, NULL, NULL, D3DX_FILTER_LINEAR, 0);
+    ok(hr == D3D_OK, "D3DXLoadSurfaceFromSurface returned %#x, expected %#x.\n", hr, D3D_OK);
+
+    IDirect3DSurface9_Release(newsurf);
 
     check_release((IUnknown*)surf, 0);
 
@@ -1237,16 +1256,30 @@ static void test_D3DXLoadSurface(IDirect3DDevice9 *device)
 
 static void test_D3DXSaveSurfaceToFileInMemory(IDirect3DDevice9 *device)
 {
-    HRESULT hr;
-    RECT rect;
-    ID3DXBuffer *buffer;
-    IDirect3DSurface9 *surface;
+    static const struct
+    {
+        DWORD usage;
+        D3DPOOL pool;
+    }
+    test_access_types[] =
+    {
+        {0,  D3DPOOL_MANAGED},
+        {0,  D3DPOOL_DEFAULT},
+        {D3DUSAGE_RENDERTARGET, D3DPOOL_DEFAULT},
+    };
+
     struct
     {
          DWORD magic;
          struct dds_header header;
          BYTE *data;
     } *dds;
+    IDirect3DSurface9 *surface;
+    IDirect3DTexture9 *texture;
+    ID3DXBuffer *buffer;
+    unsigned int i;
+    HRESULT hr;
+    RECT rect;
 
     hr = IDirect3DDevice9_CreateOffscreenPlainSurface(device, 4, 4, D3DFMT_A8R8G8B8, D3DPOOL_SCRATCH, &surface, NULL);
     if (FAILED(hr)) {
@@ -1301,6 +1334,27 @@ static void test_D3DXSaveSurfaceToFileInMemory(IDirect3DDevice9 *device)
     ID3DXBuffer_Release(buffer);
 
     IDirect3DSurface9_Release(surface);
+
+    for (i = 0; i < ARRAY_SIZE(test_access_types); ++i)
+    {
+        hr = IDirect3DDevice9_CreateTexture(device, 4, 4, 0, test_access_types[i].usage,
+                D3DFMT_A8R8G8B8, test_access_types[i].pool, &texture, NULL);
+        ok(hr == D3D_OK, "Unexpected hr %#x, i %u.\n", hr, i);
+
+        hr = IDirect3DTexture9_GetSurfaceLevel(texture, 0, &surface);
+        ok(hr == D3D_OK, "Unexpected hr %#x, i %u.\n", hr, i);
+
+        hr = D3DXSaveSurfaceToFileInMemory(&buffer, D3DXIFF_DDS, surface, NULL, NULL);
+        ok(hr == D3D_OK, "Unexpected hr %#x, i %u.\n", hr, i);
+        ID3DXBuffer_Release(buffer);
+
+        hr = D3DXSaveSurfaceToFileInMemory(&buffer, D3DXIFF_BMP, surface, NULL, NULL);
+        ok(hr == D3D_OK, "Unexpected hr %#x, i %u.\n", hr, i);
+        ID3DXBuffer_Release(buffer);
+
+        IDirect3DSurface9_Release(surface);
+        IDirect3DTexture9_Release(texture);
+    }
 }
 
 static void test_D3DXSaveSurfaceToFile(IDirect3DDevice9 *device)

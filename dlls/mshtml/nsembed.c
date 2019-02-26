@@ -242,7 +242,7 @@ static nsresult create_profile_directory(void)
 {
     static const WCHAR wine_geckoW[] = {'\\','w','i','n','e','_','g','e','c','k','o',0};
 
-    WCHAR path[MAX_PATH + sizeof(wine_geckoW)/sizeof(WCHAR)];
+    WCHAR path[MAX_PATH + ARRAY_SIZE(wine_geckoW)];
     cpp_bool exists;
     nsresult nsres;
     HRESULT hres;
@@ -309,7 +309,7 @@ static nsresult NSAPI nsDirectoryServiceProvider2_GetFiles(nsIDirectoryServicePr
         if(!plugin_directory) {
             static const WCHAR gecko_pluginW[] = {'\\','g','e','c','k','o','\\','p','l','u','g','i','n',0};
 
-            len = GetSystemDirectoryW(plugin_path, (sizeof(plugin_path)-sizeof(gecko_pluginW))/sizeof(WCHAR)+1);
+            len = GetSystemDirectoryW(plugin_path, ARRAY_SIZE(plugin_path)-ARRAY_SIZE(gecko_pluginW)+1);
             if(!len)
                 return NS_ERROR_UNEXPECTED;
 
@@ -413,7 +413,7 @@ static BOOL install_wine_gecko(void)
     static const WCHAR argsW[] =
         {' ','a','p','p','w','i','z','.','c','p','l',' ','i','n','s','t','a','l','l','_','g','e','c','k','o',0};
 
-    len = GetSystemDirectoryW(app, MAX_PATH-sizeof(controlW)/sizeof(WCHAR));
+    len = GetSystemDirectoryW(app, MAX_PATH-ARRAY_SIZE(controlW));
     memcpy(app+len, controlW, sizeof(controlW));
 
     args = heap_alloc(len*sizeof(WCHAR) + sizeof(controlW) + sizeof(argsW));
@@ -421,7 +421,7 @@ static BOOL install_wine_gecko(void)
         return FALSE;
 
     memcpy(args, app, len*sizeof(WCHAR) + sizeof(controlW));
-    memcpy(args + len + sizeof(controlW)/sizeof(WCHAR)-1, argsW, sizeof(argsW));
+    memcpy(args + len + ARRAY_SIZE(controlW)-1, argsW, sizeof(argsW));
 
     TRACE("starting %s\n", debugstr_w(args));
 
@@ -496,7 +496,7 @@ static BOOL load_xul(const PRUnichar *gre_path)
 
     set_environment(gre_path);
 
-    xul_handle = LoadLibraryExW(file_name, 0, LOAD_WITH_ALTERED_SEARCH_PATH);
+    xul_handle = LoadLibraryExW(file_name, 0, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
     if(!xul_handle) {
         WARN("Could not load XUL: %d\n", GetLastError());
         return FALSE;
@@ -1189,6 +1189,29 @@ void set_viewer_zoom(NSContainer *nscontainer, float factor)
         ERR("SetFullZoom failed: %08x\n", nsres);
 
     nsIContentViewer_Release(content_viewer);
+}
+
+float get_viewer_zoom(NSContainer *nscontainer)
+{
+    nsIContentViewer *content_viewer;
+    nsIDocShell *doc_shell;
+    nsresult nsres;
+    float factor;
+
+    nsres = get_nsinterface((nsISupports*)nscontainer->navigation, &IID_nsIDocShell, (void**)&doc_shell);
+    assert(nsres == NS_OK);
+
+    nsres = nsIDocShell_GetContentViewer(doc_shell, &content_viewer);
+    assert(nsres == NS_OK && content_viewer);
+    nsIDocShell_Release(doc_shell);
+
+    nsres = nsIContentViewer_GetFullZoom(content_viewer, &factor);
+    if(NS_FAILED(nsres))
+        ERR("GetFullZoom failed: %08x\n", nsres);
+    TRACE("Got %f\n", factor);
+
+    nsIContentViewer_Release(content_viewer);
+    return factor;
 }
 
 struct nsWeakReference {

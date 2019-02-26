@@ -27,6 +27,7 @@
 
 #include "wine/debug.h"
 #include "wine/heap.h"
+#include "wine/list.h"
 #define VK_NO_PROTOTYPES
 #include "wine/vulkan.h"
 #include "wine/vulkan_driver.h"
@@ -35,10 +36,6 @@
 
 /* Magic value defined by Vulkan ICD / Loader spec */
 #define VULKAN_ICD_MAGIC_VALUE 0x01CDC0DE
-
-#ifndef ARRAY_SIZE
-#define ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
-#endif
 
 #define WINEVULKAN_QUIRK_GET_DEVICE_PROC_ADDR 0x00000001
 
@@ -66,6 +63,8 @@ struct VkCommandBuffer_T
     struct wine_vk_base base;
     struct VkDevice_T *device; /* parent */
     VkCommandBuffer command_buffer; /* native command buffer */
+
+    struct list pool_link;
 };
 
 struct VkDevice_T
@@ -90,7 +89,7 @@ struct VkInstance_T
      * dispatchable objects.
      */
     struct VkPhysicalDevice_T **phys_devs;
-    uint32_t num_phys_devs;
+    uint32_t phys_dev_count;
 
     unsigned int quirks;
 };
@@ -110,7 +109,26 @@ struct VkQueue_T
     struct wine_vk_base base;
     struct VkDevice_T *device; /* parent */
     VkQueue queue; /* native queue */
+
+    VkDeviceQueueCreateFlags flags;
 };
+
+struct wine_cmd_pool
+{
+    VkCommandPool command_pool;
+
+    struct list command_buffers;
+};
+
+static inline struct wine_cmd_pool *wine_cmd_pool_from_handle(VkCommandPool handle)
+{
+    return (struct wine_cmd_pool *)(uintptr_t)handle;
+}
+
+static inline VkCommandPool wine_cmd_pool_to_handle(struct wine_cmd_pool *cmd_pool)
+{
+    return (VkCommandPool)(uintptr_t)cmd_pool;
+}
 
 void *wine_vk_get_device_proc_addr(const char *name) DECLSPEC_HIDDEN;
 void *wine_vk_get_instance_proc_addr(const char *name) DECLSPEC_HIDDEN;

@@ -1551,13 +1551,35 @@ int CDECL _ismbblead(unsigned int c)
     return _ismbblead_l(c, NULL);
 }
 
+/*********************************************************************
+ *              _ismbbtrail_l(MSVCRT.@)
+ */
+int CDECL _ismbbtrail_l(unsigned int c, MSVCRT__locale_t locale)
+{
+    MSVCRT_pthreadmbcinfo mbcinfo;
+
+    if(!locale)
+        mbcinfo = get_mbcinfo();
+    else
+        mbcinfo = locale->mbcinfo;
+
+    return (mbcinfo->mbctype[(c&0xff) + 1] & _M2) != 0;
+}
 
 /*********************************************************************
  *		_ismbbtrail(MSVCRT.@)
  */
 int CDECL _ismbbtrail(unsigned int c)
 {
-  return (get_mbcinfo()->mbctype[(c&0xff) + 1] & _M2) != 0;
+    return _ismbbtrail_l(c, NULL);
+}
+
+/*********************************************************************
+ *              _ismbclegal_l(MSVCRT.@)
+ */
+int CDECL _ismbclegal_l(unsigned int c, MSVCRT__locale_t locale)
+{
+    return _ismbblead_l(HIBYTE(c), locale) && _ismbbtrail_l(LOBYTE(c), locale);
 }
 
 /*********************************************************************
@@ -1565,7 +1587,7 @@ int CDECL _ismbbtrail(unsigned int c)
  */
 int CDECL _ismbclegal(unsigned int c)
 {
-    return _ismbblead(HIBYTE(c)) && _ismbbtrail(LOBYTE(c));
+    return _ismbclegal_l(c, NULL);
 }
 
 /*********************************************************************
@@ -2529,16 +2551,89 @@ unsigned int CDECL _mbctokata(unsigned int c)
     return c;
 }
 
+/*********************************************************************
+ *		_ismbcl0_l (MSVCRT.@)
+ */
+int CDECL _ismbcl0_l(unsigned int c, MSVCRT__locale_t locale)
+{
+    MSVCRT_pthreadmbcinfo mbcinfo;
+
+    if(!locale)
+        mbcinfo = get_mbcinfo();
+    else
+        mbcinfo = locale->mbcinfo;
+
+    if(mbcinfo->mbcodepage == 932)
+    {
+        /* JIS non-Kanji */
+        return _ismbclegal_l(c, locale) && c >= 0x8140 && c <= 0x889e;
+    }
+
+    return 0;
+}
 
 /*********************************************************************
  *		_ismbcl0 (MSVCRT.@)
  */
 int CDECL _ismbcl0(unsigned int c)
 {
-  if(get_mbcinfo()->mbcodepage == 932)
-  {
-    /* JIS non-Kanji */
-    return (c >= 0x8140 && c <= 0x889e);
-  }
-  return 0;
+    return _ismbcl0_l(c, NULL);
+}
+
+/*********************************************************************
+ *		_ismbcl1_l (MSVCRT.@)
+ */
+int CDECL _ismbcl1_l(unsigned int c, MSVCRT__locale_t locale)
+{
+    MSVCRT_pthreadmbcinfo mbcinfo;
+
+    if(!locale)
+        mbcinfo = get_mbcinfo();
+    else
+        mbcinfo = locale->mbcinfo;
+
+    if(mbcinfo->mbcodepage == 932)
+    {
+        /* JIS level-1 */
+        return _ismbclegal_l(c, locale) && c >= 0x889f && c <= 0x9872;
+    }
+
+    return 0;
+}
+
+/*********************************************************************
+ *		_ismbcl1 (MSVCRT.@)
+ */
+int CDECL _ismbcl1(unsigned int c)
+{
+    return _ismbcl1_l(c, NULL);
+}
+
+/*********************************************************************
+ *		_ismbcl2_l (MSVCRT.@)
+ */
+int CDECL _ismbcl2_l(unsigned int c, MSVCRT__locale_t locale)
+{
+    MSVCRT_pthreadmbcinfo mbcinfo;
+
+    if(!locale)
+        mbcinfo = get_mbcinfo();
+    else
+        mbcinfo = locale->mbcinfo;
+
+    if(mbcinfo->mbcodepage == 932)
+    {
+        /* JIS level-2 */
+        return _ismbclegal_l(c, locale) && c >= 0x989f && c <= 0xeaa4;
+    }
+
+    return 0;
+}
+
+/*********************************************************************
+ *		_ismbcl2 (MSVCRT.@)
+ */
+int CDECL _ismbcl2(unsigned int c)
+{
+    return _ismbcl2_l(c, NULL);
 }

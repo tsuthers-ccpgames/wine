@@ -106,6 +106,7 @@ static void test_sprintf( void )
     double pnumber=789456123;
     int x, r;
     WCHAR wide[] = { 'w','i','d','e',0};
+    WCHAR buf_w[2];
 
     format = "%+#23.15e";
     r = sprintf(buffer,format,pnumber);
@@ -786,6 +787,17 @@ static void test_sprintf( void )
     ok(r==0, "r = %d\n", r);
     ok(!strcmp(buffer, ""), "failed: \"%s\"\n", buffer);
 
+    format = "a%Cb";
+    r = sprintf(buffer, format, 0x3042);
+    ok(r==2, "r = %d\n", r);
+    ok(!strcmp(buffer, "ab"), "failed: \"%s\"\n", buffer);
+
+    format = "%S";
+    buf_w[0] = 0x3042;
+    buf_w[1] = 0;
+    r = sprintf(buffer, format, buf_w);
+    ok(r==-1 || broken(!r), "r = %d\n", r);
+
     if(!setlocale(LC_ALL, "Japanese_Japan.932")) {
         win_skip("Japanese_Japan.932 locale not available\n");
         return;
@@ -841,7 +853,7 @@ static void test_snprintf (void)
     const int bufsiz = sizeof buffer;
     unsigned int i;
 
-    for (i = 0; i < sizeof tests / sizeof tests[0]; i++) {
+    for (i = 0; i < ARRAY_SIZE(tests); i++) {
         const char *fmt  = tests[i].format;
         const int expect = tests[i].expected;
         const int n      = _snprintf (buffer, bufsiz, fmt);
@@ -1215,7 +1227,7 @@ static void test_vsnwprintf(void)
     wchar_t str[32];
     char buf[32];
 
-    ret = _vsnwprintf_wrapper( str, sizeof(str)/sizeof(str[0]), format, one, two, three );
+    ret = _vsnwprintf_wrapper( str, ARRAY_SIZE(str), format, one, two, three );
 
     ok( ret == 11, "got %d expected 11\n", ret );
     WideCharToMultiByte( CP_ACP, 0, str, -1, buf, sizeof(buf), NULL, NULL );

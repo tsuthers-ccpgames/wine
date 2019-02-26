@@ -28,20 +28,17 @@
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 WINE_DECLARE_DEBUG_CHANNEL(d3d_perf);
 
-static void resource_check_usage(DWORD usage)
+static void resource_check_usage(DWORD usage, unsigned int access)
 {
-    static const DWORD handled = WINED3DUSAGE_RENDERTARGET
-            | WINED3DUSAGE_DEPTHSTENCIL
-            | WINED3DUSAGE_WRITEONLY
-            | WINED3DUSAGE_DYNAMIC
+    static const DWORD handled = WINED3DUSAGE_DYNAMIC
             | WINED3DUSAGE_STATICDECL
             | WINED3DUSAGE_OVERLAY
             | WINED3DUSAGE_SCRATCH
             | WINED3DUSAGE_PRIVATE
             | WINED3DUSAGE_LEGACY_CUBEMAP
-            | WINED3DUSAGE_TEXTURE;
+            | ~WINED3DUSAGE_MASK;
 
-    /* WINED3DUSAGE_WRITEONLY is supposed to result in write-combined mappings
+    /* Write-only CPU access is supposed to result in write-combined mappings
      * being returned. OpenGL doesn't give us explicit control over that, but
      * the hints and access flags we set for typical access patterns on
      * dynamic resources should in theory have the same effect on the OpenGL
@@ -49,17 +46,18 @@ static void resource_check_usage(DWORD usage)
 
     if (usage & ~handled)
         FIXME("Unhandled usage flags %#x.\n", usage & ~handled);
-    if ((usage & (WINED3DUSAGE_DYNAMIC | WINED3DUSAGE_WRITEONLY)) == WINED3DUSAGE_DYNAMIC)
-        WARN_(d3d_perf)("WINED3DUSAGE_DYNAMIC used without WINED3DUSAGE_WRITEONLY.\n");
+    if (usage & WINED3DUSAGE_DYNAMIC && access & WINED3D_RESOURCE_ACCESS_MAP_R)
+        WARN_(d3d_perf)("WINED3DUSAGE_DYNAMIC used with WINED3D_RESOURCE_ACCESS_MAP_R.\n");
 }
 
 HRESULT resource_init(struct wined3d_resource *resource, struct wined3d_device *device,
         enum wined3d_resource_type type, const struct wined3d_format *format,
-        enum wined3d_multisample_type multisample_type, unsigned int multisample_quality,
-        unsigned int usage, unsigned int access, unsigned int width, unsigned int height, unsigned int depth,
+        enum wined3d_multisample_type multisample_type, unsigned int multisample_quality, unsigned int usage,
+        unsigned int bind_flags, unsigned int access, unsigned int width, unsigned int height, unsigned int depth,
         unsigned int size, void *parent, const struct wined3d_parent_ops *parent_ops,
         const struct wined3d_resource_ops *resource_ops)
 {
+    const struct wined3d_d3d_info *d3d_info = &device->adapter->d3d_info;
     enum wined3d_gl_resource_type base_type = WINED3D_GL_RES_TYPE_COUNT;
     enum wined3d_gl_resource_type gl_type = WINED3D_GL_RES_TYPE_COUNT;
     const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
@@ -83,13 +81,31 @@ HRESULT resource_init(struct wined3d_resource *resource, struct wined3d_device *
         {WINED3D_RTYPE_TEXTURE_3D,  0,                              WINED3D_GL_RES_TYPE_TEX_3D},
     };
 
-    resource_check_usage(usage);
+    resource_check_usage(usage, access);
 
     if (usage & WINED3DUSAGE_SCRATCH && access & WINED3D_RESOURCE_ACCESS_GPU)
     {
         ERR("Trying to create a scratch resource with access flags %s.\n",
                 wined3d_debug_resource_access(access));
         return WINED3DERR_INVALIDCALL;
+    }
+
+    if (bind_flags & (WINED3D_BIND_RENDER_TARGET | WINED3D_BIND_DEPTH_STENCIL))
+    {
+        if ((access & (WINED3D_RESOURCE_ACCESS_CPU | WINED3D_RESOURCE_ACCESS_GPU)) != WINED3D_RESOURCE_ACCESS_GPU)
+        {
+            WARN("Bind flags %s are incompatible with resource access %s.\n",
+                    wined3d_debug_bind_flags(bind_flags), wined3d_debug_resource_access(access));
+            return WINED3DERR_INVALIDCALL;
+        }
+
+        /* Dynamic usage is incompatible with GPU writes. */
+        if (usage & WINED3DUSAGE_DYNAMIC)
+        {
+            WARN("Bind flags %s are incompatible with resource usage %s.\n",
+                    wined3d_debug_bind_flags(bind_flags), debug_d3dusage(usage));
+            return WINED3DERR_INVALIDCALL;
+        }
     }
 
     if (!size)
@@ -105,31 +121,36 @@ HRESULT resource_init(struct wined3d_resource *resource, struct wined3d_device *
         if (base_type == WINED3D_GL_RES_TYPE_COUNT)
             base_type = gl_type;
 
-        if ((usage & WINED3DUSAGE_RENDERTARGET) && !(format->flags[gl_type] & WINED3DFMT_FLAG_RENDERTARGET))
+        if (type != WINED3D_RTYPE_BUFFER)
         {
-            WARN("Format %s cannot be used for render targets.\n", debug_d3dformat(format->id));
-            continue;
-        }
-        if ((usage & WINED3DUSAGE_DEPTHSTENCIL)
-                && !(format->flags[gl_type] & (WINED3DFMT_FLAG_DEPTH | WINED3DFMT_FLAG_STENCIL)))
-        {
-            WARN("Format %s cannot be used for depth/stencil buffers.\n", debug_d3dformat(format->id));
-            continue;
-        }
-        if (wined3d_settings.offscreen_rendering_mode == ORM_FBO
-                && usage & (WINED3DUSAGE_RENDERTARGET | WINED3DUSAGE_DEPTHSTENCIL)
-                && !(format->flags[gl_type] & WINED3DFMT_FLAG_FBO_ATTACHABLE))
-        {
-            WARN("Render target or depth stencil is not FBO attachable.\n");
-            continue;
-        }
-        if ((usage & WINED3DUSAGE_TEXTURE) && !(format->flags[gl_type] & WINED3DFMT_FLAG_TEXTURE))
-        {
-            WARN("Format %s cannot be used for texturing.\n", debug_d3dformat(format->id));
-            continue;
+            if ((bind_flags & WINED3D_BIND_RENDER_TARGET)
+                    && !(format->flags[gl_type] & WINED3DFMT_FLAG_RENDERTARGET))
+            {
+                WARN("Format %s cannot be used for render targets.\n", debug_d3dformat(format->id));
+                continue;
+            }
+            if ((bind_flags & WINED3D_BIND_DEPTH_STENCIL)
+                    && !(format->flags[gl_type] & (WINED3DFMT_FLAG_DEPTH | WINED3DFMT_FLAG_STENCIL)))
+            {
+                WARN("Format %s cannot be used for depth/stencil buffers.\n", debug_d3dformat(format->id));
+                continue;
+            }
+            if (wined3d_settings.offscreen_rendering_mode == ORM_FBO
+                    && bind_flags & (WINED3D_BIND_RENDER_TARGET | WINED3D_BIND_DEPTH_STENCIL)
+                    && !(format->flags[gl_type] & WINED3DFMT_FLAG_FBO_ATTACHABLE))
+            {
+                WARN("Render target or depth stencil is not FBO attachable.\n");
+                continue;
+            }
+            if ((bind_flags & WINED3D_BIND_SHADER_RESOURCE)
+                    && !(format->flags[gl_type] & WINED3DFMT_FLAG_TEXTURE))
+            {
+                WARN("Format %s cannot be used for texturing.\n", debug_d3dformat(format->id));
+                continue;
+            }
         }
         if (((width & (width - 1)) || (height & (height - 1)))
-                && !gl_info->supported[ARB_TEXTURE_NON_POWER_OF_TWO]
+                && !d3d_info->texture_npot
                 && !gl_info->supported[WINED3D_GL_NORMALIZED_TEXRECT]
                 && gl_type == WINED3D_GL_RES_TYPE_TEX_2D)
         {
@@ -181,6 +202,9 @@ HRESULT resource_init(struct wined3d_resource *resource, struct wined3d_device *
     resource->multisample_type = multisample_type;
     resource->multisample_quality = multisample_quality;
     resource->usage = usage;
+    resource->bind_flags = bind_flags;
+    if (resource->format_flags & WINED3DFMT_FLAG_MAPPABLE)
+        access |= WINED3D_RESOURCE_ACCESS_MAP_R | WINED3D_RESOURCE_ACCESS_MAP_W;
     resource->access = access;
     resource->width = width;
     resource->height = height;
@@ -286,6 +310,7 @@ void CDECL wined3d_resource_get_desc(const struct wined3d_resource *resource, st
     desc->multisample_type = resource->multisample_type;
     desc->multisample_quality = resource->multisample_quality;
     desc->usage = resource->usage;
+    desc->bind_flags = resource->bind_flags;
     desc->access = resource->access;
     desc->width = resource->width;
     desc->height = resource->height;
@@ -476,4 +501,13 @@ void wined3d_resource_update_draw_binding(struct wined3d_resource *resource)
     {
         resource->draw_binding = WINED3D_LOCATION_TEXTURE_RGB;
     }
+}
+
+const struct wined3d_format *wined3d_resource_get_decompress_format(const struct wined3d_resource *resource)
+{
+    const struct wined3d_adapter *adapter = resource->device->adapter;
+    if (resource->format_flags & (WINED3DFMT_FLAG_SRGB_READ | WINED3DFMT_FLAG_SRGB_WRITE)
+            && !(adapter->d3d_info.wined3d_creation_flags & WINED3D_SRGB_READ_WRITE_CONTROL))
+        return wined3d_get_format(adapter, WINED3DFMT_B8G8R8A8_UNORM_SRGB, resource->bind_flags);
+    return wined3d_get_format(adapter, WINED3DFMT_B8G8R8A8_UNORM, resource->bind_flags);
 }

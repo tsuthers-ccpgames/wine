@@ -3237,10 +3237,10 @@ FILE* __cdecl _Fiopen_wchar(const wchar_t *name, int mode, int prot)
 
     TRACE("(%s %d %d)\n", debugstr_w(name), mode, prot);
 
-    for(mode_idx=0; mode_idx<sizeof(str_mode)/sizeof(str_mode[0]); mode_idx++)
+    for(mode_idx=0; mode_idx<ARRAY_SIZE(str_mode); mode_idx++)
         if(str_mode[mode_idx].mode == real_mode)
             break;
-    if(mode_idx == sizeof(str_mode)/sizeof(str_mode[0]))
+    if(mode_idx == ARRAY_SIZE(str_mode))
         return NULL;
 
     if((mode & OPENMODE__Nocreate) && !(f = _wfopen(name, rW)))
@@ -3469,7 +3469,7 @@ int __thiscall basic_filebuf_char_uflow(basic_filebuf_char *this)
         return c;
 
     buf_next = buf;
-    for(i=0; i < sizeof(buf)/sizeof(buf[0]); i++) {
+    for(i=0; i < ARRAY_SIZE(buf); i++) {
         buf[i] = c;
 
         switch(codecvt_char_in(this->cvt, &this->state, buf_next,
@@ -4112,7 +4112,7 @@ unsigned short __thiscall basic_filebuf_wchar_uflow(basic_filebuf_wchar *this)
         return fgetwc(this->file);
 
     buf_next = buf;
-    for(i=0; i < sizeof(buf)/sizeof(buf[0]); i++) {
+    for(i=0; i < ARRAY_SIZE(buf); i++) {
         if((c = fgetc(this->file)) == EOF)
             return WEOF;
         buf[i] = c;
@@ -8583,7 +8583,7 @@ basic_istream_char* __thiscall basic_istream_char_ignore(basic_istream_char *thi
                 break;
             }
 
-            if(ch==(unsigned char)delim)
+            if(ch==delim)
                 break;
 
             this->count++;
@@ -8823,9 +8823,6 @@ fpos_mbstatet* __thiscall basic_istream_char_tellg(basic_istream_char *this, fpo
     if(basic_istream_char_sentry_create(this, TRUE)) {
         basic_streambuf_char_pubseekoff(basic_ios_char_rdbuf_get(base),
                 ret, 0, SEEKDIR_cur, OPENMODE_in);
-
-        if(ret->off==-1 && ret->pos==0 && MBSTATET_TO_INT(&ret->state)==0)
-            basic_ios_char_setstate(base, IOSTATE_failbit);
     }else {
         ret->off = -1;
         ret->pos = 0;
@@ -8842,9 +8839,6 @@ fpos_mbstatet* __thiscall basic_istream_char_tellg(basic_istream_char *this, fpo
 
     basic_streambuf_char_pubseekoff(basic_ios_char_rdbuf_get(base),
             ret, 0, SEEKDIR_cur, OPENMODE_in);
-
-    if(ret->off==-1 && ret->pos==0 && MBSTATET_TO_INT(&ret->state)==0)
-        basic_ios_char_setstate(base, IOSTATE_failbit);
 #endif
 
     return ret;
@@ -10398,9 +10392,6 @@ fpos_mbstatet* __thiscall basic_istream_wchar_tellg(basic_istream_wchar *this, f
     if(basic_istream_wchar_sentry_create(this, TRUE)) {
         basic_streambuf_wchar_pubseekoff(basic_ios_wchar_rdbuf_get(base),
                 ret, 0, SEEKDIR_cur, OPENMODE_in);
-
-        if(ret->off==-1 && ret->pos==0 && MBSTATET_TO_INT(&ret->state)==0)
-            basic_ios_wchar_setstate(base, IOSTATE_failbit);
     }else {
         ret->off = -1;
         ret->pos = 0;
@@ -10417,8 +10408,6 @@ fpos_mbstatet* __thiscall basic_istream_wchar_tellg(basic_istream_wchar *this, f
 
     basic_streambuf_wchar_pubseekoff(basic_ios_wchar_rdbuf_get(base),
             ret, 0, SEEKDIR_cur, OPENMODE_in);
-    if(ret->off==-1 && ret->pos==0 && MBSTATET_TO_INT(&ret->state)==0)
-        basic_ios_wchar_setstate(base, IOSTATE_failbit);
 #endif
     return ret;
 }
@@ -14778,6 +14767,9 @@ int __cdecl tr2_sys__Copy_file(char const* source, char const* dest, MSVCP_bool 
 {
     TRACE("(%s %s %x)\n", debugstr_a(source), debugstr_a(dest), fail_if_exists);
 
+    if(!source || !dest)
+        return ERROR_INVALID_PARAMETER;
+
     if(CopyFileA(source, dest, fail_if_exists))
         return ERROR_SUCCESS;
     return GetLastError();
@@ -14856,14 +14848,26 @@ enum file_type __cdecl tr2_sys__Lstat(char const* path, int* err_code)
     return tr2_sys__Stat(path, err_code);
 }
 
+static __int64 get_last_write_time(HANDLE h)
+{
+    FILETIME wt;
+    __int64 ret;
+
+    if(!GetFileTime(h, 0, 0, &wt))
+        return -1;
+
+    ret = (((__int64)wt.dwHighDateTime)<< 32) + wt.dwLowDateTime;
+    ret -= TICKS_1601_TO_1970;
+    return ret;
+}
+
 /* ?_Last_write_time@sys@tr2@std@@YA_JPBD@Z */
 /* ?_Last_write_time@sys@tr2@std@@YA_JPEBD@Z */
 __int64 __cdecl tr2_sys__Last_write_time(char const* path)
 {
     HANDLE handle;
-    FILETIME lwt;
-    int ret;
-    __int64 last_write_time;
+    __int64 ret;
+
     TRACE("(%s)\n", debugstr_a(path));
 
     handle = CreateFileA(path, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -14871,15 +14875,45 @@ __int64 __cdecl tr2_sys__Last_write_time(char const* path)
     if(handle == INVALID_HANDLE_VALUE)
         return 0;
 
-    ret = GetFileTime(handle, 0, 0, &lwt);
+    ret = get_last_write_time(handle);
     CloseHandle(handle);
-    if(!ret)
-        return 0;
+    return ret / TICKSPERSEC;
+}
 
-    last_write_time = (((__int64)lwt.dwHighDateTime)<< 32) + lwt.dwLowDateTime;
-    last_write_time -= TICKS_1601_TO_1970;
-    last_write_time /= TICKSPERSEC;
-    return last_write_time;
+/* _Last_write_time */
+__int64 __cdecl _Last_write_time(const wchar_t *path)
+{
+    HANDLE handle;
+    __int64 ret;
+
+    TRACE("(%s)\n", debugstr_w(path));
+
+    handle = CreateFileW(path, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+            NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    if(handle == INVALID_HANDLE_VALUE)
+        return -1;
+
+    ret = get_last_write_time(handle);
+    CloseHandle(handle);
+    return ret;
+}
+
+/* ?_Last_write_time@sys@tr2@std@@YA_JPB_W@Z */
+/* ?_Last_write_time@sys@tr2@std@@YA_JPEB_W@Z */
+__int64 __cdecl tr2_sys__Last_write_time_wchar(const wchar_t *path)
+{
+    TRACE("(%s)\n", debugstr_w(path));
+    return _Last_write_time(path) / TICKSPERSEC;
+}
+
+static int set_last_write_time(HANDLE h, __int64 time)
+{
+    FILETIME wt;
+
+    time += TICKS_1601_TO_1970;
+    wt.dwLowDateTime = (DWORD)time;
+    wt.dwHighDateTime = (DWORD)(time >> 32);
+    return SetFileTime(h, 0, 0, &wt);
 }
 
 /* ?_Last_write_time@sys@tr2@std@@YAXPBD_J@Z */
@@ -14887,7 +14921,7 @@ __int64 __cdecl tr2_sys__Last_write_time(char const* path)
 void __cdecl tr2_sys__Last_write_time_set(char const* path, __int64 newtime)
 {
     HANDLE handle;
-    FILETIME lwt;
+
     TRACE("(%s)\n", debugstr_a(path));
 
     handle = CreateFileA(path, FILE_WRITE_ATTRIBUTES,
@@ -14900,13 +14934,35 @@ void __cdecl tr2_sys__Last_write_time_set(char const* path, __int64 newtime)
      * According to the test of msvcp120,
      * msvcp120's implementation does nothing. Obviously, this is a bug of windows.
      */
-
-    newtime *= TICKSPERSEC;
-    newtime += TICKS_1601_TO_1970;
-    lwt.dwLowDateTime = (DWORD)(newtime);
-    lwt.dwHighDateTime = (DWORD)(newtime >> 32);
-    SetFileTime(handle, 0, 0, &lwt);
+    set_last_write_time(handle, newtime * TICKSPERSEC);
     CloseHandle(handle);
+}
+
+/* _Set_last_write_time */
+int __cdecl _Set_last_write_time(const wchar_t *path, __int64 time)
+{
+    HANDLE handle;
+    int ret;
+
+    TRACE("(%s)\n", debugstr_w(path));
+
+    handle = CreateFileW(path, FILE_WRITE_ATTRIBUTES,
+            FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+            NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    if(handle == INVALID_HANDLE_VALUE)
+        return 0;
+
+    ret = set_last_write_time(handle, time);
+    CloseHandle(handle);
+    return ret;
+}
+
+/* ?_Last_write_time@sys@tr2@std@@YAXPB_W_J@Z */
+/* ?_Last_write_time@sys@tr2@std@@YAXPEB_W_J@Z */
+void __cdecl tr2_sys__Last_write_time_set_wchar(const wchar_t *path, __int64 time)
+{
+    TRACE("(%s)\n", debugstr_w(path));
+    _Set_last_write_time(path, time * TICKSPERSEC);
 }
 
 /* ??_Open_dir@sys@tr2@std@@YAPAXPA_WPB_WAAHAAW4file_type@123@@Z */
@@ -14923,6 +14979,7 @@ void* __cdecl tr2_sys__Open_dir_wchar(wchar_t* target, wchar_t const* dest, int*
     TRACE("(%p %s %p %p)\n", target, debugstr_w(dest), err_code, type);
     if(wcslen(dest) > MAX_PATH - 3) {
         *err_code = ERROR_BAD_PATHNAME;
+        *target = '\0';
         return NULL;
     }
     wcscpy(temppath, dest);
@@ -14930,13 +14987,15 @@ void* __cdecl tr2_sys__Open_dir_wchar(wchar_t* target, wchar_t const* dest, int*
 
     handle = FindFirstFileW(temppath, &data);
     if(handle == INVALID_HANDLE_VALUE) {
-        *err_code = GetLastError();
+        *err_code = ERROR_BAD_PATHNAME;
+        *target = '\0';
         return NULL;
     }
     while(!wcscmp(data.cFileName, dot) || !wcscmp(data.cFileName, dotdot)) {
         if(!FindNextFileW(handle, &data)) {
             *err_code = ERROR_SUCCESS;
             *type = status_unknown;
+            *target = '\0';
             FindClose(handle);
             return NULL;
         }
@@ -14970,8 +15029,7 @@ void* __cdecl tr2_sys__Open_dir(char* target, char const* dest, int* err_code, e
 
     handle = tr2_sys__Open_dir_wchar(target_w, dest ? dest_w : NULL, err_code, type);
 
-    if (handle)
-        WideCharToMultiByte(CP_ACP, 0, target_w, -1, target, MAX_PATH, NULL, NULL);
+    WideCharToMultiByte(CP_ACP, 0, target_w, -1, target, MAX_PATH, NULL, NULL);
 
     return handle;
 }
@@ -15641,9 +15699,6 @@ int __cdecl tr2_sys__Rename_wchar(WCHAR const* old_path, WCHAR const* new_path)
 {
     TRACE("(%s %s)\n", debugstr_w(old_path), debugstr_w(new_path));
 
-    if(!old_path || !new_path)
-        return ERROR_INVALID_PARAMETER;
-
     if(MoveFileExW(old_path, new_path, MOVEFILE_COPY_ALLOWED))
         return ERROR_SUCCESS;
     return GetLastError();
@@ -15743,6 +15798,12 @@ enum file_type __cdecl tr2_sys__Lstat_wchar(WCHAR const* path, int* err_code)
 enum file_type __cdecl _Lstat(WCHAR const* path, int* permissions)
 {
     return _Stat(path, permissions);
+}
+
+WCHAR * __cdecl _Temp_get(WCHAR *dst)
+{
+    GetTempPathW(MAX_PATH, dst);
+    return dst;
 }
 
 /* ??1_Winit@std@@QAE@XZ */

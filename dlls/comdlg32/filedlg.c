@@ -639,7 +639,7 @@ void COMDLG32_GetCanonicalPath(PCIDLIST_ABSOLUTE pidlAbsCurrent,
   }
   PathAddBackslashW(lpstrPathAndFile);
 
-  TRACE("current directory=%s\n", debugstr_w(lpstrPathAndFile));
+  TRACE("current directory=%s, file=%s\n", debugstr_w(lpstrPathAndFile), debugstr_w(lpstrFile));
 
   /* if the user specified a fully qualified path use it */
   if(PathIsRelativeW(lpstrFile))
@@ -1240,6 +1240,10 @@ static LRESULT FILEDLG95_OnWMSize(HWND hwnd, WPARAM wParam)
                             rc.right - rc.left + chgx,
                             rc.bottom - rc.top + chgy,
                             SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+                    break;
+                case IDC_TOOLBARPLACES:
+                    DeferWindowPos( hdwp, ctrl, NULL, 0, 0, rc.right - rc.left, rc.bottom - rc.top + chgy,
+                                    SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
                     break;
             }
         }

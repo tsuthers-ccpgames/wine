@@ -146,6 +146,9 @@ static BOOLEAN   (CDECL *pRtlAddFunctionTable)(RUNTIME_FUNCTION*, DWORD, DWORD64
 static BOOLEAN   (CDECL *pRtlDeleteFunctionTable)(RUNTIME_FUNCTION*);
 static BOOLEAN   (CDECL *pRtlInstallFunctionTableCallback)(DWORD64, DWORD64, DWORD, PGET_RUNTIME_FUNCTION_CALLBACK, PVOID, PCWSTR);
 static PRUNTIME_FUNCTION (WINAPI *pRtlLookupFunctionEntry)(ULONG64, ULONG64*, UNWIND_HISTORY_TABLE*);
+static DWORD     (CDECL *pRtlAddGrowableFunctionTable)(void**, RUNTIME_FUNCTION*, DWORD, DWORD, ULONG_PTR, ULONG_PTR);
+static void      (CDECL *pRtlGrowFunctionTable)(void*, DWORD);
+static void      (CDECL *pRtlDeleteGrowableFunctionTable)(void*);
 static EXCEPTION_DISPOSITION (WINAPI *p__C_specific_handler)(EXCEPTION_RECORD*, ULONG64, CONTEXT*, DISPATCHER_CONTEXT*);
 static VOID      (WINAPI *pRtlCaptureContext)(CONTEXT*);
 static VOID      (CDECL *pRtlRestoreContext)(CONTEXT*, EXCEPTION_RECORD*);
@@ -397,6 +400,9 @@ static DWORD rtlraiseexception_handler( EXCEPTION_RECORD *rec, EXCEPTION_REGISTR
     ok(rec->ExceptionAddress == (char *)code_mem + 0xb, "ExceptionAddress at %p instead of %p\n",
        rec->ExceptionAddress, (char *)code_mem + 0xb);
 
+    ok( context->ContextFlags == CONTEXT_ALL || context->ContextFlags == (CONTEXT_ALL | CONTEXT_XSTATE),
+        "wrong context flags %x\n", context->ContextFlags );
+
     /* check that context.Eip is fixed up only for EXCEPTION_BREAKPOINT
      * even if raised by RtlRaiseException
      */
@@ -643,7 +649,7 @@ static void test_prot_fault(void)
 {
     unsigned int i;
 
-    for (i = 0; i < sizeof(exceptions)/sizeof(exceptions[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(exceptions); i++)
     {
         if (is_wow64 && exceptions[i].wow64_broken && !strcmp( winetest_platform, "windows" ))
         {
@@ -1734,7 +1740,7 @@ static void call_virtual_unwind( int testnum, const struct unwind_test *test )
 
         for (j = 0; j < 16; j++)
         {
-            static const UINT nb_regs = sizeof(test->results[i].regs) / sizeof(test->results[i].regs[0]);
+            static const UINT nb_regs = ARRAY_SIZE(test->results[i].regs);
 
             for (k = 0; k < nb_regs; k++)
             {
@@ -1888,14 +1894,12 @@ static void test_virtual_unwind(void)
 
     static const struct unwind_test tests[] =
     {
-        { function_0, sizeof(function_0), unwind_info_0,
-          results_0, sizeof(results_0)/sizeof(results_0[0]) },
-        { function_1, sizeof(function_1), unwind_info_1,
-          results_1, sizeof(results_1)/sizeof(results_1[0]) }
+        { function_0, sizeof(function_0), unwind_info_0, results_0, ARRAY_SIZE(results_0) },
+        { function_1, sizeof(function_1), unwind_info_1, results_1, ARRAY_SIZE(results_1) }
     };
     unsigned int i;
 
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(tests); i++)
         call_virtual_unwind( i, &tests[i] );
 }
 
@@ -2039,9 +2043,11 @@ static RUNTIME_FUNCTION* CALLBACK dynamic_unwind_callback( DWORD64 pc, PVOID con
 static void test_dynamic_unwind(void)
 {
     static const int code_offset = 1024;
-    char buf[sizeof(RUNTIME_FUNCTION) + 4];
+    char buf[2 * sizeof(RUNTIME_FUNCTION) + 4];
     RUNTIME_FUNCTION *runtime_func, *func;
     ULONG_PTR table, base;
+    void *growable_table;
+    NTSTATUS status;
     DWORD count;
 
     /* Test RtlAddFunctionTable with aligned RUNTIME_FUNCTION pointer */
@@ -2100,6 +2106,14 @@ static void test_dynamic_unwind(void)
     ok( !pRtlDeleteFunctionTable( runtime_func ),
         "RtlDeleteFunctionTable returned success for nonexistent table runtime_func = %p\n", runtime_func );
 
+    /* Empty table */
+    ok( pRtlAddFunctionTable( runtime_func, 0, (ULONG_PTR)code_mem ),
+        "RtlAddFunctionTable failed for empty table\n" );
+    ok( pRtlDeleteFunctionTable( runtime_func ),
+        "RtlDeleteFunctionTable failed for empty table\n" );
+    ok( !pRtlDeleteFunctionTable( runtime_func ),
+        "RtlDeleteFunctionTable succeeded twice for empty table\n" );
+
     /* Test RtlInstallFunctionTableCallback with both low bits unset */
     table = (ULONG_PTR)code_mem;
     ok( !pRtlInstallFunctionTableCallback( table, (ULONG_PTR)code_mem, code_offset + 32, &dynamic_unwind_callback, (PVOID*)&count, NULL ),
@@ -2138,6 +2152,76 @@ static void test_dynamic_unwind(void)
     ok( !pRtlDeleteFunctionTable( (PRUNTIME_FUNCTION)table ),
         "RtlDeleteFunctionTable returned success for nonexistent table = %p\n", (PVOID)table );
 
+    if (!pRtlAddGrowableFunctionTable)
+    {
+        win_skip("Growable function tables are not supported.\n");
+        return;
+    }
+
+    runtime_func = (RUNTIME_FUNCTION *)buf;
+    runtime_func->BeginAddress = code_offset;
+    runtime_func->EndAddress   = code_offset + 16;
+    runtime_func->UnwindData   = 0;
+    runtime_func++;
+    runtime_func->BeginAddress = code_offset + 16;
+    runtime_func->EndAddress   = code_offset + 32;
+    runtime_func->UnwindData   = 0;
+    runtime_func = (RUNTIME_FUNCTION *)buf;
+
+    growable_table = NULL;
+    status = pRtlAddGrowableFunctionTable( &growable_table, runtime_func, 1, 1, (ULONG_PTR)code_mem, (ULONG_PTR)code_mem + 64 );
+    ok(!status, "RtlAddGrowableFunctionTable failed for runtime_func = %p (aligned), %#x.\n", runtime_func, status );
+    ok(growable_table != 0, "Unexpected table value.\n");
+    pRtlDeleteGrowableFunctionTable( growable_table );
+
+    growable_table = NULL;
+    status = pRtlAddGrowableFunctionTable( &growable_table, runtime_func, 2, 2, (ULONG_PTR)code_mem, (ULONG_PTR)code_mem + 64 );
+    ok(!status, "RtlAddGrowableFunctionTable failed for runtime_func = %p (aligned), %#x.\n", runtime_func, status );
+    ok(growable_table != 0, "Unexpected table value.\n");
+    pRtlDeleteGrowableFunctionTable( growable_table );
+
+    growable_table = NULL;
+    status = pRtlAddGrowableFunctionTable( &growable_table, runtime_func, 1, 2, (ULONG_PTR)code_mem, (ULONG_PTR)code_mem + 64 );
+    ok(!status, "RtlAddGrowableFunctionTable failed for runtime_func = %p (aligned), %#x.\n", runtime_func, status );
+    ok(growable_table != 0, "Unexpected table value.\n");
+    pRtlDeleteGrowableFunctionTable( growable_table );
+
+    growable_table = NULL;
+    status = pRtlAddGrowableFunctionTable( &growable_table, runtime_func, 0, 2, (ULONG_PTR)code_mem,
+            (ULONG_PTR)code_mem + code_offset + 64 );
+    ok(!status, "RtlAddGrowableFunctionTable failed for runtime_func = %p (aligned), %#x.\n", runtime_func, status );
+    ok(growable_table != 0, "Unexpected table value.\n");
+
+    /* Current count is 0. */
+    func = pRtlLookupFunctionEntry( (ULONG_PTR)code_mem + code_offset + 8, &base, NULL );
+    ok( func == NULL,
+        "RtlLookupFunctionEntry didn't return expected function, expected: %p, got: %p\n", runtime_func, func );
+
+    pRtlGrowFunctionTable( growable_table, 1 );
+
+    base = 0xdeadbeef;
+    func = pRtlLookupFunctionEntry( (ULONG_PTR)code_mem + code_offset + 8, &base, NULL );
+    ok( func == runtime_func,
+        "RtlLookupFunctionEntry didn't return expected function, expected: %p, got: %p\n", runtime_func, func );
+    ok( base == (ULONG_PTR)code_mem,
+        "RtlLookupFunctionEntry returned invalid base, expected: %lx, got: %lx\n", (ULONG_PTR)code_mem, base );
+
+    /* Second function is inaccessible yet. */
+    base = 0xdeadbeef;
+    func = pRtlLookupFunctionEntry( (ULONG_PTR)code_mem + code_offset + 16, &base, NULL );
+    ok( func == NULL,
+        "RtlLookupFunctionEntry didn't return expected function, expected: %p, got: %p\n", runtime_func, func );
+
+    pRtlGrowFunctionTable( growable_table, 2 );
+
+    base = 0xdeadbeef;
+    func = pRtlLookupFunctionEntry( (ULONG_PTR)code_mem + code_offset + 16, &base, NULL );
+    ok( func == runtime_func + 1,
+        "RtlLookupFunctionEntry didn't return expected function, expected: %p, got: %p\n", runtime_func, func );
+    ok( base == (ULONG_PTR)code_mem,
+        "RtlLookupFunctionEntry returned invalid base, expected: %lx, got: %lx\n", (ULONG_PTR)code_mem, base );
+
+    pRtlDeleteGrowableFunctionTable( growable_table );
 }
 
 static int termination_handler_called;
@@ -2429,7 +2513,7 @@ static void test_prot_fault(void)
 {
     unsigned int i;
 
-    for (i = 0; i < sizeof(exceptions)/sizeof(exceptions[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(exceptions); i++)
     {
         got_exception = 0;
         run_exception_test(handler, &exceptions[i], &exceptions[i].code,
@@ -2567,7 +2651,7 @@ static void test_debug_registers(void)
     HANDLE thread;
     int i;
 
-    for (i = 0; i < sizeof(tests)/sizeof(tests[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(tests); i++)
     {
         memset(&ctx, 0, sizeof(ctx));
         ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
@@ -3157,6 +3241,9 @@ START_TEST(exception)
                                                                  "RtlInstallFunctionTableCallback" );
     pRtlLookupFunctionEntry            = (void *)GetProcAddress( hntdll,
                                                                  "RtlLookupFunctionEntry" );
+    pRtlAddGrowableFunctionTable       = (void *)GetProcAddress( hntdll, "RtlAddGrowableFunctionTable" );
+    pRtlGrowFunctionTable              = (void *)GetProcAddress( hntdll, "RtlGrowFunctionTable" );
+    pRtlDeleteGrowableFunctionTable    = (void *)GetProcAddress( hntdll, "RtlDeleteGrowableFunctionTable" );
     p__C_specific_handler              = (void *)GetProcAddress( hntdll,
                                                                  "__C_specific_handler" );
     pRtlCaptureContext                 = (void *)GetProcAddress( hntdll,

@@ -21,6 +21,7 @@
 #include "config.h"
 #include "wine/port.h"
 
+#include "initguid.h"
 #include "d3dcompiler_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3dcompiler);
@@ -665,6 +666,14 @@ static UINT STDMETHODCALLTYPE d3dcompiler_shader_reflection_GetThreadGroupSize(
     return 0;
 }
 
+static UINT64 STDMETHODCALLTYPE d3dcompiler_shader_reflection_GetRequiresFlags(
+        ID3D11ShaderReflection *iface)
+{
+    FIXME("iface %p stub!\n", iface);
+
+    return 0;
+}
+
 static const struct ID3D11ShaderReflectionVtbl d3dcompiler_shader_reflection_vtbl =
 {
     /* IUnknown methods */
@@ -690,6 +699,7 @@ static const struct ID3D11ShaderReflectionVtbl d3dcompiler_shader_reflection_vtb
     d3dcompiler_shader_reflection_GetNumInterfaceSlots,
     d3dcompiler_shader_reflection_GetMinFeatureLevel,
     d3dcompiler_shader_reflection_GetThreadGroupSize,
+    d3dcompiler_shader_reflection_GetRequiresFlags,
 };
 
 /* ID3D11ShaderReflectionConstantBuffer methods */

@@ -1088,6 +1088,13 @@ static LRESULT WINMM_OpenDevice(WINMM_Device *device, WINMM_OpenInfo *info,
     }
 
     if(info->format->wFormatTag == WAVE_FORMAT_PCM){
+
+        if (info->format->nSamplesPerSec == 0)
+        {
+            ret = MMSYSERR_INVALPARAM;
+            goto error;
+        }
+
         /* we aren't guaranteed that the struct in lpFormat is a full
          * WAVEFORMATEX struct, which IAC::IsFormatSupported requires */
         device->orig_fmt = HeapAlloc(GetProcessHeap(), 0, sizeof(WAVEFORMATEX));
@@ -4347,7 +4354,7 @@ UINT WINAPI mixerGetLineInfoA(HMIXEROBJ hmix, LPMIXERLINEA lpmliA,
 	mliW.Target.wMid = lpmliA->Target.wMid;
 	mliW.Target.wPid = lpmliA->Target.wPid;
 	mliW.Target.vDriverVersion = lpmliA->Target.vDriverVersion;
-        MultiByteToWideChar( CP_ACP, 0, lpmliA->Target.szPname, -1, mliW.Target.szPname, sizeof(mliW.Target.szPname)/sizeof(WCHAR));
+        MultiByteToWideChar(CP_ACP, 0, lpmliA->Target.szPname, -1, mliW.Target.szPname, ARRAY_SIZE(mliW.Target.szPname));
 	break;
     default:
 	WARN("Unsupported fdwControls=0x%08x\n", fdwInfo);

@@ -1416,7 +1416,7 @@ static NTSTATUS map_image( HANDLE hmapping, ACCESS_MASK access, int fd, SIZE_T m
     memset( ptr + header_size, 0, header_end - (ptr + header_size) );
     if ((char *)(nt + 1) > header_end) goto error;
     header_start = (char*)&nt->OptionalHeader+nt->FileHeader.SizeOfOptionalHeader;
-    if (nt->FileHeader.NumberOfSections > sizeof(sections)/sizeof(*sections)) goto error;
+    if (nt->FileHeader.NumberOfSections > ARRAY_SIZE( sections )) goto error;
     if (header_start + sizeof(*sections) * nt->FileHeader.NumberOfSections > header_end) goto error;
     /* Some applications (e.g. the Steam version of Borderlands) map over the top of the section headers,
      * copying the headers into local memory is necessary to properly load such applications. */
@@ -2417,14 +2417,20 @@ void virtual_release_address_space(void)
     if (range.limit > range.base)
     {
         while (wine_mmap_enum_reserved_areas( free_reserved_memory, &range, 1 )) /* nothing */;
+#ifdef __APPLE__
+        /* On macOS, we still want to free some of low memory, for OpenGL resources */
+        range.base  = (char *)0x40000000;
+#else
+        range.base  = NULL;
+#endif
     }
     else
+        range.base = (char *)0x20000000;
+
+    if (range.base)
     {
-#ifndef __APPLE__  /* dyld doesn't support parts of the WINE_DOS segment being unmapped */
-        range.base  = (char *)0x20000000;
         range.limit = (char *)0x7f000000;
         while (wine_mmap_enum_reserved_areas( free_reserved_memory, &range, 0 )) /* nothing */;
-#endif
     }
 
     server_leave_uninterrupted_section( &csVirtual, &sigset );
@@ -3176,6 +3182,39 @@ NTSTATUS WINAPI NtUnmapViewOfSection( HANDLE process, PVOID addr )
 
 
 /******************************************************************************
+ *             virtual_fill_image_information
+ *
+ * Helper for NtQuerySection.
+ */
+void virtual_fill_image_information( const pe_image_info_t *pe_info, SECTION_IMAGE_INFORMATION *info )
+{
+    info->TransferAddress      = wine_server_get_ptr( pe_info->entry_point );
+    info->ZeroBits             = pe_info->zerobits;
+    info->MaximumStackSize     = pe_info->stack_size;
+    info->CommittedStackSize   = pe_info->stack_commit;
+    info->SubSystemType        = pe_info->subsystem;
+    info->SubsystemVersionLow  = pe_info->subsystem_low;
+    info->SubsystemVersionHigh = pe_info->subsystem_high;
+    info->GpValue              = pe_info->gp;
+    info->ImageCharacteristics = pe_info->image_charact;
+    info->DllCharacteristics   = pe_info->dll_charact;
+    info->Machine              = pe_info->machine;
+    info->ImageContainsCode    = pe_info->contains_code;
+    info->u.ImageFlags         = pe_info->image_flags & ~IMAGE_FLAGS_WineFakeDll;
+    info->LoaderFlags          = pe_info->loader_flags;
+    info->ImageFileSize        = pe_info->file_size;
+    info->CheckSum             = pe_info->checksum;
+#ifndef _WIN64 /* don't return 64-bit values to 32-bit processes */
+    if (pe_info->machine == IMAGE_FILE_MACHINE_AMD64 || pe_info->machine == IMAGE_FILE_MACHINE_ARM64)
+    {
+        info->TransferAddress = (void *)0x81231234;  /* sic */
+        info->MaximumStackSize = 0x100000;
+        info->CommittedStackSize = 0x10000;
+    }
+#endif
+}
+
+/******************************************************************************
  *             NtQuerySection   (NTDLL.@)
  *             ZwQuerySection   (NTDLL.@)
  */
@@ -3217,32 +3256,8 @@ NTSTATUS WINAPI NtQuerySection( HANDLE handle, SECTION_INFORMATION_CLASS class, 
             else if (reply->flags & SEC_IMAGE)
             {
                 SECTION_IMAGE_INFORMATION *info = ptr;
-                info->TransferAddress      = wine_server_get_ptr( image_info.entry_point );
-                info->ZeroBits             = image_info.zerobits;
-                info->MaximumStackSize     = image_info.stack_size;
-                info->CommittedStackSize   = image_info.stack_commit;
-                info->SubSystemType        = image_info.subsystem;
-                info->SubsystemVersionLow  = image_info.subsystem_low;
-                info->SubsystemVersionHigh = image_info.subsystem_high;
-                info->GpValue              = image_info.gp;
-                info->ImageCharacteristics = image_info.image_charact;
-                info->DllCharacteristics   = image_info.dll_charact;
-                info->Machine              = image_info.machine;
-                info->ImageContainsCode    = image_info.contains_code;
-                info->u.ImageFlags         = image_info.image_flags;
-                info->LoaderFlags          = image_info.loader_flags;
-                info->ImageFileSize        = image_info.file_size;
-                info->CheckSum             = image_info.checksum;
+                virtual_fill_image_information( &image_info, info );
                 if (ret_size) *ret_size = sizeof(*info);
-#ifndef _WIN64 /* don't return 64-bit values to 32-bit processes */
-                if (image_info.machine == IMAGE_FILE_MACHINE_AMD64 ||
-                    image_info.machine == IMAGE_FILE_MACHINE_ARM64)
-                {
-                    info->TransferAddress = (void *)0x81231234;  /* sic */
-                    info->MaximumStackSize = 0x100000;
-                    info->CommittedStackSize = 0x10000;
-                }
-#endif
             }
             else status = STATUS_SECTION_NOT_IMAGE;
         }

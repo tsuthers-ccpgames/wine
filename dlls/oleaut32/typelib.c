@@ -328,7 +328,7 @@ static HRESULT query_typelib_path( REFGUID guid, WORD wMaj, WORD wMin,
                 return TYPE_E_LIBNOTREGISTERED;
 
             nameW = (WCHAR*)((BYTE*)data.lpSectionBase + tlib->name_offset);
-            len = SearchPathW( NULL, nameW, NULL, sizeof(Path)/sizeof(WCHAR), Path, NULL );
+            len = SearchPathW( NULL, nameW, NULL, ARRAY_SIZE( Path ), Path, NULL );
             if (!len) return TYPE_E_LIBNOTREGISTERED;
 
             TRACE_(typelib)("got path from context %s\n", debugstr_w(Path));
@@ -578,14 +578,24 @@ static void TLB_register_interface(TLIBATTR *libattr, LPOLESTR name, TYPEATTR *t
     WCHAR keyName[60];
     HKEY key, subKey;
 
-    static const WCHAR PSOA[] = {'{','0','0','0','2','0','4','2','4','-',
-                                 '0','0','0','0','-','0','0','0','0','-','C','0','0','0','-',
-                                 '0','0','0','0','0','0','0','0','0','0','4','6','}',0};
+    static const WCHAR typelib_proxy_clsid[] = {'{','0','0','0','2','0','4','2','4','-',
+            '0','0','0','0','-','0','0','0','0','-','C','0','0','0','-',
+            '0','0','0','0','0','0','0','0','0','0','4','6','}',0};
+    static const WCHAR dispatch_proxy_clsid[] = {'{','0','0','0','2','0','4','2','0','-',
+            '0','0','0','0','-','0','0','0','0','-','C','0','0','0','-',
+            '0','0','0','0','0','0','0','0','0','0','4','6','}',0};
 
     get_interface_key( &tattr->guid, keyName );
     if (RegCreateKeyExW(HKEY_CLASSES_ROOT, keyName, 0, NULL, 0,
                         KEY_WRITE | flag, NULL, &key, NULL) == ERROR_SUCCESS)
     {
+        const WCHAR *proxy_clsid;
+
+        if (tattr->typekind == TKIND_INTERFACE || (tattr->wTypeFlags & TYPEFLAG_FDUAL))
+            proxy_clsid = typelib_proxy_clsid;
+        else
+            proxy_clsid = dispatch_proxy_clsid;
+
         if (name)
             RegSetValueExW(key, NULL, 0, REG_SZ,
                            (BYTE *)name, (strlenW(name)+1) * sizeof(OLECHAR));
@@ -593,14 +603,14 @@ static void TLB_register_interface(TLIBATTR *libattr, LPOLESTR name, TYPEATTR *t
         if (RegCreateKeyExW(key, ProxyStubClsidW, 0, NULL, 0,
             KEY_WRITE | flag, NULL, &subKey, NULL) == ERROR_SUCCESS) {
             RegSetValueExW(subKey, NULL, 0, REG_SZ,
-                           (const BYTE *)PSOA, sizeof PSOA);
+                           (const BYTE *)proxy_clsid, sizeof(typelib_proxy_clsid));
             RegCloseKey(subKey);
         }
 
         if (RegCreateKeyExW(key, ProxyStubClsid32W, 0, NULL, 0,
             KEY_WRITE | flag, NULL, &subKey, NULL) == ERROR_SUCCESS) {
             RegSetValueExW(subKey, NULL, 0, REG_SZ,
-                           (const BYTE *)PSOA, sizeof PSOA);
+                           (const BYTE *)proxy_clsid, sizeof(typelib_proxy_clsid));
             RegCloseKey(subKey);
         }
 
@@ -969,11 +979,11 @@ enddeleteloop:
 
     /* check if there is anything besides the FLAGS/HELPDIR keys.
        If there is, we don't delete them */
-    tmpLength = sizeof(subKeyName)/sizeof(WCHAR);
+    tmpLength = ARRAY_SIZE(subKeyName);
     deleteOtherStuff = TRUE;
     i = 0;
     while(RegEnumKeyExW(key, i++, subKeyName, &tmpLength, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
-        tmpLength = sizeof(subKeyName)/sizeof(WCHAR);
+        tmpLength = ARRAY_SIZE(subKeyName);
 
         /* if its not FLAGS or HELPDIR, then we must keep the rest of the key */
         if (!strcmpW(subKeyName, FLAGSW)) continue;
@@ -2675,7 +2685,7 @@ static ITypeInfoImpl * MSFT_DoTypeInfo(
     ptiRet->typeattr.wMajorVerNum = LOWORD(tiBase.version);
     ptiRet->typeattr.wMinorVerNum = HIWORD(tiBase.version);
     ptiRet->typeattr.cImplTypes = tiBase.cImplTypes;
-    ptiRet->typeattr.cbSizeVft = tiBase.cbSizeVft; /* FIXME: this is only the non inherited part */
+    ptiRet->typeattr.cbSizeVft = tiBase.cbSizeVft;
     if (ptiRet->typeattr.typekind == TKIND_ALIAS) {
         TYPEDESC tmp;
         MSFT_GetTdesc(pcx, tiBase.datatype1, &tmp);
@@ -6307,6 +6317,7 @@ static HRESULT WINAPI ITypeInfo_fnGetIDsOfNames( ITypeInfo2 *iface,
 #ifdef __i386__
 
 extern LONGLONG call_method( void *func, int nb_args, const DWORD *args, int *stack_offset );
+extern double call_double_method( void *func, int nb_args, const DWORD *args, int *stack_offset );
 __ASM_GLOBAL_FUNC( call_method,
                    "pushl %ebp\n\t"
                    __ASM_CFI(".cfi_adjust_cfa_offset 4\n\t")
@@ -6341,45 +6352,13 @@ __ASM_GLOBAL_FUNC( call_method,
                    __ASM_CFI(".cfi_def_cfa %esp,4\n\t")
                    __ASM_CFI(".cfi_same_value %ebp\n\t")
                    "ret" )
-
-/* same function but returning floating point */
-static double (* const call_double_method)(void*,int,const DWORD*,int*) = (void *)call_method;
-
-/* ITypeInfo::Invoke
- *
- * Invokes a method, or accesses a property of an object, that implements the
- * interface described by the type description.
- */
-DWORD
-_invoke(FARPROC func,CALLCONV callconv, int nrargs, DWORD *args) {
-    DWORD res;
-    int stack_offset;
-
-    if (TRACE_ON(ole)) {
-	int i;
-	TRACE("Calling %p(",func);
-	for (i=0;i<min(nrargs,30);i++) TRACE("%08x,",args[i]);
-	if (nrargs > 30) TRACE("...");
-	TRACE(")\n");
-    }
-
-    switch (callconv) {
-    case CC_STDCALL:
-    case CC_CDECL:
-        res = call_method( func, nrargs, args, &stack_offset );
-	break;
-    default:
-	FIXME("unsupported calling convention %d\n",callconv);
-	res = -1;
-	break;
-    }
-    TRACE("returns %08x\n",res);
-    return res;
-}
+__ASM_GLOBAL_FUNC( call_double_method,
+                   "jmp " __ASM_NAME("call_method") )
 
 #elif defined(__x86_64__)
 
 extern DWORD_PTR CDECL call_method( void *func, int nb_args, const DWORD_PTR *args );
+extern double CDECL call_double_method( void *func, int nb_args, const DWORD_PTR *args );
 __ASM_GLOBAL_FUNC( call_method,
                    "pushq %rbp\n\t"
                    __ASM_CFI(".cfi_adjust_cfa_offset 8\n\t")
@@ -6419,13 +6398,14 @@ __ASM_GLOBAL_FUNC( call_method,
                    __ASM_CFI(".cfi_adjust_cfa_offset -8\n\t")
                    __ASM_CFI(".cfi_same_value %rbp\n\t")
                    "ret")
-
-/* same function but returning floating point */
-static double (CDECL * const call_double_method)(void*,int,const DWORD_PTR*) = (void *)call_method;
+__ASM_GLOBAL_FUNC( call_double_method,
+                   "jmp " __ASM_NAME("call_method") )
 
 #elif defined(__arm__)
 
 extern LONGLONG CDECL call_method( void *func, int nb_stk_args, const DWORD *stk_args, const DWORD *reg_args );
+extern float CDECL call_float_method( void *func, int nb_stk_args, const DWORD *stk_args, const DWORD *reg_args );
+extern double CDECL call_double_method( void *func, int nb_stk_args, const DWORD *stk_args, const DWORD *reg_args );
 __ASM_GLOBAL_FUNC( call_method,
                     /* r0 = *func
                      * r1 = nb_stk_args
@@ -6456,12 +6436,12 @@ __ASM_GLOBAL_FUNC( call_method,
                     "mov sp, fp\n\t"                /* Clean the stack using fp */
                     "pop {fp, pc}\n\t"              /* Restore fp and return */
                 )
+__ASM_GLOBAL_FUNC( call_float_method,
+                   "b " __ASM_NAME("call_method") )
+__ASM_GLOBAL_FUNC( call_double_method,
+                   "b " __ASM_NAME("call_method") )
 
-/* same function but returning single/double floating point */
-static float (CDECL * const call_float_method)(void *, int, const DWORD *, const DWORD *) = (void *)call_method;
-static double (CDECL * const call_double_method)(void *, int, const DWORD *, const DWORD *) = (void *)call_method;
-
-#endif  /* __x86_64__ */
+#endif  /* __arm__ */
 
 static HRESULT userdefined_to_variantvt(ITypeInfo *tinfo, const TYPEDESC *tdesc, VARTYPE *vt)
 {
@@ -6597,13 +6577,14 @@ static HRESULT typedescvt_to_variantvt(ITypeInfo *tinfo, const TYPEDESC *tdesc, 
     return hr;
 }
 
-static HRESULT get_iface_guid(ITypeInfo *tinfo, const TYPEDESC *tdesc, GUID *guid)
+static HRESULT get_iface_guid(ITypeInfo *tinfo, HREFTYPE href, GUID *guid)
 {
     ITypeInfo *tinfo2;
     TYPEATTR *tattr;
     HRESULT hres;
+    int flags, i;
 
-    hres = ITypeInfo_GetRefTypeInfo(tinfo, tdesc->u.hreftype, &tinfo2);
+    hres = ITypeInfo_GetRefTypeInfo(tinfo, href, &tinfo2);
     if(FAILED(hres))
         return hres;
 
@@ -6615,12 +6596,28 @@ static HRESULT get_iface_guid(ITypeInfo *tinfo, const TYPEDESC *tdesc, GUID *gui
 
     switch(tattr->typekind) {
     case TKIND_ALIAS:
-        hres = get_iface_guid(tinfo2, &tattr->tdescAlias, guid);
+        hres = get_iface_guid(tinfo2, tattr->tdescAlias.u.hreftype, guid);
         break;
 
     case TKIND_INTERFACE:
     case TKIND_DISPATCH:
         *guid = tattr->guid;
+        break;
+
+    case TKIND_COCLASS:
+        for (i = 0; i < tattr->cImplTypes; i++)
+        {
+            ITypeInfo_GetImplTypeFlags(tinfo2, i, &flags);
+            if (flags & IMPLTYPEFLAG_FDEFAULT)
+                break;
+        }
+
+        if (i == tattr->cImplTypes)
+            i = 0;
+
+        hres = ITypeInfo_GetRefTypeOfImplType(tinfo2, i, &href);
+        if (SUCCEEDED(hres))
+            hres = get_iface_guid(tinfo2, href, guid);
         break;
 
     default:
@@ -6677,7 +6674,7 @@ DispCallFunc(
     VARTYPE* prgvt, VARIANTARG** prgpvarg, VARIANT* pvargResult)
 {
 #ifdef __i386__
-    int argspos, stack_offset;
+    int argspos = 0, stack_offset;
     void *func;
     UINT i;
     DWORD *args;
@@ -6695,8 +6692,6 @@ DispCallFunc(
     /* maximum size for an argument is sizeof(VARIANT) */
     args = heap_alloc(sizeof(VARIANT) * cActuals + sizeof(DWORD) * 2 );
 
-    /* start at 1 in case we need to pass a pointer to the return value as arg 0 */
-    argspos = 1;
     if (pvInstance)
     {
         const FARPROC *vtable = *(FARPROC **)pvInstance;
@@ -6704,6 +6699,20 @@ DispCallFunc(
         args[argspos++] = (DWORD)pvInstance; /* the This pointer is always the first parameter */
     }
     else func = (void *)oVft;
+
+    switch (vtReturn)
+    {
+    case VT_DECIMAL:
+    case VT_VARIANT:
+        args[argspos++] = (DWORD)pvargResult;  /* arg 0 is a pointer to the result */
+        break;
+    case VT_HRESULT:
+        WARN("invalid return type %u\n", vtReturn);
+        heap_free( args );
+        return E_INVALIDARG;
+    default:
+        break;
+    }
 
     for (i = 0; i < cActuals; i++)
     {
@@ -6739,31 +6748,24 @@ DispCallFunc(
     switch (vtReturn)
     {
     case VT_EMPTY:
-        call_method( func, argspos - 1, args + 1, &stack_offset );
+    case VT_DECIMAL:
+    case VT_VARIANT:
+        call_method( func, argspos, args, &stack_offset );
         break;
     case VT_R4:
-        V_R4(pvargResult) = call_double_method( func, argspos - 1, args + 1, &stack_offset );
+        V_R4(pvargResult) = call_double_method( func, argspos, args, &stack_offset );
         break;
     case VT_R8:
     case VT_DATE:
-        V_R8(pvargResult) = call_double_method( func, argspos - 1, args + 1, &stack_offset );
-        break;
-    case VT_DECIMAL:
-    case VT_VARIANT:
-        args[0] = (DWORD)pvargResult;  /* arg 0 is a pointer to the result */
-        call_method( func, argspos, args, &stack_offset );
+        V_R8(pvargResult) = call_double_method( func, argspos, args, &stack_offset );
         break;
     case VT_I8:
     case VT_UI8:
     case VT_CY:
-        V_UI8(pvargResult) = call_method( func, argspos - 1, args + 1, &stack_offset );
+        V_UI8(pvargResult) = call_method( func, argspos, args, &stack_offset );
         break;
-    case VT_HRESULT:
-        WARN("invalid return type %u\n", vtReturn);
-        heap_free( args );
-        return E_INVALIDARG;
     default:
-        V_UI4(pvargResult) = call_method( func, argspos - 1, args + 1, &stack_offset );
+        V_UI4(pvargResult) = call_method( func, argspos, args, &stack_offset );
         break;
     }
     heap_free( args );
@@ -6777,7 +6779,7 @@ DispCallFunc(
     return S_OK;
 
 #elif defined(__x86_64__)
-    int argspos;
+    int argspos = 0;
     UINT i;
     DWORD_PTR *args;
     void *func;
@@ -6795,8 +6797,6 @@ DispCallFunc(
     /* maximum size for an argument is sizeof(DWORD_PTR) */
     args = heap_alloc( sizeof(DWORD_PTR) * (cActuals + 2) );
 
-    /* start at 1 in case we need to pass a pointer to the return value as arg 0 */
-    argspos = 1;
     if (pvInstance)
     {
         const FARPROC *vtable = *(FARPROC **)pvInstance;
@@ -6804,6 +6804,20 @@ DispCallFunc(
         args[argspos++] = (DWORD_PTR)pvInstance; /* the This pointer is always the first parameter */
     }
     else func = (void *)oVft;
+
+    switch (vtReturn)
+    {
+    case VT_DECIMAL:
+    case VT_VARIANT:
+        args[argspos++] = (DWORD_PTR)pvargResult;  /* arg 0 is a pointer to the result */
+        break;
+    case VT_HRESULT:
+        WARN("invalid return type %u\n", vtReturn);
+        heap_free( args );
+        return E_INVALIDARG;
+    default:
+        break;
+    }
 
     for (i = 0; i < cActuals; i++)
     {
@@ -6828,23 +6842,18 @@ DispCallFunc(
     switch (vtReturn)
     {
     case VT_R4:
-        V_R4(pvargResult) = call_double_method( func, argspos - 1, args + 1 );
+        V_R4(pvargResult) = call_double_method( func, argspos, args );
         break;
     case VT_R8:
     case VT_DATE:
-        V_R8(pvargResult) = call_double_method( func, argspos - 1, args + 1 );
+        V_R8(pvargResult) = call_double_method( func, argspos, args );
         break;
     case VT_DECIMAL:
     case VT_VARIANT:
-        args[0] = (DWORD_PTR)pvargResult;  /* arg 0 is a pointer to the result */
         call_method( func, argspos, args );
         break;
-    case VT_HRESULT:
-        WARN("invalid return type %u\n", vtReturn);
-        heap_free( args );
-        return E_INVALIDARG;
     default:
-        V_UI8(pvargResult) = call_method( func, argspos - 1, args + 1 );
+        V_UI8(pvargResult) = call_method( func, argspos, args );
         break;
     }
     heap_free( args );
@@ -6884,6 +6893,14 @@ DispCallFunc(
     argspos = 0;
     rcount = 0;
 
+    if (pvInstance)
+    {
+        const FARPROC *vtable = *(FARPROC **)pvInstance;
+        func = vtable[oVft/sizeof(void *)];
+        regs.r[rcount++] = (DWORD)pvInstance; /* the This pointer is always the first parameter */
+    }
+    else func = (void *)oVft;
+
     /* Determine if we need to pass a pointer for the return value as arg 0.  If so, do that */
     /*  first as it will need to be in the 'r' registers:                                    */
     switch (vtReturn)
@@ -6898,14 +6915,6 @@ DispCallFunc(
     default:                    /* And all others are in 'r', 's', or 'd' registers or have no return value */
         break;
     }
-
-    if (pvInstance)
-    {
-        const FARPROC *vtable = *(FARPROC **)pvInstance;
-        func = vtable[oVft/sizeof(void *)];
-        regs.r[rcount++] = (DWORD)pvInstance; /* the This pointer is always the first parameter */
-    }
-    else func = (void *)oVft;
 
     /* maximum size for an argument is sizeof(VARIANT).  Also allow for return pointer and stack alignment. */
     args = heap_alloc( sizeof(VARIANT) * cActuals + sizeof(DWORD) * 4 );
@@ -7218,7 +7227,8 @@ static HRESULT WINAPI ITypeInfo_fnInvoke(
                         break;
                     }
                 }
-                else if (src_arg)
+                else if (src_arg && !((wParamFlags & PARAMFLAG_FOPT) &&
+                         V_VT(src_arg) == VT_ERROR && V_ERROR(src_arg) == DISP_E_PARAMNOTFOUND))
                 {
                     TRACE("%s\n", debugstr_variant(src_arg));
 
@@ -7317,7 +7327,10 @@ static HRESULT WINAPI ITypeInfo_fnInvoke(
                         IUnknown *userdefined_iface;
                         GUID guid;
 
-                        hres = get_iface_guid((ITypeInfo*)iface, tdesc->vt == VT_PTR ? tdesc->u.lptdesc : tdesc, &guid);
+                        if (tdesc->vt == VT_PTR)
+                            tdesc = tdesc->u.lptdesc;
+
+                        hres = get_iface_guid((ITypeInfo*)iface, tdesc->u.hreftype, &guid);
                         if(FAILED(hres))
                             break;
 
@@ -7749,7 +7762,7 @@ static BOOL CALLBACK search_res_tlb(HMODULE hModule, LPCWSTR lpszType, LPWSTR lp
     if (!(len = GetModuleFileNameW(hModule, szPath, MAX_PATH)))
         return TRUE;
 
-    if (snprintfW(szPath + len, sizeof(szPath)/sizeof(WCHAR) - len, formatW, LOWORD(lpszName)) < 0)
+    if (snprintfW(szPath + len, ARRAY_SIZE(szPath) - len, formatW, LOWORD(lpszName)) < 0)
         return TRUE;
 
     ret = LoadTypeLibEx(szPath, REGKIND_NONE, &pTLib);

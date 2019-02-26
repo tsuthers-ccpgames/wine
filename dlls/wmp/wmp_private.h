@@ -25,6 +25,21 @@
 #include "dshow.h"
 #include "wmp.h"
 
+#define TID_LIST \
+    XIID(NULL) \
+    CTID(WindowsMediaPlayer)
+
+typedef enum {
+#define XIID(iface) iface ## _tid,
+#define CTID(name) name ## _tid,
+TID_LIST
+#undef XIID
+#undef CTID
+    LAST_tid
+} typeinfo_id;
+
+HRESULT get_typeinfo(typeinfo_id tid, ITypeInfo **typeinfo) DECLSPEC_HIDDEN;
+
 typedef struct {
     IConnectionPoint IConnectionPoint_iface;
 
@@ -73,7 +88,7 @@ struct WindowsMediaPlayer {
 
     ConnectionPoint *wmpocx;
 
-    IWMPMedia *wmpmedia;
+    WMPMedia *media;
 
     /* DirectShow stuff */
     IGraphBuilder* filter_graph;
@@ -89,7 +104,7 @@ struct WindowsMediaPlayer {
 BOOL init_player(WindowsMediaPlayer*) DECLSPEC_HIDDEN;
 void destroy_player(WindowsMediaPlayer*) DECLSPEC_HIDDEN;
 WMPMedia *unsafe_impl_from_IWMPMedia(IWMPMedia *iface) DECLSPEC_HIDDEN;
-HRESULT create_media_from_url(BSTR url, IWMPMedia **ppMedia) DECLSPEC_HIDDEN;
+HRESULT create_media_from_url(BSTR url, double duration, IWMPMedia **ppMedia) DECLSPEC_HIDDEN;
 void ConnectionPointContainer_Init(WindowsMediaPlayer *wmp) DECLSPEC_HIDDEN;
 void ConnectionPointContainer_Destroy(WindowsMediaPlayer *wmp) DECLSPEC_HIDDEN;
 void call_sink(ConnectionPoint *This, DISPID dispid, DISPPARAMS *dispparams) DECLSPEC_HIDDEN;
@@ -115,4 +130,20 @@ static inline WCHAR *heap_strdupW(const WCHAR *str)
     }
 
     return ret;
+}
+
+static inline HRESULT return_bstr(const WCHAR *value, BSTR *p)
+{
+    if(!p)
+        return E_INVALIDARG;
+
+    if(value) {
+        *p = SysAllocString(value);
+        if(!*p)
+            return E_OUTOFMEMORY;
+    }else {
+        *p = NULL;
+    }
+
+    return S_OK;
 }

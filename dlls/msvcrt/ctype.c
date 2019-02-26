@@ -398,6 +398,8 @@ int CDECL MSVCRT__toupper_l(int c, MSVCRT__locale_t locale)
  */
 int CDECL MSVCRT_toupper(int c)
 {
+    if(initial_locale)
+        return c>='a' && c<='z' ? c-'a'+'A' : c;
     return MSVCRT__toupper_l(c, NULL);
 }
 
@@ -458,7 +460,9 @@ int CDECL MSVCRT__tolower_l(int c, MSVCRT__locale_t locale)
  */
 int CDECL MSVCRT_tolower(int c)
 {
-        return MSVCRT__tolower_l(c, NULL);
+    if(initial_locale)
+        return c>='A' && c<='Z' ? c-'A'+'a' : c;
+    return MSVCRT__tolower_l(c, NULL);
 }
 
 /*********************************************************************
@@ -493,7 +497,7 @@ unsigned short __cdecl wctype(const char *property)
     };
     unsigned int i;
 
-    for(i=0; i<sizeof(properties)/sizeof(properties[0]); i++)
+    for(i=0; i<ARRAY_SIZE(properties); i++)
         if(!strcmp(property, properties[i].name))
             return properties[i].mask;
 

@@ -73,7 +73,6 @@ static struct screen_size {
     {1920, 1200},
     {2560, 1600}
 };
-#define NUM_DESKTOP_MODES (sizeof(screen_sizes) / sizeof(struct screen_size))
 
 #define _NET_WM_STATE_REMOVE 0
 #define _NET_WM_STATE_ADD 1
@@ -88,7 +87,7 @@ static void make_modes(void)
 
     /* original specified desktop size */
     X11DRV_Settings_AddOneMode(screen_width, screen_height, 0, 60);
-    for (i=0; i<NUM_DESKTOP_MODES; i++)
+    for (i=0; i<ARRAY_SIZE(screen_sizes); i++)
     {
         if ( (screen_sizes[i].width <= max_width) && (screen_sizes[i].height <= max_height) )
         {
@@ -160,7 +159,7 @@ void X11DRV_init_desktop( Window win, unsigned int width, unsigned int height )
     dd_modes = X11DRV_Settings_SetHandlers("desktop", 
                                            X11DRV_desktop_GetCurrentMode, 
                                            X11DRV_desktop_SetCurrentMode, 
-                                           NUM_DESKTOP_MODES+2, 1);
+                                           ARRAY_SIZE(screen_sizes)+2, 1);
     make_modes();
     X11DRV_Settings_AddDepthModes();
     dd_mode_count = X11DRV_Settings_GetModeCount();
@@ -174,12 +173,21 @@ void X11DRV_init_desktop( Window win, unsigned int width, unsigned int height )
  */
 BOOL CDECL X11DRV_create_desktop( UINT width, UINT height )
 {
+    static const WCHAR rootW[] = {'r','o','o','t',0};
     XSetWindowAttributes win_attr;
     Window win;
     Display *display = thread_init_display();
     RECT rect;
+    WCHAR name[MAX_PATH];
 
-    TRACE( "%u x %u\n", width, height );
+    if (!GetUserObjectInformationW( GetThreadDesktop( GetCurrentThreadId() ),
+                                    UOI_NAME, name, sizeof(name), NULL ))
+        name[0] = 0;
+
+    TRACE( "%s %ux%u\n", debugstr_w(name), width, height );
+
+    /* magic: desktop "root" means use the root window */
+    if (!lstrcmpiW( name, rootW )) return FALSE;
 
     /* Create window */
     win_attr.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | EnterWindowMask |

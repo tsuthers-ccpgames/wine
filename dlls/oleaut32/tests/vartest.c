@@ -537,7 +537,7 @@ static const char *vtstr(int x)
         return "VT_BSTR_BLOB/VT_ILLEGALMASKED/VT_TYPEMASK";
 
     default:
-        vtstr_current %= sizeof(vtstr_buffer)/sizeof(*vtstr_buffer);
+        vtstr_current %= ARRAY_SIZE(vtstr_buffer);
         sprintf(vtstr_buffer[vtstr_current], "unknown variant type %d", x);
         return vtstr_buffer[vtstr_current++];
     }
@@ -545,7 +545,7 @@ static const char *vtstr(int x)
 
 static const char *variantstr( const VARIANT *var )
 {
-    vtstr_current %= sizeof(vtstr_buffer)/sizeof(*vtstr_buffer);
+    vtstr_current %= ARRAY_SIZE(vtstr_buffer);
     switch(V_VT(var))
     {
     case VT_I1:
@@ -664,7 +664,7 @@ static void test_var_call2( int line, HRESULT (WINAPI *func)(LPVARIANT,LPVARIANT
 static int strcmp_wa(const WCHAR *strw, const char *stra)
 {
     WCHAR buf[512];
-    MultiByteToWideChar(CP_ACP, 0, stra, -1, buf, sizeof(buf)/sizeof(buf[0]));
+    MultiByteToWideChar(CP_ACP, 0, stra, -1, buf, ARRAY_SIZE(buf));
     return lstrcmpW(strw, buf);
 }
 
@@ -792,7 +792,7 @@ static void test_VariantClear(void)
    * Also demonstrates that null pointers in 'v' are not dereferenced.
    * Individual variant tests should test VariantClear() with non-NULL values.
    */
-  for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+  for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
   {
     VARTYPE vt;
 
@@ -921,7 +921,7 @@ static void test_VariantCopy(void)
    */
 
   /* vSrc == vDst */
-  for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+  for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
   {
     for (vt = 0; vt <= VT_BSTR_BLOB; vt++)
     {
@@ -949,7 +949,7 @@ static void test_VariantCopy(void)
   memset(&vSrc, 0, sizeof(vSrc));
   V_VT(&vSrc) = VT_UI1;
 
-  for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+  for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
   {
     for (vt = 0; vt <= VT_BSTR_BLOB; vt++)
     {
@@ -975,7 +975,7 @@ static void test_VariantCopy(void)
   }
 
   /* Test that VariantClear() checks vSrc for validity before copying */
-  for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+  for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
   {
     for (vt = 0; vt <= VT_BSTR_BLOB; vt++)
     {
@@ -1079,7 +1079,7 @@ static void test_VariantCopyInd(void)
   memset(buffer, 0, sizeof(buffer));
 
   /* vSrc == vDst */
-  for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+  for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
   {
     if (ExtraFlags[i] & VT_ARRAY)
       continue; /* Native crashes on NULL safearray */
@@ -1130,7 +1130,7 @@ static void test_VariantCopyInd(void)
   V_VT(&vSrc) = VT_UI1|VT_BYREF;
   V_BYREF(&vSrc) = &buffer;
 
-  for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+  for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
   {
     for (vt = 0; vt <= VT_BSTR_BLOB; vt++)
     {
@@ -1156,7 +1156,7 @@ static void test_VariantCopyInd(void)
   }
 
   /* bad src */
-  for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+  for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
   {
     if (ExtraFlags[i] & VT_ARRAY)
       continue; /* Native crashes on NULL safearray */
@@ -1276,7 +1276,7 @@ static HRESULT convert_str( const char *str, INT dig, ULONG flags,
                             NUMPARSE *np, BYTE rgb[128], LCID lcid )
 {
     OLECHAR buff[128];
-    MultiByteToWideChar( CP_ACP,0, str, -1, buff, sizeof(buff)/sizeof(WCHAR) );
+    MultiByteToWideChar( CP_ACP,0, str, -1, buff, ARRAY_SIZE( buff ));
     memset( rgb, FAILDIG, 128 );
     memset( np, 255, sizeof(*np) );
     np->cDig = dig;
@@ -2291,7 +2291,7 @@ static void test_VarAbs(void)
 
     /* Test all possible V_VT values.
      */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE vt;
 
@@ -2354,7 +2354,7 @@ static void test_VarAbs(void)
     hres = pVarAbs(&v,&vDst);
     ok(hres == S_OK && V_VT(&vDst) == VT_CY && V_CY(&vDst).int64 == 10000,
        "VarAbs(CY): expected 0x0 got 0x%X\n", hres);
-    GetLocaleInfoA(LOCALE_USER_DEFAULT, LOCALE_SDECIMAL, buff, sizeof(buff)/sizeof(char));
+    GetLocaleInfoA(LOCALE_USER_DEFAULT, LOCALE_SDECIMAL, buff, ARRAY_SIZE(buff));
     if (buff[1])
     {
         trace("Skipping VarAbs(BSTR) as decimal separator is '%s'\n", buff);
@@ -2392,7 +2392,7 @@ static void test_VarNot(void)
     CHECKPTR(VarNot);
 
     /* Test all possible V_VT values */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE vt;
 
@@ -2523,7 +2523,7 @@ static void test_VarSub(void)
     VariantInit(&result);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
 
         VARTYPE leftvt, rightvt, resvt;
@@ -2715,15 +2715,13 @@ static void test_VarSub(void)
     ok(hres == S_OK && V_VT(&result) == VT_CY,
         "VarSub: expected coerced type VT_CY, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromCy(V_CY(&result), &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, 4702.0),
-        "VarSub: CY value %f, expected %f\n", r, (double)4720);
+    ok(hres == S_OK && EQ_DOUBLE(r, 4702.0), "VarSub: CY value %f, expected %f\n", r, 4720.0);
 
     hres = pVarSub(&left, &dec, &result);
     ok(hres == S_OK && V_VT(&result) == VT_DECIMAL,
         "VarSub: expected coerced type VT_DECIMAL, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromDec(&V_DECIMAL(&result), &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, -6.8),
-        "VarSub: DECIMAL value %f, expected %f\n", r, (double)-15.2);
+    ok(hres == S_OK && EQ_DOUBLE(r, -6.8), "VarSub: DECIMAL value %f, expected %f\n", r, -6.8);
 
     SysFreeString(lbstr);
     SysFreeString(rbstr);
@@ -3254,7 +3252,7 @@ static void test_VarFix(void)
     CHECKPTR(VarFix);
 
     /* Test all possible V_VT values */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE vt;
 
@@ -3369,7 +3367,7 @@ static void test_VarInt(void)
     CHECKPTR(VarInt);
 
     /* Test all possible V_VT values */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE vt;
 
@@ -3490,7 +3488,7 @@ static void test_VarNeg(void)
      * native version. This at least ensures (as with all tests here) that
      * we will notice if/when new vtypes/flags are added in native.
      */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE vt;
 
@@ -3677,7 +3675,7 @@ static void test_VarRound(void)
     VARROUND(DATE,-1.449,1,DATE,-1.4);
 
     /* replace the decimal separator */
-    GetLocaleInfoA(LOCALE_USER_DEFAULT, LOCALE_SDECIMAL, buff, sizeof(buff)/sizeof(char));
+    GetLocaleInfoA(LOCALE_USER_DEFAULT, LOCALE_SDECIMAL, buff, ARRAY_SIZE(buff));
     if (!buff[1]) {
         szNumMin[2] = buff[0];
         szNum[1] = buff[0];
@@ -3721,7 +3719,7 @@ static void test_VarRound(void)
         "VarRound: expected 0x0,%d got 0x%X,%d\n", VT_NULL, hres, V_VT(&vDst));
 
     /* VT_DECIMAL */
-    for (i = 0; i < sizeof(decimal_round_data)/sizeof(struct decimal_round_t); i++)
+    for (i = 0; i < ARRAY_SIZE(decimal_round_data); i++)
     {
         const struct decimal_round_t *ptr = &decimal_round_data[i];
         DECIMAL *pdec;
@@ -3786,7 +3784,7 @@ static void test_VarXor(void)
     CHECKPTR(VarXor);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 
@@ -4520,7 +4518,7 @@ static void test_VarOr(void)
     CHECKPTR(VarOr);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 
@@ -5252,7 +5250,7 @@ static void test_VarEqv(void)
     CHECKPTR(VarEqv);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 
@@ -5396,7 +5394,7 @@ static void test_VarMul(void)
     rbstr = SysAllocString(sz12);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 
@@ -5534,12 +5532,12 @@ static void test_VarMul(void)
     hres = pVarMul(&cy, &right, &result);
     ok(hres == S_OK && V_VT(&result) == VT_CY, "VarMul: expected coerced type VT_CY, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromCy(V_CY(&result), &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, 42399.0), "VarMul: CY value %f, expected %f\n", r, (double)42399);
+    ok(hres == S_OK && EQ_DOUBLE(r, 42399.0), "VarMul: CY value %f, expected %f\n", r, 42399.0);
 
     hres = pVarMul(&left, &dec, &result);
     ok(hres == S_OK && V_VT(&result) == VT_DECIMAL, "VarMul: expected coerced type VT_DECIMAL, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromDec(&V_DECIMAL(&result), &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, 46.2), "VarMul: DECIMAL value %f, expected %f\n", r, (double)46.2);
+    ok(hres == S_OK && EQ_DOUBLE(r, 46.2), "VarMul: DECIMAL value %f, expected %f\n", r, 46.2);
 
     SysFreeString(lbstr);
     SysFreeString(rbstr);
@@ -5567,7 +5565,7 @@ static void test_VarAdd(void)
     rbstr = SysAllocString(sz12);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 
@@ -5705,7 +5703,7 @@ static void test_VarAdd(void)
     hres = pVarAdd(&left, &right, &result);
     ok(hres == S_OK && V_VT(&result) == VT_BSTR, "VarAdd: expected coerced type VT_BSTR, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromStr(V_BSTR(&result), 0, 0, &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, 1212.0), "VarAdd: BSTR value %f, expected %f\n", r, (double)1212);
+    ok(hres == S_OK && EQ_DOUBLE(r, 1212.0), "VarAdd: BSTR value %f, expected %f\n", r, 1212.0);
     VariantClear(&result);
 
     /* Manuly test some VT_CY and VT_DECIMAL variants */
@@ -5725,12 +5723,12 @@ static void test_VarAdd(void)
     hres = pVarAdd(&cy, &right, &result);
     ok(hres == S_OK && V_VT(&result) == VT_CY, "VarAdd: expected coerced type VT_CY, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromCy(V_CY(&result), &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, 4720.0), "VarAdd: CY value %f, expected %f\n", r, (double)4720);
+    ok(hres == S_OK && EQ_DOUBLE(r, 4720.0), "VarAdd: CY value %f, expected %f\n", r, 4720.0);
 
     hres = pVarAdd(&left, &dec, &result);
     ok(hres == S_OK && V_VT(&result) == VT_DECIMAL, "VarAdd: expected coerced type VT_DECIMAL, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromDec(&V_DECIMAL(&result), &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, -15.2), "VarAdd: DECIMAL value %f, expected %f\n", r, (double)-15.2);
+    ok(hres == S_OK && EQ_DOUBLE(r, -15.2), "VarAdd: DECIMAL value %f, expected %f\n", r, -15.2);
     VariantClear(&result);
 
     SysFreeString(lbstr);
@@ -6231,7 +6229,7 @@ static void test_VarAnd(void)
     false_str = SysAllocString(szFalse);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 
@@ -6947,7 +6945,7 @@ static void test_VarCmp(void)
     bstr1few = SysAllocString(sz1few);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt;
 
@@ -7183,7 +7181,7 @@ static void test_VarPow(void)
     num3_str = SysAllocString(str3);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 
@@ -7709,7 +7707,7 @@ static void test_VarDiv(void)
     num2_str = SysAllocString(str2);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 
@@ -7995,40 +7993,37 @@ static void test_VarDiv(void)
     ok(hres == S_OK && V_VT(&result) == VT_R8,
         "VARDIV: expected coerced type VT_R8, got %s!\n", vtstr(V_VT(&result)));
     ok(hres == S_OK && EQ_DOUBLE(V_R8(&result), 1.0),
-        "VARDIV: CY value %f, expected %f\n", V_R8(&result), (double)1.0);
+        "VARDIV: CY value %f, expected %f\n", V_R8(&result), 1.0);
 
     hres = pVarDiv(&cy, &right, &result);
     ok(hres == S_OK && V_VT(&result) == VT_R8,
         "VARDIV: expected coerced type VT_R8, got %s!\n", vtstr(V_VT(&result)));
     ok(hres == S_OK && EQ_DOUBLE(V_R8(&result), 5000.0),
-        "VARDIV: CY value %f, expected %f\n", V_R8(&result), (double)5000.0);
+        "VARDIV: CY value %f, expected %f\n", V_R8(&result), 5000.0);
 
     hres = pVarDiv(&left, &cy, &result);
     ok(hres == S_OK && V_VT(&result) == VT_R8,
         "VARDIV: expected coerced type VT_R8, got %s!\n", vtstr(V_VT(&result)));
     ok(hres == S_OK && EQ_DOUBLE(V_R8(&result), 0.01),
-        "VARDIV: CY value %f, expected %f\n", V_R8(&result), (double)0.01);
+        "VARDIV: CY value %f, expected %f\n", V_R8(&result), 0.01);
 
     hres = pVarDiv(&left, &dec, &result);
     ok(hres == S_OK && V_VT(&result) == VT_DECIMAL,
         "VARDIV: expected coerced type VT_DECIMAL, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromDec(&V_DECIMAL(&result), &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, 50.0),
-        "VARDIV: DECIMAL value %f, expected %f\n", r, (double)50.0);
+    ok(hres == S_OK && EQ_DOUBLE(r, 50.0), "VARDIV: DECIMAL value %f, expected %f\n", r, 50.0);
 
     hres = pVarDiv(&dec, &dec, &result);
     ok(hres == S_OK && V_VT(&result) == VT_DECIMAL,
         "VARDIV: expected coerced type VT_DECIMAL, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromDec(&V_DECIMAL(&result), &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, 1.0),
-        "VARDIV: DECIMAL value %f, expected %f\n", r, (double)1.0);
+    ok(hres == S_OK && EQ_DOUBLE(r, 1.0), "VARDIV: DECIMAL value %f, expected %f\n", r, 1.0);
 
     hres = pVarDiv(&dec, &right, &result);
     ok(hres == S_OK && V_VT(&result) == VT_DECIMAL,
         "VARDIV: expected coerced type VT_DECIMAL, got %s!\n", vtstr(V_VT(&result)));
     hres = VarR8FromDec(&V_DECIMAL(&result), &r);
-    ok(hres == S_OK && EQ_DOUBLE(r, 1.0),
-        "VARDIV: DECIMAL value %f, expected %f\n", r, (double)1.0);
+    ok(hres == S_OK && EQ_DOUBLE(r, 1.0), "VARDIV: DECIMAL value %f, expected %f\n", r, 1.0);
 
     /* Check for division by zero and overflow */
     V_VT(&left) = VT_R8;
@@ -8082,7 +8077,7 @@ static void test_VarIdiv(void)
     num2_str = SysAllocString(str2);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 
@@ -8648,7 +8643,7 @@ static void test_VarImp(void)
     false_str = SysAllocString(szFalse);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
-    for (i = 0; i < sizeof(ExtraFlags)/sizeof(ExtraFlags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
     {
         VARTYPE leftvt, rightvt, resvt;
 

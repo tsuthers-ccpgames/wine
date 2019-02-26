@@ -380,7 +380,7 @@ static BOOL is_prefix_unique(struct list *namespaces, LPCWSTR prefix)
 
 static LPWSTR generate_namespace_prefix(IWSDXMLContextImpl *impl, void *parentMemoryBlock, LPCWSTR uri)
 {
-    WCHAR formatString[] = { 'u','n','%','d', 0 };
+    static const WCHAR formatString[] = { 'u','n','%','d', 0 };
     WCHAR suggestedPrefix[7];
 
     /* Find a unique prefix */
@@ -671,4 +671,20 @@ HRESULT WINAPI WSDXMLCreateContext(IWSDXMLContext **ppContext)
     TRACE("Returning iface %p\n", *ppContext);
 
     return S_OK;
+}
+
+WSDXML_NAMESPACE *xml_context_find_namespace_by_prefix(IWSDXMLContext *context, LPCWSTR prefix)
+{
+    IWSDXMLContextImpl *impl = impl_from_IWSDXMLContext(context);
+    struct xmlNamespace *ns;
+
+    if (prefix == NULL) return NULL;
+
+    LIST_FOR_EACH_ENTRY(ns, impl->namespaces, struct xmlNamespace, entry)
+    {
+        if (lstrcmpW(ns->namespace->PreferredPrefix, prefix) == 0)
+            return ns->namespace;
+    }
+
+    return NULL;
 }

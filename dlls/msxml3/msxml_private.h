@@ -31,8 +31,6 @@
 # error You must include config.h to use this header
 #endif
 
-#define ARRAY_SIZE(array) (sizeof(array) / sizeof((array)[0]))
-
 typedef enum {
     MSXML_DEFAULT = 0,
     MSXML2        = 20,
@@ -254,7 +252,7 @@ extern IUnknown         *create_domdoc( xmlNodePtr ) DECLSPEC_HIDDEN;
 extern IUnknown         *create_xmldoc( void ) DECLSPEC_HIDDEN;
 extern IXMLDOMNode      *create_node( xmlNodePtr ) DECLSPEC_HIDDEN;
 extern IUnknown         *create_element( xmlNodePtr ) DECLSPEC_HIDDEN;
-extern IUnknown         *create_attribute( xmlNodePtr ) DECLSPEC_HIDDEN;
+extern IUnknown         *create_attribute( xmlNodePtr, BOOL ) DECLSPEC_HIDDEN;
 extern IUnknown         *create_text( xmlNodePtr ) DECLSPEC_HIDDEN;
 extern IUnknown         *create_pi( xmlNodePtr ) DECLSPEC_HIDDEN;
 extern IUnknown         *create_comment( xmlNodePtr ) DECLSPEC_HIDDEN;
@@ -286,6 +284,7 @@ extern HRESULT xmldoc_add_orphan( xmlDocPtr doc, xmlNodePtr node ) DECLSPEC_HIDD
 extern HRESULT xmldoc_remove_orphan( xmlDocPtr doc, xmlNodePtr node ) DECLSPEC_HIDDEN;
 extern void xmldoc_link_xmldecl(xmlDocPtr doc, xmlNodePtr node) DECLSPEC_HIDDEN;
 extern xmlNodePtr xmldoc_unlink_xmldecl(xmlDocPtr doc) DECLSPEC_HIDDEN;
+extern MSXML_VERSION xmldoc_version( xmlDocPtr doc ) DECLSPEC_HIDDEN;
 
 extern HRESULT XMLElement_create( xmlNodePtr node, LPVOID *ppObj, BOOL own ) DECLSPEC_HIDDEN;
 

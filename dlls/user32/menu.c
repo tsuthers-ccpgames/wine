@@ -3741,28 +3741,25 @@ BOOL WINAPI EnableMenuItem( HMENU hMenu, UINT id, UINT wFlags )
     item->fState ^= (oldflags ^ wFlags) & (MF_GRAYED | MF_DISABLED);
 
     /* If the close item in the system menu change update the close button */
-    if ((item->wID == SC_CLOSE) && (oldflags != wFlags))
+    if ((item->wID == SC_CLOSE) && (oldflags != wFlags) && menu->hSysMenuOwner)
     {
-        if (menu->hSysMenuOwner)
-	{
-            RECT rc;
-	    POPUPMENU* parentMenu;
-            HWND hwnd;
+        RECT rc;
+        POPUPMENU* parentMenu;
+        HWND hwnd;
 
-	    /* Get the parent menu to access*/
-            parentMenu = grab_menu_ptr(menu->hSysMenuOwner);
-            release_menu_ptr(menu);
-            if (!parentMenu)
-                return (UINT)-1;
+        /* Get the parent menu to access */
+        parentMenu = grab_menu_ptr(menu->hSysMenuOwner);
+        release_menu_ptr(menu);
+        if (!parentMenu)
+            return (UINT)-1;
 
-            hwnd = parentMenu->hWnd;
-            release_menu_ptr(parentMenu);
+        hwnd = parentMenu->hWnd;
+        release_menu_ptr(parentMenu);
 
-            /* Refresh the frame to reflect the change */
-            WIN_GetRectangles( hwnd, COORDS_CLIENT, &rc, NULL );
-            rc.bottom = 0;
-            RedrawWindow(hwnd, &rc, 0, RDW_FRAME | RDW_INVALIDATE | RDW_NOCHILDREN);
-	}
+        /* Refresh the frame to reflect the change */
+        WIN_GetRectangles(hwnd, COORDS_CLIENT, &rc, NULL);
+        rc.bottom = 0;
+        RedrawWindow(hwnd, &rc, 0, RDW_FRAME | RDW_INVALIDATE | RDW_NOCHILDREN);
     }
     else
         release_menu_ptr(menu);
@@ -3862,17 +3859,23 @@ BOOL WINAPI HiliteMenuItem( HWND hWnd, HMENU hMenu, UINT wItemID,
 {
     POPUPMENU *menu;
     UINT pos;
+    HMENU handle_menu;
+    UINT focused_item;
 
     TRACE("(%p, %p, %04x, %04x);\n", hWnd, hMenu, wItemID, wHilite);
 
     if (!(menu = find_menu_item(hMenu, wItemID, wHilite, &pos))) return FALSE;
 
-    if (menu->FocusedItem != pos)
-    {
-        MENU_HideSubPopups( hWnd, menu->obj.handle, FALSE, 0 );
-        MENU_SelectItem( hWnd, menu->obj.handle, pos, TRUE, 0 );
-    }
+    handle_menu = menu->obj.handle;
+    focused_item = menu->FocusedItem;
     release_menu_ptr(menu);
+
+    if (focused_item != pos)
+    {
+        MENU_HideSubPopups( hWnd, handle_menu, FALSE, 0 );
+        MENU_SelectItem( hWnd, handle_menu, pos, TRUE, 0 );
+    }
+
     return TRUE;
 }
 
@@ -5309,6 +5312,7 @@ BOOL WINAPI GetMenuItemRect(HWND hwnd, HMENU hMenu, UINT uItem, RECT *rect)
 {
     POPUPMENU *menu;
     UINT pos;
+    RECT window_rect;
 
     TRACE("(%p,%p,%d,%p)\n", hwnd, hMenu, uItem, rect);
 
@@ -5327,9 +5331,17 @@ BOOL WINAPI GetMenuItemRect(HWND hwnd, HMENU hMenu, UINT uItem, RECT *rect)
 
     *rect = menu->items[pos].rect;
     OffsetRect(rect, menu->items_rect.left, menu->items_rect.top);
-    release_menu_ptr(menu);
 
-    MapWindowPoints(hwnd, 0, (POINT *)rect, 2);
+    /* Popup menu item draws in the client area */
+    if (menu->wFlags & MF_POPUP) MapWindowPoints(hwnd, 0, (POINT *)rect, 2);
+    else
+    {
+        /* Sysmenu draws in the non-client area */
+        GetWindowRect(hwnd, &window_rect);
+        OffsetRect(rect, window_rect.left, window_rect.top);
+    }
+
+    release_menu_ptr(menu);
     return TRUE;
 }
 

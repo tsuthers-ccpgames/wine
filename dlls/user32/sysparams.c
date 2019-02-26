@@ -21,6 +21,7 @@
 #include "config.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +39,7 @@
 #include "winerror.h"
 
 #include "controls.h"
+#include "win.h"
 #include "user_private.h"
 #include "wine/gdi_driver.h"
 #include "wine/unicode.h"
@@ -70,6 +72,7 @@ enum parameter_key
     SHOWSOUNDS_KEY,
     KEYBOARDPREF_KEY,
     SCREENREADER_KEY,
+    AUDIODESC_KEY,
     NB_PARAM_KEYS
 };
 
@@ -94,6 +97,9 @@ static const WCHAR KEYBOARDPREF_REGKEY[] = {'C','o','n','t','r','o','l',' ','P',
 static const WCHAR SCREENREADER_REGKEY[] = {'C','o','n','t','r','o','l',' ','P','a','n','e','l','\\',
                                             'A','c','c','e','s','s','i','b','i','l','i','t','y','\\',
                                             'B','l','i','n','d',' ','A','c','c','e','s','s',0};
+static const WCHAR AUDIODESC_REGKEY[] = {'C','o','n','t','r','o','l',' ','P','a','n','e','l','\\',
+                                            'A','c','c','e','s','s','i','b','i','l','i','t','y','\\',
+                                            'A','u','d','i','o','D','e','s','c','r','i','p','t','i','o','n',0};
 
 static const WCHAR *parameter_key_names[NB_PARAM_KEYS] =
 {
@@ -107,6 +113,7 @@ static const WCHAR *parameter_key_names[NB_PARAM_KEYS] =
     SHOWSOUNDS_REGKEY,
     KEYBOARDPREF_REGKEY,
     SCREENREADER_REGKEY,
+    AUDIODESC_REGKEY,
 };
 
 /* parameter key values; the first char is actually an enum parameter_key to specify the key */
@@ -144,6 +151,8 @@ static const WCHAR DESKPATTERN_VALNAME[]=              {DESKTOP_KEY,'P','a','t',
 static const WCHAR FONTSMOOTHING_VALNAME[]=            {DESKTOP_KEY,'F','o','n','t','S','m','o','o','t','h','i','n','g',0};
 static const WCHAR DRAGWIDTH_VALNAME[]=                {DESKTOP_KEY,'D','r','a','g','W','i','d','t','h',0};
 static const WCHAR DRAGHEIGHT_VALNAME[]=               {DESKTOP_KEY,'D','r','a','g','H','e','i','g','h','t',0};
+static const WCHAR DPISCALINGVER_VALNAME[]=            {DESKTOP_KEY,'D','p','i','S','c','a','l','i','n','g','V','e','r',0};
+static const WCHAR LOGPIXELS_VALNAME[]=                {DESKTOP_KEY,'L','o','g','P','i','x','e','l','s',0};
 static const WCHAR LOWPOWERACTIVE_VALNAME[]=           {DESKTOP_KEY,'L','o','w','P','o','w','e','r','A','c','t','i','v','e',0};
 static const WCHAR POWEROFFACTIVE_VALNAME[]=           {DESKTOP_KEY,'P','o','w','e','r','O','f','f','A','c','t','i','v','e',0};
 static const WCHAR USERPREFERENCESMASK_VALNAME[]=      {DESKTOP_KEY,'U','s','e','r','P','r','e','f','e','r','e','n','c','e','s','M','a','s','k',0};
@@ -215,6 +224,8 @@ static const WCHAR COLOR_GRADIENTACTIVECAPTION_VALNAME[] = {COLORS_KEY,'G','r','
 static const WCHAR COLOR_GRADIENTINACTIVECAPTION_VALNAME[] = {COLORS_KEY,'G','r','a','d','i','e','n','t','I','n','a','c','t','i','v','e','T','i','t','l','e',0};
 static const WCHAR COLOR_MENUHILIGHT_VALNAME[] =       {COLORS_KEY,'M','e','n','u','H','i','l','i','g','h','t',0};
 static const WCHAR COLOR_MENUBAR_VALNAME[] =           {COLORS_KEY,'M','e','n','u','B','a','r',0};
+static const WCHAR AUDIODESC_LOCALE_VALNAME[] =        {AUDIODESC_KEY,'L','o','c','a','l','e',0};
+static const WCHAR AUDIODESC_ON_VALNAME[] =            {AUDIODESC_KEY,'O','n',0};
 
 /* FIXME - real value */
 static const WCHAR SCREENSAVERRUNNING_VALNAME[]=  {DESKTOP_KEY,'W','I','N','E','_','S','c','r','e','e','n','S','a','v','e','r','R','u','n','n','i','n','g',0};
@@ -251,6 +262,9 @@ static BOOL notify_change = TRUE;
 
 /* System parameters storage */
 static RECT work_area;
+static UINT system_dpi;
+static DPI_AWARENESS dpi_awareness;
+static DPI_AWARENESS default_awareness = DPI_AWARENESS_UNAWARE;
 
 static HKEY volatile_base_key;
 
@@ -310,6 +324,7 @@ struct sysparam_font_entry
     struct sysparam_entry hdr;
     UINT                  weight;
     LOGFONTW              val;
+    WCHAR                 fullname[LF_FACESIZE];
 };
 
 struct sysparam_pref_entry
@@ -446,20 +461,26 @@ static void SYSPARAMS_NonClientMetrics32ATo32W( const NONCLIENTMETRICSA* lpnm32A
 struct monitor_info
 {
     int count;
+    RECT primary_rect;
     RECT virtual_rect;
 };
 
 static BOOL CALLBACK monitor_info_proc( HMONITOR monitor, HDC hdc, LPRECT rect, LPARAM lp )
 {
+    MONITORINFO mi;
     struct monitor_info *info = (struct monitor_info *)lp;
     info->count++;
     UnionRect( &info->virtual_rect, &info->virtual_rect, rect );
+    mi.cbSize = sizeof(mi);
+    if (GetMonitorInfoW( monitor, &mi ) && (mi.dwFlags & MONITORINFOF_PRIMARY))
+        info->primary_rect = mi.rcMonitor;
     return TRUE;
 }
 
 static void get_monitors_info( struct monitor_info *info )
 {
     info->count = 0;
+    SetRectEmpty( &info->primary_rect );
     SetRectEmpty( &info->virtual_rect );
     EnumDisplayMonitors( 0, NULL, monitor_info_proc, (LPARAM)info );
 }
@@ -612,37 +633,6 @@ static BOOL init_entry_string( struct sysparam_entry *entry, const WCHAR *str )
     return init_entry( entry, str, (strlenW(str) + 1) * sizeof(WCHAR), REG_SZ );
 }
 
-static DWORD get_reg_dword( HKEY base, const WCHAR *key_name, const WCHAR *value_name )
-{
-    HKEY key;
-    DWORD type, ret = 0, size = sizeof(ret);
-
-    if (RegOpenKeyW( base, key_name, &key )) return 0;
-    if (RegQueryValueExW( key, value_name, NULL, &type, (void *)&ret, &size ) || type != REG_DWORD)
-        ret = 0;
-    RegCloseKey( key );
-    return ret;
-}
-
-/* get the system dpi from the registry */
-static UINT get_system_dpi(void)
-{
-    static const WCHAR dpi_key_name[] = {'C','o','n','t','r','o','l',' ','P','a','n','e','l','\\','D','e','s','k','t','o','p','\0'};
-    static const WCHAR def_dpi_key_name[] = {'S','o','f','t','w','a','r','e','\\','F','o','n','t','s','\0'};
-    static const WCHAR dpi_value_name[] = {'L','o','g','P','i','x','e','l','s','\0'};
-    static UINT system_dpi;
-    UINT dpi;
-
-    if (!system_dpi)
-    {
-        if (!(dpi = get_reg_dword( HKEY_CURRENT_USER, dpi_key_name, dpi_value_name )) &&
-            !(dpi = get_reg_dword( HKEY_CURRENT_CONFIG, def_dpi_key_name, dpi_value_name )))
-            dpi = USER_DEFAULT_SCREEN_DPI;
-        system_dpi = dpi;
-    }
-    return system_dpi;
-}
-
 HDC get_display_dc(void)
 {
     static const WCHAR DISPLAY[] = {'D','I','S','P','L','A','Y',0};
@@ -672,15 +662,18 @@ static int map_to_dpi( int val, UINT dpi )
 static INT CALLBACK real_fontname_proc(const LOGFONTW *lf, const TEXTMETRICW *ntm, DWORD type, LPARAM lparam)
 {
     const ENUMLOGFONTW *elf = (const ENUMLOGFONTW *)lf;
-    LOGFONTW *lfW = (LOGFONTW *)lparam;
+    WCHAR *fullname = (WCHAR *)lparam;
 
-    lstrcpynW(lfW->lfFaceName, elf->elfFullName, LF_FACESIZE);
+    lstrcpynW( fullname, elf->elfFullName, LF_FACESIZE );
     return 0;
 }
 
-static void get_real_fontname( HDC hdc, LOGFONTW *lf )
+static void get_real_fontname( LOGFONTW *lf, WCHAR fullname[LF_FACESIZE] )
 {
-    EnumFontFamiliesExW(hdc, lf, real_fontname_proc, (LPARAM)lf, 0);
+    HDC hdc = get_display_dc();
+    strcpyW( fullname, lf->lfFaceName );
+    EnumFontFamiliesExW( hdc, lf, real_fontname_proc, (LPARAM)fullname, 0 );
+    release_display_dc( hdc );
 }
 
 /* adjust some of the raw values found in the registry */
@@ -697,16 +690,10 @@ static void normalize_nonclientmetrics( NONCLIENTMETRICSW *pncm)
     /* adjust some heights to the corresponding font */
     get_text_metr_size( hdc, &pncm->lfMenuFont, &tm, NULL);
     pncm->iMenuHeight = max( pncm->iMenuHeight, 2 + tm.tmHeight + tm.tmExternalLeading );
-    get_real_fontname( hdc, &pncm->lfMenuFont );
     get_text_metr_size( hdc, &pncm->lfCaptionFont, &tm, NULL);
     pncm->iCaptionHeight = max( pncm->iCaptionHeight, 2 + tm.tmHeight);
-    get_real_fontname( hdc, &pncm->lfCaptionFont );
     get_text_metr_size( hdc, &pncm->lfSmCaptionFont, &tm, NULL);
     pncm->iSmCaptionHeight = max( pncm->iSmCaptionHeight, 2 + tm.tmHeight);
-    get_real_fontname( hdc, &pncm->lfSmCaptionFont );
-
-    get_real_fontname( hdc, &pncm->lfStatusFont );
-    get_real_fontname( hdc, &pncm->lfMessageFont );
     release_display_dc( hdc );
 }
 
@@ -897,7 +884,7 @@ static BOOL get_dword_entry( union sysparam_all_entry *entry, UINT int_param, vo
         DWORD val;
         if (load_entry( &entry->hdr, &val, sizeof(val) ) == sizeof(DWORD)) entry->dword.val = val;
     }
-    *(DWORD *)ptr_param = entry->bool.val;
+    *(DWORD *)ptr_param = entry->dword.val;
     return TRUE;
 }
 
@@ -1015,10 +1002,12 @@ static BOOL get_font_entry( union sysparam_all_entry *entry, UINT int_param, voi
             entry->font.val = font;
             break;
         }
+        get_real_fontname( &entry->font.val, entry->font.fullname );
         entry->hdr.loaded = TRUE;
     }
     font = entry->font.val;
     font.lfHeight = map_to_dpi( font.lfHeight, dpi );
+    strcpyW( font.lfFaceName, entry->font.fullname );
     *(LOGFONTW *)ptr_param = font;
     return TRUE;
 }
@@ -1033,10 +1022,11 @@ static BOOL set_font_entry( union sysparam_all_entry *entry, UINT int_param, voi
     /* zero pad the end of lfFaceName so we don't save uninitialised data */
     ptr = memchrW( font.lfFaceName, 0, LF_FACESIZE );
     if (ptr) memset( ptr, 0, (font.lfFaceName + LF_FACESIZE - ptr) * sizeof(WCHAR) );
-    font.lfHeight = map_from_system_dpi( font.lfHeight );
+    if (font.lfHeight < 0) font.lfHeight = map_from_system_dpi( font.lfHeight );
 
     if (!save_entry( &entry->hdr, &font, sizeof(font), REG_BINARY, flags )) return FALSE;
     entry->font.val = font;
+    get_real_fontname( &entry->font.val, entry->font.fullname );
     entry->hdr.loaded = TRUE;
     return TRUE;
 }
@@ -1047,6 +1037,7 @@ static BOOL init_font_entry( union sysparam_all_entry *entry )
     GetObjectW( GetStockObject( DEFAULT_GUI_FONT ), sizeof(entry->font.val), &entry->font.val );
     entry->font.val.lfHeight = map_from_system_dpi( entry->font.val.lfHeight );
     entry->font.val.lfWeight = entry->font.weight;
+    get_real_fontname( &entry->font.val, entry->font.fullname );
     return init_entry( &entry->hdr, &entry->font.val, sizeof(entry->font.val), REG_BINARY );
 }
 
@@ -1266,6 +1257,7 @@ static BOOL_ENTRY( SCREENSAVERRUNNING, FALSE );
 static BOOL_ENTRY( SHOWSOUNDS, FALSE );
 static BOOL_ENTRY( SNAPTODEFBUTTON, FALSE );
 static BOOL_ENTRY_MIRROR( ICONTITLEWRAP, TRUE );
+static BOOL_ENTRY( AUDIODESC_ON, FALSE);
 
 static YESNO_ENTRY( BEEP, TRUE );
 
@@ -1285,6 +1277,7 @@ static TWIPS_ENTRY( SMCAPTIONWIDTH, -225 );
 static DWORD_ENTRY( ACTIVEWINDOWTRACKING, 0 );
 static DWORD_ENTRY( ACTIVEWNDTRKTIMEOUT, 0 );
 static DWORD_ENTRY( CARETWIDTH, 1 );
+static DWORD_ENTRY( DPISCALINGVER, 0 );
 static DWORD_ENTRY( FOCUSBORDERHEIGHT, 1 );
 static DWORD_ENTRY( FOCUSBORDERWIDTH, 1 );
 static DWORD_ENTRY( FONTSMOOTHINGCONTRAST, 0 );
@@ -1292,7 +1285,9 @@ static DWORD_ENTRY( FONTSMOOTHINGORIENTATION, FE_FONTSMOOTHINGORIENTATIONRGB );
 static DWORD_ENTRY( FONTSMOOTHINGTYPE, FE_FONTSMOOTHINGSTANDARD );
 static DWORD_ENTRY( FOREGROUNDFLASHCOUNT, 3 );
 static DWORD_ENTRY( FOREGROUNDLOCKTIMEOUT, 0 );
+static DWORD_ENTRY( LOGPIXELS, 0 );
 static DWORD_ENTRY( MOUSECLICKLOCKTIME, 1200 );
+static DWORD_ENTRY( AUDIODESC_LOCALE, 0 );
 
 static PATH_ENTRY( DESKPATTERN );
 static PATH_ENTRY( DESKWALLPAPER );
@@ -1423,6 +1418,8 @@ static union sysparam_all_entry * const default_entries[] =
     (union sysparam_all_entry *)&entry_USERPREFERENCESMASK,
     (union sysparam_all_entry *)&entry_WHEELSCROLLCHARS,
     (union sysparam_all_entry *)&entry_WHEELSCROLLLINES,
+    (union sysparam_all_entry *)&entry_AUDIODESC_LOCALE,
+    (union sysparam_all_entry *)&entry_AUDIODESC_ON,
 };
 
 /***********************************************************************
@@ -1430,8 +1427,10 @@ static union sysparam_all_entry * const default_entries[] =
  */
 void SYSPARAMS_Init(void)
 {
+    static const WCHAR def_key_name[] = {'S','o','f','t','w','a','r','e','\\','F','o','n','t','s',0};
+    static const WCHAR def_value_name[] = {'L','o','g','P','i','x','e','l','s',0};
     HKEY key;
-    DWORD i, dispos;
+    DWORD i, dispos, dpi_scaling;
 
     /* this one must be non-volatile */
     if (RegCreateKeyW( HKEY_CURRENT_USER, WINE_CURRENT_USER_REGKEY, &key ))
@@ -1446,6 +1445,28 @@ void SYSPARAMS_Init(void)
         ERR("Can't create non-permanent wine registry branch\n");
 
     RegCloseKey( key );
+
+    get_dword_entry( (union sysparam_all_entry *)&entry_LOGPIXELS, 0, &system_dpi, 0 );
+    if (!system_dpi)  /* check fallback key */
+    {
+        if (!RegOpenKeyW( HKEY_CURRENT_CONFIG, def_key_name, &key ))
+        {
+            DWORD type, size = sizeof(system_dpi);
+            if (RegQueryValueExW( key, def_value_name, NULL, &type, (void *)&system_dpi, &size ) ||
+                type != REG_DWORD)
+                system_dpi = 0;
+            RegCloseKey( key );
+        }
+    }
+    if (!system_dpi) system_dpi = USER_DEFAULT_SCREEN_DPI;
+
+    /* FIXME: what do the DpiScalingVer flags mean? */
+    get_dword_entry( (union sysparam_all_entry *)&entry_DPISCALINGVER, 0, &dpi_scaling, 0 );
+    if (!dpi_scaling)
+    {
+        default_awareness = DPI_AWARENESS_PER_MONITOR_AWARE;
+        dpi_awareness = 0x10 | default_awareness;
+    }
 
     if (volatile_base_key && dispos == REG_CREATED_NEW_KEY)  /* first process, initialize entries */
     {
@@ -2338,7 +2359,26 @@ BOOL WINAPI SystemParametersInfoW( UINT uiAction, UINT uiParam,
     case SPI_SETFONTSMOOTHINGORIENTATION:
         ret = set_entry( &entry_FONTSMOOTHINGORIENTATION, uiParam, pvParam, fWinIni );
         break;
-
+    case SPI_GETAUDIODESCRIPTION:
+    {
+        AUDIODESCRIPTION *audio = pvParam;
+        if (audio && audio->cbSize == sizeof(AUDIODESCRIPTION) && uiParam == sizeof(AUDIODESCRIPTION) )
+        {
+            ret = get_entry( &entry_AUDIODESC_ON, 0, &audio->Enabled ) &&
+                  get_entry( &entry_AUDIODESC_LOCALE, 0, &audio->Locale );
+        }
+        break;
+    }
+    case SPI_SETAUDIODESCRIPTION:
+    {
+        AUDIODESCRIPTION *audio = pvParam;
+        if (audio && audio->cbSize == sizeof(AUDIODESCRIPTION) && uiParam == sizeof(AUDIODESCRIPTION) )
+        {
+            ret = set_entry( &entry_AUDIODESC_ON, 0, &audio->Enabled, fWinIni) &&
+                  set_entry( &entry_AUDIODESC_LOCALE, 0, &audio->Locale, fWinIni );
+        }
+        break;
+    }
     default:
 	FIXME( "Unknown action: %u\n", uiAction );
 	SetLastError( ERROR_INVALID_SPI_VALUE );
@@ -2501,6 +2541,7 @@ BOOL WINAPI SystemParametersInfoA( UINT uiAction, UINT uiParam,
  */
 INT WINAPI GetSystemMetrics( INT index )
 {
+    struct monitor_info info;
     NONCLIENTMETRICSW ncm;
     MINIMIZEDMETRICS mm;
     ICONMETRICSW im;
@@ -2510,16 +2551,6 @@ INT WINAPI GetSystemMetrics( INT index )
     /* some metrics are dynamic */
     switch (index)
     {
-    case SM_CXSCREEN:
-        hdc = get_display_dc();
-        ret = GetDeviceCaps( hdc, HORZRES );
-        release_display_dc( hdc );
-        return ret;
-    case SM_CYSCREEN:
-        hdc = get_display_dc();
-        ret = GetDeviceCaps( hdc, VERTRES );
-        release_display_dc( hdc );
-        return ret;
     case SM_CXVSCROLL:
     case SM_CYHSCROLL:
         ncm.cbSize = sizeof(ncm);
@@ -2723,32 +2754,27 @@ INT WINAPI GetSystemMetrics( INT index )
         return 0;  /* FIXME */
     case SM_MOUSEWHEELPRESENT:
         return 1;
+    case SM_CXSCREEN:
+        get_monitors_info( &info );
+        return info.primary_rect.right - info.primary_rect.left;
+    case SM_CYSCREEN:
+        get_monitors_info( &info );
+        return info.primary_rect.bottom - info.primary_rect.top;
     case SM_XVIRTUALSCREEN:
-    {
-        RECT rect = get_virtual_screen_rect();
-        return rect.left;
-    }
+        get_monitors_info( &info );
+        return info.virtual_rect.left;
     case SM_YVIRTUALSCREEN:
-    {
-        RECT rect = get_virtual_screen_rect();
-        return rect.top;
-    }
+        get_monitors_info( &info );
+        return info.virtual_rect.top;
     case SM_CXVIRTUALSCREEN:
-    {
-        RECT rect = get_virtual_screen_rect();
-        return rect.right - rect.left;
-    }
+        get_monitors_info( &info );
+        return info.virtual_rect.right - info.virtual_rect.left;
     case SM_CYVIRTUALSCREEN:
-    {
-        RECT rect = get_virtual_screen_rect();
-        return rect.bottom - rect.top;
-    }
+        get_monitors_info( &info );
+        return info.virtual_rect.bottom - info.virtual_rect.top;
     case SM_CMONITORS:
-    {
-        struct monitor_info info;
         get_monitors_info( &info );
         return info.count;
-    }
     case SM_SAMEDISPLAYFORMAT:
         return 1;
     case SM_IMMENABLED:
@@ -2942,8 +2968,7 @@ BOOL WINAPI SetSysColors( INT count, const INT *colors, const COLORREF *values )
 
     /* Repaint affected portions of all visible windows */
 
-    RedrawWindow( GetDesktopWindow(), NULL, 0,
-                RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN );
+    RedrawWindow( 0, NULL, 0, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN );
     return TRUE;
 }
 
@@ -3171,15 +3196,119 @@ BOOL WINAPI EnumDisplaySettingsExW(LPCWSTR lpszDeviceName, DWORD iModeNum,
 }
 
 
-static DPI_AWARENESS dpi_awareness;
-
 /**********************************************************************
  *              get_monitor_dpi
  */
-UINT get_monitor_dpi( HWND hwnd )
+UINT get_monitor_dpi( HMONITOR monitor )
 {
     /* FIXME: use the monitor DPI instead */
-    return get_system_dpi();
+    return system_dpi;
+}
+
+/**********************************************************************
+ *              get_win_monitor_dpi
+ */
+UINT get_win_monitor_dpi( HWND hwnd )
+{
+    /* FIXME: use the monitor DPI instead */
+    return system_dpi;
+}
+
+/**********************************************************************
+ *              get_thread_dpi
+ */
+UINT get_thread_dpi(void)
+{
+    switch (GetAwarenessFromDpiAwarenessContext( GetThreadDpiAwarenessContext() ))
+    {
+    case DPI_AWARENESS_UNAWARE:      return USER_DEFAULT_SCREEN_DPI;
+    case DPI_AWARENESS_SYSTEM_AWARE: return system_dpi;
+    default:                         return 0;  /* no scaling */
+    }
+}
+
+/**********************************************************************
+ *              map_dpi_point
+ */
+POINT map_dpi_point( POINT pt, UINT dpi_from, UINT dpi_to )
+{
+    if (dpi_from && dpi_to && dpi_from != dpi_to)
+    {
+        pt.x = MulDiv( pt.x, dpi_to, dpi_from );
+        pt.y = MulDiv( pt.y, dpi_to, dpi_from );
+    }
+    return pt;
+}
+
+/**********************************************************************
+ *              point_win_to_phys_dpi
+ */
+POINT point_win_to_phys_dpi( HWND hwnd, POINT pt )
+{
+    return map_dpi_point( pt, GetDpiForWindow( hwnd ), get_win_monitor_dpi( hwnd ) );
+}
+
+/**********************************************************************
+ *              point_phys_to_win_dpi
+ */
+POINT point_phys_to_win_dpi( HWND hwnd, POINT pt )
+{
+    return map_dpi_point( pt, get_win_monitor_dpi( hwnd ), GetDpiForWindow( hwnd ));
+}
+
+/**********************************************************************
+ *              point_win_to_thread_dpi
+ */
+POINT point_win_to_thread_dpi( HWND hwnd, POINT pt )
+{
+    UINT dpi = get_thread_dpi();
+    if (!dpi) dpi = get_win_monitor_dpi( hwnd );
+    return map_dpi_point( pt, GetDpiForWindow( hwnd ), dpi );
+}
+
+/**********************************************************************
+ *              point_thread_to_win_dpi
+ */
+POINT point_thread_to_win_dpi( HWND hwnd, POINT pt )
+{
+    UINT dpi = get_thread_dpi();
+    if (!dpi) dpi = get_win_monitor_dpi( hwnd );
+    return map_dpi_point( pt, dpi, GetDpiForWindow( hwnd ));
+}
+
+/**********************************************************************
+ *              map_dpi_rect
+ */
+RECT map_dpi_rect( RECT rect, UINT dpi_from, UINT dpi_to )
+{
+    if (dpi_from && dpi_to && dpi_from != dpi_to)
+    {
+        rect.left   = MulDiv( rect.left, dpi_to, dpi_from );
+        rect.top    = MulDiv( rect.top, dpi_to, dpi_from );
+        rect.right  = MulDiv( rect.right, dpi_to, dpi_from );
+        rect.bottom = MulDiv( rect.bottom, dpi_to, dpi_from );
+    }
+    return rect;
+}
+
+/**********************************************************************
+ *              rect_win_to_thread_dpi
+ */
+RECT rect_win_to_thread_dpi( HWND hwnd, RECT rect )
+{
+    UINT dpi = get_thread_dpi();
+    if (!dpi) dpi = get_win_monitor_dpi( hwnd );
+    return map_dpi_rect( rect, GetDpiForWindow( hwnd ), dpi );
+}
+
+/**********************************************************************
+ *              rect_thread_to_win_dpi
+ */
+RECT rect_thread_to_win_dpi( HWND hwnd, RECT rect )
+{
+    UINT dpi = get_thread_dpi();
+    if (!dpi) dpi = get_win_monitor_dpi( hwnd );
+    return map_dpi_rect( rect, dpi, GetDpiForWindow( hwnd ) );
 }
 
 /**********************************************************************
@@ -3300,7 +3429,7 @@ BOOL WINAPI IsProcessDPIAware(void)
 UINT WINAPI GetDpiForSystem(void)
 {
     if (!IsProcessDPIAware()) return USER_DEFAULT_SCREEN_DPI;
-    return get_system_dpi();
+    return system_dpi;
 }
 
 /***********************************************************************
@@ -3308,12 +3437,22 @@ UINT WINAPI GetDpiForSystem(void)
  */
 BOOL WINAPI GetDpiForMonitorInternal( HMONITOR monitor, UINT type, UINT *x, UINT *y )
 {
-    UINT dpi = get_system_dpi();
-
-    WARN( "(%p, %u, %p, %p): semi-stub\n", monitor, type, x, y );
-
-    if (x) *x = dpi;
-    if (y) *y = dpi;
+    if (type > 2)
+    {
+        SetLastError( ERROR_BAD_ARGUMENTS );
+        return FALSE;
+    }
+    if (!x || !y)
+    {
+        SetLastError( ERROR_INVALID_ADDRESS );
+        return FALSE;
+    }
+    switch (GetAwarenessFromDpiAwarenessContext( GetThreadDpiAwarenessContext() ))
+    {
+    case DPI_AWARENESS_UNAWARE:      *x = *y = USER_DEFAULT_SCREEN_DPI; break;
+    case DPI_AWARENESS_SYSTEM_AWARE: *x = *y = system_dpi; break;
+    default:                         *x = *y = get_monitor_dpi( monitor ); break;
+    }
     return TRUE;
 }
 
@@ -3326,7 +3465,7 @@ DPI_AWARENESS_CONTEXT WINAPI GetThreadDpiAwarenessContext(void)
 
     if (info->dpi_awareness) return ULongToHandle( info->dpi_awareness );
     if (dpi_awareness) return ULongToHandle( dpi_awareness );
-    return (DPI_AWARENESS_CONTEXT)(0x10 | DPI_AWARENESS_SYSTEM_AWARE);  /* FIXME: should default to unaware */
+    return ULongToHandle( 0x10 | default_awareness );
 }
 
 /**********************************************************************
@@ -3358,14 +3497,11 @@ DPI_AWARENESS_CONTEXT WINAPI SetThreadDpiAwarenessContext( DPI_AWARENESS_CONTEXT
  */
 BOOL WINAPI LogicalToPhysicalPointForPerMonitorDPI( HWND hwnd, POINT *pt )
 {
-    UINT system_dpi = get_system_dpi();
-    UINT dpi = GetDpiForWindow( hwnd );
     RECT rect;
 
-    GetWindowRect( hwnd, &rect );
+    if (!GetWindowRect( hwnd, &rect )) return FALSE;
     if (pt->x < rect.left || pt->y < rect.top || pt->x > rect.right || pt->y > rect.bottom) return FALSE;
-    pt->x = MulDiv( pt->x, system_dpi, dpi );
-    pt->y = MulDiv( pt->y, system_dpi, dpi );
+    *pt = point_win_to_phys_dpi( hwnd, *pt );
     return TRUE;
 }
 
@@ -3375,28 +3511,278 @@ BOOL WINAPI LogicalToPhysicalPointForPerMonitorDPI( HWND hwnd, POINT *pt )
 BOOL WINAPI PhysicalToLogicalPointForPerMonitorDPI( HWND hwnd, POINT *pt )
 {
     DPI_AWARENESS_CONTEXT context;
-    UINT system_dpi = get_system_dpi();
-    UINT dpi = GetDpiForWindow( hwnd );
     RECT rect;
+    BOOL ret = FALSE;
 
-    /* get window rect in physical coords */
     context = SetThreadDpiAwarenessContext( DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE );
-    GetWindowRect( hwnd, &rect );
+    if (GetWindowRect( hwnd, &rect ) &&
+        pt->x >= rect.left && pt->y >= rect.top && pt->x <= rect.right && pt->y <= rect.bottom)
+    {
+        *pt = point_phys_to_win_dpi( hwnd, *pt );
+        ret = TRUE;
+    }
     SetThreadDpiAwarenessContext( context );
+    return ret;
+}
 
-    if (pt->x < rect.left || pt->y < rect.top || pt->x > rect.right || pt->y > rect.bottom) return FALSE;
-    pt->x = MulDiv( pt->x, dpi, system_dpi );
-    pt->y = MulDiv( pt->y, dpi, system_dpi );
+struct monitor_enum_info
+{
+    RECT     rect;
+    UINT     max_area;
+    UINT     min_distance;
+    HMONITOR primary;
+    HMONITOR nearest;
+    HMONITOR ret;
+};
+
+/* helper callback for MonitorFromRect */
+static BOOL CALLBACK monitor_enum( HMONITOR monitor, HDC hdc, LPRECT rect, LPARAM lp )
+{
+    struct monitor_enum_info *info = (struct monitor_enum_info *)lp;
+    RECT intersect;
+
+    if (IntersectRect( &intersect, rect, &info->rect ))
+    {
+        /* check for larger intersecting area */
+        UINT area = (intersect.right - intersect.left) * (intersect.bottom - intersect.top);
+        if (area > info->max_area)
+        {
+            info->max_area = area;
+            info->ret = monitor;
+        }
+    }
+    else if (!info->max_area)  /* if not intersecting, check for min distance */
+    {
+        UINT distance;
+        UINT x, y;
+
+        if (info->rect.right <= rect->left) x = rect->left - info->rect.right;
+        else if (rect->right <= info->rect.left) x = info->rect.left - rect->right;
+        else x = 0;
+        if (info->rect.bottom <= rect->top) y = rect->top - info->rect.bottom;
+        else if (rect->bottom <= info->rect.top) y = info->rect.top - rect->bottom;
+        else y = 0;
+        distance = x * x + y * y;
+        if (distance < info->min_distance)
+        {
+            info->min_distance = distance;
+            info->nearest = monitor;
+        }
+    }
+    if (!info->primary)
+    {
+        MONITORINFO mon_info;
+        mon_info.cbSize = sizeof(mon_info);
+        GetMonitorInfoW( monitor, &mon_info );
+        if (mon_info.dwFlags & MONITORINFOF_PRIMARY) info->primary = monitor;
+    }
     return TRUE;
 }
+
+/***********************************************************************
+ *		MonitorFromRect (USER32.@)
+ */
+HMONITOR WINAPI MonitorFromRect( const RECT *rect, DWORD flags )
+{
+    struct monitor_enum_info info;
+
+    info.rect         = *rect;
+    info.max_area     = 0;
+    info.min_distance = ~0u;
+    info.primary      = 0;
+    info.nearest      = 0;
+    info.ret          = 0;
+
+    if (IsRectEmpty(&info.rect))
+    {
+        info.rect.right = info.rect.left + 1;
+        info.rect.bottom = info.rect.top + 1;
+    }
+
+    if (!EnumDisplayMonitors( 0, NULL, monitor_enum, (LPARAM)&info )) return 0;
+    if (!info.ret)
+    {
+        if (flags & MONITOR_DEFAULTTOPRIMARY) info.ret = info.primary;
+        else if (flags & MONITOR_DEFAULTTONEAREST) info.ret = info.nearest;
+    }
+
+    TRACE( "%s flags %x returning %p\n", wine_dbgstr_rect(rect), flags, info.ret );
+    return info.ret;
+}
+
+/***********************************************************************
+ *		MonitorFromPoint (USER32.@)
+ */
+HMONITOR WINAPI MonitorFromPoint( POINT pt, DWORD flags )
+{
+    RECT rect;
+
+    SetRect( &rect, pt.x, pt.y, pt.x + 1, pt.y + 1 );
+    return MonitorFromRect( &rect, flags );
+}
+
+/***********************************************************************
+ *		MonitorFromWindow (USER32.@)
+ */
+HMONITOR WINAPI MonitorFromWindow(HWND hWnd, DWORD dwFlags)
+{
+    RECT rect;
+    WINDOWPLACEMENT wp;
+
+    TRACE("(%p, 0x%08x)\n", hWnd, dwFlags);
+
+    wp.length = sizeof(wp);
+    if (IsIconic(hWnd) && GetWindowPlacement(hWnd, &wp))
+        return MonitorFromRect( &wp.rcNormalPosition, dwFlags );
+
+    if (GetWindowRect( hWnd, &rect ))
+        return MonitorFromRect( &rect, dwFlags );
+
+    if (!(dwFlags & (MONITOR_DEFAULTTOPRIMARY|MONITOR_DEFAULTTONEAREST))) return 0;
+    /* retrieve the primary */
+    SetRect( &rect, 0, 0, 1, 1 );
+    return MonitorFromRect( &rect, dwFlags );
+}
+
+/***********************************************************************
+ *		GetMonitorInfoA (USER32.@)
+ */
+BOOL WINAPI GetMonitorInfoA( HMONITOR monitor, LPMONITORINFO info )
+{
+    MONITORINFOEXW miW;
+    BOOL ret;
+
+    if (info->cbSize == sizeof(MONITORINFO)) return GetMonitorInfoW( monitor, info );
+    if (info->cbSize != sizeof(MONITORINFOEXA)) return FALSE;
+
+    miW.cbSize = sizeof(miW);
+    ret = GetMonitorInfoW( monitor, (MONITORINFO *)&miW );
+    if (ret)
+    {
+        MONITORINFOEXA *miA = (MONITORINFOEXA *)info;
+        miA->rcMonitor = miW.rcMonitor;
+        miA->rcWork = miW.rcWork;
+        miA->dwFlags = miW.dwFlags;
+        WideCharToMultiByte(CP_ACP, 0, miW.szDevice, -1, miA->szDevice, sizeof(miA->szDevice), NULL, NULL);
+    }
+    return ret;
+}
+
+/***********************************************************************
+ *		GetMonitorInfoW (USER32.@)
+ */
+BOOL WINAPI GetMonitorInfoW( HMONITOR monitor, LPMONITORINFO info )
+{
+    BOOL ret;
+    UINT dpi_from, dpi_to;
+
+    if (info->cbSize != sizeof(MONITORINFOEXW) && info->cbSize != sizeof(MONITORINFO)) return FALSE;
+
+    ret = USER_Driver->pGetMonitorInfo( monitor, info );
+    if (ret)
+    {
+        if ((dpi_to = get_thread_dpi()))
+        {
+            dpi_from = get_monitor_dpi( monitor );
+            info->rcMonitor = map_dpi_rect( info->rcMonitor, dpi_from, dpi_to );
+            info->rcWork = map_dpi_rect( info->rcWork, dpi_from, dpi_to );
+        }
+        TRACE( "flags %04x, monitor %s, work %s\n", info->dwFlags,
+               wine_dbgstr_rect(&info->rcMonitor), wine_dbgstr_rect(&info->rcWork));
+    }
+    return ret;
+}
+
+struct enum_mon_data
+{
+    MONITORENUMPROC proc;
+    LPARAM lparam;
+    HDC hdc;
+    POINT origin;
+    RECT limit;
+};
+
+#ifdef __i386__
+/* Some apps pass a non-stdcall callback to EnumDisplayMonitors,
+ * so we need a small assembly wrapper to call it.
+ * MJ's Help Diagnostic expects that %ecx contains the address to the rect.
+ */
+extern BOOL enum_mon_callback_wrapper( HMONITOR monitor, LPRECT rect, struct enum_mon_data *data );
+__ASM_GLOBAL_FUNC( enum_mon_callback_wrapper,
+    "pushl %ebp\n\t"
+    __ASM_CFI(".cfi_adjust_cfa_offset 4\n\t")
+    __ASM_CFI(".cfi_rel_offset %ebp,0\n\t")
+    "movl %esp,%ebp\n\t"
+    __ASM_CFI(".cfi_def_cfa_register %ebp\n\t")
+    "subl $8,%esp\n\t"
+    "movl 16(%ebp),%eax\n\t"    /* data */
+    "movl 12(%ebp),%ecx\n\t"    /* rect */
+    "pushl 4(%eax)\n\t"         /* data->lparam */
+    "pushl %ecx\n\t"            /* rect */
+    "pushl 8(%eax)\n\t"         /* data->hdc */
+    "pushl 8(%ebp)\n\t"         /* monitor */
+    "call *(%eax)\n\t"          /* data->proc */
+    "leave\n\t"
+    __ASM_CFI(".cfi_def_cfa %esp,4\n\t")
+    __ASM_CFI(".cfi_same_value %ebp\n\t")
+    "ret" )
+#endif /* __i386__ */
+
+static BOOL CALLBACK enum_mon_callback( HMONITOR monitor, HDC hdc, LPRECT rect, LPARAM lp )
+{
+    struct enum_mon_data *data = (struct enum_mon_data *)lp;
+    RECT monrect = map_dpi_rect( *rect, get_monitor_dpi( monitor ), get_thread_dpi() );
+
+    OffsetRect( &monrect, -data->origin.x, -data->origin.y );
+    if (!IntersectRect( &monrect, &monrect, &data->limit )) return TRUE;
+#ifdef __i386__
+    return enum_mon_callback_wrapper( monitor, &monrect, data );
+#else
+    return data->proc( monitor, data->hdc, &monrect, data->lparam );
+#endif
+}
+
+/***********************************************************************
+ *		EnumDisplayMonitors (USER32.@)
+ */
+BOOL WINAPI EnumDisplayMonitors( HDC hdc, LPRECT rect, MONITORENUMPROC proc, LPARAM lp )
+{
+    struct enum_mon_data data;
+
+    data.proc = proc;
+    data.lparam = lp;
+    data.hdc = hdc;
+
+    if (hdc)
+    {
+        if (!GetDCOrgEx( hdc, &data.origin )) return FALSE;
+        if (GetClipBox( hdc, &data.limit ) == ERROR) return FALSE;
+    }
+    else
+    {
+        data.origin.x = data.origin.y = 0;
+        data.limit.left = data.limit.top = INT_MIN;
+        data.limit.right = data.limit.bottom = INT_MAX;
+    }
+    if (rect && !IntersectRect( &data.limit, &data.limit, rect )) return TRUE;
+    return USER_Driver->pEnumDisplayMonitors( 0, NULL, enum_mon_callback, (LPARAM)&data );
+}
+
 
 /**********************************************************************
  *              GetAutoRotationState [USER32.@]
  */
 BOOL WINAPI GetAutoRotationState( AR_STATE *state )
 {
-    FIXME("(%p): stub\n", state);
-    *state = AR_NOT_SUPPORTED;
+    TRACE("(%p)\n", state);
+
+    if (!state)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    *state = AR_NOSENSOR;
     return TRUE;
 }
 
@@ -3407,5 +3793,39 @@ BOOL WINAPI GetDisplayAutoRotationPreferences( ORIENTATION_PREFERENCE *orientati
 {
     FIXME("(%p): stub\n", orientation);
     *orientation = ORIENTATION_PREFERENCE_NONE;
+    return TRUE;
+}
+
+/* physical<->logical mapping functions from win8 that are nops in later versions */
+
+/***********************************************************************
+ *              GetPhysicalCursorPos   (USER32.@)
+ */
+BOOL WINAPI GetPhysicalCursorPos( POINT *point )
+{
+    return GetCursorPos( point );
+}
+
+/***********************************************************************
+ *              SetPhysicalCursorPos   (USER32.@)
+ */
+BOOL WINAPI SetPhysicalCursorPos( INT x, INT y )
+{
+    return SetCursorPos( x, y );
+}
+
+/***********************************************************************
+ *		LogicalToPhysicalPoint (USER32.@)
+ */
+BOOL WINAPI LogicalToPhysicalPoint( HWND hwnd, POINT *point )
+{
+    return TRUE;
+}
+
+/***********************************************************************
+ *		PhysicalToLogicalPoint (USER32.@)
+ */
+BOOL WINAPI PhysicalToLogicalPoint( HWND hwnd, POINT *point )
+{
     return TRUE;
 }

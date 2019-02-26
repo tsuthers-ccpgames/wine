@@ -141,6 +141,8 @@ static void test_createfont(void)
     expect(Ok, stat);
     stat = GdipGetFamilyName(fontfamily2, familyname, 0);
     expect(Ok, stat);
+todo_wine
+    ok (fontfamily == fontfamily2, "Unexpected family instance.\n");
     ok (lstrcmpiW(Tahoma, familyname) == 0, "Expected Tahoma, got %s\n",
             wine_dbgstr_w(familyname));
     stat = GdipDeleteFontFamily(fontfamily2);
@@ -159,7 +161,8 @@ static void test_createfont(void)
         expect(Ok, stat);
         GdipGetFontSize (font, &size);
         ok (size == 24, "Expected 24, got %f (with unit: %d)\n", size, i);
-        GdipGetFontUnit (font, &unit);
+        stat = GdipGetFontUnit (font, &unit);
+        ok (stat == Ok, "Failed to get font unit, %d.\n", stat);
         expect (i, unit);
         GdipDeleteFont(font);
     }
@@ -342,6 +345,8 @@ static void test_fontfamily (void)
     ZeroMemory (itsName, sizeof(itsName));
     stat = GdipCloneFontFamily(family, &clonedFontFamily);
     expect (Ok, stat);
+todo_wine
+    ok (family == clonedFontFamily, "Unexpected family instance.\n");
     GdipDeleteFontFamily(family);
     stat = GdipGetFamilyName(clonedFontFamily, itsName, LANG_NEUTRAL);
     expect(Ok, stat);
@@ -1186,8 +1191,9 @@ todo_wine
 
 static void test_GdipGetFontCollectionFamilyList(void)
 {
-    GpFontFamily *family, *family2;
+    GpFontFamily *family, *family2, **families;
     GpFontCollection *collection;
+    UINT i;
     INT found, count;
     GpStatus status;
 
@@ -1227,15 +1233,53 @@ static void test_GdipGetFontCollectionFamilyList(void)
     ok(found == 1, "Unexpected list count %d.\n", found);
     ok(family != NULL, "Expected family instance.\n");
 
-    family = NULL;
+    family2 = NULL;
     found = 0;
     status = GdipGetFontCollectionFamilyList(collection, 1, &family2, &found);
     ok(status == Ok, "Failed to get family list, status %d.\n", status);
     ok(found == 1, "Unexpected list count %d.\n", found);
-    ok(family2 != family, "Unexpected family instance.\n");
+todo_wine
+    ok(family2 == family, "Unexpected family instance.\n");
 
-    GdipDeleteFontFamily(family);
-    GdipDeleteFontFamily(family2);
+    status = GdipDeleteFontFamily(family);
+    expect(Ok, status);
+
+    status = GdipDeleteFontFamily(family2);
+    expect(Ok, status);
+
+    families = GdipAlloc((count + 1) * sizeof(*families));
+    found = 0;
+    status = GdipGetFontCollectionFamilyList(collection, count + 1, families, &found);
+    ok(status == Ok, "Failed to get family list, status %d.\n", status);
+    ok(found == count, "Unexpected list count %d, extected %d.\n", found, count);
+
+    for (i = 0; i < found; i++)
+    {
+        status = GdipDeleteFontFamily(families[i]);
+        expect(Ok, status);
+    }
+    GdipFree(families);
+}
+
+static void test_GdipGetFontCollectionFamilyCount(void)
+{
+    GpFontCollection *collection;
+    GpStatus status;
+    INT count;
+
+    status = GdipGetFontCollectionFamilyCount(NULL, NULL);
+    ok(status == InvalidParameter, "Unexpected status %d.\n", status);
+
+    count = 123;
+    status = GdipGetFontCollectionFamilyCount(NULL, &count);
+    ok(status == InvalidParameter, "Unexpected status %d.\n", status);
+    ok(count == 123, "Unexpected family count %d.\n", count);
+
+    status = GdipNewInstalledFontCollection(&collection);
+    ok(status == Ok, "Failed to get system collection, status %d.\n", status);
+
+    status = GdipGetFontCollectionFamilyCount(collection, NULL);
+    ok(status == InvalidParameter, "Unexpected status %d.\n", status);
 }
 
 START_TEST(font)
@@ -1269,6 +1313,7 @@ START_TEST(font)
     test_installedfonts();
     test_heightgivendpi();
     test_GdipGetFontCollectionFamilyList();
+    test_GdipGetFontCollectionFamilyCount();
 
     GdiplusShutdown(gdiplusToken);
 }

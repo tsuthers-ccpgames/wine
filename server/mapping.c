@@ -555,9 +555,15 @@ static int load_clr_header( IMAGE_COR20_HEADER *hdr, size_t va, size_t size, int
 /* retrieve the mapping parameters for an executable (PE) image */
 static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_size, int unix_fd )
 {
-    IMAGE_DOS_HEADER dos;
+    static const char fakedll_signature[] = "Wine placeholder DLL";
+
     IMAGE_COR20_HEADER clr;
     IMAGE_SECTION_HEADER sec[96];
+    struct
+    {
+        IMAGE_DOS_HEADER dos;
+        char buffer[sizeof(fakedll_signature)];
+    } mz;
     struct
     {
         DWORD Signature;
@@ -570,15 +576,17 @@ static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_s
     } nt;
     off_t pos;
     int size;
-    size_t clr_va, clr_size;
+    size_t mz_size, clr_va, clr_size;
     unsigned int i, cpu_mask = get_supported_cpu_mask();
 
     /* load the headers */
 
     if (!file_size) return STATUS_INVALID_FILE_FOR_SECTION;
-    if (pread( unix_fd, &dos, sizeof(dos), 0 ) != sizeof(dos)) return STATUS_INVALID_IMAGE_NOT_MZ;
-    if (dos.e_magic != IMAGE_DOS_SIGNATURE) return STATUS_INVALID_IMAGE_NOT_MZ;
-    pos = dos.e_lfanew;
+    size = pread( unix_fd, &mz, sizeof(mz), 0 );
+    if (size < sizeof(mz.dos)) return STATUS_INVALID_IMAGE_NOT_MZ;
+    if (mz.dos.e_magic != IMAGE_DOS_SIGNATURE) return STATUS_INVALID_IMAGE_NOT_MZ;
+    mz_size = size;
+    pos = mz.dos.e_lfanew;
 
     size = pread( unix_fd, &nt, sizeof(nt), pos );
     if (size < sizeof(nt.Signature) + sizeof(nt.FileHeader)) return STATUS_INVALID_IMAGE_FORMAT;
@@ -587,8 +595,11 @@ static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_s
     if (size < sizeof(nt)) memset( (char *)&nt + size, 0, sizeof(nt) - size );
     if (nt.Signature != IMAGE_NT_SIGNATURE)
     {
-        if (*(WORD *)&nt.Signature == IMAGE_OS2_SIGNATURE) return STATUS_INVALID_IMAGE_NE_FORMAT;
-        return STATUS_INVALID_IMAGE_PROTECT;
+        IMAGE_OS2_HEADER *os2 = (IMAGE_OS2_HEADER *)&nt;
+        if (os2->ne_magic != IMAGE_OS2_SIGNATURE) return STATUS_INVALID_IMAGE_PROTECT;
+        if (os2->ne_exetyp == 2) return STATUS_INVALID_IMAGE_WIN_16;
+        if (os2->ne_exetyp == 5) return STATUS_INVALID_IMAGE_PROTECT;
+        return STATUS_INVALID_IMAGE_NE_FORMAT;
     }
 
     switch (nt.opt.hdr32.Magic)
@@ -597,14 +608,17 @@ static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_s
         switch (nt.FileHeader.Machine)
         {
         case IMAGE_FILE_MACHINE_I386:
+            mapping->image.cpu = CPU_x86;
             if (cpu_mask & (CPU_FLAG(CPU_x86) | CPU_FLAG(CPU_x86_64))) break;
             return STATUS_INVALID_IMAGE_FORMAT;
         case IMAGE_FILE_MACHINE_ARM:
         case IMAGE_FILE_MACHINE_THUMB:
         case IMAGE_FILE_MACHINE_ARMNT:
+            mapping->image.cpu = CPU_ARM;
             if (cpu_mask & (CPU_FLAG(CPU_ARM) | CPU_FLAG(CPU_ARM64))) break;
             return STATUS_INVALID_IMAGE_FORMAT;
         case IMAGE_FILE_MACHINE_POWERPC:
+            mapping->image.cpu = CPU_POWERPC;
             if (cpu_mask & CPU_FLAG(CPU_POWERPC)) break;
             return STATUS_INVALID_IMAGE_FORMAT;
         default:
@@ -640,9 +654,11 @@ static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_s
         switch (nt.FileHeader.Machine)
         {
         case IMAGE_FILE_MACHINE_AMD64:
+            mapping->image.cpu = CPU_x86_64;
             if (cpu_mask & (CPU_FLAG(CPU_x86) | CPU_FLAG(CPU_x86_64))) break;
             return STATUS_INVALID_IMAGE_FORMAT;
         case IMAGE_FILE_MACHINE_ARM64:
+            mapping->image.cpu = CPU_ARM64;
             if (cpu_mask & (CPU_FLAG(CPU_ARM) | CPU_FLAG(CPU_ARM64))) break;
             return STATUS_INVALID_IMAGE_FORMAT;
         default:
@@ -683,11 +699,13 @@ static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_s
     mapping->image.gp            = 0; /* FIXME */
     mapping->image.file_size     = file_size;
     mapping->image.loader_flags  = clr_va && clr_size;
+    if (mz_size == sizeof(mz) && !memcmp( mz.buffer, fakedll_signature, sizeof(fakedll_signature) ))
+        mapping->image.image_flags |= IMAGE_FLAGS_WineFakeDll;
 
     /* load the section headers */
 
     pos += sizeof(nt.Signature) + sizeof(nt.FileHeader) + nt.FileHeader.SizeOfOptionalHeader;
-    if (nt.FileHeader.NumberOfSections > sizeof(sec)/sizeof(sec[0])) return STATUS_INVALID_IMAGE_FORMAT;
+    if (nt.FileHeader.NumberOfSections > ARRAY_SIZE( sec )) return STATUS_INVALID_IMAGE_FORMAT;
     size = sizeof(*sec) * nt.FileHeader.NumberOfSections;
     if (!mapping->size) mapping->size = mapping->image.map_size;
     else if (mapping->size > mapping->image.map_size) return STATUS_SECTION_TOO_BIG;
@@ -704,7 +722,11 @@ static unsigned int get_image_params( struct mapping *mapping, file_pos_t file_s
         mapping->image.image_flags |= IMAGE_FLAGS_ComPlusILOnly;
         if (nt.opt.hdr32.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC &&
             !(clr.Flags & COMIMAGE_FLAGS_32BITREQUIRED))
+        {
             mapping->image.image_flags |= IMAGE_FLAGS_ComPlusNativeReady;
+            if (cpu_mask & CPU_FLAG(CPU_x86_64)) mapping->image.cpu = CPU_x86_64;
+            else if (cpu_mask & CPU_FLAG(CPU_ARM64)) mapping->image.cpu = CPU_ARM64;
+        }
     }
 
     if (!build_shared_mapping( mapping, unix_fd, sec, nt.FileHeader.NumberOfSections ))

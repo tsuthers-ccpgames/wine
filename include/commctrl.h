@@ -1034,6 +1034,7 @@ static const WCHAR WC_BUTTONW[] = { 'B','u','t','t','o','n',0 };
 
 #define BCN_HOTITEMCHANGE       (BCN_FIRST + 1)
 #define BCN_DROPDOWN            (BCN_FIRST + 2)
+#define NM_GETCUSTOMSPLITRECT   (BCN_FIRST + 3)
 
 #define BCM_FIRST               0x1600
 #define BCM_GETIDEALSIZE        (BCM_FIRST + 1)
@@ -1108,6 +1109,8 @@ typedef struct tagNMBCHOTITEM
   (BOOL)SNDMSG(button, BCM_GETTEXTMARGIN, 0, (LPARAM)(margin))
 #define Button_SetTextMargin(button, margin)  \
   (BOOL)SNDMSG(button, BCM_SETTEXTMARGIN, 0, (LPARAM)(margin))
+#define Button_GetIdealSize(button, size)  \
+  (BOOL)SNDMSG(button, BCM_GETIDEALSIZE, 0, (LPARAM)(size))
 
 /* Toolbar */
 
@@ -1796,6 +1799,7 @@ static const WCHAR TOOLTIPS_CLASSW[] = { 't','o','o','l','t','i','p','s','_',
 #define TTN_GETDISPINFO         WINELIB_NAME_AW(TTN_GETDISPINFO)
 #define TTN_SHOW                (TTN_FIRST-1)
 #define TTN_POP                 (TTN_FIRST-2)
+#define TTN_LINKCLICK           (TTN_FIRST-3)
 
 #define TTN_NEEDTEXT		TTN_GETDISPINFO
 #define TTN_NEEDTEXTA 		TTN_GETDISPINFOA
@@ -2289,6 +2293,7 @@ static const WCHAR WC_PAGESCROLLERW[] = { 'S','y','s','P','a','g','e','r',0 };
 #define PGN_LAST                (0U-950U)
 #define PGN_SCROLL              (PGN_FIRST-1)
 #define PGN_CALCSIZE            (PGN_FIRST-2)
+#define PGN_HOTITEMCHANGE       (PGN_FIRST-3)
 
 #include <pshpack1.h>
 
@@ -2789,7 +2794,7 @@ typedef struct tagTVITEMCHANGE
     UINT uStateNew;
     UINT uStateOld;
     LPARAM lParam;
-} NVTVITEMCHANGE;
+} NMTVITEMCHANGE;
 
 typedef struct tagNMTVASYNCDRAW
 {
@@ -4723,6 +4728,7 @@ static const WCHAR MONTHCAL_CLASSW[] = { 'S','y','s',
 
 /* Notifications */
 
+#define MCN_VIEWCHANGE        MCN_FIRST
 #define MCN_SELCHANGE         (MCN_FIRST + 1)
 #define MCN_GETDAYSTATE       (MCN_FIRST + 3)
 #define MCN_SELECT            (MCN_FIRST + 4)
@@ -5216,6 +5222,11 @@ static const WCHAR WC_COMBOBOXW[] = { 'C','o','m','b','o','B','o','x',0 };
 #define CB_SETCUEBANNER           (CBM_FIRST + 3)
 #define CB_GETCUEBANNER           (CBM_FIRST + 4)
 
+#define ComboBox_GetMinVisible(hwnd) \
+        ((int)SendMessage((hwnd), CB_GETMINVISIBLE, 0, 0))
+#define ComboBox_SetMinVisible(hwnd, count) \
+        ((BOOL)SendMessage((hwnd), CB_SETMINVISIBLE, (WPARAM)(count), 0))
+
 /**************************************************************************
  * Edit control
  */
@@ -5247,6 +5258,13 @@ typedef struct _tagEDITBALLOONTIP
 #define EM_GETHILITE              (ECM_FIRST + 6)
 #define EM_NOSETFOCUS             (ECM_FIRST + 7)
 #define EM_TAKEFOCUS              (ECM_FIRST + 8)
+
+#define Edit_SetCueBannerText(hwnd, text) \
+        (BOOL)SNDMSG((hwnd), EM_SETCUEBANNER, 0, (LPARAM)(text))
+#define Edit_SetCueBannerTextFocused(hwnd, text, drawfocused) \
+        (BOOL)SNDMSG((hwnd), EM_SETCUEBANNER, (WPARAM)(drawfocused), (LPARAM)(text))
+#define Edit_GetCueBannerText(hwnd, buff, buff_size) \
+        (BOOL)SNDMSG((hwnd), EM_GETCUEBANNER, (WPARAM)(buff), (LPARAM)(buff_size))
 
 /**************************************************************************
  * Listbox control

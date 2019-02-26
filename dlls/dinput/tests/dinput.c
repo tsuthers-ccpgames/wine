@@ -392,6 +392,16 @@ static BOOL CALLBACK enum_devices_callback(const DIDEVICEINSTANCEA *instance, vo
 {
     struct enum_devices_test *enum_test = context;
 
+    if ((instance->dwDevType & 0xff) == DIDEVTYPE_KEYBOARD ||
+           (instance->dwDevType & 0xff) == DIDEVTYPE_MOUSE) {
+        const char *device = ((instance->dwDevType & 0xff) ==
+                                   DIDEVTYPE_KEYBOARD) ? "Keyboard" : "Mouse";
+        ok(IsEqualGUID(&instance->guidInstance, &instance->guidProduct),
+           "%s guidInstance (%s) does not match guidProduct (%s)\n",
+           device, wine_dbgstr_guid(&instance->guidInstance),
+           wine_dbgstr_guid(&instance->guidProduct));
+    }
+
     enum_test->device_count++;
     return enum_test->return_value;
 }
@@ -594,10 +604,14 @@ static void test_DirectInputJoyConfig8(void)
            "IDirectInputJoyConfig8_GetConfig returned 0x%08x\n", hr);
 
         if (SUCCEEDED(hr))
-            ok (SUCCEEDED(IDirectInput_CreateDevice(pDI, &info.guidInstance, &pDID, NULL)),
-               "IDirectInput_CreateDevice failed with guid from GetConfig hr = 0x%08x\n", hr);
+        {
+            hr = IDirectInput_CreateDevice(pDI, &info.guidInstance, &pDID, NULL);
+            ok (SUCCEEDED(hr), "IDirectInput_CreateDevice failed with guid from GetConfig hr = 0x%08x\n", hr);
+            IDirectInputDevice_Release(pDID);
+        }
     }
 
+    IDirectInputJoyConfig8_Release(pDIJC);
     IDirectInput_Release(pDI);
 }
 

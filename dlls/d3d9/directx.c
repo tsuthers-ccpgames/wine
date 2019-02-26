@@ -20,6 +20,7 @@
  */
 
 #include "config.h"
+#include "wine/port.h"
 #include "d3d9_private.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d9);
@@ -137,17 +138,16 @@ static HRESULT WINAPI d3d9_GetAdapterIdentifier(IDirect3D9Ex *iface, UINT adapte
     adapter_id.device_name = identifier->DeviceName;
     adapter_id.device_name_size = sizeof(identifier->DeviceName);
 
-    wined3d_mutex_lock();
-    hr = wined3d_get_adapter_identifier(d3d9->wined3d, adapter, flags, &adapter_id);
-    wined3d_mutex_unlock();
-
-    identifier->DriverVersion = adapter_id.driver_version;
-    identifier->VendorId = adapter_id.vendor_id;
-    identifier->DeviceId = adapter_id.device_id;
-    identifier->SubSysId = adapter_id.subsystem_id;
-    identifier->Revision = adapter_id.revision;
-    memcpy(&identifier->DeviceIdentifier, &adapter_id.device_identifier, sizeof(identifier->DeviceIdentifier));
-    identifier->WHQLLevel = adapter_id.whql_level;
+    if (SUCCEEDED(hr = wined3d_get_adapter_identifier(d3d9->wined3d, adapter, flags, &adapter_id)))
+    {
+        identifier->DriverVersion = adapter_id.driver_version;
+        identifier->VendorId = adapter_id.vendor_id;
+        identifier->DeviceId = adapter_id.device_id;
+        identifier->SubSysId = adapter_id.subsystem_id;
+        identifier->Revision = adapter_id.revision;
+        memcpy(&identifier->DeviceIdentifier, &adapter_id.device_identifier, sizeof(identifier->DeviceIdentifier));
+        identifier->WHQLLevel = adapter_id.whql_level;
+    }
 
     return hr;
 }
@@ -249,6 +249,7 @@ static HRESULT WINAPI d3d9_CheckDeviceFormat(IDirect3D9Ex *iface, UINT adapter, 
 {
     struct d3d9 *d3d9 = impl_from_IDirect3D9Ex(iface);
     enum wined3d_resource_type wined3d_rtype;
+    unsigned int bind_flags;
     HRESULT hr;
 
     TRACE("iface %p, adapter %u, device_type %#x, adapter_format %#x, usage %#x, resource_type %#x, format %#x.\n",
@@ -260,20 +261,21 @@ static HRESULT WINAPI d3d9_CheckDeviceFormat(IDirect3D9Ex *iface, UINT adapter, 
         return D3DERR_INVALIDCALL;
     }
 
+    bind_flags = wined3d_bind_flags_from_d3d9_usage(usage);
     usage = usage & (WINED3DUSAGE_MASK | WINED3DUSAGE_QUERY_MASK);
     switch (resource_type)
     {
         case D3DRTYPE_CUBETEXTURE:
             usage |= WINED3DUSAGE_LEGACY_CUBEMAP;
         case D3DRTYPE_TEXTURE:
-            usage |= WINED3DUSAGE_TEXTURE;
+            bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
         case D3DRTYPE_SURFACE:
             wined3d_rtype = WINED3D_RTYPE_TEXTURE_2D;
             break;
 
         case D3DRTYPE_VOLUMETEXTURE:
         case D3DRTYPE_VOLUME:
-            usage |= WINED3DUSAGE_TEXTURE;
+            bind_flags |= WINED3D_BIND_SHADER_RESOURCE;
             wined3d_rtype = WINED3D_RTYPE_TEXTURE_3D;
             break;
 
@@ -289,7 +291,7 @@ static HRESULT WINAPI d3d9_CheckDeviceFormat(IDirect3D9Ex *iface, UINT adapter, 
 
     wined3d_mutex_lock();
     hr = wined3d_check_device_format(d3d9->wined3d, adapter, device_type, wined3dformat_from_d3dformat(adapter_format),
-            usage, wined3d_rtype, wined3dformat_from_d3dformat(format));
+            usage, bind_flags, wined3d_rtype, wined3dformat_from_d3dformat(format));
     wined3d_mutex_unlock();
 
     return hr;
@@ -355,7 +357,7 @@ static HRESULT WINAPI d3d9_CheckDeviceFormatConversion(IDirect3D9Ex *iface, UINT
 static HRESULT WINAPI d3d9_GetDeviceCaps(IDirect3D9Ex *iface, UINT adapter, D3DDEVTYPE device_type, D3DCAPS9 *caps)
 {
     struct d3d9 *d3d9 = impl_from_IDirect3D9Ex(iface);
-    WINED3DCAPS wined3d_caps;
+    struct wined3d_caps wined3d_caps;
     HRESULT hr;
 
     TRACE("iface %p, adapter %u, device_type %#x, caps %p.\n", iface, adapter, device_type, caps);
@@ -542,11 +544,8 @@ static HRESULT WINAPI d3d9_GetAdapterLUID(IDirect3D9Ex *iface, UINT adapter, LUI
     adapter_id.description_size = 0;
     adapter_id.device_name_size = 0;
 
-    wined3d_mutex_lock();
-    hr = wined3d_get_adapter_identifier(d3d9->wined3d, adapter, 0, &adapter_id);
-    wined3d_mutex_unlock();
-
-    memcpy(luid, &adapter_id.adapter_luid, sizeof(*luid));
+    if (SUCCEEDED(hr = wined3d_get_adapter_identifier(d3d9->wined3d, adapter, 0, &adapter_id)))
+        *luid = adapter_id.adapter_luid;
 
     return hr;
 }

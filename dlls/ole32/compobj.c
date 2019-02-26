@@ -70,8 +70,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(ole);
 
-#define ARRAYSIZE(array) (sizeof(array)/sizeof((array)[0]))
-
 /****************************************************************************
  * This section defines variables internal to the COM module.
  */
@@ -1408,12 +1406,8 @@ static HRESULT apartment_getclassobject(struct apartment *apt, LPCWSTR dllpath,
     return hr;
 }
 
-/***********************************************************************
- *	COM_RegReadPath	[internal]
- *
- *	Reads a registry value and expands it when necessary
- */
-static DWORD COM_RegReadPath(const struct class_reg_data *regdata, WCHAR *dst, DWORD dstlen)
+/* Returns expanded dll path from the registry or activation context. */
+static BOOL get_object_dll_path(const struct class_reg_data *regdata, WCHAR *dst, DWORD dstlen)
 {
     DWORD ret;
 
@@ -1440,19 +1434,20 @@ static DWORD COM_RegReadPath(const struct class_reg_data *regdata, WCHAR *dst, D
               lstrcpynW(dst, src, dstlen);
             }
         }
-	return ret;
+        return !ret;
     }
     else
     {
+        static const WCHAR dllW[] = {'.','d','l','l',0};
         ULONG_PTR cookie;
         WCHAR *nameW;
 
         *dst = 0;
         nameW = (WCHAR*)((BYTE*)regdata->u.actctx.section + regdata->u.actctx.data->name_offset);
         ActivateActCtx(regdata->u.actctx.hactctx, &cookie);
-        ret = SearchPathW(NULL, nameW, NULL, dstlen, dst, NULL);
+        ret = SearchPathW(NULL, nameW, dllW, dstlen, dst, NULL);
         DeactivateActCtx(0, cookie);
-        return !*dst;
+        return *dst != 0;
     }
 }
 
@@ -1477,7 +1472,7 @@ static HRESULT apartment_hostobject(struct apartment *apt,
 
     TRACE("clsid %s, iid %s\n", debugstr_guid(&params->clsid), debugstr_guid(&params->iid));
 
-    if (COM_RegReadPath(&params->regdata, dllpath, ARRAYSIZE(dllpath)) != ERROR_SUCCESS)
+    if (!get_object_dll_path(&params->regdata, dllpath, ARRAY_SIZE(dllpath)))
     {
         /* failure: CLSID is not found in registry */
         WARN("class %s not registered inproc\n", debugstr_guid(&params->clsid));
@@ -1743,11 +1738,21 @@ static void COM_TlsDestroy(void)
     struct oletls *info = NtCurrentTeb()->ReservedForOle;
     if (info)
     {
+        struct init_spy *cursor, *cursor2;
+
         if (info->apt) apartment_release(info->apt);
         if (info->errorinfo) IErrorInfo_Release(info->errorinfo);
         if (info->state) IUnknown_Release(info->state);
-        if (info->spy) IInitializeSpy_Release(info->spy);
+
+        LIST_FOR_EACH_ENTRY_SAFE(cursor, cursor2, &info->spies, struct init_spy, entry)
+        {
+            list_remove(&cursor->entry);
+            IInitializeSpy_Release(cursor->spy);
+            heap_free(cursor);
+        }
+
         if (info->context_token) IObjContext_Release(info->context_token);
+
         HeapFree(GetProcessHeap(), 0, info);
         NtCurrentTeb()->ReservedForOle = NULL;
     }
@@ -1769,6 +1774,19 @@ DWORD WINAPI CoBuildVersion(void)
     return (rmm<<16)+rup;
 }
 
+static struct init_spy *get_spy_entry(struct oletls *info, unsigned int id)
+{
+    struct init_spy *spy;
+
+    LIST_FOR_EACH_ENTRY(spy, &info->spies, struct init_spy, entry)
+    {
+        if (id == spy->id)
+            return spy;
+    }
+
+    return NULL;
+}
+
 /******************************************************************************
  *              CoRegisterInitializeSpy [OLE32.@]
  *
@@ -1788,6 +1806,8 @@ DWORD WINAPI CoBuildVersion(void)
 HRESULT WINAPI CoRegisterInitializeSpy(IInitializeSpy *spy, ULARGE_INTEGER *cookie)
 {
     struct oletls *info = COM_CurrentInfo();
+    struct init_spy *entry;
+    unsigned int id;
     HRESULT hr;
 
     TRACE("(%p, %p)\n", spy, cookie);
@@ -1799,19 +1819,32 @@ HRESULT WINAPI CoRegisterInitializeSpy(IInitializeSpy *spy, ULARGE_INTEGER *cook
         return E_INVALIDARG;
     }
 
-    if (info->spy)
+    hr = IInitializeSpy_QueryInterface(spy, &IID_IInitializeSpy, (void **)&spy);
+    if (FAILED(hr))
+        return hr;
+
+    entry = heap_alloc(sizeof(*entry));
+    if (!entry)
     {
-        FIXME("Already registered?\n");
-        return E_UNEXPECTED;
+        IInitializeSpy_Release(spy);
+        return E_OUTOFMEMORY;
     }
 
-    hr = IInitializeSpy_QueryInterface(spy, &IID_IInitializeSpy, (void **) &info->spy);
-    if (SUCCEEDED(hr))
+    entry->spy = spy;
+
+    id = 0;
+    while (get_spy_entry(info, id) != NULL)
     {
-        cookie->QuadPart = (DWORD_PTR)spy;
-        return S_OK;
+        id++;
     }
-    return hr;
+
+    entry->id = id;
+    list_add_head(&info->spies, &entry->entry);
+
+    cookie->HighPart = GetCurrentThreadId();
+    cookie->LowPart = entry->id;
+
+    return S_OK;
 }
 
 /******************************************************************************
@@ -1832,14 +1865,23 @@ HRESULT WINAPI CoRegisterInitializeSpy(IInitializeSpy *spy, ULARGE_INTEGER *cook
 HRESULT WINAPI CoRevokeInitializeSpy(ULARGE_INTEGER cookie)
 {
     struct oletls *info = COM_CurrentInfo();
+    struct init_spy *spy;
+
     TRACE("(%s)\n", wine_dbgstr_longlong(cookie.QuadPart));
 
-    if (!info || !info->spy || cookie.QuadPart != (DWORD_PTR)info->spy)
+    if (!info || cookie.HighPart != GetCurrentThreadId())
         return E_INVALIDARG;
 
-    IInitializeSpy_Release(info->spy);
-    info->spy = NULL;
-    return S_OK;
+    if ((spy = get_spy_entry(info, cookie.LowPart)))
+    {
+        IInitializeSpy_Release(spy->spy);
+        list_remove(&spy->entry);
+        heap_free(spy);
+
+        return S_OK;
+    }
+
+    return E_INVALIDARG;
 }
 
 HRESULT enter_apartment( struct oletls *info, DWORD model )
@@ -1934,6 +1976,7 @@ HRESULT WINAPI CoInitialize(LPVOID lpReserved)
 HRESULT WINAPI DECLSPEC_HOTPATCH CoInitializeEx(LPVOID lpReserved, DWORD dwCoInit)
 {
   struct oletls *info = COM_CurrentInfo();
+  struct init_spy *cursor;
   HRESULT hr;
 
   TRACE("(%p, %x)\n", lpReserved, (int)dwCoInit);
@@ -1960,13 +2003,17 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoInitializeEx(LPVOID lpReserved, DWORD dwCoIni
     RunningObjectTableImpl_Initialize();
   }
 
-  if (info->spy)
-      IInitializeSpy_PreInitialize(info->spy, dwCoInit, info->inits);
+  LIST_FOR_EACH_ENTRY(cursor, &info->spies, struct init_spy, entry)
+  {
+      IInitializeSpy_PreInitialize(cursor->spy, dwCoInit, info->inits);
+  }
 
   hr = enter_apartment( info, dwCoInit );
 
-  if (info->spy)
-      IInitializeSpy_PostInitialize(info->spy, hr, dwCoInit, info->inits);
+  LIST_FOR_EACH_ENTRY(cursor, &info->spies, struct init_spy, entry)
+  {
+      hr = IInitializeSpy_PostInitialize(cursor->spy, hr, dwCoInit, info->inits);
+  }
 
   return hr;
 }
@@ -1990,6 +2037,7 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CoInitializeEx(LPVOID lpReserved, DWORD dwCoIni
 void WINAPI DECLSPEC_HOTPATCH CoUninitialize(void)
 {
   struct oletls * info = COM_CurrentInfo();
+  struct init_spy *cursor;
   LONG lCOMRefCnt;
 
   TRACE("()\n");
@@ -1997,17 +2045,22 @@ void WINAPI DECLSPEC_HOTPATCH CoUninitialize(void)
   /* will only happen on OOM */
   if (!info) return;
 
-  if (info->spy)
-      IInitializeSpy_PreUninitialize(info->spy, info->inits);
+  LIST_FOR_EACH_ENTRY(cursor, &info->spies, struct init_spy, entry)
+  {
+      IInitializeSpy_PreUninitialize(cursor->spy, info->inits);
+  }
 
   /* sanity check */
   if (!info->inits)
   {
-    ERR("Mismatched CoUninitialize\n");
+      ERR("Mismatched CoUninitialize\n");
 
-    if (info->spy)
-        IInitializeSpy_PostUninitialize(info->spy, info->inits);
-    return;
+      LIST_FOR_EACH_ENTRY(cursor, &info->spies, struct init_spy, entry)
+      {
+          IInitializeSpy_PostUninitialize(cursor->spy, info->inits);
+      }
+
+      return;
   }
 
   leave_apartment( info );
@@ -2029,8 +2082,11 @@ void WINAPI DECLSPEC_HOTPATCH CoUninitialize(void)
     ERR( "CoUninitialize() - not CoInitialized.\n" );
     InterlockedExchangeAdd(&s_COMLockCount,1); /* restore the lock count. */
   }
-  if (info->spy)
-      IInitializeSpy_PostUninitialize(info->spy, info->inits);
+
+  LIST_FOR_EACH_ENTRY(cursor, &info->spies, struct init_spy, entry)
+  {
+      IInitializeSpy_PostUninitialize(cursor->spy, info->inits);
+  }
 }
 
 /******************************************************************************
@@ -2356,7 +2412,7 @@ INT WINAPI StringFromGUID2(REFGUID id, LPOLESTR str, INT cmax)
 HRESULT COM_OpenKeyForCLSID(REFCLSID clsid, LPCWSTR keyname, REGSAM access, HKEY *subkey)
 {
     static const WCHAR wszCLSIDSlash[] = {'C','L','S','I','D','\\',0};
-    WCHAR path[CHARS_IN_GUID + ARRAYSIZE(wszCLSIDSlash) - 1];
+    WCHAR path[CHARS_IN_GUID + ARRAY_SIZE(wszCLSIDSlash) - 1];
     LONG res;
     HKEY key;
 
@@ -2391,7 +2447,7 @@ HRESULT COM_OpenKeyForAppIdFromCLSID(REFCLSID clsid, REGSAM access, HKEY *subkey
     static const WCHAR szAppIdKey[] = { 'A','p','p','I','d','\\',0 };
     DWORD res;
     WCHAR buf[CHARS_IN_GUID];
-    WCHAR keyname[ARRAYSIZE(szAppIdKey) + CHARS_IN_GUID];
+    WCHAR keyname[ARRAY_SIZE(szAppIdKey) + CHARS_IN_GUID];
     DWORD size;
     HKEY hkey;
     DWORD type;
@@ -2599,7 +2655,7 @@ HRESULT WINAPI CoGetPSClsid(REFIID riid, CLSID *pclsid)
 {
     static const WCHAR wszInterface[] = {'I','n','t','e','r','f','a','c','e','\\',0};
     static const WCHAR wszPSC[] = {'\\','P','r','o','x','y','S','t','u','b','C','l','s','i','d','3','2',0};
-    WCHAR path[ARRAYSIZE(wszInterface) - 1 + CHARS_IN_GUID - 1 + ARRAYSIZE(wszPSC)];
+    WCHAR path[ARRAY_SIZE(wszInterface) - 1 + CHARS_IN_GUID - 1 + ARRAY_SIZE(wszPSC)];
     APARTMENT *apt;
     struct registered_psclsid *registered_psclsid;
     ACTCTX_SECTION_KEYED_DATA data;
@@ -2642,8 +2698,8 @@ HRESULT WINAPI CoGetPSClsid(REFIID riid, CLSID *pclsid)
 
     /* Interface\\{string form of riid}\\ProxyStubClsid32 */
     strcpyW(path, wszInterface);
-    StringFromGUID2(riid, path + ARRAYSIZE(wszInterface) - 1, CHARS_IN_GUID);
-    strcpyW(path + ARRAYSIZE(wszInterface) - 1 + CHARS_IN_GUID - 1, wszPSC);
+    StringFromGUID2(riid, path + ARRAY_SIZE(wszInterface) - 1, CHARS_IN_GUID);
+    strcpyW(path + ARRAY_SIZE(wszInterface) - 1 + CHARS_IN_GUID - 1, wszPSC);
 
     hr = get_ps_clsid_from_registry(path, 0, pclsid);
     if (FAILED(hr) && (opposite == KEY_WOW64_32KEY ||
@@ -2971,7 +3027,7 @@ static HRESULT get_inproc_class_object(APARTMENT *apt, const struct class_reg_da
     else
         apartment_threaded = !apt->multi_threaded;
 
-    if (COM_RegReadPath(regdata, dllpath, ARRAYSIZE(dllpath)) != ERROR_SUCCESS)
+    if (!get_object_dll_path(regdata, dllpath, ARRAY_SIZE(dllpath)))
     {
         /* failure: CLSID is not found in registry */
         WARN("class %s not registered inproc\n", debugstr_guid(rclsid));
@@ -3829,7 +3885,7 @@ HRESULT WINAPI CoTreatAsClass(REFCLSID clsidOld, REFCLSID clsidNew)
         if(IsEqualGUID(clsidNew, &CLSID_NULL)){
            RegDeleteKeyW(hkey, wszTreatAs);
         }else{
-            if(!StringFromGUID2(clsidNew, szClsidNew, ARRAYSIZE(szClsidNew))){
+            if(!StringFromGUID2(clsidNew, szClsidNew, ARRAY_SIZE(szClsidNew))){
                 WARN("StringFromGUID2 failed\n");
                 res = E_FAIL;
                 goto done;
@@ -5087,7 +5143,7 @@ HRESULT Handler_DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
         regdata.u.hkey = hkey;
         regdata.hkey = TRUE;
 
-        if (COM_RegReadPath(&regdata, dllpath, ARRAYSIZE(dllpath)) == ERROR_SUCCESS)
+        if (get_object_dll_path(&regdata, dllpath, ARRAY_SIZE(dllpath)))
         {
             static const WCHAR wszOle32[] = {'o','l','e','3','2','.','d','l','l',0};
             if (!strcmpiW(dllpath, wszOle32))

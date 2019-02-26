@@ -28,7 +28,7 @@ static ATOM player_msg_class;
 static INIT_ONCE class_init_once;
 static UINT WM_WMPEVENT;
 static const WCHAR WMPmessageW[] = {'_', 'W', 'M', 'P', 'M','e','s','s','a','g','e',0};
-
+static const WCHAR emptyW[] = {0};
 
 static void update_state(WindowsMediaPlayer *wmp, LONG type, LONG state)
 {
@@ -129,14 +129,16 @@ static HRESULT WINAPI WMPPlayer4_close(IWMPPlayer4 *iface)
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI WMPPlayer4_get_URL(IWMPPlayer4 *iface, BSTR *pbstrURL)
+static HRESULT WINAPI WMPPlayer4_get_URL(IWMPPlayer4 *iface, BSTR *url)
 {
     WindowsMediaPlayer *This = impl_from_IWMPPlayer4(iface);
-    TRACE("(%p)->(%p)\n", This, pbstrURL);
-    if(This->wmpmedia == NULL) {
-        return S_FALSE;
-    }
-    return IWMPMedia_get_sourceURL(This->wmpmedia, pbstrURL);
+
+    TRACE("(%p)->(%p)\n", This, url);
+
+    if (!This->media)
+        return return_bstr(emptyW, url);
+
+    return return_bstr(This->media->url, url);
 }
 
 static HRESULT WINAPI WMPPlayer4_put_URL(IWMPPlayer4 *iface, BSTR url)
@@ -144,12 +146,10 @@ static HRESULT WINAPI WMPPlayer4_put_URL(IWMPPlayer4 *iface, BSTR url)
     WindowsMediaPlayer *This = impl_from_IWMPPlayer4(iface);
     IWMPMedia *media;
     HRESULT hres;
-    TRACE("(%p)->(%s)\n", This, debugstr_w(url));
-    if(url == NULL) {
-        return E_POINTER;
-    }
 
-    hres = create_media_from_url(url, &media);
+    TRACE("(%p)->(%s)\n", This, debugstr_w(url));
+
+    hres = create_media_from_url(url, 0.0, &media);
 
     if (SUCCEEDED(hres)) {
         update_state(This, DISPID_WMPCOREEVENT_PLAYSTATECHANGE, wmppsTransitioning);
@@ -158,9 +158,8 @@ static HRESULT WINAPI WMPPlayer4_put_URL(IWMPPlayer4 *iface, BSTR url)
     }
     if (SUCCEEDED(hres)) {
         update_state(This, DISPID_WMPCOREEVENT_PLAYSTATECHANGE, wmppsReady);
-        if (This->auto_start == VARIANT_TRUE) {
-            hres = IWMPControls_play(&This->IWMPControls_iface);
-        }
+        if (This->auto_start == VARIANT_TRUE)
+            IWMPControls_play(&This->IWMPControls_iface);
     }
 
     return hres;
@@ -202,16 +201,18 @@ static HRESULT WINAPI WMPPlayer4_get_settings(IWMPPlayer4 *iface, IWMPSettings *
     return S_OK;
 }
 
-static HRESULT WINAPI WMPPlayer4_get_currentMedia(IWMPPlayer4 *iface, IWMPMedia **ppMedia)
+static HRESULT WINAPI WMPPlayer4_get_currentMedia(IWMPPlayer4 *iface, IWMPMedia **media)
 {
     WindowsMediaPlayer *This = impl_from_IWMPPlayer4(iface);
-    TRACE("(%p)->(%p)\n", This, ppMedia);
-    if(This->wmpmedia == NULL) {
+
+    TRACE("(%p)->(%p)\n", This, media);
+
+    *media = NULL;
+
+    if (This->media == NULL)
         return S_FALSE;
-    }
-    IWMPMedia_AddRef(This->wmpmedia);
-    *ppMedia = This->wmpmedia;
-    return S_OK;
+
+    return create_media_from_url(This->media->url, This->media->duration, media);
 }
 
 static HRESULT WINAPI WMPPlayer4_put_currentMedia(IWMPPlayer4 *iface, IWMPMedia *pMedia)
@@ -223,15 +224,15 @@ static HRESULT WINAPI WMPPlayer4_put_currentMedia(IWMPPlayer4 *iface, IWMPMedia 
         return E_POINTER;
     }
     update_state(This, DISPID_WMPCOREEVENT_OPENSTATECHANGE, wmposPlaylistChanging);
-    if(This->wmpmedia != NULL) {
+    if(This->media != NULL) {
         IWMPControls_stop(&This->IWMPControls_iface);
-        IWMPMedia_Release(This->wmpmedia);
+        IWMPMedia_Release(&This->media->IWMPMedia_iface);
     }
     update_state(This, DISPID_WMPCOREEVENT_OPENSTATECHANGE, wmposPlaylistChanged);
     update_state(This, DISPID_WMPCOREEVENT_OPENSTATECHANGE, wmposPlaylistOpenNoMedia);
 
     IWMPMedia_AddRef(pMedia);
-    This->wmpmedia = pMedia;
+    This->media = unsafe_impl_from_IWMPMedia(pMedia);
     return S_OK;
 }
 
@@ -259,8 +260,7 @@ static HRESULT WINAPI WMPPlayer4_get_versionInfo(IWMPPlayer4 *iface, BSTR *versi
     if (!version)
         return E_POINTER;
 
-    *version = SysAllocString(versionW);
-    return *version ? S_OK : E_OUTOFMEMORY;
+    return return_bstr(versionW, version);
 }
 
 static HRESULT WINAPI WMPPlayer4_launchURL(IWMPPlayer4 *iface, BSTR url)
@@ -343,11 +343,13 @@ static HRESULT WINAPI WMPPlayer4_newPlaylist(IWMPPlayer4 *iface, BSTR name, BSTR
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI WMPPlayer4_newMedia(IWMPPlayer4 *iface, BSTR url, IWMPMedia **ppMedia)
+static HRESULT WINAPI WMPPlayer4_newMedia(IWMPPlayer4 *iface, BSTR url, IWMPMedia **media)
 {
     WindowsMediaPlayer *This = impl_from_IWMPPlayer4(iface);
-    FIXME("(%p)->(%p)\n", This, ppMedia);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%s %p)\n", This, debugstr_w(url), media);
+
+    return create_media_from_url(url, 0.0, media);
 }
 
 static HRESULT WINAPI WMPPlayer4_get_enabled(IWMPPlayer4 *iface, VARIANT_BOOL *pbEnabled)
@@ -1365,7 +1367,9 @@ static const IWMPNetworkVtbl WMPNetworkVtbl = {
 
 static HRESULT WINAPI WMPControls_QueryInterface(IWMPControls *iface, REFIID riid, void **ppv)
 {
-    if(IsEqualGUID(riid, &IID_IDispatch)) {
+    if(IsEqualGUID(riid, &IID_IUnknown)) {
+        *ppv = iface;
+    }else if(IsEqualGUID(riid, &IID_IDispatch)) {
         *ppv = iface;
     }else if(IsEqualGUID(riid, &IID_IWMPControls)) {
         *ppv = iface;
@@ -1448,18 +1452,11 @@ static HRESULT WINAPI WMPControls_play(IWMPControls *iface)
 {
     HRESULT hres = S_OK;
     WindowsMediaPlayer *This = impl_from_IWMPControls(iface);
-    WMPMedia *media;
 
     TRACE("(%p)\n", This);
 
-    if (!This->wmpmedia) {
+    if (!This->media) {
         return NS_S_WMPCORE_COMMAND_NOT_AVAILABLE;
-    }
-
-    media = unsafe_impl_from_IWMPMedia(This->wmpmedia);
-    if (!media) {
-        FIXME("No support for non-builtin IWMPMedia implementations\n");
-        return E_INVALIDARG;
     }
 
     if (!This->filter_graph) {
@@ -1471,7 +1468,7 @@ static HRESULT WINAPI WMPControls_play(IWMPControls *iface)
         update_state(This, DISPID_WMPCOREEVENT_OPENSTATECHANGE, wmposOpeningUnknownURL);
 
         if (SUCCEEDED(hres))
-            hres = IGraphBuilder_RenderFile(This->filter_graph, media->url, NULL);
+            hres = IGraphBuilder_RenderFile(This->filter_graph, This->media->url, NULL);
         if (SUCCEEDED(hres))
             update_state(This, DISPID_WMPCOREEVENT_OPENSTATECHANGE, wmposMediaOpen);
         if (SUCCEEDED(hres))
@@ -1515,7 +1512,7 @@ static HRESULT WINAPI WMPControls_play(IWMPControls *iface)
         LONGLONG duration;
         update_state(This, DISPID_WMPCOREEVENT_PLAYSTATECHANGE, wmppsPlaying);
         if (SUCCEEDED(IMediaSeeking_GetDuration(This->media_seeking, &duration)))
-            media->duration = (DOUBLE)duration / 10000000.0f;
+            This->media->duration = (DOUBLE)duration / 10000000.0f;
     } else {
         update_state(This, DISPID_WMPCOREEVENT_PLAYSTATECHANGE, wmppsUndefined);
     }
@@ -1779,24 +1776,23 @@ static HRESULT WINAPI WMPMedia_get_isIdentical(IWMPMedia *iface, IWMPMedia *othe
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI WMPMedia_get_sourceURL(IWMPMedia *iface, BSTR *pbstrSourceUrl)
+static HRESULT WINAPI WMPMedia_get_sourceURL(IWMPMedia *iface, BSTR *url)
 {
     WMPMedia *This = impl_from_IWMPMedia(iface);
-    BSTR url;
-    TRACE("(%p)->(%p)\n", This, pbstrSourceUrl);
-    url = SysAllocString(This->url);
-    if (url) {
-        *pbstrSourceUrl = url;
-        return S_OK;
-    }
-    return E_OUTOFMEMORY;
+
+    TRACE("(%p)->(%p)\n", This, url);
+
+    return return_bstr(This->url, url);
 }
 
-static HRESULT WINAPI WMPMedia_get_name(IWMPMedia *iface, BSTR *pbstrName)
+static HRESULT WINAPI WMPMedia_get_name(IWMPMedia *iface, BSTR *name)
 {
     WMPMedia *This = impl_from_IWMPMedia(iface);
-    FIXME("(%p)->(%p)\n", This, pbstrName);
-    return E_NOTIMPL;
+
+    FIXME("(%p)->(%p)\n", This, name);
+
+    /* FIXME: this should be a display name */
+    return return_bstr(This->url, name);
 }
 
 static HRESULT WINAPI WMPMedia_put_name(IWMPMedia *iface, BSTR pbstrName)
@@ -2010,8 +2006,8 @@ BOOL init_player(WindowsMediaPlayer *wmp)
 void destroy_player(WindowsMediaPlayer *wmp)
 {
     IWMPControls_stop(&wmp->IWMPControls_iface);
-    if(wmp->wmpmedia)
-        IWMPMedia_Release(wmp->wmpmedia);
+    if (wmp->media)
+        IWMPMedia_Release(&wmp->media->IWMPMedia_iface);
     DestroyWindow(wmp->msg_window);
 }
 
@@ -2023,16 +2019,17 @@ WMPMedia *unsafe_impl_from_IWMPMedia(IWMPMedia *iface)
     return NULL;
 }
 
-HRESULT create_media_from_url(BSTR url, IWMPMedia **ppMedia)
+HRESULT create_media_from_url(BSTR url, double duration, IWMPMedia **ppMedia)
 {
-    WMPMedia *media = heap_alloc_zero(sizeof(WMPMedia));
+    WMPMedia *media;
 
-    if (!media) {
+    media = heap_alloc_zero(sizeof(*media));
+    if (!media)
         return E_OUTOFMEMORY;
-    }
 
     media->IWMPMedia_iface.lpVtbl = &WMPMediaVtbl;
-    media->url = heap_strdupW(url);
+    media->url = url ? heap_strdupW(url) : heap_strdupW(emptyW);
+    media->duration = duration;
     media->ref = 1;
 
     if (media->url) {

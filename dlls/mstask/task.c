@@ -58,6 +58,8 @@ typedef struct
     LONG ref;
     ITaskDefinition *task;
     IExecAction *action;
+    BYTE *data;
+    WORD data_count;
     UUID uuid;
     LPWSTR task_name;
     HRESULT status;
@@ -87,6 +89,7 @@ static void TaskDestructor(TaskImpl *This)
     if (This->action)
         IExecAction_Release(This->action);
     ITaskDefinition_Release(This->task);
+    heap_free(This->data);
     heap_free(This->task_name);
     heap_free(This->accountName);
     heap_free(This->trigger);
@@ -478,7 +481,7 @@ static HRESULT WINAPI MSTASK_ITask_GetNextRunTime(ITask *iface, SYSTEMTIME *rt)
     TaskImpl *This = impl_from_ITask(iface);
     HRESULT hr = SCHED_S_TASK_NO_VALID_TRIGGERS;
     SYSTEMTIME st, current_st;
-    FILETIME current_ft, begin_ft, end_ft, best_ft;
+    FILETIME current_ft, trigger_ft, begin_ft, end_ft, best_ft;
     BOOL have_best_time = FALSE;
     DWORD i;
 
@@ -491,12 +494,16 @@ static HRESULT WINAPI MSTASK_ITask_GetNextRunTime(ITask *iface, SYSTEMTIME *rt)
     }
 
     GetLocalTime(&current_st);
+    SystemTimeToFileTime(&current_st, &current_ft);
 
     for (i = 0; i < This->trigger_count; i++)
     {
         if (!(This->trigger[i].rgFlags & TASK_TRIGGER_FLAG_DISABLED))
         {
             get_begin_time(&This->trigger[i], &begin_ft);
+            if (CompareFileTime(&begin_ft, &current_ft) < 0)
+                begin_ft = current_ft;
+
             get_end_time(&This->trigger[i], &end_ft);
 
             switch (This->trigger[i].TriggerType)
@@ -513,37 +520,40 @@ static HRESULT WINAPI MSTASK_ITask_GetNextRunTime(ITask *iface, SYSTEMTIME *rt)
                 st.wMinute = This->trigger[i].wStartMinute;
                 st.wSecond = 0;
                 st.wMilliseconds = 0;
-                SystemTimeToFileTime(&st, &current_ft);
-                if (CompareFileTime(&begin_ft, &current_ft) <= 0 && CompareFileTime(&current_ft, &end_ft) < 0)
+                SystemTimeToFileTime(&st, &trigger_ft);
+                if (CompareFileTime(&begin_ft, &trigger_ft) <= 0 && CompareFileTime(&trigger_ft, &end_ft) < 0)
                 {
-                    if (!have_best_time || CompareFileTime(&current_ft, &best_ft) < 0)
+                    if (!have_best_time || CompareFileTime(&trigger_ft, &best_ft) < 0)
                     {
-                        best_ft = current_ft;
+                        best_ft = trigger_ft;
                         have_best_time = TRUE;
                     }
                 }
                 break;
 
             case TASK_TIME_TRIGGER_DAILY:
+                if (!This->trigger[i].Type.Daily.DaysInterval)
+                    break; /* avoid infinite loop */
+
                 st = current_st;
                 st.wHour = This->trigger[i].wStartHour;
                 st.wMinute = This->trigger[i].wStartMinute;
                 st.wSecond = 0;
                 st.wMilliseconds = 0;
-                SystemTimeToFileTime(&st, &current_ft);
-                while (CompareFileTime(&current_ft, &end_ft) < 0)
+                SystemTimeToFileTime(&st, &trigger_ft);
+                while (CompareFileTime(&trigger_ft, &end_ft) < 0)
                 {
-                    if (CompareFileTime(&current_ft, &begin_ft) >= 0)
+                    if (CompareFileTime(&trigger_ft, &begin_ft) >= 0)
                     {
-                        if (!have_best_time || CompareFileTime(&current_ft, &best_ft) < 0)
+                        if (!have_best_time || CompareFileTime(&trigger_ft, &best_ft) < 0)
                         {
-                            best_ft = current_ft;
+                            best_ft = trigger_ft;
                             have_best_time = TRUE;
                         }
                         break;
                     }
 
-                    filetime_add_days(&current_ft, This->trigger[i].Type.Daily.DaysInterval);
+                    filetime_add_days(&trigger_ft, This->trigger[i].Type.Daily.DaysInterval);
                 }
                 break;
 
@@ -556,18 +566,18 @@ static HRESULT WINAPI MSTASK_ITask_GetNextRunTime(ITask *iface, SYSTEMTIME *rt)
                 st.wMinute = This->trigger[i].wStartMinute;
                 st.wSecond = 0;
                 st.wMilliseconds = 0;
-                SystemTimeToFileTime(&st, &current_ft);
-                while (CompareFileTime(&current_ft, &end_ft) < 0)
+                SystemTimeToFileTime(&st, &trigger_ft);
+                while (CompareFileTime(&trigger_ft, &end_ft) < 0)
                 {
-                    FileTimeToSystemTime(&current_ft, &st);
+                    FileTimeToSystemTime(&trigger_ft, &st);
 
-                    if (CompareFileTime(&current_ft, &begin_ft) >= 0)
+                    if (CompareFileTime(&trigger_ft, &begin_ft) >= 0)
                     {
                         if (This->trigger[i].Type.Weekly.rgfDaysOfTheWeek & (1 << st.wDayOfWeek))
                         {
-                            if (!have_best_time || CompareFileTime(&current_ft, &best_ft) < 0)
+                            if (!have_best_time || CompareFileTime(&trigger_ft, &best_ft) < 0)
                             {
-                                best_ft = current_ft;
+                                best_ft = trigger_ft;
                                 have_best_time = TRUE;
                             }
                             break;
@@ -575,9 +585,9 @@ static HRESULT WINAPI MSTASK_ITask_GetNextRunTime(ITask *iface, SYSTEMTIME *rt)
                     }
 
                     if (st.wDayOfWeek == 0 && This->trigger[i].Type.Weekly.WeeksInterval > 1) /* Sunday, goto next week */
-                        filetime_add_weeks(&current_ft, This->trigger[i].Type.Weekly.WeeksInterval - 1);
+                        filetime_add_weeks(&trigger_ft, This->trigger[i].Type.Weekly.WeeksInterval - 1);
                     else /* check next weekday */
-                        filetime_add_days(&current_ft, 1);
+                        filetime_add_days(&trigger_ft, 1);
                 }
                 break;
 
@@ -809,22 +819,54 @@ static HRESULT WINAPI MSTASK_ITask_GetCreator(ITask *iface, LPWSTR *creator)
     return hr;
 }
 
-static HRESULT WINAPI MSTASK_ITask_SetWorkItemData(
-        ITask* iface,
-        WORD cBytes,
-        BYTE rgbData[])
+static HRESULT WINAPI MSTASK_ITask_SetWorkItemData(ITask *iface, WORD count, BYTE data[])
 {
-    FIXME("(%p, %d, %p): stub\n", iface, cBytes, rgbData);
-    return E_NOTIMPL;
+    TaskImpl *This = impl_from_ITask(iface);
+
+    TRACE("(%p, %u, %p)\n", iface, count, data);
+
+    if (count)
+    {
+        if (!data) return E_INVALIDARG;
+
+        heap_free(This->data);
+        This->data = heap_alloc(count);
+        if (!This->data) return E_OUTOFMEMORY;
+        memcpy(This->data, data, count);
+        This->data_count = count;
+    }
+    else
+    {
+        if (data) return E_INVALIDARG;
+
+        heap_free(This->data);
+        This->data = NULL;
+        This->data_count = 0;
+    }
+
+    return S_OK;
 }
 
-static HRESULT WINAPI MSTASK_ITask_GetWorkItemData(
-        ITask* iface,
-        WORD *pcBytes,
-        BYTE **ppBytes)
+static HRESULT WINAPI MSTASK_ITask_GetWorkItemData(ITask *iface, WORD *count, BYTE **data)
 {
-    FIXME("(%p, %p, %p): stub\n", iface, pcBytes, ppBytes);
-    return E_NOTIMPL;
+    TaskImpl *This = impl_from_ITask(iface);
+
+    TRACE("(%p, %p, %p)\n", iface, count, data);
+
+    if (!This->data)
+    {
+        *count = 0;
+        *data = NULL;
+    }
+    else
+    {
+        *data = CoTaskMemAlloc(This->data_count);
+        if (!*data) return E_OUTOFMEMORY;
+        memcpy(*data, This->data, This->data_count);
+        *count = This->data_count;
+    }
+
+    return S_OK;
 }
 
 static HRESULT WINAPI MSTASK_ITask_SetErrorRetryCount(
@@ -1648,7 +1690,11 @@ static HRESULT WINAPI MSTASK_IPersistFile_Save(IPersistFile *iface, LPCOLESTR ta
         hfile = CreateFileW(task_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, disposition, 0, 0);
         if (hfile != INVALID_HANDLE_VALUE) break;
 
-        if (try++ >= 3) return HRESULT_FROM_WIN32(GetLastError());
+        if (try++ >= 3)
+        {
+            hr = HRESULT_FROM_WIN32(GetLastError());
+            goto failed;
+        }
         Sleep(100);
     }
 
@@ -1739,13 +1785,16 @@ failed:
         CoTaskMemFree(comment);
     CoTaskMemFree(user_data);
 
-    CloseHandle(hfile);
-    if (hr != S_OK)
-        DeleteFileW(task_name);
-    else if (remember)
+    if (hfile != INVALID_HANDLE_VALUE)
     {
-        heap_free(This->task_name);
-        This->task_name = heap_strdupW(task_name);
+        CloseHandle(hfile);
+        if (hr != S_OK)
+            DeleteFileW(task_name);
+        else if (remember)
+        {
+            heap_free(This->task_name);
+            This->task_name = heap_strdupW(task_name);
+        }
     }
     return hr;
 }
@@ -1865,6 +1914,8 @@ HRESULT TaskConstructor(ITaskService *service, const WCHAR *name, ITask **task)
     This->IPersistFile_iface.lpVtbl = &MSTASK_IPersistFileVtbl;
     This->ref = 1;
     This->task = taskdef;
+    This->data = NULL;
+    This->data_count = 0;
     This->task_name = heap_strdupW(task_name);
     This->flags = 0;
     This->status = SCHED_S_TASK_NOT_SCHEDULED;

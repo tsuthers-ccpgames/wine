@@ -570,6 +570,18 @@ struct actctx_loader
 
 static const xmlstr_t empty_xmlstr;
 
+#ifdef __i386__
+static const WCHAR current_archW[] = {'x','8','6',0};
+#elif defined __x86_64__
+static const WCHAR current_archW[] = {'a','m','d','6','4',0};
+#elif defined __arm__
+static const WCHAR current_archW[] = {'a','r','m',0};
+#elif defined __aarch64__
+static const WCHAR current_archW[] = {'a','r','m','6','4',0};
+#else
+static const WCHAR current_archW[] = {'n','o','n','e',0};
+#endif
+
 static const WCHAR asmv1W[] = {'u','r','n',':','s','c','h','e','m','a','s','-','m','i','c','r','o','s','o','f','t','-','c','o','m',':','a','s','m','.','v','1',0};
 static const WCHAR asmv2W[] = {'u','r','n',':','s','c','h','e','m','a','s','-','m','i','c','r','o','s','o','f','t','-','c','o','m',':','a','s','m','.','v','2',0};
 static const WCHAR asmv3W[] = {'u','r','n',':','s','c','h','e','m','a','s','-','m','i','c','r','o','s','o','f','t','-','c','o','m',':','a','s','m','.','v','3',0};
@@ -1556,7 +1568,7 @@ static OLEMISC get_olemisc_value(const WCHAR *str, int len)
     int min, max;
 
     min = 0;
-    max = sizeof(olemisc_values)/sizeof(struct olemisc_entry) - 1;
+    max = ARRAY_SIZE(olemisc_values) - 1;
 
     while (min <= max)
     {
@@ -2197,6 +2209,7 @@ static void parse_dependent_assembly_elem( xmlbuf_t *xmlbuf, struct actctx_loade
         {
             parse_assembly_identity_elem(xmlbuf, acl->actctx, &ai, &elem);
             /* store the newly found identity for later loading */
+            if (ai.arch && !strcmpW(ai.arch, wildcardW)) ai.arch = strdupW( current_archW );
             TRACE( "adding name=%s version=%s arch=%s\n",
                    debugstr_w(ai.name), debugstr_version(&ai.version), debugstr_w(ai.arch) );
             if (!add_dependent_assembly_id(acl, &ai)) set_error( xmlbuf );
@@ -3086,13 +3099,13 @@ static WCHAR *lookup_manifest_file( HANDLE dir, struct assembly_identity *ai )
     unsigned int data_pos = 0, data_len;
     char buffer[8192];
 
+    if (!lang || !strcmpiW( lang, neutralW )) lang = wildcardW;
+
     if (!(lookup = RtlAllocateHeap( GetProcessHeap(), 0,
                                     (strlenW(ai->arch) + strlenW(ai->name)
-                                     + strlenW(ai->public_key) + 20) * sizeof(WCHAR)
+                                     + strlenW(ai->public_key) + strlenW(lang) + 20) * sizeof(WCHAR)
                                     + sizeof(lookup_fmtW) )))
         return NULL;
-
-    if (!lang || !strcmpiW( lang, neutralW )) lang = wildcardW;
     sprintfW( lookup, lookup_fmtW, ai->arch, ai->name, ai->public_key,
               ai->version.major, ai->version.minor, lang );
     RtlInitUnicodeString( &lookup_us, lookup );
@@ -3131,7 +3144,7 @@ static WCHAR *lookup_manifest_file( HANDLE dir, struct assembly_identity *ai )
             tmp = strchrW(tmp, '_') + 1;
             tmp = strchrW(tmp, '_') + 1;
             if (dir_info->FileNameLength - (tmp - dir_info->FileName) * sizeof(WCHAR) == sizeof(wine_trailerW) &&
-                !memicmpW( tmp, wine_trailerW, sizeof(wine_trailerW) / sizeof(WCHAR) ))
+                !memicmpW( tmp, wine_trailerW, ARRAY_SIZE( wine_trailerW )))
             {
                 /* prefer a non-Wine manifest if we already have one */
                 /* we'll still load the builtin dll if specified through DllOverrides */
@@ -3294,7 +3307,8 @@ static NTSTATUS lookup_assembly(struct actctx_loader* acl,
                 status = get_manifest_in_pe_file( acl, ai, nameW.Buffer, directory, FALSE, file,
                                                   (LPCWSTR)CREATEPROCESS_MANIFEST_RESOURCE_ID, 0 );
                 NtClose( file );
-                break;
+                if (status == STATUS_SUCCESS)
+                    break;
             }
             RtlFreeUnicodeString( &nameW );
         }

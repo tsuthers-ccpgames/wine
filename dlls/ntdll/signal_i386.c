@@ -427,8 +427,6 @@ static size_t signal_stack_size;
 
 static wine_signal_handler handlers[256];
 
-static BOOL fpux_support;  /* whether the CPU supports extended fpu context */
-
 enum i386_trap_code
 {
     TRAP_x86_UNKNOWN    = -1,  /* Unknown fault (TRAP_sig not defined) */
@@ -555,6 +553,15 @@ static inline WORD get_error_code( const ucontext_t *sigcontext )
 static inline void *get_signal_stack(void)
 {
     return (char *)NtCurrentTeb() + 4096;
+}
+
+
+/***********************************************************************
+ *           has_fpux
+ */
+static inline int has_fpux(void)
+{
+    return (cpu_info.FeatureSet & CPU_FEATURE_FXSR);
 }
 
 
@@ -860,6 +867,26 @@ static inline void save_fpu( CONTEXT *context )
 
 
 /***********************************************************************
+ *           save_fpux
+ *
+ * Save the thread FPU extended context.
+ */
+static inline void save_fpux( CONTEXT *context )
+{
+#ifdef __GNUC__
+    /* we have to enforce alignment by hand */
+    char buffer[sizeof(XMM_SAVE_AREA32) + 16];
+    XMM_SAVE_AREA32 *state = (XMM_SAVE_AREA32 *)(((ULONG_PTR)buffer + 15) & ~15);
+
+    if (!has_fpux()) return;
+    context->ContextFlags |= CONTEXT_EXTENDED_REGISTERS;
+    __asm__ __volatile__( "fxsave %0" : "=m" (*state) );
+    memcpy( context->ExtendedRegisters, state, sizeof(*state) );
+#endif
+}
+
+
+/***********************************************************************
  *           restore_fpu
  *
  * Restore the FPU context to a sigcontext.
@@ -985,7 +1012,6 @@ static inline void save_context( CONTEXT *context, const ucontext_t *sigcontext,
     {
         context->ContextFlags |= CONTEXT_FLOATING_POINT | CONTEXT_EXTENDED_REGISTERS;
         memcpy( context->ExtendedRegisters, fpux, sizeof(*fpux) );
-        fpux_support = TRUE;
         if (!fpu) fpux_to_fpu( &context->FloatSave, fpux );
     }
     if (!fpu && !fpux) save_fpu( context );
@@ -1137,7 +1163,7 @@ void DECLSPEC_HIDDEN set_cpu_context( const CONTEXT *context )
 {
     DWORD flags = context->ContextFlags & ~CONTEXT_i386;
 
-    if ((flags & CONTEXT_EXTENDED_REGISTERS) && fpux_support) restore_fpux( context );
+    if ((flags & CONTEXT_EXTENDED_REGISTERS) && has_fpux()) restore_fpux( context );
     else if (flags & CONTEXT_FLOATING_POINT) restore_fpu( context );
 
     if (flags & CONTEXT_DEBUG_REGISTERS)
@@ -1419,7 +1445,8 @@ NTSTATUS CDECL DECLSPEC_HIDDEN __regs_NtGetContextThread( DWORD edi, DWORD esi, 
             context->ContextFlags |= CONTEXT_SEGMENTS;
         }
         if (needed_flags & CONTEXT_FLOATING_POINT) save_fpu( context );
-        /* FIXME: extended floating point */
+        if (needed_flags & CONTEXT_EXTENDED_REGISTERS) save_fpux( context );
+        /* FIXME: xstate */
         /* update the cached version of the debug registers */
         if (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_i386))
         {
@@ -2221,7 +2248,7 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *sigcontext )
  */
 int CDECL __wine_set_signal_handler(unsigned int sig, wine_signal_handler wsh)
 {
-    if (sig >= sizeof(handlers) / sizeof(handlers[0])) return -1;
+    if (sig >= ARRAY_SIZE(handlers)) return -1;
     if (handlers[sig] != NULL) return -2;
     handlers[sig] = wsh;
     return 0;
@@ -2499,6 +2526,28 @@ NTSTATUS WINAPI NtRaiseException( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL 
 }
 
 
+/*******************************************************************
+ *		raise_exception_full_context
+ *
+ * Raise an exception with the full CPU context.
+ */
+void raise_exception_full_context( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL first_chance )
+{
+    save_fpu( context );
+    save_fpux( context );
+    /* FIXME: xstate */
+    context->Dr0 = x86_thread_data()->dr0;
+    context->Dr1 = x86_thread_data()->dr1;
+    context->Dr2 = x86_thread_data()->dr2;
+    context->Dr3 = x86_thread_data()->dr3;
+    context->Dr6 = x86_thread_data()->dr6;
+    context->Dr7 = x86_thread_data()->dr7;
+    context->ContextFlags |= CONTEXT_DEBUG_REGISTERS;
+
+    RtlRaiseStatus( NtRaiseException( rec, context, first_chance ));
+}
+
+
 /***********************************************************************
  *		RtlRaiseException (NTDLL.@)
  */
@@ -2520,9 +2569,7 @@ __ASM_STDCALL_FUNC( RtlRaiseException, 4,
                     "pushl $1\n\t"
                     "pushl %eax\n\t"
                     "pushl %ecx\n\t"
-                    "call " __ASM_NAME("NtRaiseException") __ASM_STDCALL(12) "\n\t"
-                    "pushl %eax\n\t"
-                    "call " __ASM_NAME("RtlRaiseStatus") __ASM_STDCALL(4) "\n\t"
+                    "call " __ASM_NAME("raise_exception_full_context") "\n\t"
                     "leave\n\t"
                     __ASM_CFI(".cfi_def_cfa %esp,4\n\t")
                     __ASM_CFI(".cfi_same_value %ebp\n\t")
@@ -2653,7 +2700,7 @@ void DECLSPEC_HIDDEN call_thread_func( LPTHREAD_START_ROUTINE entry, void *arg )
         TRACE_(relay)( "\1Starting thread proc %p (arg=%p)\n", entry, arg );
         RtlExitUserThread( call_thread_func_wrapper( entry, arg ));
     }
-    __EXCEPT(unhandled_exception_filter)
+    __EXCEPT(call_unhandled_exception_filter)
     {
         NtTerminateThread( GetCurrentThread(), GetExceptionCode() );
     }
@@ -2706,7 +2753,7 @@ PCONTEXT DECLSPEC_HIDDEN attach_thread( LPTHREAD_START_ROUTINE entry, void *arg,
         init_thread_context( ctx, entry, arg, relay );
     }
     ctx->ContextFlags = CONTEXT_FULL;
-    attach_dlls( ctx, (void **)&ctx->Eax );
+    LdrInitializeThunk( ctx, (void **)&ctx->Eax, 0, 0 );
     return ctx;
 }
 

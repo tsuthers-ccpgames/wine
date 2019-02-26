@@ -974,7 +974,7 @@ void info_win32_exception(void)
     {
     case AddrModeFlat:
         dbg_printf(" in %d-bit code (%s)",
-                   be_cpu->pointer_size * 8,
+                   dbg_curr_process->be_cpu->pointer_size * 8,
                    memory_offset_to_string(hexbuf, addr.Offset, 0));
         break;
     case AddrModeReal:
@@ -984,7 +984,7 @@ void info_win32_exception(void)
         dbg_printf(" in 16-bit code (%04x:%04x)", addr.Segment, (unsigned) addr.Offset);
         break;
     case AddrMode1632:
-        dbg_printf(" in segmented 32-bit code (%04x:%08lx)", addr.Segment, (unsigned long) addr.Offset);
+        dbg_printf(" in segmented 32-bit code (%04x:%08x)", addr.Segment, (unsigned) addr.Offset);
         break;
     default: dbg_printf(" bad address");
     }

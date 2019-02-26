@@ -6228,6 +6228,7 @@ static void test_navigator(IHTMLDocument2 *doc)
     HRESULT hres;
 
     static const WCHAR v40[] = {'4','.','0'};
+    static char ua[] = "1234567890xxxABC";
 
     hres = IHTMLDocument2_get_parentWindow(doc, &window);
     ok(hres == S_OK, "parentWidnow failed: %08x\n", hres);
@@ -6335,6 +6336,17 @@ static void test_navigator(IHTMLDocument2 *doc)
     }else {
         skip("nonstandard user agent\n");
     }
+
+    hres = UrlMkSetSessionOption(URLMON_OPTION_USERAGENT, ua, sizeof(ua), 0);
+    ok(hres == S_OK, "UrlMkSetSessionOption failed: %08x\n", hres);
+
+    hres = IOmNavigator_get_appVersion(navigator, &bstr);
+    ok(hres == S_OK, "get_appVersion failed: %08x\n", hres);
+    ok(!strcmp_wa(bstr, ua+8), "appVersion returned %s, expected \"%s\"\n", wine_dbgstr_w(bstr), buf+8);
+    SysFreeString(bstr);
+
+    hres = UrlMkSetSessionOption(URLMON_OPTION_USERAGENT, buf, strlen(buf), 0);
+    ok(hres == S_OK, "UrlMkSetSessionOption failed: %08x\n", hres);
 
     bstr = NULL;
     hres = IOmNavigator_get_appMinorVersion(navigator, &bstr);
@@ -6742,6 +6754,7 @@ static void test_window(IHTMLDocument2 *doc)
 {
     IHTMLWindow2 *window, *window2, *self, *parent;
     IHTMLWindow5 *window5;
+    IHTMLWindow7 *window7;
     IHTMLDocument2 *doc2 = NULL;
     IDispatch *disp;
     IUnknown *unk;
@@ -6841,6 +6854,40 @@ static void test_window(IHTMLDocument2 *doc)
         IHTMLWindow5_Release(window5);
     }else {
         win_skip("IHTMLWindow5 not supported!\n");
+    }
+
+    hres = IHTMLWindow2_QueryInterface(window, &IID_IHTMLWindow7, (void**)&window7);
+    if(SUCCEEDED(hres)) {
+        IHTMLPerformance *performance;
+
+        ok(window7 != NULL, "window7 == NULL\n");
+
+        hres = IHTMLWindow7_get_performance(window7, &v);
+        ok(hres == S_OK, "get_performance failed: %08x\n", hres);
+        if(SUCCEEDED(hres)) {
+            ok(V_VT(&v) == VT_DISPATCH, "V_VT(performance) = %u\n", V_VT(&v));
+
+            hres = IDispatch_QueryInterface(V_DISPATCH(&v), &IID_IHTMLPerformance,
+                                            (void**)&performance);
+            ok(hres == S_OK, "Could not get IHTMLPerformance iface: %08x\n", hres);
+
+            IHTMLPerformance_Release(performance);
+
+            V_VT(&v) = VT_I2;
+            V_I2(&v) = 2;
+            hres = IHTMLWindow7_put_performance(window7, v);
+            ok(hres == S_OK, "put_performance failed: %08x\n", hres);
+
+            V_VT(&v) = VT_ERROR;
+            hres = IHTMLWindow7_get_performance(window7, &v);
+            ok(hres == S_OK, "get_performance failed: %08x\n", hres);
+            ok(V_VT(&v) == VT_I2, "V_VT(performance) = %u\n", V_VT(&v));
+            ok(V_I2(&v) == 2, "V_I2(performance) = %d\n", V_I2(&v));
+
+            IHTMLWindow7_Release(window7);
+        }
+    }else {
+        win_skip("IHTMLWindow7 not supported\n");
     }
 
     IHTMLWindow2_Release(window);

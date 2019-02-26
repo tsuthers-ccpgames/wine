@@ -245,9 +245,8 @@ static BOOL WINAPI process_invade_cb(PCWSTR name, ULONG64 base, ULONG size, PVOI
     WCHAR       tmp[MAX_PATH];
     HANDLE      hProcess = user;
 
-    if (!GetModuleFileNameExW(hProcess, (HMODULE)(DWORD_PTR)base,
-			      tmp, sizeof(tmp) / sizeof(WCHAR)))
-        lstrcpynW(tmp, name, sizeof(tmp) / sizeof(WCHAR));
+    if (!GetModuleFileNameExW(hProcess, (HMODULE)(DWORD_PTR)base, tmp, ARRAY_SIZE(tmp)))
+        lstrcpynW(tmp, name, ARRAY_SIZE(tmp));
 
     SymLoadModuleExW(hProcess, 0, tmp, name, base, size, NULL, 0);
     return TRUE;
@@ -299,7 +298,8 @@ BOOL WINAPI SymInitializeW(HANDLE hProcess, PCWSTR UserSearchPath, BOOL fInvadeP
 
     TRACE("(%p %s %u)\n", hProcess, debugstr_w(UserSearchPath), fInvadeProcess);
 
-    if (process_find_by_handle(hProcess)){
+    if (process_find_by_handle(hProcess))
+    {
         WARN("the symbols for this process have already been initialized!\n");
 
         /* MSDN says to only call this function once unless SymCleanup() has been called since the last call.
@@ -308,15 +308,15 @@ BOOL WINAPI SymInitializeW(HANDLE hProcess, PCWSTR UserSearchPath, BOOL fInvadeP
         return TRUE;
     }
 
+    IsWow64Process(GetCurrentProcess(), &wow64);
+
+    if (GetProcessId(hProcess) && !IsWow64Process(hProcess, &child_wow64))
+        return FALSE;
+
     pcs = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*pcs));
     if (!pcs) return FALSE;
 
     pcs->handle = hProcess;
-
-    IsWow64Process(GetCurrentProcess(), &wow64);
-
-    if (!IsWow64Process(hProcess, &child_wow64))
-        return FALSE;
     pcs->is_64bit = (sizeof(void *) == 8 || wow64) && !child_wow64;
 
     if (UserSearchPath)

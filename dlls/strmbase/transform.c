@@ -51,11 +51,6 @@ static inline BaseInputPin *impl_BaseInputPin_from_BasePin( BasePin *iface )
     return CONTAINING_RECORD(iface, BaseInputPin, pin);
 }
 
-static inline BasePin *impl_BasePin_from_IPin( IPin *iface )
-{
-    return CONTAINING_RECORD(iface, BasePin, IPin_iface);
-}
-
 static inline BaseInputPin *impl_BaseInputPin_from_IPin( IPin *iface )
 {
     return CONTAINING_RECORD(iface, BaseInputPin, pin.IPin_iface);
@@ -215,10 +210,10 @@ static HRESULT TransformFilter_Init(const IBaseFilterVtbl *pVtbl, const CLSID* p
     /* construct input pin */
     piInput.dir = PINDIR_INPUT;
     piInput.pFilter = &pTransformFilter->filter.IBaseFilter_iface;
-    lstrcpynW(piInput.achName, wcsInputPinName, sizeof(piInput.achName) / sizeof(piInput.achName[0]));
+    lstrcpynW(piInput.achName, wcsInputPinName, ARRAY_SIZE(piInput.achName));
     piOutput.dir = PINDIR_OUTPUT;
     piOutput.pFilter = &pTransformFilter->filter.IBaseFilter_iface;
-    lstrcpynW(piOutput.achName, wcsOutputPinName, sizeof(piOutput.achName) / sizeof(piOutput.achName[0]));
+    lstrcpynW(piOutput.achName, wcsOutputPinName, ARRAY_SIZE(piOutput.achName));
 
     hr = BaseInputPin_Construct(&TransformFilter_InputPin_Vtbl, sizeof(BaseInputPin), &piInput,
             &tf_input_BaseInputFuncTable, &pTransformFilter->filter.csFilter, NULL, &pTransformFilter->ppPins[0]);
@@ -426,15 +421,6 @@ HRESULT WINAPI TransformFilterImpl_Notify(TransformFilter *iface, IBaseFilter *s
 }
 
 /** IBaseFilter implementation **/
-
-HRESULT WINAPI TransformFilterImpl_FindPin(IBaseFilter * iface, LPCWSTR Id, IPin **ppPin)
-{
-    TransformFilter *This = impl_from_IBaseFilter(iface);
-
-    TRACE("(%p/%p)->(%s,%p)\n", This, iface, debugstr_w(Id), ppPin);
-
-    return E_NOTIMPL;
-}
 
 static HRESULT WINAPI TransformFilter_InputPin_EndOfStream(IPin * iface)
 {

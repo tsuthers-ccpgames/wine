@@ -5,11 +5,11 @@
 @ stub ExInterlockedAddLargeStatistic
 @ stub ExInterlockedCompareExchange64
 @ stub ExInterlockedFlushSList
-@ stdcall -norelay ExInterlockedPopEntrySList(ptr ptr) NTOSKRNL_ExInterlockedPopEntrySList
-@ stdcall -norelay ExInterlockedPushEntrySList (ptr ptr ptr) NTOSKRNL_ExInterlockedPushEntrySList
+@ stdcall -arch=i386 -norelay ExInterlockedPopEntrySList(ptr ptr) NTOSKRNL_ExInterlockedPopEntrySList
+@ stdcall -arch=i386 -norelay ExInterlockedPushEntrySList (ptr ptr ptr) NTOSKRNL_ExInterlockedPushEntrySList
 @ stub ExReInitializeRundownProtection
 @ stdcall -norelay ExReleaseFastMutexUnsafe(ptr)
-@ stub ExReleaseResourceLite
+@ stdcall ExReleaseResourceLite(ptr)
 @ stub ExReleaseRundownProtection
 @ stub ExReleaseRundownProtectionEx
 @ stub ExRundownCompleted
@@ -22,29 +22,36 @@
 @ stub ExfInterlockedInsertTailList
 @ stub ExfInterlockedPopEntryList
 @ stub ExfInterlockedPushEntryList
-@ stdcall -norelay ExfInterlockedRemoveHeadList(ptr ptr)
+@ stdcall -norelay -arch=i386 ExfInterlockedRemoveHeadList(ptr ptr)
 @ stub ExfReleasePushLock
 @ stub Exfi386InterlockedDecrementLong
 @ stub Exfi386InterlockedExchangeUlong
 @ stub Exfi386InterlockedIncrementLong
+@ stdcall -arch=win64 ExpInterlockedPopEntrySList(ptr) RtlInterlockedPopEntrySList
+@ stdcall -arch=win64 ExpInterlockedPushEntrySList(ptr ptr) RtlInterlockedPushEntrySList
 @ stub HalExamineMBR
 @ stdcall -norelay InterlockedCompareExchange(ptr long long) NTOSKRNL_InterlockedCompareExchange
 @ stdcall -norelay InterlockedDecrement(ptr) NTOSKRNL_InterlockedDecrement
 @ stdcall -norelay InterlockedExchange(ptr long) NTOSKRNL_InterlockedExchange
 @ stdcall -norelay InterlockedExchangeAdd(ptr long) NTOSKRNL_InterlockedExchangeAdd
 @ stdcall -norelay InterlockedIncrement(ptr) NTOSKRNL_InterlockedIncrement
-@ stdcall -norelay InterlockedPopEntrySList(ptr) NTOSKRNL_InterlockedPopEntrySList
-@ stdcall -norelay InterlockedPushEntrySList(ptr ptr) NTOSKRNL_InterlockedPushEntrySList
+@ stdcall -arch=win32 -norelay InterlockedPopEntrySList(ptr) NTOSKRNL_InterlockedPopEntrySList
+@ stdcall -arch=win32 -norelay InterlockedPushEntrySList(ptr ptr) NTOSKRNL_InterlockedPushEntrySList
+@ stdcall -arch=win64 ExQueryDepthSList(ptr) RtlQueryDepthSList
 @ stub IoAssignDriveLetters
 @ stub IoReadPartitionTable
 @ stub IoSetPartitionInformation
 @ stub IoWritePartitionTable
 @ stdcall -norelay IofCallDriver(ptr ptr)
 @ stdcall -norelay IofCompleteRequest(ptr long)
-@ stdcall -norelay KeAcquireInStackQueuedSpinLock(ptr ptr)
-@ stub KeAcquireInStackQueuedSpinLockAtDpcLevel
-@ stdcall -norelay KeReleaseInStackQueuedSpinLock(ptr)
-@ stub KeReleaseInStackQueuedSpinLockFromDpcLevel
+@ stdcall -arch=arm,arm64,x86_64 KeAcquireInStackQueuedSpinLock(ptr ptr)
+@ stdcall -norelay KeAcquireInStackQueuedSpinLockAtDpcLevel(ptr ptr)
+@ stdcall KeEnterGuardedRegion()
+@ stdcall KeExpandKernelStackAndCallout(ptr ptr long)
+@ stdcall KeExpandKernelStackAndCalloutEx(ptr ptr long long ptr)
+@ stdcall KeLeaveGuardedRegion()
+@ stdcall -arch=arm,arm64,x86_64 KeReleaseInStackQueuedSpinLock(ptr)
+@ stdcall -norelay KeReleaseInStackQueuedSpinLockFromDpcLevel(ptr)
 @ stub KeSetTimeUpdateNotifyRoutine
 @ stub KefAcquireSpinLockAtDpcLevel
 @ stub KefReleaseSpinLockFromDpcLevel
@@ -111,7 +118,7 @@
 @ varargs DbgPrintEx(long long str)
 @ stub DbgPrintReturnControlC
 @ stub DbgPrompt
-@ stub DbgQueryDebugFilterState
+@ stdcall DbgQueryDebugFilterState(long long)
 @ stub DbgSetDebugFilterState
 @ stdcall ExAcquireResourceExclusiveLite(ptr long)
 @ stub ExAcquireResourceSharedLite
@@ -234,7 +241,7 @@
 @ stub FsRtlIsDbcsInExpression
 @ stub FsRtlIsFatDbcsLegal
 @ stub FsRtlIsHpfsDbcsLegal
-@ stub FsRtlIsNameInExpression
+@ stdcall FsRtlIsNameInExpression(ptr ptr long ptr)
 @ stub FsRtlIsNtstatusExpected
 @ stub FsRtlIsPagingFile
 @ stub FsRtlIsTotalDeviceFailure
@@ -428,7 +435,7 @@
 @ stub IoReadPartitionTableEx
 @ stub IoReadTransferCount
 @ stub IoRegisterBootDriverReinitialization
-@ stub IoRegisterDeviceInterface
+@ stdcall IoRegisterDeviceInterface(ptr ptr ptr ptr)
 @ stdcall IoRegisterDriverReinitialization(ptr ptr ptr)
 @ stdcall IoRegisterFileSystem(ptr)
 @ stub IoRegisterFsRegistrationChange
@@ -436,7 +443,7 @@
 @ stdcall IoRegisterPlugPlayNotification(long long ptr ptr ptr ptr ptr)
 @ stdcall IoRegisterShutdownNotification(ptr)
 @ stdcall IoReleaseCancelSpinLock(long)
-@ stub IoReleaseRemoveLockAndWaitEx
+@ stdcall IoReleaseRemoveLockAndWaitEx(ptr ptr long)
 @ stub IoReleaseRemoveLockEx
 @ stub IoReleaseVpbSpinLock
 @ stub IoRemoveShareAccess
@@ -449,7 +456,7 @@
 @ stub IoRequestDeviceEject
 @ stub IoReuseIrp
 @ stub IoSetCompletionRoutineEx
-@ stub IoSetDeviceInterfaceState
+@ stdcall IoSetDeviceInterfaceState(ptr long)
 @ stub IoSetDeviceToVerify
 @ stub IoSetFileOrigin
 @ stub IoSetHardErrorOrVerifyDevice
@@ -472,7 +479,7 @@
 @ stub IoThreadToProcess
 @ stdcall IoUnregisterFileSystem(ptr)
 @ stub IoUnregisterFsRegistrationChange
-@ stub IoUnregisterPlugPlayNotification
+@ stdcall IoUnregisterPlugPlayNotification(ptr)
 @ stdcall IoUnregisterShutdownNotification(ptr)
 @ stub IoUpdateShareAccess
 @ stub IoValidateDeviceIoControlAccess
@@ -510,14 +517,14 @@
 @ stub Ke386QueryIoAccessMap
 @ stdcall Ke386SetIoAccessMap(long ptr)
 @ stub KeAcquireInterruptSpinLock
-@ stub KeAcquireSpinLockAtDpcLevel
-@ stdcall -arch=x86_64 KeAcquireSpinLockRaiseToDpc(ptr)
+@ stdcall KeAcquireSpinLockAtDpcLevel(ptr)
+@ stdcall -arch=arm,arm64,x86_64 KeAcquireSpinLockRaiseToDpc(ptr)
 @ stub KeAddSystemServiceTable
 @ stub KeAreApcsDisabled
 @ stub KeAttachProcess
 @ stub KeBugCheck
 @ stub KeBugCheckEx
-@ stub KeCancelTimer
+@ stdcall KeCancelTimer(ptr)
 @ stub KeCapturePersistentThreadState
 @ stdcall KeClearEvent(ptr)
 @ stub KeConnectInterrupt
@@ -532,7 +539,7 @@
 @ stub KeFindConfigurationEntry
 @ stub KeFindConfigurationNextEntry
 @ stub KeFlushEntireTb
-@ stub KeFlushQueuedDpcs
+@ stdcall KeFlushQueuedDpcs()
 @ stdcall KeGetCurrentThread()
 @ stub KeGetPreviousMode
 @ stub KeGetRecommendedSharedDataAlignment
@@ -593,8 +600,8 @@
 @ stub KeReleaseMutant
 @ stdcall KeReleaseMutex(ptr long)
 @ stdcall KeReleaseSemaphore(ptr long long long)
-@ stdcall KeReleaseSpinLock(ptr long)
-@ stub KeReleaseSpinLockFromDpcLevel
+@ stdcall -arch=arm,arm64,x86_64 KeReleaseSpinLock(ptr long)
+@ stdcall KeReleaseSpinLockFromDpcLevel(ptr)
 @ stub KeRemoveByKeyDeviceQueue
 @ stub KeRemoveByKeyDeviceQueueIfBusy
 @ stub KeRemoveDeviceQueue
@@ -604,7 +611,7 @@
 @ stub KeRemoveSystemServiceTable
 @ stdcall KeResetEvent(ptr)
 @ stub KeRestoreFloatingPointState
-@ stub KeRevertToUserAffinityThread
+@ stdcall KeRevertToUserAffinityThread()
 @ stub KeRundownQueue
 @ stub KeSaveFloatingPointState
 @ stub KeSaveStateForHibernate
@@ -620,7 +627,7 @@
 @ stdcall KeSetPriorityThread(ptr long)
 @ stub KeSetProfileIrql
 @ stdcall KeSetSystemAffinityThread(long)
-@ stub KeSetTargetProcessorDpc
+@ stdcall KeSetTargetProcessorDpc(ptr long)
 @ stub KeSetTimeIncrement
 @ stub KeSetTimer
 @ stdcall KeSetTimerEx(ptr int64 long ptr)
@@ -668,8 +675,9 @@
 @ stub MmBuildMdlForNonPagedPool
 @ stub MmCanFileBeTruncated
 @ stub MmCommitSessionMappedView
+@ stdcall MmCopyVirtualMemory(ptr ptr ptr ptr long long ptr)
 @ stub MmCreateMdl
-@ stub MmCreateSection
+@ stdcall MmCreateSection(ptr long ptr ptr long long long ptr)
 @ stub MmDisableModifiedWriteOfSection
 @ stub MmFlushImageSection
 @ stub MmForceSectionClosed
@@ -743,7 +751,7 @@
 @ stdcall NtAllocateLocallyUniqueId(ptr)
 @ stdcall NtAllocateUuids(ptr ptr ptr ptr)
 @ stdcall NtAllocateVirtualMemory(long ptr long ptr long long)
-@ stub NtBuildNumber
+@ extern NtBuildNumber
 @ stdcall NtClose(long)
 @ stdcall NtConnectPort(ptr ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall NtCreateEvent(ptr long ptr long long)
@@ -886,6 +894,7 @@
 @ stub PsGetProcessSessionId
 @ stub PsGetProcessWin32Process
 @ stub PsGetProcessWin32WindowStation
+@ stdcall -arch=x86_64 PsGetProcessWow64Process(ptr)
 @ stub PsGetThreadFreezeCount
 @ stub PsGetThreadHardErrorsAreDisabled
 @ stub PsGetThreadId
@@ -908,6 +917,7 @@
 @ stub PsProcessType
 @ stub PsReferenceImpersonationToken
 @ stub PsReferencePrimaryToken
+@ stdcall PsReferenceProcessFilePointer(ptr ptr)
 @ stdcall PsReleaseProcessExitSynchronization(ptr)
 @ stdcall PsRemoveCreateThreadNotifyRoutine(ptr)
 @ stdcall PsRemoveLoadImageNotifyRoutine(ptr)
@@ -916,7 +926,7 @@
 @ stub PsReturnProcessNonPagedPoolQuota
 @ stub PsReturnProcessPagedPoolQuota
 @ stub PsRevertThreadToSelf
-@ stub PsRevertToSelf
+@ stdcall PsRevertToSelf()
 @ stub PsSetContextThread
 @ stdcall PsSetCreateProcessNotifyRoutine(ptr long)
 @ stdcall PsSetCreateProcessNotifyRoutineEx(ptr long)
@@ -1144,7 +1154,7 @@
 @ stdcall RtlQueryTimeZoneInformation(ptr)
 @ stdcall -norelay RtlRaiseException(ptr)
 @ stdcall RtlRandom(ptr)
-@ stub RtlRandomEx
+@ stdcall RtlRandomEx(ptr)
 @ stub RtlRealPredecessor
 @ stub RtlRealSuccessor
 @ stub RtlRemoveUnicodePrefix
@@ -1402,9 +1412,10 @@
 @ stdcall -private ZwUnloadKey(ptr) NtUnloadKey
 @ stdcall -private ZwUnmapViewOfSection(long ptr) NtUnmapViewOfSection
 @ stdcall -private ZwWaitForMultipleObjects(long ptr long long ptr) NtWaitForMultipleObjects
-@ stdcall -private ZwWaitForSingleObject(long long ptr) NtWaitForSingleObject
+@ stdcall ZwWaitForSingleObject(long long ptr) NtWaitForSingleObject
 @ stdcall ZwWriteFile(long long ptr ptr ptr ptr long ptr ptr) NtWriteFile
 @ stdcall -private ZwYieldExecution() NtYieldExecution
+@ stdcall -arch=x86_64 __C_specific_handler(ptr long ptr ptr)
 @ stdcall -private -arch=arm,x86_64 -norelay __chkstk()
 @ cdecl -private -arch=i386 _CIcos() msvcrt._CIcos
 @ cdecl -private -arch=i386 _CIsin() msvcrt._CIsin

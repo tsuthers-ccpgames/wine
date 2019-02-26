@@ -80,6 +80,7 @@ typedef struct EventTarget EventTarget;
     XDIID(DispCEventObj) \
     XDIID(DispCPlugins) \
     XDIID(DispDOMChildrenCollection) \
+    XDIID(DispDOMCustomEvent) \
     XDIID(DispDOMEvent) \
     XDIID(DispDOMKeyboardEvent) \
     XDIID(DispDOMMouseEvent) \
@@ -130,6 +131,7 @@ typedef struct EventTarget EventTarget;
     XDIID(DispHTMLXMLHttpRequest) \
     XDIID(HTMLDocumentEvents) \
     XDIID(HTMLElementEvents2) \
+    XIID(IDOMCustomEvent) \
     XIID(IDOMEvent) \
     XIID(IDOMKeyboardEvent) \
     XIID(IDOMMouseEvent) \
@@ -147,6 +149,8 @@ typedef struct EventTarget EventTarget;
     XIID(IHTMLBodyElement) \
     XIID(IHTMLBodyElement2) \
     XIID(IHTMLButtonElement) \
+    XIID(IHTMLCSSStyleDeclaration) \
+    XIID(IHTMLCSSStyleDeclaration2) \
     XIID(IHTMLCommentElement) \
     XIID(IHTMLCurrentStyle) \
     XIID(IHTMLCurrentStyle2) \
@@ -199,6 +203,9 @@ typedef struct EventTarget EventTarget;
     XIID(IHTMLObjectElement2) \
     XIID(IHTMLOptionElement) \
     XIID(IHTMLOptionElementFactory) \
+    XIID(IHTMLPerformance) \
+    XIID(IHTMLPerformanceNavigation) \
+    XIID(IHTMLPerformanceTiming) \
     XIID(IHTMLPluginsCollection) \
     XIID(IHTMLRect) \
     XIID(IHTMLScreen) \
@@ -521,6 +528,9 @@ struct HTMLInnerWindow {
     IHTMLScreen *screen;
     OmHistory *history;
     IHTMLStorage *session_storage;
+
+    BOOL performance_initialized;
+    VARIANT performance;
 
     unsigned parser_callback_cnt;
     struct list script_queue;
@@ -870,6 +880,7 @@ HRESULT HTMLXMLHttpRequestFactory_Create(HTMLInnerWindow*,HTMLXMLHttpRequestFact
 HRESULT HTMLLocation_Create(HTMLInnerWindow*,HTMLLocation**) DECLSPEC_HIDDEN;
 IOmNavigator *OmNavigator_Create(void) DECLSPEC_HIDDEN;
 HRESULT HTMLScreen_Create(IHTMLScreen**) DECLSPEC_HIDDEN;
+HRESULT create_performance(IHTMLPerformance**) DECLSPEC_HIDDEN;
 HRESULT create_history(HTMLInnerWindow*,OmHistory**) DECLSPEC_HIDDEN;
 HRESULT create_dom_implementation(IHTMLDOMImplementation**) DECLSPEC_HIDDEN;
 
@@ -919,6 +930,7 @@ void init_nsio(nsIComponentManager*) DECLSPEC_HIDDEN;
 void release_nsio(void) DECLSPEC_HIDDEN;
 BOOL is_gecko_path(const char*) DECLSPEC_HIDDEN;
 void set_viewer_zoom(NSContainer*,float) DECLSPEC_HIDDEN;
+float get_viewer_zoom(NSContainer*) DECLSPEC_HIDDEN;
 
 void init_node_cc(void) DECLSPEC_HIDDEN;
 
@@ -1157,6 +1169,8 @@ void remove_target_tasks(LONG) DECLSPEC_HIDDEN;
 HRESULT set_task_timer(HTMLInnerWindow*,LONG,BOOL,IDispatch*,LONG*) DECLSPEC_HIDDEN;
 HRESULT clear_task_timer(HTMLInnerWindow*,DWORD) DECLSPEC_HIDDEN;
 
+BOOL parse_compat_version(const WCHAR*,compat_mode_t*) DECLSPEC_HIDDEN;
+
 const char *debugstr_mshtml_guid(const GUID*) DECLSPEC_HIDDEN;
 
 DEFINE_GUID(CLSID_AboutProtocol, 0x3050F406, 0x98B5, 0x11CF, 0xBB,0x82, 0x00,0xAA,0x00,0xBD,0xCE,0x0B);
@@ -1327,6 +1341,7 @@ static inline VARIANT_BOOL variant_bool(BOOL b)
 extern void *call_thiscall_func;
 #endif
 
+compat_mode_t get_max_compat_mode(IUri*) DECLSPEC_HIDDEN;
 UINT cp_from_charset_string(BSTR) DECLSPEC_HIDDEN;
 BSTR charset_string_from_cp(UINT) DECLSPEC_HIDDEN;
 HINSTANCE get_shdoclc(void) DECLSPEC_HIDDEN;

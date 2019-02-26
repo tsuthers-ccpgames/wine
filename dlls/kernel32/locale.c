@@ -48,6 +48,7 @@
 #include "winerror.h"
 #include "winver.h"
 #include "kernel_private.h"
+#include "wine/heap.h"
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(nls);
@@ -355,8 +356,7 @@ static UINT find_charset( const WCHAR *name )
         if (isalnum((unsigned char)name[i])) charset_name[j++] = name[i];
     charset_name[j] = 0;
 
-    entry = bsearch( charset_name, charset_names,
-                     sizeof(charset_names)/sizeof(charset_names[0]),
+    entry = bsearch( charset_name, charset_names, ARRAY_SIZE( charset_names ),
                      sizeof(charset_names[0]), charset_cmp );
     if (entry) return entry->codepage;
     return 0;
@@ -395,8 +395,7 @@ static BOOL CALLBACK find_locale_id_callback( HMODULE hModule, LPCWSTR type,
 
     /* first check exact name */
     if (data->win_name[0] &&
-        GetLocaleInfoW( lcid, LOCALE_SNAME | LOCALE_NOUSEROVERRIDE,
-                        buffer, sizeof(buffer)/sizeof(WCHAR) ))
+        GetLocaleInfoW( lcid, LOCALE_SNAME | LOCALE_NOUSEROVERRIDE, buffer, ARRAY_SIZE( buffer )))
     {
         if (!strcmpiW( data->win_name, buffer ))
         {
@@ -406,7 +405,7 @@ static BOOL CALLBACK find_locale_id_callback( HMODULE hModule, LPCWSTR type,
     }
 
     if (!GetLocaleInfoW( lcid, LOCALE_SISO639LANGNAME | LOCALE_NOUSEROVERRIDE,
-                         buffer, sizeof(buffer)/sizeof(WCHAR) ))
+                         buffer, ARRAY_SIZE( buffer )))
         return TRUE;
     if (strcmpiW( buffer, data->lang )) return TRUE;
     matches++;  /* language name matched */
@@ -414,7 +413,7 @@ static BOOL CALLBACK find_locale_id_callback( HMODULE hModule, LPCWSTR type,
     if (data->script)
     {
         if (GetLocaleInfoW( lcid, LOCALE_SSCRIPTS | LOCALE_NOUSEROVERRIDE,
-                            buffer, sizeof(buffer)/sizeof(WCHAR) ))
+                            buffer, ARRAY_SIZE( buffer )))
         {
             const WCHAR *p = buffer;
             unsigned int len = strlenW( data->script );
@@ -432,7 +431,7 @@ static BOOL CALLBACK find_locale_id_callback( HMODULE hModule, LPCWSTR type,
     if (data->country)
     {
         if (GetLocaleInfoW( lcid, LOCALE_SISO3166CTRYNAME|LOCALE_NOUSEROVERRIDE,
-                            buffer, sizeof(buffer)/sizeof(WCHAR) ))
+                            buffer, ARRAY_SIZE( buffer )))
         {
             if (strcmpiW( buffer, data->country )) goto done;
             matches++;  /* country name matched */
@@ -490,7 +489,7 @@ static void parse_locale_name( const WCHAR *str, struct locale_name *name )
     name->matches = 0;
     name->codepage = 0;
     name->win_name[0] = 0;
-    lstrcpynW( name->lang, str, sizeof(name->lang)/sizeof(WCHAR) );
+    lstrcpynW( name->lang, str, ARRAY_SIZE( name->lang ));
 
     if (!*name->lang)
     {
@@ -816,8 +815,7 @@ static BOOL locale_update_registry( HKEY hkey, const WCHAR *name, LCID lcid,
 
     for (i = 0; i < nb_values; i++)
     {
-        GetLocaleInfoW( lcid, values[i] | LOCALE_NOUSEROVERRIDE, bufferW,
-                        sizeof(bufferW)/sizeof(WCHAR) );
+        GetLocaleInfoW( lcid, values[i] | LOCALE_NOUSEROVERRIDE, bufferW, ARRAY_SIZE( bufferW ));
         SetLocaleInfoW( lcid, values[i], bufferW );
     }
     return TRUE;
@@ -905,19 +903,19 @@ void LOCALE_InitRegistry(void)
         return;  /* don't do anything if we can't create the registry key */
 
     locale_update_registry( hkey, localeW, lcid_LC_MESSAGES, lc_messages_values,
-                            sizeof(lc_messages_values)/sizeof(lc_messages_values[0]) );
+                            ARRAY_SIZE( lc_messages_values ));
     locale_update_registry( hkey, lc_monetaryW, lcid_LC_MONETARY, lc_monetary_values,
-                            sizeof(lc_monetary_values)/sizeof(lc_monetary_values[0]) );
+                            ARRAY_SIZE( lc_monetary_values ));
     locale_update_registry( hkey, lc_numericW, lcid_LC_NUMERIC, lc_numeric_values,
-                            sizeof(lc_numeric_values)/sizeof(lc_numeric_values[0]) );
+                            ARRAY_SIZE( lc_numeric_values ));
     locale_update_registry( hkey, lc_timeW, lcid_LC_TIME, lc_time_values,
-                            sizeof(lc_time_values)/sizeof(lc_time_values[0]) );
+                            ARRAY_SIZE( lc_time_values ));
     locale_update_registry( hkey, lc_measurementW, lcid_LC_MEASUREMENT, lc_measurement_values,
-                            sizeof(lc_measurement_values)/sizeof(lc_measurement_values[0]) );
+                            ARRAY_SIZE( lc_measurement_values ));
     locale_update_registry( hkey, lc_telephoneW, lcid_LC_TELEPHONE, lc_telephone_values,
-                            sizeof(lc_telephone_values)/sizeof(lc_telephone_values[0]) );
+                            ARRAY_SIZE( lc_telephone_values ));
     locale_update_registry( hkey, lc_paperW, lcid_LC_PAPER, lc_paper_values,
-                            sizeof(lc_paper_values)/sizeof(lc_paper_values[0]) );
+                            ARRAY_SIZE( lc_paper_values ));
 
     if (locale_update_registry( hkey, lc_ctypeW, lcid_LC_CTYPE, NULL, 0 ))
     {
@@ -943,10 +941,10 @@ void LOCALE_InitRegistry(void)
         nameW.Length = len * sizeof(WCHAR);
         if (!NtCreateKey( &nls_key, KEY_ALL_ACCESS, &attr, 0, NULL, 0, NULL ))
         {
-            for (i = 0; i < sizeof(update_cp_values)/sizeof(update_cp_values[0]); i++)
+            for (i = 0; i < ARRAY_SIZE( update_cp_values ); i++)
             {
                 count = GetLocaleInfoW( lcid, update_cp_values[i].value | LOCALE_NOUSEROVERRIDE,
-                                        bufferW, sizeof(bufferW)/sizeof(WCHAR) );
+                                        bufferW, ARRAY_SIZE( bufferW ));
                 RtlInitUnicodeString( &nameW, update_cp_values[i].name );
                 NtSetValueKey( nls_key, &nameW, 0, REG_SZ, bufferW, count * sizeof(WCHAR) );
             }
@@ -1112,7 +1110,7 @@ static UINT setup_unix_locales(void)
 
     if ((locale = get_locale( LC_CTYPE, "LC_CTYPE" )))
     {
-        strcpynAtoW( ctype_buff, locale, sizeof(ctype_buff)/sizeof(WCHAR) );
+        strcpynAtoW( ctype_buff, locale, ARRAY_SIZE( ctype_buff ));
         parse_locale_name( ctype_buff, &locale_name );
         lcid_LC_CTYPE = locale_name.lcid;
         unix_cp = locale_name.codepage;
@@ -1126,7 +1124,7 @@ static UINT setup_unix_locales(void)
 #define GET_UNIX_LOCALE(cat) do \
     if ((locale = get_locale( cat, #cat ))) \
     { \
-        strcpynAtoW( buffer, locale, sizeof(buffer)/sizeof(WCHAR) ); \
+        strcpynAtoW( buffer, locale, ARRAY_SIZE(buffer) ); \
         if (!strcmpW( buffer, ctype_buff )) lcid_##cat = lcid_LC_CTYPE; \
         else { \
             parse_locale_name( buffer, &locale_name );  \
@@ -1444,7 +1442,7 @@ INT WINAPI LCIDToLocaleName( LCID lcid, LPWSTR name, INT count, DWORD flags )
 static struct registry_value *get_locale_registry_value( DWORD lctype )
 {
     int i;
-    for (i=0; i < sizeof(registry_values)/sizeof(registry_values[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( registry_values ); i++)
         if (registry_values[i].lctype == lctype)
             return &registry_values[i];
     return NULL;
@@ -1698,7 +1696,7 @@ INT WINAPI GetLocaleInfoW( LCID lcid, LCTYPE lctype, LPWSTR buffer, INT len )
             if (lcflags & LOCALE_RETURN_NUMBER)
             {
                 WCHAR tmp[16];
-                ret = get_registry_locale_info( value, tmp, sizeof(tmp)/sizeof(WCHAR) );
+                ret = get_registry_locale_info( value, tmp, ARRAY_SIZE( tmp ));
                 if (ret > 0)
                 {
                     WCHAR *end;
@@ -2219,7 +2217,7 @@ BOOL WINAPI GetCPInfoExW( UINT codepage, DWORD dwFlags, LPCPINFOEXW cpinfo )
             cpinfo->CodePage = table->info.codepage;
             cpinfo->UnicodeDefaultChar = table->info.def_unicode_char;
             MultiByteToWideChar( CP_ACP, 0, table->info.name, -1, cpinfo->CodePageName,
-                                 sizeof(cpinfo->CodePageName)/sizeof(WCHAR));
+                                 ARRAY_SIZE( cpinfo->CodePageName ));
             break;
         }
     }
@@ -2269,7 +2267,7 @@ BOOL WINAPI EnumSystemCodePagesW( CODEPAGE_ENUMPROCW lpfnCodePageEnum, DWORD fla
     for (;;)
     {
         if (!(table = wine_cp_enum_table( index++ ))) break;
-        p = buffer + sizeof(buffer)/sizeof(WCHAR);
+        p = buffer + ARRAY_SIZE( buffer );
         *--p = 0;
         page = table->info.codepage;
         do
@@ -2989,7 +2987,7 @@ static BOOL CALLBACK enum_locale_ex_proc( HMODULE module, LPCWSTR type,
     unsigned int flags;
 
     GetLocaleInfoW( MAKELCID( lang, SORT_DEFAULT ), LOCALE_SNAME | LOCALE_NOUSEROVERRIDE,
-                    buffer, sizeof(buffer) / sizeof(WCHAR) );
+                    buffer, ARRAY_SIZE( buffer ));
     if (!GetLocaleInfoW( MAKELCID( lang, SORT_DEFAULT ),
                          LOCALE_INEUTRAL | LOCALE_NOUSEROVERRIDE | LOCALE_RETURN_NUMBER,
                          (LPWSTR)&neutral, sizeof(neutral) / sizeof(WCHAR) ))
@@ -3254,7 +3252,7 @@ static INT compose_katakana( LPCWSTR src, INT srclen, LPWSTR dst )
     default:
     {
         int shift = *src - 0xff61;
-        if (shift < 0 || shift >= sizeof(katakana_map)/sizeof(katakana_map[0]) )
+        if (shift < 0 || shift >= ARRAY_SIZE( katakana_map ))
             return 0;
         else
             *dst = katakana_map[shift] | 0x3000;
@@ -3362,7 +3360,7 @@ static INT decompose_katakana( WCHAR c, LPWSTR dst, INT dstlen )
     INT len = 0, shift = c - 0x3099;
     BYTE k;
 
-    if (shift < 0 || shift >= sizeof(katakana_map)/sizeof(katakana_map[0]))
+    if (shift < 0 || shift >= ARRAY_SIZE( katakana_map ))
         return 0;
 
     k = katakana_map[shift];
@@ -3560,8 +3558,16 @@ INT WINAPI LCMapStringEx(LPCWSTR name, DWORD flags, LPCWSTR src, INT srclen, LPW
         else if (flags & LCMAP_HALFWIDTH)
         {
             for (len = 0; srclen; src++, srclen--, len++)
-                if (decompose_katakana(*src, NULL, 0) == 2)
+            {
+                WCHAR wch = *src;
+                /* map Hiragana to Katakana before decomposition if needed */
+                if ((flags & LCMAP_KATAKANA) &&
+                    ((wch >= 0x3041 && wch <= 0x3096) || wch == 0x309D || wch == 0x309E))
+                    wch += 0x60;
+
+                if (decompose_katakana(wch, NULL, 0) == 2)
                     len++;
+            }
         }
         else
             len = srclen;
@@ -3626,21 +3632,17 @@ INT WINAPI LCMapStringEx(LPCWSTR name, DWORD flags, LPCWSTR src, INT srclen, LPW
             {
                 /* map full-width character to half-width one,
                    e.g. U+30A2 -> U+FF71, U+30D7 -> U+FF8C U+FF9F. */
-                if (map_to_halfwidth(wch, dst_ptr, dstlen) == 2)
+                if (map_to_halfwidth(wch, dst_ptr, len) == 2)
                 {
-                    dstlen--;
+                    len--;
                     dst_ptr++;
-                    if (!dstlen)
-                    {
-                        SetLastError(ERROR_INSUFFICIENT_BUFFER);
-                        return 0;
-                    }
+                    if (!len) break;
                 }
             }
             else
                 *dst_ptr = wch;
         }
-        if (!(flags & (LCMAP_UPPERCASE | LCMAP_LOWERCASE)))
+        if (!(flags & (LCMAP_UPPERCASE | LCMAP_LOWERCASE)) || srclen)
             goto done;
 
         srclen = dst_ptr - dst;
@@ -4386,7 +4388,7 @@ static BOOL NLS_EnumSystemLanguageGroups(ENUMLANGUAGEGROUP_CALLBACKS *lpProcs)
             {
                 WCHAR szGrpName[48];
 
-                if (!NLS_GetLanguageGroupName( lgrpid, szGrpName, sizeof(szGrpName) / sizeof(WCHAR) ))
+                if (!NLS_GetLanguageGroupName( lgrpid, szGrpName, ARRAY_SIZE( szGrpName )))
                     szGrpName[0] = '\0';
 
                 if (lpProcs->procW)
@@ -4394,7 +4396,7 @@ static BOOL NLS_EnumSystemLanguageGroups(ENUMLANGUAGEGROUP_CALLBACKS *lpProcs)
                                                 lpProcs->lParam );
                 else
                 {
-                    char szNumberA[sizeof(szNumber)/sizeof(WCHAR)];
+                    char szNumberA[ARRAY_SIZE( szNumber )];
                     char szGrpNameA[48];
 
                     /* FIXME: MSDN doesn't say which code page the W->A translation uses,
@@ -4588,7 +4590,7 @@ static BOOL NLS_EnumLanguageGroupLocales(ENUMLANGUAGEGROUPLOCALE_CALLBACKS *lpPr
                     bContinue = lpProcs->procW( lgrpid, lcid, szNumber, lpProcs->lParam );
                 else
                 {
-                    char szNumberA[sizeof(szNumber)/sizeof(WCHAR)];
+                    char szNumberA[ARRAY_SIZE( szNumber )];
 
                     WideCharToMultiByte(CP_ACP, 0, szNumber, -1, szNumberA, sizeof(szNumberA), 0, 0);
 
@@ -4812,7 +4814,7 @@ BOOL WINAPI EnumUILanguagesA(UILANGUAGE_ENUMPROCA pUILangEnumProc, DWORD dwFlags
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    if(dwFlags) {
+    if(dwFlags & ~MUI_LANGUAGE_ID) {
 	SetLastError(ERROR_INVALID_FLAGS);
 	return FALSE;
     }
@@ -4841,7 +4843,7 @@ BOOL WINAPI EnumUILanguagesW(UILANGUAGE_ENUMPROCW pUILangEnumProc, DWORD dwFlags
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    if(dwFlags) {
+    if(dwFlags & ~MUI_LANGUAGE_ID) {
 	SetLastError(ERROR_INVALID_FLAGS);
 	return FALSE;
     }
@@ -5178,7 +5180,7 @@ static const struct geoinfo_t *get_geoinfo_dataptr(GEOID geoid)
     int min, max;
 
     min = 0;
-    max = sizeof(geoinfodata)/sizeof(struct geoinfo_t)-1;
+    max = ARRAY_SIZE(geoinfodata)-1;
 
     while (min <= max) {
         const struct geoinfo_t *ptr;
@@ -5328,7 +5330,7 @@ BOOL WINAPI EnumSystemGeoID(GEOCLASS geoclass, GEOID parent, GEO_ENUMPROC enumpr
         return FALSE;
     }
 
-    for (i = 0; i < sizeof(geoinfodata)/sizeof(struct geoinfo_t); i++) {
+    for (i = 0; i < ARRAY_SIZE(geoinfodata); i++) {
         const struct geoinfo_t *ptr = &geoinfodata[i];
 
         if (geoclass == GEOCLASS_NATION && (ptr->kind == LOCATION_REGION))
@@ -5360,12 +5362,58 @@ INT WINAPI GetUserDefaultLocaleName(LPWSTR localename, int buffersize)
 /******************************************************************************
  *           NormalizeString (KERNEL32.@)
  */
-INT WINAPI NormalizeString(NORM_FORM NormForm, LPCWSTR lpSrcString, INT cwSrcLength,
-                           LPWSTR lpDstString, INT cwDstLength)
+INT WINAPI NormalizeString(NORM_FORM form, const WCHAR *src, INT src_len, WCHAR *dst, INT dst_len)
 {
-    FIXME("%x %p %d %p %d\n", NormForm, lpSrcString, cwSrcLength, lpDstString, cwDstLength);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    return 0;
+    int flags = 0, compose = 0;
+    unsigned int res, buf_len;
+    WCHAR *buf = NULL;
+
+    TRACE("%x %s %d %p %d\n", form, debugstr_wn(src, src_len), src_len, dst, dst_len);
+
+    if (src_len == -1) src_len = strlenW(src) + 1;
+
+    if (form == NormalizationKC || form == NormalizationKD) flags |= WINE_DECOMPOSE_COMPAT;
+    if (form == NormalizationC || form == NormalizationKC) compose = 1;
+    if (compose || dst_len) flags |= WINE_DECOMPOSE_REORDER;
+
+    if (!compose && dst_len)
+    {
+        res = wine_decompose_string( flags, src, src_len, dst, dst_len );
+        if (!res)
+        {
+            SetLastError( ERROR_INSUFFICIENT_BUFFER );
+            goto done;
+        }
+        buf = dst;
+    }
+    else
+    {
+        buf_len = src_len * 4;
+        do
+        {
+            WCHAR *old_buf = buf;
+
+            buf = heap_realloc( buf, buf_len );
+            if (!buf)
+            {
+                heap_free( old_buf );
+                SetLastError( ERROR_OUTOFMEMORY );
+                return 0;
+            }
+            res = wine_decompose_string( flags, src, src_len, buf, buf_len );
+            buf_len *= 2;
+        } while (!res);
+    }
+
+    if (compose)
+    {
+        res = wine_compose_string( buf, res );
+        if (dst_len >= res) memcpy( dst, buf, res * sizeof(WCHAR) );
+    }
+
+done:
+    if (buf != dst) heap_free( buf );
+    return res;
 }
 
 /******************************************************************************
@@ -5686,8 +5734,7 @@ INT WINAPI IdnToNameprepUnicode(DWORD dwFlags, LPCWSTR lpUnicodeCharStr, INT cch
             }
         }
 
-        norm_len = FoldStringW(MAP_FOLDCZONE, map_str, map_len,
-                norm_str, sizeof(norm_str)/sizeof(WCHAR)-1);
+        norm_len = FoldStringW(MAP_FOLDCZONE, map_str, map_len, norm_str, ARRAY_SIZE(norm_str)-1);
         if(map_str != buf)
             HeapFree(GetProcessHeap(), 0, map_str);
         if(!norm_len) {
@@ -5997,5 +6044,54 @@ INT WINAPI FindNLSStringEx(const WCHAR *localename, DWORD flags, const WCHAR *sr
         offset += inc;
     }
 
+    return -1;
+}
+
+/******************************************************************************
+ *           FindStringOrdinal (KERNEL32.@)
+ */
+
+INT WINAPI FindStringOrdinal(DWORD flag, const WCHAR *src, INT src_size, const WCHAR *val, INT val_size,
+                             BOOL ignore_case)
+{
+    INT offset, inc, count;
+    TRACE("%#x %s %d %s %d %d\n", flag, wine_dbgstr_w(src), src_size, wine_dbgstr_w(val), val_size, ignore_case);
+
+    if (!src || !val)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return -1;
+    }
+
+    if (flag != FIND_FROMSTART && flag != FIND_FROMEND && flag != FIND_STARTSWITH && flag != FIND_ENDSWITH)
+    {
+        SetLastError(ERROR_INVALID_FLAGS);
+        return -1;
+    }
+
+    if (src_size == -1) src_size = strlenW(src);
+    if (val_size == -1) val_size = strlenW(val);
+
+    src_size -= val_size;
+    if (src_size < 0)
+    {
+        SetLastError(NO_ERROR);
+        return -1;
+    }
+
+    count = flag & (FIND_FROMSTART | FIND_FROMEND) ? src_size + 1 : 1;
+    offset = flag & (FIND_FROMSTART | FIND_STARTSWITH) ? 0 : src_size;
+    inc = flag & (FIND_FROMSTART | FIND_STARTSWITH) ? 1 : -1;
+    while (count--)
+    {
+        if (CompareStringOrdinal(src + offset, val_size, val, val_size, ignore_case) == CSTR_EQUAL)
+        {
+            SetLastError(NO_ERROR);
+            return offset;
+        }
+        offset += inc;
+    }
+
+    SetLastError(NO_ERROR);
     return -1;
 }

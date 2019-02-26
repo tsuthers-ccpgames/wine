@@ -345,7 +345,7 @@ static MSVCRT_wchar_t *msvcrt_get_comspec(void)
   MSVCRT_wchar_t *ret;
   unsigned int len;
 
-  if (!(len = GetEnvironmentVariableW(comspec, NULL, 0))) len = sizeof(cmd)/sizeof(MSVCRT_wchar_t);
+  if (!(len = GetEnvironmentVariableW(comspec, NULL, 0))) len = ARRAY_SIZE(cmd);
   if ((ret = HeapAlloc(GetProcessHeap(), 0, len * sizeof(MSVCRT_wchar_t))))
   {
     if (!GetEnvironmentVariableW(comspec, ret, len)) strcpyW(ret, cmd);
@@ -1055,7 +1055,7 @@ MSVCRT_FILE* CDECL MSVCRT__wpopen(const MSVCRT_wchar_t* command, const MSVCRT_wc
   if (!command || !mode)
     return NULL;
 
-  textmode = *__p__fmode() & (MSVCRT__O_BINARY | MSVCRT__O_TEXT);
+  textmode = *MSVCRT___p__fmode() & (MSVCRT__O_BINARY | MSVCRT__O_TEXT);
   for (p = mode; *p; p++)
   {
     switch (*p)

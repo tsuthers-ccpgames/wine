@@ -24,266 +24,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d11);
 
-struct aon9_header
-{
-    DWORD chunk_size;
-    DWORD shader_version;
-    DWORD unknown;
-    DWORD byte_code_offset;
-};
-
-struct shader_handler_context
-{
-    D3D_FEATURE_LEVEL feature_level;
-    struct wined3d_shader_desc *desc;
-};
-
-static HRESULT shdr_handler(const char *data, DWORD data_size, DWORD tag, void *context)
-{
-    const struct shader_handler_context *ctx = context;
-    struct wined3d_shader_desc *desc = ctx->desc;
-    HRESULT hr;
-
-    switch (tag)
-    {
-        case TAG_ISGN:
-            if (ctx->feature_level <= D3D_FEATURE_LEVEL_9_3)
-            {
-                TRACE("Skipping shader input signature on feature level %#x.\n", ctx->feature_level);
-                break;
-            }
-            if (desc->input_signature.elements)
-            {
-                FIXME("Multiple input signatures.\n");
-                break;
-            }
-            if (FAILED(hr = shader_parse_signature(tag, data, data_size, &desc->input_signature)))
-                return hr;
-            break;
-
-        case TAG_OSGN:
-        case TAG_OSG5:
-            if (ctx->feature_level <= D3D_FEATURE_LEVEL_9_3)
-            {
-                TRACE("Skipping shader output signature on feature level %#x.\n", ctx->feature_level);
-                break;
-            }
-            if (desc->output_signature.elements)
-            {
-                FIXME("Multiple output signatures.\n");
-                break;
-            }
-            if (FAILED(hr = shader_parse_signature(tag, data, data_size, &desc->output_signature)))
-                return hr;
-            break;
-
-        case TAG_PCSG:
-            if (desc->patch_constant_signature.elements)
-            {
-                FIXME("Multiple patch constant signatures.\n");
-                break;
-            }
-            if (FAILED(hr = shader_parse_signature(tag, data, data_size, &desc->patch_constant_signature)))
-                return hr;
-            break;
-
-        case TAG_SHDR:
-        case TAG_SHEX:
-            if (ctx->feature_level <= D3D_FEATURE_LEVEL_9_3)
-            {
-                TRACE("Skipping SM4+ shader code on feature level %#x.\n", ctx->feature_level);
-                break;
-            }
-            if (desc->byte_code)
-                FIXME("Multiple shader code chunks.\n");
-            desc->byte_code = (const DWORD *)data;
-            desc->byte_code_size = data_size;
-            desc->format = WINED3D_SHADER_BYTE_CODE_FORMAT_SM4;
-            break;
-
-        case TAG_AON9:
-            if (ctx->feature_level <= D3D_FEATURE_LEVEL_9_3)
-            {
-                const struct aon9_header *header = (const struct aon9_header *)data;
-                unsigned int unknown_dword_count;
-                const char *byte_code;
-
-                if (data_size < sizeof(*header))
-                {
-                    WARN("Invalid Aon9 data size %#x.\n", data_size);
-                    return E_FAIL;
-                }
-                byte_code = data + header->byte_code_offset;
-                unknown_dword_count = (header->byte_code_offset - sizeof(*header)) / sizeof(DWORD);
-
-                if (data_size - 2 * sizeof(DWORD) < header->byte_code_offset)
-                {
-                    WARN("Invalid byte code offset %#x (size %#x).\n", header->byte_code_offset, data_size);
-                    return E_FAIL;
-                }
-                FIXME("Skipping %u unknown DWORDs.\n", unknown_dword_count);
-
-                if (desc->byte_code)
-                    FIXME("Multiple shader code chunks.\n");
-                desc->byte_code = (const DWORD *)byte_code;
-                desc->byte_code_size = data_size - header->byte_code_offset;
-                desc->format = WINED3D_SHADER_BYTE_CODE_FORMAT_SM1;
-                TRACE("Feature level 9 shader version 0%08x, 0%08x.\n", header->shader_version, *desc->byte_code);
-            }
-            else
-            {
-                TRACE("Skipping feature level 9 shader code on feature level %#x.\n", ctx->feature_level);
-            }
-            break;
-
-        case TAG_RDEF:
-        case TAG_STAT:
-            break;
-
-        default:
-            FIXME("Unhandled chunk %s.\n", debugstr_an((const char *)&tag, 4));
-            break;
-    }
-
-    return S_OK;
-}
-
-static void free_shader_desc(struct wined3d_shader_desc *desc)
-{
-    shader_free_signature(&desc->input_signature);
-    shader_free_signature(&desc->output_signature);
-    shader_free_signature(&desc->patch_constant_signature);
-}
-
-static HRESULT shader_extract_from_dxbc(const void *dxbc, SIZE_T dxbc_length,
-        struct wined3d_shader_desc *desc, D3D_FEATURE_LEVEL feature_level)
-{
-    struct shader_handler_context ctx = {feature_level, desc};
-    HRESULT hr;
-
-    desc->byte_code = NULL;
-    desc->byte_code_size = 0;
-    memset(&desc->input_signature, 0, sizeof(desc->input_signature));
-    memset(&desc->output_signature, 0, sizeof(desc->output_signature));
-    memset(&desc->patch_constant_signature, 0, sizeof(desc->patch_constant_signature));
-
-    hr = parse_dxbc(dxbc, dxbc_length, shdr_handler, &ctx);
-    if (!desc->byte_code)
-        hr = E_INVALIDARG;
-
-    if (FAILED(hr))
-    {
-        FIXME("Failed to parse shader, hr %#x.\n", hr);
-        free_shader_desc(desc);
-    }
-
-    return hr;
-}
-
-static const char *shader_get_string(const char *data, size_t data_size, DWORD offset)
-{
-    size_t len, max_len;
-
-    if (offset >= data_size)
-    {
-        WARN("Invalid offset %#x (data size %#lx).\n", offset, (long)data_size);
-        return NULL;
-    }
-
-    max_len = data_size - offset;
-    len = strnlen(data + offset, max_len);
-
-    if (len == max_len)
-        return NULL;
-
-    return data + offset;
-}
-
-HRESULT shader_parse_signature(DWORD tag, const char *data, DWORD data_size,
-        struct wined3d_shader_signature *s)
-{
-    struct wined3d_shader_signature_element *e;
-    const char *ptr = data;
-    unsigned int i;
-    DWORD count;
-
-    if (!require_space(0, 2, sizeof(DWORD), data_size))
-    {
-        WARN("Invalid data size %#x.\n", data_size);
-        return E_INVALIDARG;
-    }
-
-    read_dword(&ptr, &count);
-    TRACE("%u elements.\n", count);
-
-    skip_dword_unknown(&ptr, 1); /* It seems to always be 0x00000008. */
-
-    if (!require_space(ptr - data, count, 6 * sizeof(DWORD), data_size))
-    {
-        WARN("Invalid count %#x (data size %#x).\n", count, data_size);
-        return E_INVALIDARG;
-    }
-
-    if (!(e = heap_calloc(count, sizeof(*e))))
-    {
-        ERR("Failed to allocate input signature memory.\n");
-        return E_OUTOFMEMORY;
-    }
-
-    for (i = 0; i < count; ++i)
-    {
-        DWORD name_offset;
-
-        if (tag == TAG_OSG5)
-            read_dword(&ptr, &e[i].stream_idx);
-        else
-            e[i].stream_idx = 0;
-        read_dword(&ptr, &name_offset);
-        if (!(e[i].semantic_name = shader_get_string(data, data_size, name_offset)))
-        {
-            WARN("Invalid name offset %#x (data size %#x).\n", name_offset, data_size);
-            heap_free(e);
-            return E_INVALIDARG;
-        }
-        read_dword(&ptr, &e[i].semantic_idx);
-        read_dword(&ptr, &e[i].sysval_semantic);
-        read_dword(&ptr, &e[i].component_type);
-        read_dword(&ptr, &e[i].register_idx);
-        read_dword(&ptr, &e[i].mask);
-
-        TRACE("Stream: %u, semantic: %s, semantic idx: %u, sysval_semantic %#x, "
-                "type %u, register idx: %u, use_mask %#x, input_mask %#x.\n",
-                e[i].stream_idx, debugstr_a(e[i].semantic_name), e[i].semantic_idx, e[i].sysval_semantic,
-                e[i].component_type, e[i].register_idx, (e[i].mask >> 8) & 0xff, e[i].mask & 0xff);
-    }
-
-    s->elements = e;
-    s->element_count = count;
-
-    return S_OK;
-}
-
-struct wined3d_shader_signature_element *shader_find_signature_element(const struct wined3d_shader_signature *s,
-        const char *semantic_name, unsigned int semantic_idx, unsigned int stream_idx)
-{
-    struct wined3d_shader_signature_element *e = s->elements;
-    unsigned int i;
-
-    for (i = 0; i < s->element_count; ++i)
-    {
-        if (!strcasecmp(e[i].semantic_name, semantic_name) && e[i].semantic_idx == semantic_idx
-                && e[i].stream_idx == stream_idx)
-            return &e[i];
-    }
-
-    return NULL;
-}
-
-void shader_free_signature(struct wined3d_shader_signature *s)
-{
-    heap_free(s->elements);
-}
-
 /* ID3D11VertexShader methods */
 
 static inline struct d3d_vertex_shader *impl_from_ID3D11VertexShader(ID3D11VertexShader *iface)
@@ -521,27 +261,6 @@ static const struct wined3d_parent_ops d3d_vertex_shader_wined3d_parent_ops =
     d3d_vertex_shader_wined3d_object_destroyed,
 };
 
-static unsigned int d3d_sm_from_feature_level(D3D_FEATURE_LEVEL feature_level)
-{
-    switch (feature_level)
-    {
-        case D3D_FEATURE_LEVEL_11_1:
-        case D3D_FEATURE_LEVEL_11_0:
-            return 5;
-        case D3D_FEATURE_LEVEL_10_1:
-        case D3D_FEATURE_LEVEL_10_0:
-            return 4;
-        case D3D_FEATURE_LEVEL_9_3:
-            return 3;
-        case D3D_FEATURE_LEVEL_9_2:
-        case D3D_FEATURE_LEVEL_9_1:
-            return 2;
-        default:
-            ERR("Unexpected feature_level %#x.\n", feature_level);
-    }
-    return 0;
-}
-
 static HRESULT d3d_vertex_shader_init(struct d3d_vertex_shader *shader, struct d3d_device *device,
         const void *byte_code, SIZE_T byte_code_length)
 {
@@ -554,19 +273,10 @@ static HRESULT d3d_vertex_shader_init(struct d3d_vertex_shader *shader, struct d
     wined3d_mutex_lock();
     wined3d_private_store_init(&shader->private_store);
 
-    if (FAILED(hr = shader_extract_from_dxbc(byte_code, byte_code_length, &desc, device->feature_level)))
-    {
-        WARN("Failed to extract shader, hr %#x.\n", hr);
-        wined3d_private_store_cleanup(&shader->private_store);
-        wined3d_mutex_unlock();
-        return hr;
-    }
-    desc.max_version = d3d_sm_from_feature_level(device->feature_level);
-
-    hr = wined3d_shader_create_vs(device->wined3d_device, &desc, shader,
-            &d3d_vertex_shader_wined3d_parent_ops, &shader->wined3d_shader);
-    free_shader_desc(&desc);
-    if (FAILED(hr))
+    desc.byte_code = byte_code;
+    desc.byte_code_size = byte_code_length;
+    if (FAILED(hr = wined3d_shader_create_vs(device->wined3d_device, &desc, shader,
+            &d3d_vertex_shader_wined3d_parent_ops, &shader->wined3d_shader)))
     {
         WARN("Failed to create wined3d vertex shader, hr %#x.\n", hr);
         wined3d_private_store_cleanup(&shader->private_store);
@@ -766,19 +476,10 @@ static HRESULT d3d11_hull_shader_init(struct d3d11_hull_shader *shader, struct d
     wined3d_mutex_lock();
     wined3d_private_store_init(&shader->private_store);
 
-    if (FAILED(hr = shader_extract_from_dxbc(byte_code, byte_code_length, &desc, device->feature_level)))
-    {
-        WARN("Failed to extract shader, hr %#x.\n", hr);
-        wined3d_private_store_cleanup(&shader->private_store);
-        wined3d_mutex_unlock();
-        return hr;
-    }
-    desc.max_version = d3d_sm_from_feature_level(device->feature_level);
-
-    hr = wined3d_shader_create_hs(device->wined3d_device, &desc, shader,
-            &d3d11_hull_shader_wined3d_parent_ops, &shader->wined3d_shader);
-    free_shader_desc(&desc);
-    if (FAILED(hr))
+    desc.byte_code = byte_code;
+    desc.byte_code_size = byte_code_length;
+    if (FAILED(hr = wined3d_shader_create_hs(device->wined3d_device, &desc, shader,
+            &d3d11_hull_shader_wined3d_parent_ops, &shader->wined3d_shader)))
     {
         WARN("Failed to create wined3d hull shader, hr %#x.\n", hr);
         wined3d_private_store_cleanup(&shader->private_store);
@@ -968,19 +669,10 @@ static HRESULT d3d11_domain_shader_init(struct d3d11_domain_shader *shader, stru
     wined3d_mutex_lock();
     wined3d_private_store_init(&shader->private_store);
 
-    if (FAILED(hr = shader_extract_from_dxbc(byte_code, byte_code_length, &desc, device->feature_level)))
-    {
-        WARN("Failed to extract shader, hr %#x.\n", hr);
-        wined3d_private_store_cleanup(&shader->private_store);
-        wined3d_mutex_unlock();
-        return hr;
-    }
-    desc.max_version = d3d_sm_from_feature_level(device->feature_level);
-
-    hr = wined3d_shader_create_ds(device->wined3d_device, &desc, shader,
-            &d3d11_domain_shader_wined3d_parent_ops, &shader->wined3d_shader);
-    free_shader_desc(&desc);
-    if (FAILED(hr))
+    desc.byte_code = byte_code;
+    desc.byte_code_size = byte_code_length;
+    if (FAILED(hr = wined3d_shader_create_ds(device->wined3d_device, &desc, shader,
+            &d3d11_domain_shader_wined3d_parent_ops, &shader->wined3d_shader)))
     {
         WARN("Failed to create wined3d domain shader, hr %#x.\n", hr);
         wined3d_private_store_cleanup(&shader->private_store);
@@ -1262,18 +954,14 @@ static const struct wined3d_parent_ops d3d_geometry_shader_wined3d_parent_ops =
     d3d_geometry_shader_wined3d_object_destroyed,
 };
 
-static HRESULT wined3d_so_elements_from_d3d11_so_entries(struct wined3d_stream_output_element *elements,
-        const D3D11_SO_DECLARATION_ENTRY *entries, unsigned int entry_count,
-        const unsigned int *buffer_strides, unsigned int buffer_stride_count,
-        const struct wined3d_shader_signature *os, D3D_FEATURE_LEVEL feature_level)
+static HRESULT validate_stream_output_entries(const D3D11_SO_DECLARATION_ENTRY *entries, unsigned int entry_count,
+        const unsigned int *buffer_strides, unsigned int buffer_stride_count, D3D_FEATURE_LEVEL feature_level)
 {
-    unsigned int i, j, mask;
+    unsigned int i, j;
 
     for (i = 0; i < entry_count; ++i)
     {
-        struct wined3d_stream_output_element *e = &elements[i];
         const D3D11_SO_DECLARATION_ENTRY *f = &entries[i];
-        struct wined3d_shader_signature_element *output;
 
         TRACE("Stream: %u, semantic: %s, semantic idx: %u, start component: %u, "
                 "component count %u, output slot %u.\n",
@@ -1301,11 +989,6 @@ static HRESULT wined3d_so_elements_from_d3d11_so_entries(struct wined3d_stream_o
             return E_INVALIDARG;
         }
 
-        e->stream_idx = f->Stream;
-        e->component_idx = f->StartComponent;
-        e->component_count = f->ComponentCount;
-        e->output_slot = f->OutputSlot;
-
         if (!f->SemanticName)
         {
             if (f->SemanticIndex)
@@ -1313,61 +996,40 @@ static HRESULT wined3d_so_elements_from_d3d11_so_entries(struct wined3d_stream_o
                 WARN("Invalid semantic idx %u for stream output gap.\n", f->SemanticIndex);
                 return E_INVALIDARG;
             }
-            if (e->component_idx || !e->component_count)
+            if (f->StartComponent || !f->ComponentCount)
             {
-                WARN("Invalid stream output gap %u-%u.\n", e->component_idx, e->component_count);
+                WARN("Invalid stream output gap %u-%u.\n", f->StartComponent, f->ComponentCount);
                 return E_INVALIDARG;
             }
-
-            e->register_idx = WINED3D_STREAM_OUTPUT_GAP;
-        }
-        else if ((output = shader_find_signature_element(os, f->SemanticName, f->SemanticIndex, f->Stream)))
-        {
-            if (e->component_idx > 3 || e->component_count > 4 || !e->component_count
-                    || e->component_idx + e->component_count > 4)
-            {
-                WARN("Invalid component range %u-%u.\n", e->component_idx, e->component_count);
-                return E_INVALIDARG;
-            }
-
-            for (j = 0; j < 4; ++j)
-            {
-                if ((1u << j) & output->mask)
-                    break;
-            }
-            e->component_idx += j;
-            mask = ((1u << e->component_count) - 1) << e->component_idx;
-            if ((output->mask & 0xff & mask) != mask)
-            {
-                WARN("Invalid component range %u-%u (mask %#x), output mask %#x.\n",
-                        e->component_idx, e->component_count, mask, output->mask & 0xff);
-                return E_INVALIDARG;
-            }
-
-            e->register_idx = output->register_idx;
-            TRACE("Register idx: %u, register component idx %u, register mask %#x.\n",
-                    e->register_idx, e->component_idx, mask);
         }
         else
         {
-            WARN("Failed to find output signature element for stream output entry.\n");
-            return E_INVALIDARG;
+            if (f->StartComponent > 3 || f->ComponentCount > 4 || !f->ComponentCount
+                    || f->StartComponent + f->ComponentCount > 4)
+            {
+                WARN("Invalid component range %u-%u.\n", f->StartComponent, f->ComponentCount);
+                return E_INVALIDARG;
+            }
         }
     }
 
     for (i = 0; i < entry_count; ++i)
     {
-        const struct wined3d_stream_output_element *e1 = &elements[i];
-        if (e1->register_idx == WINED3D_STREAM_OUTPUT_GAP)
+        const D3D11_SO_DECLARATION_ENTRY *e1 = &entries[i];
+        if (!e1->SemanticName) /* gap */
             continue;
 
         for (j = i + 1; j < entry_count; ++j)
         {
-            const struct wined3d_stream_output_element *e2 = &elements[j];
+            const D3D11_SO_DECLARATION_ENTRY *e2 = &entries[j];
+            if (!e2->SemanticName) /* gap */
+                continue;
 
-            if (e1->register_idx == e2->register_idx
-                    && e1->component_idx < e2->component_idx + e2->component_count
-                    && e1->component_idx + e1->component_count > e2->component_idx)
+            if (e1->Stream == e2->Stream
+                    && !strcasecmp(e1->SemanticName, e2->SemanticName)
+                    && e1->SemanticIndex == e2->SemanticIndex
+                    && e1->StartComponent < e2->StartComponent + e2->ComponentCount
+                    && e1->StartComponent + e1->ComponentCount > e2->StartComponent)
             {
                 WARN("Stream output elements %u and %u overlap.\n", i, j);
                 return E_INVALIDARG;
@@ -1383,14 +1045,14 @@ static HRESULT wined3d_so_elements_from_d3d11_so_entries(struct wined3d_stream_o
 
         for (j = 0; j < entry_count; ++j)
         {
-            const struct wined3d_stream_output_element *e = &elements[j];
+            const D3D11_SO_DECLARATION_ENTRY *e = &entries[j];
 
-            if (e->stream_idx != i)
+            if (e->Stream != i)
                 continue;
-            current_stride[e->output_slot] += 4 * e->component_count;
-            ++element_count[e->output_slot];
-            if (e->register_idx == WINED3D_STREAM_OUTPUT_GAP)
-                ++gap_count[e->output_slot];
+            current_stride[e->OutputSlot] += 4 * e->ComponentCount;
+            ++element_count[e->OutputSlot];
+            if (!e->SemanticName)
+                ++gap_count[e->OutputSlot];
         }
 
         for (j = 0; j < D3D11_SO_BUFFER_SLOT_COUNT; ++j)
@@ -1476,36 +1138,22 @@ static HRESULT d3d_geometry_shader_init(struct d3d_geometry_shader *shader,
         }
     }
 
-    if (FAILED(hr = shader_extract_from_dxbc(byte_code, byte_code_length, &desc, device->feature_level)))
-    {
-        WARN("Failed to extract shader, hr %#x.\n", hr);
+    if (FAILED(hr = validate_stream_output_entries(so_entries, so_entry_count,
+            buffer_strides, buffer_stride_count, device->feature_level)))
         return hr;
-    }
-    desc.max_version = d3d_sm_from_feature_level(device->feature_level);
+
+    desc.byte_code = byte_code;
+    desc.byte_code_size = byte_code_length;
 
     memset(&so_desc, 0, sizeof(so_desc));
     if (so_entries)
     {
+        so_desc.elements = (const struct wined3d_stream_output_element *)so_entries;
         so_desc.element_count = so_entry_count;
         for (i = 0; i < min(buffer_stride_count, ARRAY_SIZE(so_desc.buffer_strides)); ++i)
             so_desc.buffer_strides[i] = buffer_strides[i];
         so_desc.buffer_stride_count = buffer_stride_count;
         so_desc.rasterizer_stream_idx = rasterizer_stream;
-
-        if (!(so_desc.elements = heap_calloc(so_entry_count, sizeof(*so_desc.elements))))
-        {
-            ERR("Failed to allocate wined3d stream output element array memory.\n");
-            free_shader_desc(&desc);
-            return E_OUTOFMEMORY;
-        }
-        if (FAILED(hr = wined3d_so_elements_from_d3d11_so_entries(so_desc.elements,
-                so_entries, so_entry_count, buffer_strides, buffer_stride_count,
-                &desc.output_signature, device->feature_level)))
-        {
-            heap_free(so_desc.elements);
-            free_shader_desc(&desc);
-            return hr;
-        }
     }
 
     shader->ID3D11GeometryShader_iface.lpVtbl = &d3d11_geometry_shader_vtbl;
@@ -1514,11 +1162,8 @@ static HRESULT d3d_geometry_shader_init(struct d3d_geometry_shader *shader,
     wined3d_mutex_lock();
     wined3d_private_store_init(&shader->private_store);
 
-    hr = wined3d_shader_create_gs(device->wined3d_device, &desc, so_entries ? &so_desc : NULL,
-            shader, &d3d_geometry_shader_wined3d_parent_ops, &shader->wined3d_shader);
-    heap_free(so_desc.elements);
-    free_shader_desc(&desc);
-    if (FAILED(hr))
+    if (FAILED(hr = wined3d_shader_create_gs(device->wined3d_device, &desc, so_entries ? &so_desc : NULL,
+            shader, &d3d_geometry_shader_wined3d_parent_ops, &shader->wined3d_shader)))
     {
         WARN("Failed to create wined3d geometry shader, hr %#x.\n", hr);
         wined3d_private_store_cleanup(&shader->private_store);
@@ -1824,19 +1469,10 @@ static HRESULT d3d_pixel_shader_init(struct d3d_pixel_shader *shader, struct d3d
     wined3d_mutex_lock();
     wined3d_private_store_init(&shader->private_store);
 
-    if (FAILED(hr = shader_extract_from_dxbc(byte_code, byte_code_length, &desc, device->feature_level)))
-    {
-        WARN("Failed to extract shader, hr %#x.\n", hr);
-        wined3d_private_store_cleanup(&shader->private_store);
-        wined3d_mutex_unlock();
-        return hr;
-    }
-    desc.max_version = d3d_sm_from_feature_level(device->feature_level);
-
-    hr = wined3d_shader_create_ps(device->wined3d_device, &desc, shader,
-            &d3d_pixel_shader_wined3d_parent_ops, &shader->wined3d_shader);
-    free_shader_desc(&desc);
-    if (FAILED(hr))
+    desc.byte_code = byte_code;
+    desc.byte_code_size = byte_code_length;
+    if (FAILED(hr = wined3d_shader_create_ps(device->wined3d_device, &desc, shader,
+            &d3d_pixel_shader_wined3d_parent_ops, &shader->wined3d_shader)))
     {
         WARN("Failed to create wined3d pixel shader, hr %#x.\n", hr);
         wined3d_private_store_cleanup(&shader->private_store);
@@ -2034,19 +1670,10 @@ static HRESULT d3d11_compute_shader_init(struct d3d11_compute_shader *shader, st
     wined3d_mutex_lock();
     wined3d_private_store_init(&shader->private_store);
 
-    if (FAILED(hr = shader_extract_from_dxbc(byte_code, byte_code_length, &desc, device->feature_level)))
-    {
-        WARN("Failed to extract shader, hr %#x.\n", hr);
-        wined3d_private_store_cleanup(&shader->private_store);
-        wined3d_mutex_unlock();
-        return hr;
-    }
-    desc.max_version = d3d_sm_from_feature_level(device->feature_level);
-
-    hr = wined3d_shader_create_cs(device->wined3d_device, &desc, shader,
-            &d3d11_compute_shader_wined3d_parent_ops, &shader->wined3d_shader);
-    free_shader_desc(&desc);
-    if (FAILED(hr))
+    desc.byte_code = byte_code;
+    desc.byte_code_size = byte_code_length;
+    if (FAILED(hr = wined3d_shader_create_cs(device->wined3d_device, &desc, shader,
+            &d3d11_compute_shader_wined3d_parent_ops, &shader->wined3d_shader)))
     {
         WARN("Failed to create wined3d compute shader, hr %#x.\n", hr);
         wined3d_private_store_cleanup(&shader->private_store);

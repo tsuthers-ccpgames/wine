@@ -129,6 +129,12 @@ static HRESULT PROPVAR_ConvertNumber(REFPROPVARIANT pv, int dest_bits,
         src_signed = *res < 0;
         break;
     }
+    case VT_R8:
+    {
+        src_signed = TRUE;
+        *res = pv->u.dblVal;
+        break;
+    }
     default:
         FIXME("unhandled vt %d\n", pv->vt);
         return E_NOTIMPL;
@@ -153,6 +159,18 @@ static HRESULT PROPVAR_ConvertNumber(REFPROPVARIANT pv, int dest_bits,
     }
 
     return S_OK;
+}
+
+HRESULT WINAPI PropVariantToDouble(REFPROPVARIANT propvarIn, double *ret)
+{
+    LONGLONG res;
+    HRESULT hr;
+
+    TRACE("(%p, %p)\n", propvarIn, ret);
+
+    hr = PROPVAR_ConvertNumber(propvarIn, 64, TRUE, &res);
+    if (SUCCEEDED(hr)) *ret = (double)res;
+    return hr;
 }
 
 HRESULT WINAPI PropVariantToInt16(REFPROPVARIANT propvarIn, SHORT *ret)
@@ -567,6 +585,19 @@ HRESULT WINAPI InitPropVariantFromBuffer(const VOID *pv, UINT cb, PROPVARIANT *p
     ppropvar->vt = VT_VECTOR|VT_UI1;
     ppropvar->u.caub.cElems = cb;
     memcpy(ppropvar->u.caub.pElems, pv, cb);
+    return S_OK;
+}
+
+HRESULT WINAPI InitPropVariantFromCLSID(REFCLSID clsid, PROPVARIANT *ppropvar)
+{
+    TRACE("(%s %p)\n", debugstr_guid(clsid), ppropvar);
+
+    ppropvar->u.puuid = CoTaskMemAlloc(sizeof(*ppropvar->u.puuid));
+    if(!ppropvar->u.puuid)
+        return E_OUTOFMEMORY;
+
+    ppropvar->vt = VT_CLSID;
+    memcpy(ppropvar->u.puuid, clsid, sizeof(*ppropvar->u.puuid));
     return S_OK;
 }
 

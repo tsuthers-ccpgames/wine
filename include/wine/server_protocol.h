@@ -264,11 +264,18 @@ typedef struct
 
 
 
+struct hw_msg_source
+{
+    unsigned int    device;
+    unsigned int    origin;
+};
+
 struct hardware_msg_data
 {
-    lparam_t        info;
-    unsigned int    hw_id;
-    unsigned int    flags;
+    lparam_t             info;
+    unsigned int         hw_id;
+    unsigned int         flags;
+    struct hw_msg_source source;
     union
     {
         int type;
@@ -700,12 +707,14 @@ typedef struct
     unsigned int   header_size;
     unsigned int   file_size;
     unsigned int   checksum;
+    cpu_type_t     cpu;
 } pe_image_info_t;
 #define IMAGE_FLAGS_ComPlusNativeReady        0x01
 #define IMAGE_FLAGS_ComPlusILOnly             0x02
 #define IMAGE_FLAGS_ImageDynamicallyRelocated 0x04
 #define IMAGE_FLAGS_ImageMappedFlat           0x08
 #define IMAGE_FLAGS_BaseBelow4gb              0x10
+#define IMAGE_FLAGS_WineFakeDll               0x80
 
 struct rawinput_device
 {
@@ -726,25 +735,34 @@ struct new_process_request
     unsigned int create_flags;
     int          socket_fd;
     obj_handle_t exe_file;
-    unsigned int process_access;
-    unsigned int process_attr;
-    unsigned int thread_access;
-    unsigned int thread_attr;
+    unsigned int access;
     cpu_type_t   cpu;
     data_size_t  info_size;
+    /* VARARG(objattr,object_attributes); */
     /* VARARG(info,startup_info,info_size); */
     /* VARARG(env,unicode_str); */
-    char __pad_52[4];
 };
 struct new_process_reply
 {
     struct reply_header __header;
     obj_handle_t info;
     process_id_t pid;
-    obj_handle_t phandle;
-    thread_id_t  tid;
-    obj_handle_t thandle;
-    char __pad_28[4];
+    obj_handle_t handle;
+    char __pad_20[4];
+};
+
+
+
+struct exec_process_request
+{
+    struct request_header __header;
+    int          socket_fd;
+    obj_handle_t exe_file;
+    cpu_type_t   cpu;
+};
+struct exec_process_reply
+{
+    struct reply_header __header;
 };
 
 
@@ -766,10 +784,11 @@ struct get_new_process_info_reply
 struct new_thread_request
 {
     struct request_header __header;
+    obj_handle_t process;
     unsigned int access;
-    unsigned int attributes;
     int          suspend;
     int          request_fd;
+    /* VARARG(objattr,object_attributes); */
     char __pad_28[4];
 };
 struct new_thread_reply
@@ -789,10 +808,10 @@ struct get_startup_info_request
 struct get_startup_info_reply
 {
     struct reply_header __header;
-    obj_handle_t exe_file;
     data_size_t  info_size;
     /* VARARG(info,startup_info,info_size); */
     /* VARARG(env,unicode_str); */
+    char __pad_12[4];
 };
 
 
@@ -1776,27 +1795,27 @@ struct console_renderer_event
     short event;
     union
     {
-        struct update
+        struct
         {
             short top;
             short bottom;
         } update;
-        struct resize
+        struct
         {
             short width;
             short height;
         } resize;
-        struct cursor_pos
+        struct
         {
             short x;
             short y;
         } cursor_pos;
-        struct cursor_geom
+        struct
         {
             short visible;
             short size;
         } cursor_geom;
-        struct display
+        struct
         {
             short left;
             short top;
@@ -1835,6 +1854,22 @@ struct open_console_reply
     struct reply_header __header;
     obj_handle_t handle;
     char __pad_12[4];
+};
+
+
+
+struct attach_console_request
+{
+    struct request_header __header;
+    process_id_t pid;
+};
+struct attach_console_reply
+{
+    struct reply_header __header;
+    obj_handle_t std_in;
+    obj_handle_t std_out;
+    obj_handle_t std_err;
+    char __pad_20[4];
 };
 
 
@@ -3406,23 +3441,6 @@ struct create_named_pipe_reply
 #define NAMED_PIPE_SERVER_END           0x8000
 
 
-struct get_named_pipe_info_request
-{
-    struct request_header __header;
-    obj_handle_t   handle;
-};
-struct get_named_pipe_info_reply
-{
-    struct reply_header __header;
-    unsigned int   flags;
-    unsigned int   sharing;
-    unsigned int   maxinstances;
-    unsigned int   instances;
-    unsigned int   outsize;
-    unsigned int   insize;
-};
-
-
 struct set_named_pipe_info_request
 {
     struct request_header __header;
@@ -3618,6 +3636,8 @@ struct get_window_children_from_point_request
     user_handle_t  parent;
     int            x;
     int            y;
+    int            dpi;
+    char __pad_28[4];
 };
 struct get_window_children_from_point_reply
 {
@@ -3676,7 +3696,7 @@ struct get_window_rectangles_request
     struct request_header __header;
     user_handle_t  handle;
     int            relative;
-    char __pad_20[4];
+    int            dpi;
 };
 struct get_window_rectangles_reply
 {
@@ -3727,7 +3747,7 @@ struct get_windows_offset_request
     struct request_header __header;
     user_handle_t  from;
     user_handle_t  to;
-    char __pad_20[4];
+    int            dpi;
 };
 struct get_windows_offset_reply
 {
@@ -4525,11 +4545,13 @@ struct set_class_info_reply
 {
     struct reply_header __header;
     atom_t         old_atom;
+    atom_t         base_atom;
+    mod_handle_t   old_instance;
+    lparam_t       old_extra_value;
     unsigned int   old_style;
     int            old_extra;
     int            old_win_extra;
-    mod_handle_t   old_instance;
-    lparam_t       old_extra_value;
+    char __pad_44[4];
 };
 #define SET_CLASS_ATOM      0x0001
 #define SET_CLASS_STYLE     0x0002
@@ -5359,9 +5381,23 @@ struct add_fd_completion_request
     apc_param_t    cvalue;
     apc_param_t    information;
     unsigned int   status;
-    char __pad_36[4];
+    int            async;
 };
 struct add_fd_completion_reply
+{
+    struct reply_header __header;
+};
+
+
+
+struct set_fd_completion_mode_request
+{
+    struct request_header __header;
+    obj_handle_t handle;
+    unsigned int flags;
+    char __pad_20[4];
+};
+struct set_fd_completion_mode_reply
 {
     struct reply_header __header;
 };
@@ -5632,6 +5668,7 @@ struct terminate_job_reply
 enum request
 {
     REQ_new_process,
+    REQ_exec_process,
     REQ_get_new_process_info,
     REQ_new_thread,
     REQ_get_startup_info,
@@ -5695,6 +5732,7 @@ enum request
     REQ_free_console,
     REQ_get_console_renderer_events,
     REQ_open_console,
+    REQ_attach_console,
     REQ_get_console_wait_event,
     REQ_get_console_mode,
     REQ_set_console_mode,
@@ -5787,7 +5825,6 @@ enum request
     REQ_ioctl,
     REQ_set_irp_result,
     REQ_create_named_pipe,
-    REQ_get_named_pipe_info,
     REQ_set_named_pipe_info,
     REQ_create_window,
     REQ_destroy_window,
@@ -5903,6 +5940,7 @@ enum request
     REQ_query_completion,
     REQ_set_completion_info,
     REQ_add_fd_completion,
+    REQ_set_fd_completion_mode,
     REQ_set_fd_disp_info,
     REQ_set_fd_name_info,
     REQ_get_window_layered_info,
@@ -5928,6 +5966,7 @@ union generic_request
     struct request_max_size max_size;
     struct request_header request_header;
     struct new_process_request new_process_request;
+    struct exec_process_request exec_process_request;
     struct get_new_process_info_request get_new_process_info_request;
     struct new_thread_request new_thread_request;
     struct get_startup_info_request get_startup_info_request;
@@ -5991,6 +6030,7 @@ union generic_request
     struct free_console_request free_console_request;
     struct get_console_renderer_events_request get_console_renderer_events_request;
     struct open_console_request open_console_request;
+    struct attach_console_request attach_console_request;
     struct get_console_wait_event_request get_console_wait_event_request;
     struct get_console_mode_request get_console_mode_request;
     struct set_console_mode_request set_console_mode_request;
@@ -6083,7 +6123,6 @@ union generic_request
     struct ioctl_request ioctl_request;
     struct set_irp_result_request set_irp_result_request;
     struct create_named_pipe_request create_named_pipe_request;
-    struct get_named_pipe_info_request get_named_pipe_info_request;
     struct set_named_pipe_info_request set_named_pipe_info_request;
     struct create_window_request create_window_request;
     struct destroy_window_request destroy_window_request;
@@ -6199,6 +6238,7 @@ union generic_request
     struct query_completion_request query_completion_request;
     struct set_completion_info_request set_completion_info_request;
     struct add_fd_completion_request add_fd_completion_request;
+    struct set_fd_completion_mode_request set_fd_completion_mode_request;
     struct set_fd_disp_info_request set_fd_disp_info_request;
     struct set_fd_name_info_request set_fd_name_info_request;
     struct get_window_layered_info_request get_window_layered_info_request;
@@ -6222,6 +6262,7 @@ union generic_reply
     struct request_max_size max_size;
     struct reply_header reply_header;
     struct new_process_reply new_process_reply;
+    struct exec_process_reply exec_process_reply;
     struct get_new_process_info_reply get_new_process_info_reply;
     struct new_thread_reply new_thread_reply;
     struct get_startup_info_reply get_startup_info_reply;
@@ -6285,6 +6326,7 @@ union generic_reply
     struct free_console_reply free_console_reply;
     struct get_console_renderer_events_reply get_console_renderer_events_reply;
     struct open_console_reply open_console_reply;
+    struct attach_console_reply attach_console_reply;
     struct get_console_wait_event_reply get_console_wait_event_reply;
     struct get_console_mode_reply get_console_mode_reply;
     struct set_console_mode_reply set_console_mode_reply;
@@ -6377,7 +6419,6 @@ union generic_reply
     struct ioctl_reply ioctl_reply;
     struct set_irp_result_reply set_irp_result_reply;
     struct create_named_pipe_reply create_named_pipe_reply;
-    struct get_named_pipe_info_reply get_named_pipe_info_reply;
     struct set_named_pipe_info_reply set_named_pipe_info_reply;
     struct create_window_reply create_window_reply;
     struct destroy_window_reply destroy_window_reply;
@@ -6493,6 +6534,7 @@ union generic_reply
     struct query_completion_reply query_completion_reply;
     struct set_completion_info_reply set_completion_info_reply;
     struct add_fd_completion_reply add_fd_completion_reply;
+    struct set_fd_completion_mode_reply set_fd_completion_mode_reply;
     struct set_fd_disp_info_reply set_fd_disp_info_reply;
     struct set_fd_name_info_reply set_fd_name_info_reply;
     struct get_window_layered_info_reply get_window_layered_info_reply;
@@ -6512,6 +6554,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 554
+#define SERVER_PROTOCOL_VERSION 572
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

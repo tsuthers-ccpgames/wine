@@ -18,6 +18,8 @@
 
 #include "winhttp.h"
 
+#define STREAM_BUFSIZE 4096
+
 struct xmlbuf
 {
     WS_HEAP                     *heap;
@@ -43,6 +45,8 @@ struct dictionary
     WS_XML_DICTIONARY  dict;
     ULONG             *sorted;
     ULONG              size;
+    ULONG              current_sequence;
+    ULONG             *sequence;
 };
 struct dictionary dict_builtin DECLSPEC_HIDDEN;
 const struct dictionary dict_builtin_static DECLSPEC_HIDDEN;
@@ -50,7 +54,8 @@ const struct dictionary dict_builtin_static DECLSPEC_HIDDEN;
 int find_string( const struct dictionary *, const unsigned char *, ULONG, ULONG * ) DECLSPEC_HIDDEN;
 HRESULT insert_string( struct dictionary *, unsigned char *, ULONG, int, ULONG * ) DECLSPEC_HIDDEN;
 void clear_dict( struct dictionary * ) DECLSPEC_HIDDEN;
-HRESULT writer_enable_lookup( WS_XML_WRITER * ) DECLSPEC_HIDDEN;
+HRESULT writer_set_lookup( WS_XML_WRITER *, BOOL ) DECLSPEC_HIDDEN;
+HRESULT writer_set_dict_callback( WS_XML_WRITER *, WS_DYNAMIC_STRING_CALLBACK, void * ) DECLSPEC_HIDDEN;
 
 const char *debugstr_xmlstr( const WS_XML_STRING * ) DECLSPEC_HIDDEN;
 WS_XML_STRING *alloc_xml_string( const unsigned char *, ULONG ) DECLSPEC_HIDDEN;
@@ -68,6 +73,7 @@ HRESULT read_header( WS_XML_READER *, const WS_XML_STRING *, const WS_XML_STRING
 HRESULT create_header_buffer( WS_XML_READER *, WS_HEAP *, WS_XML_BUFFER ** ) DECLSPEC_HIDDEN;
 HRESULT text_to_text( const WS_XML_TEXT *, const WS_XML_TEXT *, ULONG *, WS_XML_TEXT ** ) DECLSPEC_HIDDEN;
 HRESULT text_to_utf8text( const WS_XML_TEXT *, const WS_XML_UTF8_TEXT *, ULONG *, WS_XML_UTF8_TEXT ** ) DECLSPEC_HIDDEN;
+HRESULT str_to_guid( const unsigned char *, ULONG, GUID * ) DECLSPEC_HIDDEN;
 WS_XML_UTF8_TEXT *alloc_utf8_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
 WS_XML_UTF16_TEXT *alloc_utf16_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;
 WS_XML_BASE64_TEXT *alloc_base64_text( const BYTE *, ULONG ) DECLSPEC_HIDDEN;

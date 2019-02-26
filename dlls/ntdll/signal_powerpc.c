@@ -648,7 +648,7 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *context )
     /* hack: call unhandled exception filter directly */
     ptrs.ExceptionRecord = rec;
     ptrs.ContextRecord = context;
-    unhandled_exception_filter( &ptrs );
+    call_unhandled_exception_filter( &ptrs );
     return STATUS_UNHANDLED_EXCEPTION;
 }
 
@@ -1006,7 +1006,7 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *sigcontext )
  */
 int CDECL __wine_set_signal_handler(unsigned int sig, wine_signal_handler wsh)
 {
-    if (sig >= sizeof(handlers) / sizeof(handlers[0])) return -1;
+    if (sig >= ARRAY_SIZE(handlers)) return -1;
     if (handlers[sig] != NULL) return -2;
     handlers[sig] = wsh;
     return 0;
@@ -1160,7 +1160,7 @@ static void WINAPI call_thread_entry_point( LPTHREAD_START_ROUTINE entry, void *
         TRACE_(relay)( "\1Starting thread proc %p (arg=%p)\n", entry, arg );
         RtlExitUserThread( entry( arg ));
     }
-    __EXCEPT(unhandled_exception_filter)
+    __EXCEPT(call_unhandled_exception_filter)
     {
         NtTerminateThread( GetCurrentThread(), GetExceptionCode() );
     }
@@ -1194,7 +1194,7 @@ static void thread_startup( void *param )
     context.Iar  = (DWORD)info->start;
 
     if (info->suspend) wait_suspend( &context );
-    attach_dlls( &context, (void **)&context.Gpr3 );
+    LdrInitializeThunk( &context, (void **)&context.Gpr3, 0, 0 );
 
     ((thread_start_func)context.Iar)( (LPTHREAD_START_ROUTINE)context.Gpr3, (void *)context.Gpr4 );
 }

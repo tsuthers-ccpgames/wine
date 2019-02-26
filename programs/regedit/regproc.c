@@ -36,14 +36,10 @@ WINE_DEFAULT_DEBUG_CHANNEL(regedit);
 
 #define REG_VAL_BUF_SIZE        4096
 
-extern const WCHAR* reg_class_namesW[];
-
 static HKEY reg_class_keys[] = {
             HKEY_LOCAL_MACHINE, HKEY_USERS, HKEY_CLASSES_ROOT,
             HKEY_CURRENT_CONFIG, HKEY_CURRENT_USER, HKEY_DYN_DATA
         };
-
-#define ARRAY_SIZE(A) (sizeof(A)/sizeof(*A))
 
 void *heap_xalloc(size_t size)
 {
@@ -735,11 +731,8 @@ static WCHAR *quoted_value_name_state(struct parser *parser, WCHAR *pos)
 {
     WCHAR *val_name = pos, *p;
 
-    if (parser->value_name)
-    {
-        heap_free(parser->value_name);
-        parser->value_name = NULL;
-    }
+    heap_free(parser->value_name);
+    parser->value_name = NULL;
 
     if (!REGPROC_unescape_string(val_name, &p))
         goto invalid;

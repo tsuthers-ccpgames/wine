@@ -39,7 +39,7 @@ static BOOL cmpStrAW(const char* a, const WCHAR* b, DWORD lenA, DWORD lenB)
     WCHAR       aw[1024];
 
     DWORD len = MultiByteToWideChar( AreFileApisANSI() ? CP_ACP : CP_OEMCP, 0,
-                                     a, lenA, aw, sizeof(aw) / sizeof(aw[0]) );
+                                     a, lenA, aw, ARRAY_SIZE(aw));
     if (len != lenB) return FALSE;
     return memcmp(aw, b, len * sizeof(WCHAR)) == 0;
 }
@@ -149,7 +149,7 @@ static void testGetModuleFileName(const char* name)
     {
         memset(bufW, '-', sizeof(bufW));
         SetLastError(0xdeadbeef);
-        len1W = GetModuleFileNameW(hMod, bufW, sizeof(bufW) / sizeof(WCHAR));
+        len1W = GetModuleFileNameW(hMod, bufW, ARRAY_SIZE(bufW));
         ok(GetLastError() == ERROR_SUCCESS ||
            broken(GetLastError() == 0xdeadbeef), /* <= XP SP3 */
            "LastError was not reset: %u\n", GetLastError());
@@ -191,7 +191,8 @@ static void testGetModuleFileName_Wrong(void)
     if (is_unicode_enabled)
     {
         bufW[0] = '*';
-        ok(GetModuleFileNameW((void*)0xffffffff, bufW, sizeof(bufW) / sizeof(WCHAR)) == 0, "Unexpected success in module handle\n");
+        ok(GetModuleFileNameW((void*)0xffffffff, bufW, ARRAY_SIZE(bufW)) == 0,
+           "Unexpected success in module handle\n");
         ok(bufW[0] == '*', "When failing, buffer shouldn't be written to\n");
     }
 
@@ -335,32 +336,23 @@ static void testLoadLibraryEx(void)
     SetLastError(0xdeadbeef);
     hmodule = LoadLibraryExA("testfile.dll", hfile, 0);
     ok(hmodule == 0, "Expected 0, got %p\n", hmodule);
-    todo_wine
-    {
-        ok(GetLastError() == ERROR_SHARING_VIOLATION ||
-           GetLastError() == ERROR_INVALID_PARAMETER, /* win2k3 */
-           "Unexpected last error, got %d\n", GetLastError());
-    }
+    ok(GetLastError() == ERROR_SHARING_VIOLATION ||
+       GetLastError() == ERROR_INVALID_PARAMETER, /* win2k3 */
+       "Unexpected last error, got %d\n", GetLastError());
 
     SetLastError(0xdeadbeef);
     hmodule = LoadLibraryExA("testfile.dll", (HANDLE)0xdeadbeef, 0);
     ok(hmodule == 0, "Expected 0, got %p\n", hmodule);
-    todo_wine
-    {
-        ok(GetLastError() == ERROR_SHARING_VIOLATION ||
-           GetLastError() == ERROR_INVALID_PARAMETER, /* win2k3 */
-           "Unexpected last error, got %d\n", GetLastError());
-    }
+    ok(GetLastError() == ERROR_SHARING_VIOLATION ||
+       GetLastError() == ERROR_INVALID_PARAMETER, /* win2k3 */
+       "Unexpected last error, got %d\n", GetLastError());
 
     /* try to open a file that is locked */
     SetLastError(0xdeadbeef);
     hmodule = LoadLibraryExA("testfile.dll", NULL, 0);
     ok(hmodule == 0, "Expected 0, got %p\n", hmodule);
-    todo_wine
-    {
-        ok(GetLastError() == ERROR_SHARING_VIOLATION,
-           "Expected ERROR_SHARING_VIOLATION, got %d\n", GetLastError());
-    }
+    ok(GetLastError() == ERROR_SHARING_VIOLATION,
+       "Expected ERROR_SHARING_VIOLATION, got %d\n", GetLastError());
 
     /* lpFileName does not matter */
     if (is_unicode_enabled)
@@ -478,14 +470,12 @@ static void test_LoadLibraryEx_search_flags(void)
         { { 6, 5 },    5, 0 },
         { { 1, 1, 2 }, 0, 2 },
     };
-    char *p, path[MAX_PATH], buf[MAX_PATH];
+    char *p, path[MAX_PATH], buf[MAX_PATH], curdir[MAX_PATH];
     WCHAR bufW[MAX_PATH];
     DLL_DIRECTORY_COOKIE cookies[4];
     unsigned int i, j, k;
     BOOL ret;
     HMODULE mod;
-
-    if (!pAddDllDirectory || !pSetDllDirectoryA) return;
 
     GetTempPathA( sizeof(path), path );
     GetTempFileNameA( path, "tmp", 0, buf );
@@ -502,6 +492,80 @@ static void test_LoadLibraryEx_search_flags(void)
         sprintf( p, "\\%u\\winetestdll.dll", i );
         create_test_dll( buf );
     }
+
+    GetCurrentDirectoryA( MAX_PATH, curdir );
+    *p = 0;
+    SetCurrentDirectoryA( buf );
+
+    SetLastError( 0xdeadbeef );
+    mod = LoadLibraryA( "1\\winetestdll.dll" );
+    ok( mod != NULL, "LoadLibrary failed err %u\n", GetLastError() );
+    FreeLibrary( mod );
+
+    SetLastError( 0xdeadbeef );
+    sprintf( path, "%c:1\\winetestdll.dll", buf[0] );
+    mod = LoadLibraryA( path );
+    ok( mod != NULL, "LoadLibrary failed err %u\n", GetLastError() );
+    FreeLibrary( mod );
+
+    if (pAddDllDirectory)
+    {
+        SetLastError( 0xdeadbeef );
+        mod = LoadLibraryExA( "1\\winetestdll.dll", 0, LOAD_LIBRARY_SEARCH_SYSTEM32 );
+        ok( !mod, "LoadLibrary succeeded\n" );
+        ok( GetLastError() == ERROR_MOD_NOT_FOUND, "wrong error %u\n", GetLastError() );
+
+        SetLastError( 0xdeadbeef );
+        mod = LoadLibraryExA( path, 0, LOAD_LIBRARY_SEARCH_SYSTEM32 );
+        ok( mod != NULL, "LoadLibrary failed err %u\n", GetLastError() );
+        FreeLibrary( mod );
+    }
+
+    strcpy( p, "\\1" );
+    SetCurrentDirectoryA( buf );
+
+    SetLastError( 0xdeadbeef );
+    mod = LoadLibraryA( "winetestdll.dll" );
+    ok( mod != NULL, "LoadLibrary failed err %u\n", GetLastError() );
+    FreeLibrary( mod );
+
+    SetLastError( 0xdeadbeef );
+    sprintf( path, "%c:winetestdll.dll", buf[0] );
+    mod = LoadLibraryA( path );
+    ok( mod != NULL || broken(!mod), /* win10 disallows this but allows c:1\\winetestdll.dll */
+        "LoadLibrary failed err %u\n", GetLastError() );
+    if (!mod) ok( GetLastError() == ERROR_MOD_NOT_FOUND, "wrong error %u\n", GetLastError() );
+    else FreeLibrary( mod );
+
+    SetLastError( 0xdeadbeef );
+    sprintf( path, "%s\\winetestdll.dll", buf + 2 );
+    mod = LoadLibraryA( path );
+    ok( mod != NULL, "LoadLibrary failed err %u\n", GetLastError() );
+    FreeLibrary( mod );
+
+    if (pAddDllDirectory)
+    {
+        SetLastError( 0xdeadbeef );
+        mod = LoadLibraryExA( "winetestdll.dll", 0, LOAD_LIBRARY_SEARCH_SYSTEM32 );
+        ok( !mod, "LoadLibrary succeeded\n" );
+        ok( GetLastError() == ERROR_MOD_NOT_FOUND, "wrong error %u\n", GetLastError() );
+
+        SetLastError( 0xdeadbeef );
+        mod = LoadLibraryExA( path, 0, LOAD_LIBRARY_SEARCH_SYSTEM32 );
+        ok( mod != NULL, "LoadLibrary failed err %u\n", GetLastError() );
+        FreeLibrary( mod );
+
+        SetLastError( 0xdeadbeef );
+        sprintf( path, "%s\\winetestdll.dll", buf + 2 );
+        mod = LoadLibraryExA( path, 0, LOAD_LIBRARY_SEARCH_SYSTEM32 );
+        ok( mod != NULL, "LoadLibrary failed err %u\n", GetLastError() );
+        FreeLibrary( mod );
+    }
+
+    SetCurrentDirectoryA( curdir );
+
+    if (!pAddDllDirectory || !pSetDllDirectoryA) goto done;
+
     SetLastError( 0xdeadbeef );
     mod = LoadLibraryExA( "winetestdll.dll", 0, LOAD_LIBRARY_SEARCH_APPLICATION_DIR );
     ok( !mod, "LoadLibrary succeeded\n" );
@@ -538,7 +602,12 @@ static void test_LoadLibraryEx_search_flags(void)
     ok( !mod, "LoadLibrary succeeded\n" );
     ok( GetLastError() == ERROR_MOD_NOT_FOUND, "wrong error %u\n", GetLastError() );
 
-    for (j = 0; j < sizeof(tests) / sizeof(tests[0]); j++)
+    SetLastError( 0xdeadbeef );
+    mod = LoadLibraryA( "1\\winetestdll.dll" );
+    ok( !mod, "LoadLibrary succeeded\n" );
+    ok( GetLastError() == ERROR_MOD_NOT_FOUND, "wrong error %u\n", GetLastError() );
+
+    for (j = 0; j < ARRAY_SIZE(tests); j++)
     {
         for (k = 0; tests[j].add_dirs[k]; k++)
         {
@@ -574,6 +643,7 @@ static void test_LoadLibraryEx_search_flags(void)
         for (k = 0; tests[j].add_dirs[k]; k++) pRemoveDllDirectory( cookies[k] );
     }
 
+done:
     for (i = 1; i <= 6; i++)
     {
         sprintf( p, "\\%u\\winetestdll.dll", i );
@@ -598,7 +668,7 @@ static void testGetDllDirectory(void)
         "C:\\Some\\Path\\",
         "Q:\\A\\Long\\Path with spaces that\\probably\\doesn't exist!",
     };
-    const int test_count = sizeof(dll_directories) / sizeof(dll_directories[0]);
+    const int test_count = ARRAY_SIZE(dll_directories);
 
     if (!pGetDllDirectoryA || !pGetDllDirectoryW)
     {
@@ -917,7 +987,7 @@ static void test_AddDllDirectory(void)
     }
 
     buf[0] = '\0';
-    GetTempPathW( sizeof(path)/sizeof(path[0]), path );
+    GetTempPathW(ARRAY_SIZE(path), path );
     ret = GetTempFileNameW( path, tmpW, 0, buf );
     ok( ret, "GetTempFileName failed err %u\n", GetLastError() );
     SetLastError( 0xdeadbeef );

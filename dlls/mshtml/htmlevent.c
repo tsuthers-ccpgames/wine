@@ -230,7 +230,7 @@ static eventid_t str_to_eid(const WCHAR *str)
 {
     int i;
 
-    for(i=0; i < sizeof(event_info)/sizeof(event_info[0]); i++) {
+    for(i=0; i < ARRAY_SIZE(event_info); i++) {
         if(!strcmpW(event_info[i].name, str))
             return i;
     }
@@ -245,7 +245,7 @@ static eventid_t attr_to_eid(const WCHAR *str)
     if((str[0] != 'o' && str[0] != 'O') || (str[1] != 'n' && str[1] != 'N'))
         return EVENTID_LAST;
 
-    for(i=0; i < sizeof(event_info)/sizeof(event_info[0]); i++) {
+    for(i=0; i < ARRAY_SIZE(event_info); i++) {
         if(!strcmpW(event_info[i].name, str+2) && event_info[i].dispid)
             return i;
     }
@@ -851,7 +851,7 @@ static HRESULT WINAPI DOMEvent_QueryInterface(IDOMEvent *iface, REFIID riid, voi
         *ppv = &This->IDOMKeyboardEvent_iface;
     else if(dispex_query_interface(&This->dispex, riid, ppv))
         return *ppv ? S_OK : E_NOINTERFACE;
-    else {
+    else if(!This->query_interface || !(*ppv = This->query_interface(This, riid))) {
         *ppv = NULL;
         WARN("(%p)->(%s %p)\n", This, debugstr_mshtml_guid(riid), ppv);
         return E_NOINTERFACE;
@@ -879,10 +879,14 @@ static ULONG WINAPI DOMEvent_Release(IDOMEvent *iface)
     TRACE("(%p) ref=%u\n", This, ref);
 
     if(!ref) {
+        if(This->destroy)
+            This->destroy(This);
         if(This->ui_event)
             nsIDOMUIEvent_Release(This->ui_event);
         if(This->mouse_event)
             nsIDOMMouseEvent_Release(This->mouse_event);
+        if(This->keyboard_event)
+            nsIDOMKeyEvent_Release(This->keyboard_event);
         if(This->target)
             IEventTarget_Release(&This->target->IEventTarget_iface);
         nsIDOMEvent_Release(This->nsevent);
@@ -2042,6 +2046,122 @@ static const IDOMKeyboardEventVtbl DOMKeyboardEventVtbl = {
     DOMKeyboardEvent_get_locale
 };
 
+typedef struct {
+    DOMEvent event;
+    IDOMCustomEvent IDOMCustomEvent_iface;
+    VARIANT detail;
+} DOMCustomEvent;
+
+static inline DOMCustomEvent *impl_from_IDOMCustomEvent(IDOMCustomEvent *iface)
+{
+    return CONTAINING_RECORD(iface, DOMCustomEvent, IDOMCustomEvent_iface);
+}
+
+static HRESULT WINAPI DOMCustomEvent_QueryInterface(IDOMCustomEvent *iface, REFIID riid, void **ppv)
+{
+    DOMCustomEvent *This = impl_from_IDOMCustomEvent(iface);
+    return IDOMEvent_QueryInterface(&This->event.IDOMEvent_iface, riid, ppv);
+}
+
+static ULONG WINAPI DOMCustomEvent_AddRef(IDOMCustomEvent *iface)
+{
+    DOMCustomEvent *This = impl_from_IDOMCustomEvent(iface);
+    return IDOMEvent_AddRef(&This->event.IDOMEvent_iface);
+}
+
+static ULONG WINAPI DOMCustomEvent_Release(IDOMCustomEvent *iface)
+{
+    DOMCustomEvent *This = impl_from_IDOMCustomEvent(iface);
+    return IDOMEvent_Release(&This->event.IDOMEvent_iface);
+}
+
+static HRESULT WINAPI DOMCustomEvent_GetTypeInfoCount(IDOMCustomEvent *iface, UINT *pctinfo)
+{
+    DOMCustomEvent *This = impl_from_IDOMCustomEvent(iface);
+    return IDispatchEx_GetTypeInfoCount(&This->event.dispex.IDispatchEx_iface, pctinfo);
+}
+
+static HRESULT WINAPI DOMCustomEvent_GetTypeInfo(IDOMCustomEvent *iface, UINT iTInfo,
+                                                   LCID lcid, ITypeInfo **ppTInfo)
+{
+    DOMCustomEvent *This = impl_from_IDOMCustomEvent(iface);
+    return IDispatchEx_GetTypeInfo(&This->event.dispex.IDispatchEx_iface, iTInfo, lcid, ppTInfo);
+}
+
+static HRESULT WINAPI DOMCustomEvent_GetIDsOfNames(IDOMCustomEvent *iface, REFIID riid,
+        LPOLESTR *rgszNames, UINT cNames, LCID lcid, DISPID *rgDispId)
+{
+    DOMCustomEvent *This = impl_from_IDOMCustomEvent(iface);
+    return IDispatchEx_GetIDsOfNames(&This->event.dispex.IDispatchEx_iface, riid, rgszNames, cNames,
+            lcid, rgDispId);
+}
+
+static HRESULT WINAPI DOMCustomEvent_Invoke(IDOMCustomEvent *iface, DISPID dispIdMember,
+        REFIID riid, LCID lcid, WORD wFlags, DISPPARAMS *pDispParams, VARIANT *pVarResult,
+        EXCEPINFO *pExcepInfo, UINT *puArgErr)
+{
+    DOMCustomEvent *This = impl_from_IDOMCustomEvent(iface);
+    return IDispatchEx_Invoke(&This->event.dispex.IDispatchEx_iface, dispIdMember, riid, lcid,
+            wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
+}
+
+static HRESULT WINAPI DOMCustomEvent_get_detail(IDOMCustomEvent *iface, VARIANT *p)
+{
+    DOMCustomEvent *This = impl_from_IDOMCustomEvent(iface);
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    V_VT(p) = VT_EMPTY;
+    return VariantCopy(p, &This->detail);
+}
+
+static HRESULT WINAPI DOMCustomEvent_initCustomEvent(IDOMCustomEvent *iface, BSTR type, VARIANT_BOOL can_bubble,
+                                                     VARIANT_BOOL cancelable, VARIANT *detail)
+{
+    DOMCustomEvent *This = impl_from_IDOMCustomEvent(iface);
+    HRESULT hres;
+
+    TRACE("(%p)->(%s %x %x %s)\n", This, debugstr_w(type), can_bubble, cancelable, debugstr_variant(detail));
+
+    hres = IDOMEvent_initEvent(&This->event.IDOMEvent_iface, type, can_bubble, cancelable);
+    if(FAILED(hres))
+        return hres;
+
+    return VariantCopy(&This->detail, detail);
+}
+
+static const IDOMCustomEventVtbl DOMCustomEventVtbl = {
+    DOMCustomEvent_QueryInterface,
+    DOMCustomEvent_AddRef,
+    DOMCustomEvent_Release,
+    DOMCustomEvent_GetTypeInfoCount,
+    DOMCustomEvent_GetTypeInfo,
+    DOMCustomEvent_GetIDsOfNames,
+    DOMCustomEvent_Invoke,
+    DOMCustomEvent_get_detail,
+    DOMCustomEvent_initCustomEvent
+};
+
+static DOMCustomEvent *DOMCustomEvent_from_DOMEvent(DOMEvent *event)
+{
+    return CONTAINING_RECORD(event, DOMCustomEvent, event);
+}
+
+static void *DOMCustomEvent_query_interface(DOMEvent *event, REFIID riid)
+{
+    DOMCustomEvent *custom_event = DOMCustomEvent_from_DOMEvent(event);
+    if(IsEqualGUID(&IID_IDOMCustomEvent, riid))
+        return &custom_event->IDOMCustomEvent_iface;
+    return NULL;
+}
+
+static void DOMCustomEvent_destroy(DOMEvent *event)
+{
+    DOMCustomEvent *custom_event = DOMCustomEvent_from_DOMEvent(event);
+    VariantClear(&custom_event->detail);
+}
+
+
 static const tid_t DOMEvent_iface_tids[] = {
     IDOMEvent_tid,
     0
@@ -2091,19 +2211,56 @@ static dispex_static_data_t DOMKeyboardEvent_dispex = {
     DOMKeyboardEvent_iface_tids
 };
 
+static const tid_t DOMCustomEvent_iface_tids[] = {
+    IDOMEvent_tid,
+    IDOMCustomEvent_tid,
+    0
+};
+
+static dispex_static_data_t DOMCustomEvent_dispex = {
+    NULL,
+    DispDOMCustomEvent_tid,
+    DOMCustomEvent_iface_tids
+};
+
+static BOOL check_event_iface(nsIDOMEvent *event, REFIID riid)
+{
+    nsISupports *iface;
+    nsresult nsres;
+
+    nsres = nsIDOMEvent_QueryInterface(event, riid, (void**)&iface);
+    if(NS_FAILED(nsres))
+        return FALSE;
+
+    nsISupports_Release(iface);
+    return TRUE;
+}
+
 static DOMEvent *alloc_event(nsIDOMEvent *nsevent, eventid_t event_id)
 {
     dispex_static_data_t *dispex_data = &DOMEvent_dispex;
-    DOMEvent *event;
+    DOMEvent *event = NULL;
     FILETIME time;
     nsresult nsres;
 
     /* 1601 to 1970 is 369 years plus 89 leap days */
     const ULONGLONG time_epoch = (ULONGLONG)(369 * 365 + 89) * 86400 * 1000;
 
-    event = heap_alloc_zero(sizeof(*event));
-    if(!event)
-        return NULL;
+    if(check_event_iface(nsevent, &IID_nsIDOMCustomEvent)) {
+        DOMCustomEvent *custom_event = heap_alloc_zero(sizeof(*custom_event));
+        if(!custom_event)
+            return NULL;
+
+        custom_event->IDOMCustomEvent_iface.lpVtbl = &DOMCustomEventVtbl;
+        custom_event->event.query_interface = DOMCustomEvent_query_interface;
+        custom_event->event.destroy = DOMCustomEvent_destroy;
+        event = &custom_event->event;
+        dispex_data = &DOMCustomEvent_dispex;
+    }else {
+        event = heap_alloc_zero(sizeof(*event));
+        if(!event)
+            return NULL;
+    }
 
     event->IDOMEvent_iface.lpVtbl = &DOMEventVtbl;
     event->IDOMUIEvent_iface.lpVtbl = &DOMUIEventVtbl;
@@ -2301,24 +2458,26 @@ static BOOL is_cp_event(cp_static_data_t *data, DISPID dispid)
 static void call_event_handlers(EventTarget *event_target, DOMEvent *event, dispatch_mode_t dispatch_mode)
 {
     const listener_container_t *container = get_listener_container(event_target, event->type, FALSE);
-    const BOOL use_quirks = use_event_quirks(event_target);
     event_listener_t *listener, listeners_buf[8], *listeners = listeners_buf;
     unsigned listeners_cnt, listeners_size;
     ConnectionPointContainer *cp_container = NULL;
     const event_target_vtbl_t *vtbl = NULL;
+    BOOL skip_onevent_listener = FALSE;
     VARIANT v;
     HRESULT hres;
 
     assert(!event->current_target);
     event->current_target = event_target;
 
-    if(use_quirks && container && !list_empty(&container->listeners)
-       && event->phase != DEP_CAPTURING_PHASE) {
+    if(container && !list_empty(&container->listeners) && event->phase != DEP_CAPTURING_PHASE) {
         listener = LIST_ENTRY(list_tail(&container->listeners), event_listener_t, entry);
-        if(listener && listener->function && listener->type == LISTENER_TYPE_ONEVENT) {
+        if(listener && listener->function && listener->type == LISTENER_TYPE_ONEVENT
+                && use_event_quirks(event_target)) {
             DISPID named_arg = DISPID_THIS;
             VARIANTARG arg;
             DISPPARAMS dp = {&arg, &named_arg, 1, 1};
+
+            skip_onevent_listener = TRUE;
 
             V_VT(&arg) = VT_DISPATCH;
             V_DISPATCH(&arg) = (IDispatch*)&event_target->dispex.IDispatchEx_iface;
@@ -2345,7 +2504,7 @@ static void call_event_handlers(EventTarget *event_target, DOMEvent *event, disp
     }
 
     listeners_cnt = 0;
-    listeners_size = sizeof(listeners_buf)/sizeof(*listeners_buf);
+    listeners_size = ARRAY_SIZE(listeners_buf);
 
     if(container) {
         LIST_FOR_EACH_ENTRY(listener, &container->listeners, event_listener_t, entry) {
@@ -2353,7 +2512,7 @@ static void call_event_handlers(EventTarget *event_target, DOMEvent *event, disp
                 continue;
             switch(listener->type) {
             case LISTENER_TYPE_ONEVENT:
-                if(use_quirks || event->phase == DEP_CAPTURING_PHASE)
+                if(skip_onevent_listener || event->phase == DEP_CAPTURING_PHASE)
                     continue;
                 break;
             case LISTENER_TYPE_CAPTURE:
@@ -2529,7 +2688,7 @@ static HRESULT dispatch_event_object(EventTarget *event_target, DOMEvent *event,
     IEventTarget_AddRef(&event_target->IEventTarget_iface);
 
     chain_cnt = 0;
-    chain_buf_size = sizeof(target_chain_buf)/sizeof(*target_chain_buf);
+    chain_buf_size = ARRAY_SIZE(target_chain_buf);
 
     do {
         if(chain_cnt == chain_buf_size) {

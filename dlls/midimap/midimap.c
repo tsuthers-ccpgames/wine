@@ -172,7 +172,7 @@ static BOOL	MIDIMAP_LoadSettingsScheme(MIDIMAPDATA* mom, const WCHAR* scheme)
 	return FALSE;
     }
 
-    for (idx = 0; !RegEnumKeyW(hKey, idx, buffer, sizeof(buffer)/sizeof(buffer[0])); idx++)
+    for (idx = 0; !RegEnumKeyW(hKey, idx, buffer, ARRAY_SIZE(buffer)); idx++)
     {
 	if (RegOpenKeyW(hKey, buffer, &hPortKey)) continue;
 
@@ -553,9 +553,9 @@ DWORD WINAPI MIDIMAP_modMessage(UINT wDevID, UINT wMsg, DWORD_PTR dwUser,
  */
 static LRESULT MIDIMAP_drvOpen(void)
 {
+    static const WCHAR  throughportW[] = {'M','i','d','i',' ','T','h','r','o','u','g','h',0};
     MIDIOUTCAPSW	moc;
     unsigned		dev, i;
-    WCHAR               throughportW[] = {'M','i','d','i',' ','T','h','r','o','u','g','h',0};
     BOOL                found_valid_port = FALSE;
 
     if (midiOutPorts)

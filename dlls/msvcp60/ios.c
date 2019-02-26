@@ -2906,10 +2906,10 @@ FILE* __cdecl _Fiopen_wchar(const wchar_t *name, int mode, int prot)
 
     TRACE("(%s %d %d)\n", debugstr_w(name), mode, prot);
 
-    for(mode_idx=0; mode_idx<sizeof(str_mode)/sizeof(str_mode[0]); mode_idx++)
+    for(mode_idx=0; mode_idx<ARRAY_SIZE(str_mode); mode_idx++)
         if(str_mode[mode_idx].mode == real_mode)
             break;
-    if(mode_idx == sizeof(str_mode)/sizeof(str_mode[0]))
+    if(mode_idx == ARRAY_SIZE(str_mode))
         return NULL;
 
     if((mode & OPENMODE__Nocreate) && !(f = _wfopen(name, rW)))
@@ -8101,7 +8101,7 @@ basic_istream_char* __thiscall basic_istream_char_ignore(basic_istream_char *thi
                 break;
             }
 
-            if(ch==(unsigned char)delim)
+            if(ch==delim)
                 break;
 
             this->count++;
@@ -8346,9 +8346,6 @@ fpos_int* __thiscall basic_istream_char_tellg(basic_istream_char *this, fpos_int
 
     basic_streambuf_char_pubseekoff(basic_ios_char_rdbuf_get(base),
             ret, 0, SEEKDIR_cur, OPENMODE_in);
-
-    if(ret->off==-1 && ret->pos==0 && ret->state==0)
-        basic_ios_char_setstate(base, IOSTATE_failbit);
 
     return ret;
 }
@@ -9846,8 +9843,6 @@ fpos_int* __thiscall basic_istream_wchar_tellg(basic_istream_wchar *this, fpos_i
 
     basic_streambuf_wchar_pubseekoff(basic_ios_wchar_rdbuf_get(base),
             ret, 0, SEEKDIR_cur, OPENMODE_in);
-    if(ret->off==-1 && ret->pos==0 && ret->state==0)
-        basic_ios_wchar_setstate(base, IOSTATE_failbit);
 
     return ret;
 }

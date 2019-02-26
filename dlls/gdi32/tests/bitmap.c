@@ -84,7 +84,7 @@ static void test_bitmap_info(HBITMAP hbm, INT expected_depth, const BITMAPINFOHE
     SetLastError(0xdeadbeef);
     test_size[0] = bm.bmWidthBytes * bm.bmHeight;
     /* NULL output buffer with different count values */
-    for (i = 0; i < sizeof(test_size) / sizeof(test_size[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(test_size); i++)
     {
         ret = GetBitmapBits(hbm, test_size[i], NULL);
         ok(ret == bm.bmWidthBytes * bm.bmHeight, "%d != %d\n", ret, bm.bmWidthBytes * bm.bmHeight);
@@ -94,7 +94,7 @@ static void test_bitmap_info(HBITMAP hbm, INT expected_depth, const BITMAPINFOHE
     memset(buf_cmp, 0, bm.bmWidthBytes * bm.bmHeight);
 
     /* Correct output buffer with different count values */
-    for (i = 0; i < sizeof(test_size) / sizeof(test_size[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(test_size); i++)
     {
         int expect = i == 1 ? 0 : bm.bmWidthBytes * bm.bmHeight;
         memset(buf, 0xAA, sizeof(buf));
@@ -1745,7 +1745,7 @@ static void test_mono_bitmap(void)
 
     SelectObject( hdc, hbmp );
 
-    for (col = 0; col < sizeof(colors) / sizeof(colors[0]); col++)
+    for (col = 0; col < ARRAY_SIZE(colors); col++)
     {
         SetTextColor( hdc, colors[col][0] );
         SetBkColor( hdc, colors[col][1] );
@@ -2690,7 +2690,7 @@ static void test_select_object(void)
 
     DeleteObject(hbm);
 
-    for(i = 0; i < sizeof(depths)/sizeof(depths[0]); i++) {
+    for(i = 0; i < ARRAY_SIZE(depths); i++) {
         /* test a color bitmap to dc bpp matching */
         planes = GetDeviceCaps(hdc, PLANES);
         bpp = GetDeviceCaps(hdc, BITSPIXEL);
@@ -3252,6 +3252,26 @@ static void test_StretchBlt(void)
                              0, 0, 2, 2, 0, 0, 4, 1, expected, __LINE__);
     SetMapMode( hdcDst, MM_TEXT );
 
+    /* the destination rectangle doesn't fit in the device area */
+    memset( expected, 0, get_dib_image_size( &biDst ) );
+    expected[17] = 0x76543210, expected[18] = 0xfedcba98;
+    expected[32] = 0x0000cccc, expected[33] = 0x0000f0f0, expected[34] = 0x0000ff00;
+    check_StretchBlt_stretch(hdcDst, hdcSrc, &biDst, dstBuffer, srcBuffer,
+                             2, 2, -8, -8, 0, 0, 8, 8, expected, __LINE__);
+
+    /* the source rectangle doesn't fit in the device area */
+    memset( expected, 0, get_dib_image_size( &biDst ) );
+    expected[102] = 0x76543210, expected[103] = 0xfedcba98;
+    expected[117] = 0x0000cccc, expected[118] = 0x0000f0f0, expected[119] = 0x0000ff00;
+    check_StretchBlt_stretch(hdcDst, hdcSrc, &biDst, dstBuffer, srcBuffer,
+                             0, 0, 8, 8, 2, 2, -8, -8, expected, __LINE__);
+
+    memset( expected, 0, get_dib_image_size( &biDst ) );
+    expected[85] = 0x76543210, expected[86] = 0xfedcba98;
+    expected[99] = 0x0000aaaa, expected[100] = 0x0000cccc, expected[101] = 0x0000f0f0, expected[102] = 0x0000ff00;
+    check_StretchBlt_stretch(hdcDst, hdcSrc, &biDst, dstBuffer, srcBuffer,
+                             8, 8, -18, -18, 0, 0, 18, 18, expected, __LINE__);
+
     SelectObject(hdcDst, oldDst);
     DeleteObject(bmpDst);
 
@@ -3573,6 +3593,12 @@ static void test_StretchDIBits(void)
                                       -4, -4, 4, 4, 0, 0, 4, 4, expected, __LINE__);
     ok( ret == 2, "got ret %d\n", ret );
 
+    expected[0] = 0x00000000, expected[1] = 0x00000000;
+    expected[2] = 0xFEEDFACE, expected[3] = 0x00000000;
+    ret = check_StretchDIBits_stretch(hdcDst, dstBuffer, srcBuffer,
+                                      1, 1, -2, -2, 1, 1, 2, 2, expected, __LINE__);
+    ok( ret == 2, "got ret %d\n", ret );
+
     SelectObject(hdcDst, oldDst);
     DeleteObject(bmpDst);
 
@@ -3675,7 +3701,6 @@ static void test_GdiAlphaBlend(void)
     SetViewportExtEx(hdcDst, -1, -1, NULL);
     SetLastError(0xdeadbeef);
     ret = pGdiAlphaBlend(hdcDst, 0, 0, 20, 20, hdcSrc, 0, -1, 50, 50, blend);
-    todo_wine
     ok( ret, "GdiAlphaBlend failed err %u\n", GetLastError() );
     SetLastError(0xdeadbeef);
     ret = pGdiAlphaBlend(hdcDst, -20, -20, 20, 20, hdcSrc, 0, -1, 50, 50, blend);
@@ -5710,7 +5735,7 @@ static void test_D3DKMTCreateDCFromMemory( void )
     status = pD3DKMTCreateDCFromMemory( NULL );
     ok(status == STATUS_INVALID_PARAMETER, "Got unexpected status %#x.\n", status);
 
-    for (i = 0; i < sizeof(test_data) / sizeof(*test_data); ++i)
+    for (i = 0; i < ARRAY_SIZE(test_data); ++i)
     {
         memset( data, 0xaa, sizeof(data) );
 

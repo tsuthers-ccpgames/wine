@@ -38,6 +38,7 @@ static NTSTATUS (WINAPI * pNtClose)(HANDLE);
 static ULONG    (WINAPI * pNtGetCurrentProcessorNumber)(void);
 static BOOL     (WINAPI * pIsWow64Process)(HANDLE, PBOOL);
 static BOOL     (WINAPI * pGetLogicalProcessorInformationEx)(LOGICAL_PROCESSOR_RELATIONSHIP,SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*,DWORD*);
+static DEP_SYSTEM_POLICY_TYPE (WINAPI * pGetSystemDEPPolicy)(void);
 
 static BOOL is_wow64;
 
@@ -53,6 +54,17 @@ static DWORD one_before_last_pid = 0;
       return FALSE; \
     } \
   } while(0)
+
+/* Firmware table providers */
+#define ACPI 0x41435049
+#define FIRM 0x4649524D
+#define RSMB 0x52534D42
+
+#ifdef linux
+static const int firmware_todo = 0;
+#else
+static const int firmware_todo = 1;
+#endif
 
 static BOOL InitFunctionPtrs(void)
 {
@@ -84,6 +96,8 @@ static BOOL InitFunctionPtrs(void)
 
     pIsWow64Process = (void *)GetProcAddress(hkernel32, "IsWow64Process");
     if (!pIsWow64Process || !pIsWow64Process( GetCurrentProcess(), &is_wow64 )) is_wow64 = FALSE;
+
+    pGetSystemDEPPolicy = (void *)GetProcAddress(hkernel32, "GetSystemDEPPolicy");
 
     /* starting with Win7 */
     pNtQuerySystemInformationEx = (void *) GetProcAddress(hntdll, "NtQuerySystemInformationEx");
@@ -824,6 +838,58 @@ static void test_query_logicalprocex(void)
         HeapFree(GetProcessHeap(), 0, infoex);
         HeapFree(GetProcessHeap(), 0, infoex2);
     }
+}
+
+static void test_query_firmware(void)
+{
+    static const ULONG min_sfti_len = FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer);
+    ULONG len1, len2;
+    NTSTATUS status;
+    SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti;
+
+    sfti = HeapAlloc(GetProcessHeap(), 0, min_sfti_len);
+    ok(!!sfti, "Failed to allocate memory\n");
+
+    sfti->ProviderSignature = 0;
+    sfti->Action = 0;
+    sfti->TableID = 0;
+
+    status = pNtQuerySystemInformation(SystemFirmwareTableInformation, sfti, min_sfti_len - 1, &len1);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH || broken(status == STATUS_INVALID_INFO_CLASS) /* xp */,
+       "Expected STATUS_INFO_LENGTH_MISMATCH, got %08x\n", status);
+    if (len1 == 0) /* xp, 2003 */
+    {
+        win_skip("SystemFirmwareTableInformation is not available\n");
+        HeapFree(GetProcessHeap(), 0, sfti);
+        return;
+    }
+    ok(len1 == min_sfti_len, "Expected length %u, got %u\n", min_sfti_len, len1);
+
+    status = pNtQuerySystemInformation(SystemFirmwareTableInformation, sfti, min_sfti_len, &len1);
+    ok(status == STATUS_NOT_IMPLEMENTED, "Expected STATUS_NOT_IMPLEMENTED, got %08x\n", status);
+    ok(len1 == 0, "Expected length 0, got %u\n", len1);
+
+    sfti->ProviderSignature = RSMB;
+    sfti->Action = SystemFirmwareTable_Get;
+
+    status = pNtQuerySystemInformation(SystemFirmwareTableInformation, sfti, min_sfti_len, &len1);
+todo_wine_if(firmware_todo)
+    ok(status == STATUS_BUFFER_TOO_SMALL, "Expected STATUS_BUFFER_TOO_SMALL, got %08x\n", status);
+    ok(len1 >= min_sfti_len, "Expected length >= %u, got %u\n", min_sfti_len, len1);
+    ok(sfti->TableBufferLength == len1 - min_sfti_len,
+       "Expected length %u, got %u\n", len1 - min_sfti_len, sfti->TableBufferLength);
+
+    sfti = HeapReAlloc(GetProcessHeap(), 0, sfti, len1);
+    ok(!!sfti, "Failed to allocate memory\n");
+
+    status = pNtQuerySystemInformation(SystemFirmwareTableInformation, sfti, len1, &len2);
+todo_wine_if(firmware_todo)
+    ok(status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status);
+    ok(len2 == len1, "Expected length %u, got %u\n", len1, len2);
+    ok(sfti->TableBufferLength == len1 - min_sfti_len,
+       "Expected length %u, got %u\n", len1 - min_sfti_len, sfti->TableBufferLength);
+
+    HeapFree(GetProcessHeap(), 0, sfti);
 }
 
 static void test_query_processor_power_info(void)
@@ -1613,7 +1679,7 @@ static void test_query_process_debug_flags(int argc, char **argv)
     ok(!status, "NtQueryInformationProcess failed, status %#x.\n", status);
     ok(debug_flags == TRUE, "Expected flag TRUE, got %x.\n", debug_flags);
 
-    for (i = 0; i < sizeof(test_flags)/sizeof(test_flags[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(test_flags); i++)
     {
         DWORD expected_flags = !(test_flags[i] & DEBUG_ONLY_THIS_PROCESS);
         sprintf(cmdline, "%s %s %s", argv[0], argv[1], "debuggee");
@@ -1776,20 +1842,36 @@ static void test_mapprotection(void)
     NTSTATUS status;
     SIZE_T retlen, count;
     void (*f)(void);
+    BOOL reset_flags = FALSE;
 
-    if (!pNtClose) {
-        skip("No NtClose ... Win98\n");
-        return;
-    }
     /* Switch to being a noexec unaware process */
     status = pNtQueryInformationProcess( GetCurrentProcess(), ProcessExecuteFlags, &oldflags, sizeof (oldflags), &flagsize);
-    if (status == STATUS_INVALID_PARAMETER) {
-        skip("Invalid Parameter on ProcessExecuteFlags query?\n");
+    if (status == STATUS_INVALID_PARAMETER)
+    {
+        skip("Unable to query process execute flags on this platform\n");
         return;
     }
-    ok( (status == STATUS_SUCCESS) || (status == STATUS_INVALID_INFO_CLASS), "Expected STATUS_SUCCESS, got %08x\n", status);
-    status = pNtSetInformationProcess( GetCurrentProcess(), ProcessExecuteFlags, &flags, sizeof(flags) );
-    ok( (status == STATUS_SUCCESS) || (status == STATUS_INVALID_INFO_CLASS), "Expected STATUS_SUCCESS, got %08x\n", status);
+    ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status );
+    trace("Process execute flags %08x\n", oldflags);
+
+    if (!(oldflags & MEM_EXECUTE_OPTION_ENABLE))
+    {
+        if (oldflags & MEM_EXECUTE_OPTION_PERMANENT)
+        {
+            skip("Unable to turn off noexec\n");
+            return;
+        }
+
+        if (pGetSystemDEPPolicy && pGetSystemDEPPolicy() == AlwaysOn)
+        {
+            skip("System policy requires noexec\n");
+            return;
+        }
+
+        status = pNtSetInformationProcess( GetCurrentProcess(), ProcessExecuteFlags, &flags, sizeof(flags) );
+        ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status );
+        reset_flags = TRUE;
+    }
 
     size.u.LowPart  = 0x2000;
     size.u.HighPart = 0;
@@ -1832,8 +1914,8 @@ static void test_mapprotection(void)
     ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status);
     pNtClose (h);
 
-    /* Switch back */
-    pNtSetInformationProcess( GetCurrentProcess(), ProcessExecuteFlags, &oldflags, sizeof(oldflags) );
+    if (reset_flags)
+        pNtSetInformationProcess( GetCurrentProcess(), ProcessExecuteFlags, &oldflags, sizeof(oldflags) );
 }
 
 static void test_queryvirtualmemory(void)
@@ -1966,6 +2048,27 @@ static void test_affinity(void)
     status = pNtQueryInformationThread( GetCurrentThread(), ThreadBasicInformation, &tbi, sizeof(tbi), NULL );
     ok(status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status);
     ok( tbi.AffinityMask == 1, "Unexpected thread affinity\n" );
+
+    /* NOTE: Pre-Vista does not allow bits to be set that are higher than the highest set bit in process affinity mask */
+    thread_affinity = (pbi.AffinityMask << 1) | pbi.AffinityMask;
+    status = pNtSetInformationThread( GetCurrentThread(), ThreadAffinityMask, &thread_affinity, sizeof(thread_affinity) );
+    ok( broken(status == STATUS_INVALID_PARAMETER) || (status == STATUS_SUCCESS), "Expected STATUS_SUCCESS, got %08x\n", status );
+    if (status == STATUS_SUCCESS)
+    {
+        status = pNtQueryInformationThread( GetCurrentThread(), ThreadBasicInformation, &tbi, sizeof(tbi), NULL );
+        ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status );
+        ok( tbi.AffinityMask == pbi.AffinityMask, "Unexpected thread affinity. Expected %lx, got %lx\n", pbi.AffinityMask, tbi.AffinityMask );
+    }
+
+    thread_affinity = ~(DWORD_PTR)0 - 1;
+    status = pNtSetInformationThread( GetCurrentThread(), ThreadAffinityMask, &thread_affinity, sizeof(thread_affinity) );
+    ok( broken(status == STATUS_INVALID_PARAMETER) || (status == STATUS_SUCCESS), "Expected STATUS_SUCCESS, got %08x\n", status );
+    if (status == STATUS_SUCCESS)
+    {
+        status = pNtQueryInformationThread( GetCurrentThread(), ThreadBasicInformation, &tbi, sizeof(tbi), NULL );
+        ok( status == STATUS_SUCCESS, "Expected STATUS_SUCCESS, got %08x\n", status );
+        ok( tbi.AffinityMask == (pbi.AffinityMask & (~(DWORD_PTR)0 - 1)), "Unexpected thread affinity. Expected %lx, got %lx\n", pbi.AffinityMask & (~(DWORD_PTR)0 - 1), tbi.AffinityMask );
+    }
 
     /* NOTE: Pre-Vista does not recognize the "all processors" flag (all bits set) */
     thread_affinity = ~(DWORD_PTR)0;
@@ -2266,6 +2369,10 @@ START_TEST(info)
     /* 0x1F ProcessDebugFlags */
     trace("Starting test_process_debug_flags()\n");
     test_query_process_debug_flags(argc, argv);
+
+    /* 0x4C SystemFirmwareTableInformation */
+    trace("Starting test_query_firmware()\n");
+    test_query_firmware();
 
     /* belongs to its own file */
     trace("Starting test_readvirtualmemory()\n");

@@ -1208,7 +1208,7 @@ BITMAPINFO *copy_packed_dib( const BITMAPINFO *src_info, UINT usage )
  *    Success: Number of scan lines copied from bitmap
  *    Failure: 0
  */
-INT WINAPI GetDIBits(
+INT WINAPI DECLSPEC_HOTPATCH GetDIBits(
     HDC hdc,         /* [in]  Handle to device context */
     HBITMAP hbitmap, /* [in]  Handle to bitmap */
     UINT startscan,  /* [in]  First scan line to set in dest bitmap */
@@ -1627,7 +1627,7 @@ NTSTATUS WINAPI D3DKMTCreateDCFromMemory( D3DKMT_CREATEDCFROMMEMORY *desc )
 
     if (!desc->pMemory) return STATUS_INVALID_PARAMETER;
 
-    for (i = 0; i < sizeof(format_info) / sizeof(*format_info); ++i)
+    for (i = 0; i < ARRAY_SIZE( format_info ); ++i)
     {
         if (format_info[i].format == desc->Format)
         {

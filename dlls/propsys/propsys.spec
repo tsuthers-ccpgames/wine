@@ -29,7 +29,7 @@
 @ stdcall -private DllUnregisterServer()
 @ stub InitPropVariantFromBooleanVector
 @ stdcall InitPropVariantFromBuffer(ptr long ptr)
-@ stub InitPropVariantFromCLSID
+@ stdcall InitPropVariantFromCLSID(ptr ptr)
 @ stub InitPropVariantFromDoubleVector
 @ stub InitPropVariantFromFileTime
 @ stub InitPropVariantFromFileTimeVector
@@ -65,7 +65,7 @@
 @ stub PSCoerceToCanonicalValue
 @ stub PSCreateAdapterFromPropertyStore
 @ stub PSCreateDelayedMultiplexPropertyStore
-@ stub PSCreateMemoryPropertyStore
+@ stdcall PSCreateMemoryPropertyStore(ptr ptr)
 @ stub PSCreateMultiplexPropertyStore
 @ stub PSCreatePropertyChangeArray
 @ stub PSCreatePropertyStoreFromObject
@@ -112,7 +112,7 @@
 @ stub PropVariantToBooleanVectorAlloc
 @ stub PropVariantToBooleanWithDefault
 @ stub PropVariantToBuffer
-@ stub PropVariantToDouble
+@ stdcall PropVariantToDouble(ptr ptr)
 @ stub PropVariantToDoubleVector
 @ stub PropVariantToDoubleVectorAlloc
 @ stub PropVariantToDoubleWithDefault

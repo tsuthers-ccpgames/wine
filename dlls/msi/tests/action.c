@@ -34,6 +34,7 @@
 #include <shellapi.h>
 #include <winsvc.h>
 #include <odbcinst.h>
+#include <sddl.h>
 
 #include "wine/test.h"
 #include "utils.h"
@@ -50,11 +51,9 @@ static INSTALLSTATE (WINAPI *pMsiGetComponentPathExA)
 static UINT (WINAPI *pMsiQueryFeatureStateExA)
     (LPCSTR, LPCSTR, MSIINSTALLCONTEXT, LPCSTR, INSTALLSTATE *);
 
-static BOOL (WINAPI *pConvertSidToStringSidA)(PSID, LPSTR *);
 static LONG (WINAPI *pRegDeleteKeyExA)(HKEY, LPCSTR, REGSAM, DWORD);
 static BOOL (WINAPI *pIsWow64Process)(HANDLE, PBOOL);
 
-static HMODULE hsrclient;
 static BOOL (WINAPI *pSRRemoveRestorePoint)(DWORD);
 static BOOL (WINAPI *pSRSetRestorePointA)(RESTOREPOINTINFOA *, STATEMGRSTATUS *);
 
@@ -183,6 +182,7 @@ static const char property_dat[] =
     "SERVDISP\tTestServiceDisp\n"
     "SERVDISP2\tTestServiceDisp2\n"
     "MSIFASTINSTALL\t1\n"
+    "ARPNOMODIFY\t1\n"
     "regdata17\t#1\n";
 
 static const char env_install_exec_seq_dat[] =
@@ -1782,6 +1782,7 @@ static const char pa_file_dat[] =
     "File\tComponent_\tFileName\tFileSize\tVersion\tLanguage\tAttributes\tSequence\n"
     "s72\ts72\tl255\ti4\tS72\tS20\tI2\ti2\n"
     "File\tFile\n"
+    "fake_local.txt\tfake_local\tfake_local.txt\t1000\t\t\t8192\t1\n"
     "win32.txt\twin32\twin32.txt\t1000\t\t\t8192\t1\n"
     "manifest.txt\twin32\tmanifest.txt\t1000\t\t\t8192\t1\n"
     "win32_local.txt\twin32_local\twin32_local.txt\t1000\t\t\t8192\t1\n"
@@ -1801,6 +1802,7 @@ static const char pa_feature_comp_dat[] =
     "Feature_\tComponent_\n"
     "s38\ts72\n"
     "FeatureComponents\tFeature_\tComponent_\n"
+    "assembly\tfake_local\n"
     "assembly\twin32\n"
     "assembly\twin32_local\n"
     "assembly\tdotnet\n"
@@ -1810,6 +1812,7 @@ static const char pa_component_dat[] =
     "Component\tComponentId\tDirectory_\tAttributes\tCondition\tKeyPath\n"
     "s72\tS38\ts72\ti2\tS255\tS72\n"
     "Component\tComponent\n"
+    "fake_local\t{F515549D-7E61-425D-AAC1-9BEF2E066D06}\tMSITESTDIR\t0\t\tfake_local.txt\n"
     "win32\t{F515549E-7E61-425D-AAC1-9BEF2E066D06}\tMSITESTDIR\t0\t\twin32.txt\n"
     "win32_local\t{D34D3FBA-6789-4E57-AD1A-1281297DC201}\tMSITESTDIR\t0\t\twin32_local.txt\n"
     "dotnet\t{8943164F-2B31-4C09-A894-493A8CBDE0A4}\tMSITESTDIR\t0\t\tdotnet.txt\n"
@@ -1819,6 +1822,7 @@ static const char pa_msi_assembly_dat[] =
     "Component_\tFeature_\tFile_Manifest\tFile_Application\tAttributes\n"
     "s72\ts38\tS72\tS72\tI2\n"
     "MsiAssembly\tComponent_\n"
+    "fake_local\tassembly\t\tnonexistent.txt\t0\n"
     "win32\tassembly\tmanifest.txt\t\t1\n"
     "win32_local\tassembly\tmanifest_local.txt\tapplication_win32.txt\t1\n"
     "dotnet\tassembly\t\t\t0\n"
@@ -1828,6 +1832,11 @@ static const char pa_msi_assembly_name_dat[] =
     "Component_\tName\tValue\n"
     "s72\ts255\ts255\n"
     "MsiAssemblyName\tComponent_\tName\n"
+    "fake_local\tName\tWine.Fake.Application.Assembly\n"
+    "fake_local\tprocessorArchitecture\tx86\n"
+    "fake_local\tpublicKeyToken\tabcdef0123456789\n"
+    "fake_local\ttype\twin32\n"
+    "fake_local\tversion\t1.0.0.0\n"
     "win32\tName\tWine.Win32.Assembly\n"
     "win32\tprocessorArchitecture\tx86\n"
     "win32\tpublicKeyToken\tabcdef0123456789\n"
@@ -2347,6 +2356,7 @@ static void init_functionpointers(void)
     HMODULE hmsi = GetModuleHandleA("msi.dll");
     HMODULE hadvapi32 = GetModuleHandleA("advapi32.dll");
     HMODULE hkernel32 = GetModuleHandleA("kernel32.dll");
+    HMODULE hsrclient = LoadLibraryA("srclient.dll");
 
 #define GET_PROC(mod, func) \
     p ## func = (void*)GetProcAddress(mod, #func); \
@@ -2359,11 +2369,9 @@ static void init_functionpointers(void)
     GET_PROC(hmsi, MsiGetComponentPathExA);
     GET_PROC(hmsi, MsiQueryFeatureStateExA);
 
-    GET_PROC(hadvapi32, ConvertSidToStringSidA);
     GET_PROC(hadvapi32, RegDeleteKeyExA)
     GET_PROC(hkernel32, IsWow64Process)
 
-    hsrclient = LoadLibraryA("srclient.dll");
     GET_PROC(hsrclient, SRRemoveRestorePoint);
     GET_PROC(hsrclient, SRSetRestorePointA);
 
@@ -2377,17 +2385,12 @@ static char *get_user_sid(void)
     TOKEN_USER *user;
     char *usersid = NULL;
 
-    if (!pConvertSidToStringSidA)
-    {
-        win_skip("ConvertSidToStringSidA is not available\n");
-        return NULL;
-    }
     OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token);
     GetTokenInformation(token, TokenUser, NULL, size, &size);
 
     user = HeapAlloc(GetProcessHeap(), 0, size);
     GetTokenInformation(token, TokenUser, user, size, &size);
-    pConvertSidToStringSidA(user->User.Sid, &usersid);
+    ConvertSidToStringSidA(user->User.Sid, &usersid);
     HeapFree(GetProcessHeap(), 0, user);
 
     CloseHandle(token);
@@ -2650,7 +2653,7 @@ static void test_register_product(void)
     CreateDirectoryA("msitest", NULL);
     create_file("msitest\\maximus", 500);
 
-    create_database(msifile, pp_tables, sizeof(pp_tables) / sizeof(msi_table));
+    create_database(msifile, pp_tables, ARRAY_SIZE(pp_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_FULL, NULL);
 
@@ -2675,15 +2678,16 @@ static void test_register_product(void)
     CHECK_DEL_REG_STR(hkey, "DisplayVersion", "1.1.1");
     CHECK_DEL_REG_STR(hkey, "InstallDate", date);
     CHECK_DEL_REG_STR(hkey, "InstallSource", temp);
-    CHECK_DEL_REG_ISTR(hkey, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_DEL_REG_ISTR(hkey, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_DEL_REG_STR(hkey, "Publisher", "Wine");
-    CHECK_DEL_REG_STR(hkey, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_DEL_REG_STR(hkey, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_DEL_REG_STR(hkey, "AuthorizedCDFPrefix", NULL);
     CHECK_DEL_REG_STR(hkey, "Comments", NULL);
     CHECK_DEL_REG_STR(hkey, "Contact", NULL);
     CHECK_DEL_REG_STR(hkey, "HelpLink", NULL);
     CHECK_DEL_REG_STR(hkey, "HelpTelephone", NULL);
     CHECK_DEL_REG_STR(hkey, "InstallLocation", NULL);
+    CHECK_DEL_REG_DWORD(hkey, "NoModify", 1);
     CHECK_DEL_REG_STR(hkey, "Readme", NULL);
     CHECK_DEL_REG_STR(hkey, "Size", NULL);
     CHECK_DEL_REG_STR(hkey, "URLInfoAbout", NULL);
@@ -2716,15 +2720,16 @@ static void test_register_product(void)
     CHECK_DEL_REG_STR(props, "DisplayVersion", "1.1.1");
     CHECK_DEL_REG_STR(props, "InstallDate", date);
     CHECK_DEL_REG_STR(props, "InstallSource", temp);
-    CHECK_DEL_REG_ISTR(props, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_DEL_REG_ISTR(props, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_DEL_REG_STR(props, "Publisher", "Wine");
-    CHECK_DEL_REG_STR(props, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_DEL_REG_STR(props, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_DEL_REG_STR(props, "AuthorizedCDFPrefix", NULL);
     CHECK_DEL_REG_STR(props, "Comments", NULL);
     CHECK_DEL_REG_STR(props, "Contact", NULL);
     CHECK_DEL_REG_STR(props, "HelpLink", NULL);
     CHECK_DEL_REG_STR(props, "HelpTelephone", NULL);
     CHECK_DEL_REG_STR(props, "InstallLocation", NULL);
+    CHECK_DEL_REG_DWORD(props, "NoModify", 1);
     CHECK_DEL_REG_STR(props, "Readme", NULL);
     CHECK_DEL_REG_STR(props, "Size", NULL);
     CHECK_DEL_REG_STR(props, "URLInfoAbout", NULL);
@@ -2780,15 +2785,16 @@ todo_wine
     CHECK_DEL_REG_STR(hkey, "DisplayVersion", "1.1.1");
     CHECK_DEL_REG_STR(hkey, "InstallDate", date);
     CHECK_DEL_REG_STR(hkey, "InstallSource", temp);
-    CHECK_DEL_REG_ISTR(hkey, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_DEL_REG_ISTR(hkey, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_DEL_REG_STR(hkey, "Publisher", "Wine");
-    CHECK_DEL_REG_STR(hkey, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_DEL_REG_STR(hkey, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_DEL_REG_STR(hkey, "AuthorizedCDFPrefix", NULL);
     CHECK_DEL_REG_STR(hkey, "Comments", NULL);
     CHECK_DEL_REG_STR(hkey, "Contact", NULL);
     CHECK_DEL_REG_STR(hkey, "HelpLink", NULL);
     CHECK_DEL_REG_STR(hkey, "HelpTelephone", NULL);
     CHECK_DEL_REG_STR(hkey, "InstallLocation", NULL);
+    CHECK_DEL_REG_DWORD(hkey, "NoModify", 1);
     CHECK_DEL_REG_STR(hkey, "Readme", NULL);
     CHECK_DEL_REG_STR(hkey, "Size", NULL);
     CHECK_DEL_REG_STR(hkey, "URLInfoAbout", NULL);
@@ -2821,15 +2827,16 @@ todo_wine
     CHECK_DEL_REG_STR(props, "DisplayVersion", "1.1.1");
     CHECK_DEL_REG_STR(props, "InstallDate", date);
     CHECK_DEL_REG_STR(props, "InstallSource", temp);
-    CHECK_DEL_REG_ISTR(props, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_DEL_REG_ISTR(props, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_DEL_REG_STR(props, "Publisher", "Wine");
-    CHECK_DEL_REG_STR(props, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_DEL_REG_STR(props, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_DEL_REG_STR(props, "AuthorizedCDFPrefix", NULL);
     CHECK_DEL_REG_STR(props, "Comments", NULL);
     CHECK_DEL_REG_STR(props, "Contact", NULL);
     CHECK_DEL_REG_STR(props, "HelpLink", NULL);
     CHECK_DEL_REG_STR(props, "HelpTelephone", NULL);
     CHECK_DEL_REG_STR(props, "InstallLocation", NULL);
+    CHECK_DEL_REG_DWORD(props, "NoModify", 1);
     CHECK_DEL_REG_STR(props, "Readme", NULL);
     CHECK_DEL_REG_STR(props, "Size", NULL);
     CHECK_DEL_REG_STR(props, "URLInfoAbout", NULL);
@@ -2917,7 +2924,7 @@ static void test_publish_product(void)
     CreateDirectoryA("msitest", NULL);
     create_file("msitest\\maximus", 500);
 
-    create_database(msifile, pp_tables, sizeof(pp_tables) / sizeof(msi_table));
+    create_database(msifile, pp_tables, ARRAY_SIZE(pp_tables));
 
     if (is_wow64)
         access |= KEY_WOW64_64KEY;
@@ -3150,7 +3157,7 @@ static void test_publish_features(void)
     CreateDirectoryA("msitest", NULL);
     create_file("msitest\\maximus", 500);
 
-    create_database(msifile, pp_tables, sizeof(pp_tables) / sizeof(msi_table));
+    create_database(msifile, pp_tables, ARRAY_SIZE(pp_tables));
 
     if (is_wow64)
         access |= KEY_WOW64_64KEY;
@@ -3336,7 +3343,7 @@ static void test_register_user(void)
     CreateDirectoryA("msitest", NULL);
     create_file("msitest\\maximus", 500);
 
-    create_database(msifile, pp_tables, sizeof(pp_tables) / sizeof(msi_table));
+    create_database(msifile, pp_tables, ARRAY_SIZE(pp_tables));
 
     if (is_wow64)
         access |= KEY_WOW64_64KEY;
@@ -3430,7 +3437,7 @@ static void test_process_components(void)
     CreateDirectoryA("msitest", NULL);
     create_file("msitest\\maximus", 500);
 
-    create_database(msifile, ppc_tables, sizeof(ppc_tables) / sizeof(msi_table));
+    create_database(msifile, ppc_tables, ARRAY_SIZE(ppc_tables));
 
     if (is_wow64)
         access |= KEY_WOW64_64KEY;
@@ -3578,7 +3585,7 @@ static void test_publish(void)
     CreateDirectoryA("msitest", NULL);
     create_file("msitest\\maximus", 500);
 
-    create_database(msifile, pp_tables, sizeof(pp_tables) / sizeof(msi_table));
+    create_database(msifile, pp_tables, ARRAY_SIZE(pp_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -3691,15 +3698,16 @@ static void test_publish(void)
     CHECK_REG_STR(prodkey, "DisplayVersion", "1.1.1");
     CHECK_REG_STR(prodkey, "InstallDate", date);
     CHECK_REG_STR(prodkey, "InstallSource", temp);
-    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "Publisher", "Wine");
-    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "AuthorizedCDFPrefix", NULL);
     CHECK_REG_STR(prodkey, "Comments", NULL);
     CHECK_REG_STR(prodkey, "Contact", NULL);
     CHECK_REG_STR(prodkey, "HelpLink", NULL);
     CHECK_REG_STR(prodkey, "HelpTelephone", NULL);
     CHECK_REG_STR(prodkey, "InstallLocation", NULL);
+    CHECK_REG_DWORD(prodkey, "NoModify", 1);
     CHECK_REG_STR(prodkey, "Readme", NULL);
     CHECK_REG_STR(prodkey, "Size", NULL);
     CHECK_REG_STR(prodkey, "URLInfoAbout", NULL);
@@ -3795,15 +3803,16 @@ static void test_publish(void)
     CHECK_REG_STR(prodkey, "DisplayVersion", "1.1.1");
     CHECK_REG_STR(prodkey, "InstallDate", date);
     CHECK_REG_STR(prodkey, "InstallSource", temp);
-    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "Publisher", "Wine");
-    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "AuthorizedCDFPrefix", NULL);
     CHECK_REG_STR(prodkey, "Comments", NULL);
     CHECK_REG_STR(prodkey, "Contact", NULL);
     CHECK_REG_STR(prodkey, "HelpLink", NULL);
     CHECK_REG_STR(prodkey, "HelpTelephone", NULL);
     CHECK_REG_STR(prodkey, "InstallLocation", NULL);
+    CHECK_REG_DWORD(prodkey, "NoModify", 1);
     CHECK_REG_STR(prodkey, "Readme", NULL);
     CHECK_REG_STR(prodkey, "Size", NULL);
     CHECK_REG_STR(prodkey, "URLInfoAbout", NULL);
@@ -3876,15 +3885,16 @@ static void test_publish(void)
     CHECK_REG_STR(prodkey, "DisplayVersion", "1.1.1");
     CHECK_REG_STR(prodkey, "InstallDate", date);
     CHECK_REG_STR(prodkey, "InstallSource", temp);
-    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "Publisher", "Wine");
-    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "AuthorizedCDFPrefix", NULL);
     CHECK_REG_STR(prodkey, "Comments", NULL);
     CHECK_REG_STR(prodkey, "Contact", NULL);
     CHECK_REG_STR(prodkey, "HelpLink", NULL);
     CHECK_REG_STR(prodkey, "HelpTelephone", NULL);
     CHECK_REG_STR(prodkey, "InstallLocation", NULL);
+    CHECK_REG_DWORD(prodkey, "NoModify", 1);
     CHECK_REG_STR(prodkey, "Readme", NULL);
     CHECK_REG_STR(prodkey, "Size", NULL);
     CHECK_REG_STR(prodkey, "URLInfoAbout", NULL);
@@ -3934,15 +3944,16 @@ static void test_publish(void)
     CHECK_REG_STR(prodkey, "DisplayVersion", "1.1.1");
     CHECK_REG_STR(prodkey, "InstallDate", date);
     CHECK_REG_STR(prodkey, "InstallSource", temp);
-    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "Publisher", "Wine");
-    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "AuthorizedCDFPrefix", NULL);
     CHECK_REG_STR(prodkey, "Comments", NULL);
     CHECK_REG_STR(prodkey, "Contact", NULL);
     CHECK_REG_STR(prodkey, "HelpLink", NULL);
     CHECK_REG_STR(prodkey, "HelpTelephone", NULL);
     CHECK_REG_STR(prodkey, "InstallLocation", NULL);
+    CHECK_REG_DWORD(prodkey, "NoModify", 1);
     CHECK_REG_STR(prodkey, "Readme", NULL);
     CHECK_REG_STR(prodkey, "Size", NULL);
     CHECK_REG_STR(prodkey, "URLInfoAbout", NULL);
@@ -3992,15 +4003,16 @@ static void test_publish(void)
     CHECK_REG_STR(prodkey, "DisplayVersion", "1.1.1");
     CHECK_REG_STR(prodkey, "InstallDate", date);
     CHECK_REG_STR(prodkey, "InstallSource", temp);
-    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "Publisher", "Wine");
-    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "AuthorizedCDFPrefix", NULL);
     CHECK_REG_STR(prodkey, "Comments", NULL);
     CHECK_REG_STR(prodkey, "Contact", NULL);
     CHECK_REG_STR(prodkey, "HelpLink", NULL);
     CHECK_REG_STR(prodkey, "HelpTelephone", NULL);
     CHECK_REG_STR(prodkey, "InstallLocation", NULL);
+    CHECK_REG_DWORD(prodkey, "NoModify", 1);
     CHECK_REG_STR(prodkey, "Readme", NULL);
     CHECK_REG_STR(prodkey, "Size", NULL);
     CHECK_REG_STR(prodkey, "URLInfoAbout", NULL);
@@ -4073,15 +4085,16 @@ static void test_publish(void)
     CHECK_REG_STR(prodkey, "DisplayVersion", "1.1.1");
     CHECK_REG_STR(prodkey, "InstallDate", date);
     CHECK_REG_STR(prodkey, "InstallSource", temp);
-    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_ISTR(prodkey, "ModifyPath", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "Publisher", "Wine");
-    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /I{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
+    CHECK_REG_STR(prodkey, "UninstallString", "MsiExec.exe /X{7DF88A48-996F-4EC8-A022-BF956F9B2CBB}");
     CHECK_REG_STR(prodkey, "AuthorizedCDFPrefix", NULL);
     CHECK_REG_STR(prodkey, "Comments", NULL);
     CHECK_REG_STR(prodkey, "Contact", NULL);
     CHECK_REG_STR(prodkey, "HelpLink", NULL);
     CHECK_REG_STR(prodkey, "HelpTelephone", NULL);
     CHECK_REG_STR(prodkey, "InstallLocation", NULL);
+    CHECK_REG_DWORD(prodkey, "NoModify", 1);
     CHECK_REG_STR(prodkey, "Readme", NULL);
     CHECK_REG_STR(prodkey, "Size", NULL);
     CHECK_REG_STR(prodkey, "URLInfoAbout", NULL);
@@ -4152,7 +4165,7 @@ static void test_publish_sourcelist(void)
     CreateDirectoryA("msitest", NULL);
     create_file("msitest\\maximus", 500);
 
-    create_database(msifile, pp_tables, sizeof(pp_tables) / sizeof(msi_table));
+    create_database(msifile, pp_tables, ARRAY_SIZE(pp_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -4352,7 +4365,7 @@ static void test_remove_files(void)
     create_file("msitest\\helium", 500);
     create_file("msitest\\lithium", 500);
 
-    create_database(msifile, rem_tables, sizeof(rem_tables) / sizeof(msi_table));
+    create_database(msifile, rem_tables, ARRAY_SIZE(rem_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -4509,7 +4522,7 @@ static void test_move_files(void)
     create_file("bur", 100);
     create_file("bird", 100);
 
-    create_database(msifile, mov_tables, sizeof(mov_tables) / sizeof(msi_table));
+    create_database(msifile, mov_tables, ARRAY_SIZE(mov_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -4630,7 +4643,7 @@ static void test_duplicate_files(void)
 
     CreateDirectoryA("msitest", NULL);
     create_file("msitest\\maximus", 500);
-    create_database(msifile, df_tables, sizeof(df_tables) / sizeof(msi_table));
+    create_database(msifile, df_tables, ARRAY_SIZE(df_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -4673,7 +4686,7 @@ static void test_write_registry_values(void)
 
     CreateDirectoryA("msitest", NULL);
 
-    create_database(msifile, wrv_tables, sizeof(wrv_tables) / sizeof(msi_table));
+    create_database(msifile, wrv_tables, ARRAY_SIZE(wrv_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -4839,7 +4852,7 @@ static void test_envvar(void)
         return;
     }
 
-    create_database(msifile, env_tables, sizeof(env_tables) / sizeof(msi_table));
+    create_database(msifile, env_tables, ARRAY_SIZE(env_tables));
 
     res = RegCreateKeyExA(HKEY_CURRENT_USER, "Environment", 0, NULL, 0, KEY_ALL_ACCESS, NULL, &env, NULL);
     ok(res == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %d\n", res);
@@ -4948,7 +4961,7 @@ static void test_create_remove_folder(void)
     CreateDirectoryA("msitest\\second", NULL);
     create_file("msitest\\first\\one.txt", 1000);
     create_file("msitest\\second\\two.txt", 1000);
-    create_database(msifile, cf_tables, sizeof(cf_tables) / sizeof(msi_table));
+    create_database(msifile, cf_tables, ARRAY_SIZE(cf_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5028,7 +5041,7 @@ static void test_start_stop_services(void)
     CloseServiceHandle(scm);
 
     create_test_files();
-    create_database(msifile, sss_tables, sizeof(sss_tables) / sizeof(msi_table));
+    create_database(msifile, sss_tables, ARRAY_SIZE(sss_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5128,7 +5141,7 @@ static void test_delete_services(void)
     if (!service) return;
 
     create_test_files();
-    create_database(msifile, sds_tables, sizeof(sds_tables) / sizeof(msi_table));
+    create_database(msifile, sds_tables, ARRAY_SIZE(sds_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5190,7 +5203,7 @@ static void test_install_services(void)
     }
 
     create_test_files();
-    create_database(msifile, sis_tables, sizeof(sis_tables) / sizeof(msi_table));
+    create_database(msifile, sis_tables, ARRAY_SIZE(sis_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5267,7 +5280,7 @@ static void test_self_registration(void)
 
     create_test_files();
     extract_resource("selfreg.dll", "TESTDLL", "msitest\\selfreg.dll");
-    create_database(msifile, sr_tables, sizeof(sr_tables) / sizeof(msi_table));
+    create_database(msifile, sr_tables, ARRAY_SIZE(sr_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5315,7 +5328,7 @@ static void test_register_font(void)
 
     create_test_files();
     create_file("msitest\\font.ttf", 1000);
-    create_database(msifile, font_tables, sizeof(font_tables) / sizeof(msi_table));
+    create_database(msifile, font_tables, ARRAY_SIZE(font_tables));
 
     if (is_wow64)
         access |= KEY_WOW64_64KEY;
@@ -5365,7 +5378,7 @@ static void test_validate_product_id(void)
     }
 
     create_test_files();
-    create_database(msifile, vp_tables, sizeof(vp_tables) / sizeof(msi_table));
+    create_database(msifile, vp_tables, ARRAY_SIZE(vp_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5424,7 +5437,7 @@ static void test_install_remove_odbc(void)
     create_file("msitest\\ODBCtranslator.dll", 1000);
     create_file("msitest\\ODBCtranslator2.dll", 1000);
     create_file("msitest\\ODBCsetup.dll", 1000);
-    create_database(msifile, odbc_tables, sizeof(odbc_tables) / sizeof(msi_table));
+    create_database(msifile, odbc_tables, ARRAY_SIZE(odbc_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5510,7 +5523,7 @@ static void test_register_typelib(void)
 
     create_test_files();
     extract_resource("typelib.tlb", "TYPELIB", "msitest\\typelib.dll");
-    create_database(msifile, tl_tables, sizeof(tl_tables) / sizeof(msi_table));
+    create_database(msifile, tl_tables, ARRAY_SIZE(tl_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5553,7 +5566,7 @@ static void test_create_remove_shortcut(void)
 
     create_test_files();
     create_file("msitest\\target.txt", 1000);
-    create_database(msifile, crs_tables, sizeof(crs_tables) / sizeof(msi_table));
+    create_database(msifile, crs_tables, ARRAY_SIZE(crs_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5602,7 +5615,7 @@ static void test_publish_components(void)
 
     create_test_files();
     create_file("msitest\\english.txt", 1000);
-    create_database(msifile, pub_tables, sizeof(pub_tables) / sizeof(msi_table));
+    create_database(msifile, pub_tables, ARRAY_SIZE(pub_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5688,7 +5701,7 @@ static void test_remove_duplicate_files(void)
     create_file("msitest\\original.txt", 1000);
     create_file("msitest\\original2.txt", 1000);
     create_file("msitest\\original3.txt", 1000);
-    create_database(msifile, rd_tables, sizeof(rd_tables) / sizeof(msi_table));
+    create_database(msifile, rd_tables, ARRAY_SIZE(rd_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5736,7 +5749,7 @@ static void test_find_related_products(void)
 
     create_test_files();
     create_file("msitest\\product.txt", 1000);
-    create_database(msifile, frp_tables, sizeof(frp_tables) / sizeof(msi_table));
+    create_database(msifile, frp_tables, ARRAY_SIZE(frp_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5780,7 +5793,7 @@ static void test_ini_values(void)
 
     create_test_files();
     create_file("msitest\\inifile.txt", 1000);
-    create_database(msifile, ini_tables, sizeof(ini_tables) / sizeof(msi_table));
+    create_database(msifile, ini_tables, ARRAY_SIZE(ini_tables));
 
     lstrcpyA(inifile, PROG_FILES_DIR);
     lstrcatA(inifile, "\\msitest");
@@ -5841,7 +5854,7 @@ static void test_register_class_info(void)
 
     create_test_files();
     create_file("msitest\\class.txt", 1000);
-    create_database(msifile, rci_tables, sizeof(rci_tables) / sizeof(msi_table));
+    create_database(msifile, rci_tables, ARRAY_SIZE(rci_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5906,7 +5919,7 @@ static void test_register_extension_info(void)
 
     create_test_files();
     create_file("msitest\\extension.txt", 1000);
-    create_database(msifile, rei_tables, sizeof(rei_tables) / sizeof(msi_table));
+    create_database(msifile, rei_tables, ARRAY_SIZE(rei_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -5958,7 +5971,7 @@ static void test_register_progid_info(void)
 
     create_test_files();
     create_file("msitest\\progid.txt", 1000);
-    create_database(msifile, rpi_tables, sizeof(rpi_tables) / sizeof(msi_table));
+    create_database(msifile, rpi_tables, ARRAY_SIZE(rpi_tables));
 
     res = RegCreateKeyExA(HKEY_CLASSES_ROOT, "Winetest.Orphaned", 0, NULL, 0,
                           KEY_ALL_ACCESS, NULL, &hkey, NULL);
@@ -6084,7 +6097,7 @@ static void test_register_mime_info(void)
 
     create_test_files();
     create_file("msitest\\mime.txt", 1000);
-    create_database(msifile, rmi_tables, sizeof(rmi_tables) / sizeof(msi_table));
+    create_database(msifile, rmi_tables, ARRAY_SIZE(rmi_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -6131,6 +6144,10 @@ static void test_publish_assemblies(void)
         "Installer\\Assemblies\\C:|Program Files|msitest|application_dotnet.txt";
     static const char classes_path_dotnet_local_wow64[] =
         "Installer\\Assemblies\\C:|Program Files (x86)|msitest|application_dotnet.txt";
+    static const char classes_path_fake_local[] =
+        "Installer\\Assemblies\\C:|Program Files|msitest|nonexistent.txt";
+    static const char classes_path_fake_local_wow64[] =
+        "Installer\\Assemblies\\C:|Program Files (x86)|msitest|nonexistent.txt";
     static const char classes_path_win32[] =
         "Installer\\Win32Assemblies\\Global";
     static const char classes_path_win32_local[] =
@@ -6143,6 +6160,10 @@ static void test_publish_assemblies(void)
         "Software\\Microsoft\\Installer\\Assemblies\\C:|Program Files|msitest|application_dotnet.txt";
     static const char path_dotnet_local_wow64[] =
         "Software\\Microsoft\\Installer\\Assemblies\\C:|Program Files (x86)|msitest|application_dotnet.txt";
+    static const char path_fake_local[] =
+        "Software\\Microsoft\\Installer\\Assemblies\\C:|Program Files|msitest|nonexistent.txt";
+    static const char path_fake_local_wow64[] =
+        "Software\\Microsoft\\Installer\\Assemblies\\C:|Program Files (x86)|msitest|nonexistent.txt";
     static const char path_win32[] =
         "Software\\Microsoft\\Installer\\Win32Assemblies\\Global";
     static const char path_win32_local[] =
@@ -6182,7 +6203,8 @@ static void test_publish_assemblies(void)
     create_file_data("msitest\\manifest_local.txt", manifest_local, 0);
     create_file("msitest\\application_win32.txt", 1000);
     create_file("msitest\\application_dotnet.txt", 1000);
-    create_database(msifile, pa_tables, sizeof(pa_tables) / sizeof(msi_table));
+    create_file("msitest\\fake_local.txt", 1000);
+    create_database(msifile, pa_tables, ARRAY_SIZE(pa_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -6190,11 +6212,6 @@ static void test_publish_assemblies(void)
     if (r == ERROR_INSTALL_PACKAGE_REJECTED)
     {
         skip("Not enough rights to perform tests\n");
-        goto done;
-    }
-    if (r == ERROR_INSTALL_FAILURE)
-    {
-        skip("No support for installing side-by-side assemblies\n");
         goto done;
     }
     ok(r == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %u\n", r);
@@ -6211,23 +6228,25 @@ static void test_publish_assemblies(void)
     RegCloseKey(hkey);
 
     res = RegOpenKeyA(HKEY_CURRENT_USER, path_win32, &hkey);
-    ok(res == ERROR_SUCCESS || res == ERROR_FILE_NOT_FOUND /* win2k without sxs support */,
-       "Expected ERROR_SUCCESS, got %d\n", res);
-    if (res == ERROR_SUCCESS) CHECK_REG_STR(hkey, name_win32, "rcHQPHq?CA@Uv-XqMI1e>}NJjwR'%D9v1p!v{WV(%");
+    ok(res == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %d\n", res);
+    CHECK_REG_STR(hkey, name_win32, "rcHQPHq?CA@Uv-XqMI1e>}NJjwR'%D9v1p!v{WV(%");
     RegCloseKey(hkey);
 
     path = (is_wow64 || is_64bit) ? path_win32_local_wow64 : path_win32_local;
     res = RegOpenKeyA(HKEY_CURRENT_USER, path, &hkey);
-    ok(res == ERROR_SUCCESS || res == ERROR_FILE_NOT_FOUND /* win2k without sxs support */,
-       "Expected ERROR_SUCCESS, got %d\n", res);
-    if (res == ERROR_SUCCESS) CHECK_REG_STR(hkey, name_win32_local, "rcHQPHq?CA@Uv-XqMI1e>C)Uvlj*53A)u(QQ9=)X!");
+    ok(res == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %d\n", res);
+    CHECK_REG_STR(hkey, name_win32_local, "rcHQPHq?CA@Uv-XqMI1e>C)Uvlj*53A)u(QQ9=)X!");
     RegCloseKey(hkey);
+
+    /* No registration is done for a local assembly with no matching file */
+    path = (is_wow64 || is_64bit) ? path_fake_local_wow64 : path_fake_local;
+    res = RegOpenKeyA(HKEY_CURRENT_USER, path, &hkey);
+    ok(res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     r = MsiInstallProductA(msifile, "REMOVE=ALL");
     ok(r == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %u\n", r);
 
     res = RegOpenKeyA(HKEY_CURRENT_USER, path_dotnet, &hkey);
-    ok(res == ERROR_SUCCESS || res == ERROR_FILE_NOT_FOUND, "got %d\n", res);
     if (res == ERROR_SUCCESS)
     {
         res = RegDeleteValueA(hkey, name_dotnet);
@@ -6240,7 +6259,6 @@ static void test_publish_assemblies(void)
     ok(res == ERROR_FILE_NOT_FOUND, "Expected ERROR_FILE_NOT_FOUND, got %d\n", res);
 
     res = RegOpenKeyA(HKEY_CURRENT_USER, path_win32, &hkey);
-    ok(res == ERROR_SUCCESS || res == ERROR_FILE_NOT_FOUND, "got %d\n", res);
     if (res == ERROR_SUCCESS)
     {
         res = RegDeleteValueA(hkey, name_win32);
@@ -6274,23 +6292,25 @@ static void test_publish_assemblies(void)
     RegCloseKey(hkey);
 
     res = RegOpenKeyExA(HKEY_CLASSES_ROOT, classes_path_win32, 0, access, &hkey);
-    ok(res == ERROR_SUCCESS || res == ERROR_FILE_NOT_FOUND /* win2k without sxs support */,
-       "Expected ERROR_SUCCESS, got %d\n", res);
-    if (res == ERROR_SUCCESS) CHECK_REG_STR(hkey, name_win32, "rcHQPHq?CA@Uv-XqMI1e>}NJjwR'%D9v1p!v{WV(%");
+    ok(res == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %d\n", res);
+    CHECK_REG_STR(hkey, name_win32, "rcHQPHq?CA@Uv-XqMI1e>}NJjwR'%D9v1p!v{WV(%");
     RegCloseKey(hkey);
 
     path = (is_wow64 || is_64bit) ? classes_path_win32_local_wow64 : classes_path_win32_local;
     res = RegOpenKeyExA(HKEY_CLASSES_ROOT, path, 0, access, &hkey);
-    ok(res == ERROR_SUCCESS || res == ERROR_FILE_NOT_FOUND /* win2k without sxs support */,
-       "Expected ERROR_SUCCESS, got %d\n", res);
-    if (res == ERROR_SUCCESS) CHECK_REG_STR(hkey, name_win32_local, "rcHQPHq?CA@Uv-XqMI1e>C)Uvlj*53A)u(QQ9=)X!");
+    ok(res == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %d\n", res);
+    CHECK_REG_STR(hkey, name_win32_local, "rcHQPHq?CA@Uv-XqMI1e>C)Uvlj*53A)u(QQ9=)X!");
     RegCloseKey(hkey);
+
+    /* No registration is done for a local assembly with no matching file */
+    path = (is_wow64 || is_64bit) ? classes_path_fake_local_wow64 : classes_path_fake_local;
+    res = RegOpenKeyExA(HKEY_CLASSES_ROOT, path, 0, access, &hkey);
+    ok(res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     r = MsiInstallProductA(msifile, "REMOVE=ALL ALLUSERS=1");
     ok(r == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %u\n", r);
 
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, classes_path_dotnet, &hkey);
-    ok(res == ERROR_SUCCESS || res == ERROR_FILE_NOT_FOUND, "got %d\n", res);
     if (res == ERROR_SUCCESS)
     {
         res = RegDeleteValueA(hkey, name_dotnet);
@@ -6303,7 +6323,6 @@ static void test_publish_assemblies(void)
     ok(res == ERROR_FILE_NOT_FOUND, "Expected ERROR_FILE_NOT_FOUND, got %d\n", res);
 
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, classes_path_win32, &hkey);
-    ok(res == ERROR_SUCCESS || res == ERROR_FILE_NOT_FOUND, "got %d\n", res);
     if (res == ERROR_SUCCESS)
     {
         res = RegDeleteValueA(hkey, name_win32);
@@ -6324,6 +6343,7 @@ done:
     DeleteFileA("msitest\\manifest_local.txt");
     DeleteFileA("msitest\\application_win32.txt");
     DeleteFileA("msitest\\application_dotnet.txt");
+    DeleteFileA("msitest\\fake_local.txt");
     delete_test_files();
     DeleteFileA(msifile);
 }
@@ -6340,7 +6360,7 @@ static void test_remove_existing_products(void)
 
     create_test_files();
     create_file("msitest\\rep.txt", 1000);
-    create_database(msifile, rep_tables, sizeof(rep_tables) / sizeof(msi_table));
+    create_database(msifile, rep_tables, ARRAY_SIZE(rep_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -6451,7 +6471,6 @@ START_TEST(action)
         if (ret)
             remove_restore_point(status.llSequenceNumber);
     }
-    FreeLibrary(hsrclient);
 
     SetCurrentDirectoryA(prev_path);
 }

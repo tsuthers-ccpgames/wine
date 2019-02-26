@@ -627,7 +627,7 @@ static void test_CreateDispTypeInfo(void)
     OLECHAR *name = func1;
 
     ifdata.pmethdata = methdata;
-    ifdata.cMembers = sizeof(methdata) / sizeof(methdata[0]);
+    ifdata.cMembers = ARRAY_SIZE(methdata);
 
     methdata[0].szName = SysAllocString(func1);
     methdata[0].ppdata = parms1;
@@ -1199,11 +1199,41 @@ static HRESULT WINAPI ret_false_func(void)
     return S_FALSE;
 }
 
-static const void *vtable[] = { NULL, NULL, NULL, inst_func };
+static const WCHAR testW[] = { 'T','e','s','t',0 };
+
+static void WINAPI variant_func2(VARIANT *ret, VARIANT v1, VARIANT v2)
+{
+    ok(V_VT(&v1) == VT_I4, "unexpected %d\n", V_VT(&v1));
+    ok(V_I4(&v1) == 2, "unexpected %d\n", V_I4(&v1));
+    ok(V_VT(&v2) == VT_BSTR, "unexpected %d\n", V_VT(&v2));
+    ok(lstrcmpW(V_BSTR(&v2), testW) == 0, "unexpected %s\n", wine_dbgstr_w(V_BSTR(&v2)));
+
+    V_VT(ret) = VT_UI4;
+    V_I4(ret) = 4321;
+}
+
+static void WINAPI inst_func2(void *inst, VARIANT *ret, VARIANT v1, VARIANT v2)
+{
+    ok( (*(void ***)inst)[3] == inst_func2, "wrong ptr %p\n", inst );
+
+    ok(V_VT(ret) == VT_I4 || broken(V_VT(ret) == VT_VARIANT) /* win64 */, "unexpected %d\n", V_VT(ret));
+    ok(V_I4(ret) == 1234, "unexpected %d\n", V_I4(ret));
+
+    ok(V_VT(&v1) == VT_I4, "unexpected %d\n", V_VT(&v1));
+    ok(V_I4(&v1) == 2, "unexpected %d\n", V_I4(&v1));
+    ok(V_VT(&v2) == VT_BSTR, "unexpected %d\n", V_VT(&v2));
+    ok(lstrcmpW(V_BSTR(&v2), testW) == 0, "unexpected %s\n", wine_dbgstr_w(V_BSTR(&v2)));
+
+    V_VT(ret) = VT_UI4;
+    V_I4(ret) = 4321;
+}
+
+static void *vtable[] = { NULL, NULL, NULL, inst_func };
+static void *vtable2[] = { NULL, NULL, NULL, inst_func2 };
 
 static void test_DispCallFunc(void)
 {
-    const void **inst = vtable;
+    void **inst;
     HRESULT res;
     VARIANT result, args[5];
     VARIANTARG *pargs[5];
@@ -1211,6 +1241,30 @@ static void test_DispCallFunc(void)
     int i;
 
     for (i = 0; i < 5; i++) pargs[i] = &args[i];
+
+    memset( args, 0x55, sizeof(args) );
+
+    types[0] = VT_VARIANT;
+    V_VT(&args[0]) = VT_I4;
+    V_I4(&args[0]) = 2;
+    types[1] = VT_VARIANT;
+    V_VT(&args[1]) = VT_BSTR;
+    V_BSTR(&args[1]) = SysAllocString(testW);
+    memset( &result, 0xcc, sizeof(result) );
+    res = DispCallFunc(NULL, (ULONG_PTR)variant_func2, CC_STDCALL, VT_VARIANT, 2, types, pargs, &result);
+    ok(res == S_OK, "DispCallFunc error %#x\n", res);
+    ok(V_VT(&result) == VT_UI4, "wrong result type %d\n", V_VT(&result));
+    ok(V_UI4(&result) == 4321, "wrong result %u\n", V_UI4(&result));
+
+    V_VT(&result) = VT_I4;
+    V_UI4(&result) = 1234;
+    inst = vtable2;
+    res = DispCallFunc(&inst, 3 * sizeof(void *), CC_STDCALL, VT_VARIANT, 2, types, pargs, &result);
+    ok(res == S_OK, "DispCallFunc error %#x\n", res);
+    ok(V_VT(&result) == VT_UI4, "wrong result type %d\n", V_VT(&result));
+    ok(V_UI4(&result) == 4321, "wrong result %u\n", V_UI4(&result));
+
+    VariantClear(&args[1]);
 
     memset( args, 0x55, sizeof(args) );
     types[0] = VT_UI4;
@@ -1310,6 +1364,7 @@ static void test_DispCallFunc(void)
     types[0] = VT_I4;
     V_I4(&args[0]) = 3;
     memset( &result, 0xcc, sizeof(result) );
+    inst = vtable;
     res = DispCallFunc( &inst, 3 * sizeof(void*), CC_STDCALL, VT_I4, 1, types, pargs, &result );
     ok( res == S_OK, "DispCallFunc failed %x\n", res );
     ok( V_VT(&result) == VT_I4, "wrong result type %d\n", V_VT(&result) );
@@ -1350,7 +1405,7 @@ static LSTATUS myRegDeleteTreeW(HKEY hKey, LPCWSTR lpszSubKey, REGSAM view)
     dwMaxSubkeyLen++;
     dwMaxValueLen++;
     dwMaxLen = max(dwMaxSubkeyLen, dwMaxValueLen);
-    if (dwMaxLen > sizeof(szNameBuf)/sizeof(WCHAR))
+    if (dwMaxLen > ARRAY_SIZE(szNameBuf))
     {
         /* Name too big: alloc a buffer for it */
         if (!(lpszName = HeapAlloc( GetProcessHeap(), 0, dwMaxLen*sizeof(WCHAR))))
@@ -1483,7 +1538,7 @@ static void test_QueryPathOfRegTypeLib(DWORD arch)
     if (!do_typelib_reg_key(&uid, 5, 37, arch, base, FALSE)) return;
     if (arch == 64 && !do_typelib_reg_key(&uid, 5, 37, 32, wrongW, FALSE)) return;
 
-    for (i = 0; i < sizeof(td)/sizeof(td[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(td); i++)
     {
         ret = QueryPathOfRegTypeLib(&uid, td[i].maj, td[i].min, LOCALE_NEUTRAL, &path);
         ok(ret == td[i].ret, "QueryPathOfRegTypeLib(%u.%u) returned %08x\n", td[i].maj, td[i].min, ret);
@@ -2309,7 +2364,7 @@ static void test_CreateTypeLib(SYSKIND sys) {
     SysFreeString(V_BSTR(&paramdescex.varDefaultValue));
 
     WideCharToMultiByte(CP_ACP, 0, defaultW, -1, nameA, sizeof(nameA), NULL, NULL);
-    MultiByteToWideChar(CP_ACP, 0, nameA, -1, nameW, sizeof(nameW)/sizeof(nameW[0]));
+    MultiByteToWideChar(CP_ACP, 0, nameA, -1, nameW, ARRAY_SIZE(nameW));
 
     hres = ITypeInfo2_GetFuncDesc(ti2, 3, &pfuncdesc);
     ok(hres == S_OK, "got %08x\n", hres);
@@ -3041,7 +3096,7 @@ static void test_CreateTypeLib(SYSKIND sys) {
     ok(hres == S_OK, "got: %08x\n", hres);
     ok(cnames == 0, "got: %u\n", cnames);
 
-    hres = ITypeInfo_GetNames(ti, pfuncdesc->memid, names, sizeof(names) / sizeof(*names), &cnames);
+    hres = ITypeInfo_GetNames(ti, pfuncdesc->memid, names, ARRAY_SIZE(names), &cnames);
     ok(hres == S_OK, "got: %08x\n", hres);
     ok(cnames == 1, "got: %u\n", cnames);
     ok(!memcmp(names[0], func1W, sizeof(func1W)), "got names[0]: %s\n", wine_dbgstr_w(names[0]));
@@ -3145,7 +3200,7 @@ static void test_CreateTypeLib(SYSKIND sys) {
     SysFreeString(name);
     SysFreeString(helpfile);
 
-    hres = ITypeInfo_GetNames(ti, pfuncdesc->memid, names, sizeof(names) / sizeof(*names), &cnames);
+    hres = ITypeInfo_GetNames(ti, pfuncdesc->memid, names, ARRAY_SIZE(names), &cnames);
     ok(hres == S_OK, "got: %08x\n", hres);
     ok(cnames == 3, "got: %u\n", cnames);
     ok(!memcmp(names[0], func2W, sizeof(func2W)), "got names[0]: %s\n", wine_dbgstr_w(names[0]));
@@ -3375,7 +3430,7 @@ static void test_CreateTypeLib(SYSKIND sys) {
     SysFreeString(name);
     SysFreeString(helpfile);
 
-    hres = ITypeInfo_GetNames(ti, pfuncdesc->memid, names, sizeof(names) / sizeof(*names), &cnames);
+    hres = ITypeInfo_GetNames(ti, pfuncdesc->memid, names, ARRAY_SIZE(names), &cnames);
     ok(hres == S_OK, "got: %08x\n", hres);
     ok(cnames == 1, "got: %u\n", cnames);
     ok(!memcmp(names[0], func1W, sizeof(func1W)), "got names[0]: %s\n", wine_dbgstr_w(names[0]));
@@ -3474,7 +3529,7 @@ static void test_CreateTypeLib(SYSKIND sys) {
     SysFreeString(name);
     SysFreeString(helpfile);
 
-    hres = ITypeInfo_GetNames(ti, pfuncdesc->memid, names, sizeof(names) / sizeof(*names), &cnames);
+    hres = ITypeInfo_GetNames(ti, pfuncdesc->memid, names, ARRAY_SIZE(names), &cnames);
     ok(hres == S_OK, "got: %08x\n", hres);
     ok(cnames == 1, "got: %u\n", cnames);
     ok(!memcmp(names[0], func1W, sizeof(func1W)), "got names[0]: %s\n", wine_dbgstr_w(names[0]));
@@ -4701,7 +4756,7 @@ static void test_dump_typelib(const char *name)
 {
     WCHAR wszName[MAX_PATH];
     ITypeLib *typelib;
-    int ticount = sizeof(info)/sizeof(info[0]);
+    int ticount = ARRAY_SIZE(info);
     int iface, func;
 
     MultiByteToWideChar(CP_ACP, 0, name, -1, wszName, MAX_PATH);
@@ -4739,7 +4794,7 @@ static void test_dump_typelib(const char *name)
             HRESULT hr;
             GUID guid;
 
-            MultiByteToWideChar(CP_ACP, 0, ti->uuid, -1, guidW, sizeof(guidW)/sizeof(guidW[0]));
+            MultiByteToWideChar(CP_ACP, 0, ti->uuid, -1, guidW, ARRAY_SIZE(guidW));
             IIDFromString(guidW, &guid);
             expect_guid(&guid, &typeattr->guid);
 
@@ -4908,6 +4963,7 @@ static void test_register_typelib(BOOL system_registration)
     HKEY hkey;
     REGSAM opposite = (sizeof(void*) == 8 ? KEY_WOW64_32KEY : KEY_WOW64_64KEY);
     BOOL is_wow64 = FALSE;
+    LONG size;
     struct
     {
         TYPEKIND kind;
@@ -5002,7 +5058,7 @@ static void test_register_typelib(BOOL system_registration)
 
         }
 
-        StringFromGUID2(&attr->guid, uuidW, sizeof(uuidW) / sizeof(uuidW[0]));
+        StringFromGUID2(&attr->guid, uuidW, ARRAY_SIZE(uuidW));
         WideCharToMultiByte(CP_ACP, 0, uuidW, -1, uuid, sizeof(uuid), NULL, NULL);
         sprintf(key_name, "Interface\\%s", uuid);
 
@@ -5016,7 +5072,26 @@ static void test_register_typelib(BOOL system_registration)
 
         ret = RegOpenKeyExA(HKEY_CLASSES_ROOT, key_name, 0, KEY_READ, &hkey);
         ok(ret == expect_ret, "%d: got %d\n", i, ret);
-        if(ret == ERROR_SUCCESS) RegCloseKey(hkey);
+        if (ret == ERROR_SUCCESS)
+        {
+            size = sizeof(uuid);
+            ret = RegQueryValueA(hkey, "ProxyStubClsid32", uuid, &size);
+            ok(!ret, "Failed to get proxy GUID, error %u.\n", ret);
+
+            if (attrs[i].kind == TKIND_INTERFACE || (attrs[i].flags & TYPEFLAG_FDUAL))
+            {
+                ok(!strcasecmp(uuid, "{00020424-0000-0000-c000-000000000046}"),
+                        "Got unexpected proxy CLSID %s.\n", uuid);
+            }
+            else
+            {
+                ok(!strcasecmp(uuid, "{00020420-0000-0000-c000-000000000046}"),
+                        "Got unexpected proxy CLSID %s.\n", uuid);
+            }
+
+            RegCloseKey(hkey);
+        }
+
 
         /* 32-bit typelibs should be registered into both registry bit modes */
         if (is_win64 || is_wow64)
@@ -5050,7 +5125,7 @@ static void test_register_typelib(BOOL system_registration)
         if((attr->typekind == TKIND_INTERFACE && (attr->wTypeFlags & TYPEFLAG_FOLEAUTOMATION)) ||
            attr->typekind == TKIND_DISPATCH)
         {
-            StringFromGUID2(&attr->guid, uuidW, sizeof(uuidW) / sizeof(uuidW[0]));
+            StringFromGUID2(&attr->guid, uuidW, ARRAY_SIZE(uuidW));
             WideCharToMultiByte(CP_ACP, 0, uuidW, -1, uuid, sizeof(uuid), NULL, NULL);
             sprintf(key_name, "Interface\\%s", uuid);
 
@@ -6204,7 +6279,7 @@ static void test_stub(void)
             WCHAR guidW[40];
             REGSAM opposite = side ^ (KEY_WOW64_64KEY | KEY_WOW64_32KEY);
 
-            StringFromGUID2(&interfaceguid, guidW, sizeof(guidW)/sizeof(guidW[0]));
+            StringFromGUID2(&interfaceguid, guidW, ARRAY_SIZE(guidW));
 
             /* Delete the opposite interface key */
             lr = RegOpenKeyExA(HKEY_CLASSES_ROOT, "Interface", 0, KEY_READ | opposite, &hkey);

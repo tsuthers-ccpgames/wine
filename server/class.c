@@ -76,6 +76,8 @@ static struct window_class *create_class( struct process *process, int extra_byt
 
 static void destroy_class( struct window_class *class )
 {
+    release_global_atom( NULL, class->atom );
+    release_global_atom( NULL, class->base_atom );
     list_remove( &class->entry );
     release_object( class->process );
     free( class );
@@ -139,7 +141,7 @@ int is_hwnd_message_class( struct window_class *class )
 
 atom_t get_class_atom( struct window_class *class )
 {
-    return class->atom;
+    return class->base_atom;
 }
 
 client_ptr_t get_class_client_ptr( struct window_class *class )
@@ -276,6 +278,7 @@ DECL_HANDLER(set_class_info)
     reply->old_extra     = class->nb_extra_bytes;
     reply->old_win_extra = class->win_extra;
     reply->old_instance  = class->instance;
+    reply->base_atom     = class->base_atom;
 
     if (req->flags & SET_CLASS_ATOM)
     {

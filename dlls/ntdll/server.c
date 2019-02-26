@@ -349,7 +349,7 @@ void server_leave_uninterrupted_section( RTL_CRITICAL_SECTION *cs, sigset_t *sig
  *
  * Wait for a reply on the waiting pipe of the current thread.
  */
-static int wait_select_reply( void *cookie )
+int wait_select_reply( void *cookie )
 {
     int signaled;
     struct wake_up_reply reply;
@@ -386,7 +386,7 @@ static int wait_select_reply( void *cookie )
  *
  * Invoke a single APC. Return TRUE if a user APC has been run.
  */
-static BOOL invoke_apc( const apc_call_t *call, apc_result_t *result )
+BOOL invoke_apc( const apc_call_t *call, apc_result_t *result )
 {
     BOOL user_apc = FALSE;
     SIZE_T size;
@@ -1124,9 +1124,10 @@ static void start_server(void)
  *
  * Setup the wine configuration dir.
  */
-static void setup_config_dir(void)
+static int setup_config_dir(void)
 {
     const char *p, *config_dir = wine_get_config_dir();
+    int fd_cwd = open( ".", O_RDONLY );
 
     if (chdir( config_dir ) == -1)
     {
@@ -1154,7 +1155,7 @@ static void setup_config_dir(void)
 
     if (mkdir( "dosdevices", 0777 ) == -1)
     {
-        if (errno == EEXIST) return;
+        if (errno == EEXIST) goto done;
         fatal_perror( "cannot create %s/dosdevices\n", config_dir );
     }
 
@@ -1163,6 +1164,11 @@ static void setup_config_dir(void)
     mkdir( "drive_c", 0777 );
     symlink( "../drive_c", "dosdevices/c:" );
     symlink( "/", "dosdevices/z:" );
+
+done:
+    if (fd_cwd == -1) fd_cwd = open( "dosdevices/c:", O_RDONLY );
+    fcntl( fd_cwd, F_SETFD, FD_CLOEXEC );
+    return fd_cwd;
 }
 
 
@@ -1212,11 +1218,7 @@ static int server_connect(void)
     struct stat st;
     int s, slen, retry, fd_cwd;
 
-    /* retrieve the current directory */
-    fd_cwd = open( ".", O_RDONLY );
-    if (fd_cwd != -1) fcntl( fd_cwd, F_SETFD, FD_CLOEXEC );
-
-    setup_config_dir();
+    fd_cwd = setup_config_dir();
     serverdir = wine_get_server_dir();
 
     /* chdir to the server directory */
@@ -1417,9 +1419,6 @@ void server_init_process(void)
                                "Or maybe the wrong wineserver is still running?\n",
                                version, SERVER_PROTOCOL_VERSION,
                                (version > SERVER_PROTOCOL_VERSION) ? "wine" : "wineserver" );
-#ifdef __APPLE__
-    send_server_task_port();
-#endif
 #if defined(__linux__) && defined(HAVE_PRCTL)
     /* work around Ubuntu's ptrace breakage */
     if (server_pid != -1) prctl( 0x59616d61 /* PR_SET_PTRACER */, server_pid );
@@ -1437,6 +1436,10 @@ void server_init_process_done(void)
     void *entry = (char *)peb->ImageBaseAddress + nt->OptionalHeader.AddressOfEntryPoint;
     NTSTATUS status;
     int suspend;
+
+#ifdef __APPLE__
+    send_server_task_port();
+#endif
 
     /* Install signal handlers; this cannot be done earlier, since we cannot
      * send exceptions to the debugger before the create process event that

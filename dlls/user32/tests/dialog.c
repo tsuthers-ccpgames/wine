@@ -55,6 +55,7 @@ static LONG g_styleInitialFocusT1, g_styleInitialFocusT2;
 static BOOL g_bInitialFocusInitDlgResult, g_bReceivedCommand;
 
 static BOOL g_terminated;
+static BOOL g_button1Clicked;
 
 typedef struct {
     INT_PTR id;
@@ -161,7 +162,7 @@ static BOOL CreateWindows (HINSTANCE hinst)
          */
         if (p->id >= numwnds)
         {
-            if (p->id >=  sizeof(hwnd)/sizeof(hwnd[0]))
+            if (p->id >=  ARRAY_SIZE(hwnd))
             {
                 trace ("Control %ld is out of range\n", p->id);
                 return FALSE;
@@ -474,6 +475,10 @@ static LRESULT CALLBACK main_window_procA (HWND hwnd, UINT uiMsg, WPARAM wParam,
                 g_terminated = TRUE;
                 return 0;
             }
+            else if ((wParam == 100 || wParam == 0xFFFF) && lParam)
+            {
+                g_button1Clicked = TRUE;
+            }
             break;
     }
 
@@ -539,6 +544,26 @@ static LRESULT CALLBACK testDlgWinProc (HWND hwnd, UINT uiMsg, WPARAM wParam,
     return DefDlgProcA (hwnd, uiMsg, wParam, lParam);
 }
 
+static LRESULT CALLBACK test_control_procA(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    switch(msg)
+    {
+        case WM_CREATE:
+        {
+            static const short sample[] = { 10,1,2,3,4,5 };
+            CREATESTRUCTA *cs = (CREATESTRUCTA *)lparam;
+            short *data = cs->lpCreateParams;
+            ok(!memcmp(data, sample, sizeof(sample)), "data mismatch: %d,%d,%d,%d,%d\n", data[0], data[1], data[2], data[3], data[4]);
+        }
+        return 0;
+
+    default:
+        break;
+    }
+
+    return DefWindowProcA(hwnd, msg, wparam, lparam);
+}
+
 static BOOL RegisterWindowClasses (void)
 {
     WNDCLASSA cls;
@@ -558,7 +583,10 @@ static BOOL RegisterWindowClasses (void)
 
     cls.lpfnWndProc = main_window_procA;
     cls.lpszClassName = "IsDialogMessageWindowClass";
+    if (!RegisterClassA (&cls)) return FALSE;
 
+    cls.lpfnWndProc = test_control_procA;
+    cls.lpszClassName = "TESTCONTROL";
     if (!RegisterClassA (&cls)) return FALSE;
 
     GetClassInfoA(0, "#32770", &cls);
@@ -787,6 +815,34 @@ static void test_IsDialogMessage(void)
     ok (!IsDialogMessageA(msg.hwnd, &msg), "expected failure\n");
 
     UnhookWindowsHookEx(hook);
+    DestroyWindow(g_hwndMain);
+
+    g_hwndMain = CreateWindowA("IsDialogMessageWindowClass", "IsDialogMessageWindowClass", WS_OVERLAPPEDWINDOW,
+                               CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, g_hinst, 0);
+    SetFocus(g_hwndButton1);
+    g_button1Clicked = FALSE;
+    FormEnterMsg(&msg, g_hwndButton1);
+    ok(IsDialogMessageA(g_hwndMain, &msg), "Did not handle the ENTER\n");
+    ok(g_button1Clicked, "Did not receive button 1 click notification\n");
+
+    g_button1Clicked = FALSE;
+    FormEnterMsg(&msg, g_hwndMain);
+    ok(IsDialogMessageA(g_hwndMain, &msg), "Did not handle the ENTER\n");
+    ok(g_button1Clicked, "Did not receive button 1 click notification\n");
+
+    g_button1Clicked = FALSE;
+    FormEnterMsg(&msg, g_hwndButton2);
+    ok(IsDialogMessageA(g_hwndMain, &msg), "Did not handle the ENTER\n");
+    ok(g_button1Clicked, "Did not receive button 1 click notification\n");
+
+    /* Button with id larger than 0xFFFF should also work */
+    g_button1Clicked = FALSE;
+    FormEnterMsg(&msg, g_hwndMain);
+    SetWindowLongPtrW(g_hwndButton1, GWLP_ID, 0x1FFFF);
+    ok(IsDialogMessageA(g_hwndMain, &msg), "Did not handle the ENTER\n");
+    ok(g_button1Clicked, "Did not receive button 1 click notification\n");
+
+    DestroyWindow(g_hwndMain);
 }
 
 
@@ -846,6 +902,56 @@ static INT_PTR CALLBACK focusDlgWinProc (HWND hDlg, UINT uiMsg, WPARAM wParam,
                g_hwndInitialFocusT1 = (HWND)lParam;
        }
        return FALSE;
+    }
+
+    return FALSE;
+}
+
+static INT_PTR CALLBACK EmptyProcUserTemplate(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch(uMsg) {
+    case WM_INITDIALOG:
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static INT_PTR CALLBACK focusChildDlgWinProc (HWND hwnd, UINT uiMsg, WPARAM wParam,
+        LPARAM lParam)
+{
+    static HWND hChildDlg;
+
+    switch (uiMsg)
+    {
+    case WM_INITDIALOG:
+    {
+        RECT rectHwnd;
+        struct  {
+            DLGTEMPLATE tmplate;
+            WORD menu,class,title;
+        } temp;
+
+        SetFocus( GetDlgItem(hwnd, 200) );
+
+        GetClientRect(hwnd,&rectHwnd);
+        temp.tmplate.style = WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE | DS_CONTROL | DS_3DLOOK;
+        temp.tmplate.dwExtendedStyle = 0;
+        temp.tmplate.cdit = 0;
+        temp.tmplate.x = 0;
+        temp.tmplate.y = 0;
+        temp.tmplate.cx = 0;
+        temp.tmplate.cy = 0;
+        temp.menu = temp.class = temp.title = 0;
+
+        hChildDlg = CreateDialogIndirectParamA(g_hinst, &temp.tmplate,
+                  hwnd, (DLGPROC)EmptyProcUserTemplate, 0);
+        ok(hChildDlg != 0, "Failed to create test dialog.\n");
+
+        return FALSE;
+    }
+    case WM_CLOSE:
+        DestroyWindow(hChildDlg);
+        return TRUE;
     }
 
     return FALSE;
@@ -1037,6 +1143,29 @@ static void test_focus(void)
 
         DestroyWindow(hDlg);
     }
+
+    /* Test 6:
+     * Select textbox's text on creation when WM_INITDIALOG creates a child dialog. */
+    {
+        HWND hDlg;
+        HRSRC hResource;
+        HANDLE hTemplate;
+        DLGTEMPLATE* pTemplate;
+        HWND edit;
+
+        hResource = FindResourceA(g_hinst,"FOCUS_TEST_DIALOG_3", (LPCSTR)RT_DIALOG);
+        hTemplate = LoadResource(g_hinst, hResource);
+        pTemplate = LockResource(hTemplate);
+
+        hDlg = CreateDialogIndirectParamA(g_hinst, pTemplate, NULL, focusChildDlgWinProc, 0);
+        ok(hDlg != 0, "Failed to create test dialog.\n");
+        edit = GetDlgItem(hDlg, 200);
+
+        ok(GetFocus() == edit, "Focus not set to edit, focus=%p, dialog=%p, edit=%p\n",
+                GetFocus(), hDlg, edit);
+
+        DestroyWindow(hDlg);
+    }
 }
 
 static void test_GetDlgItemText(void)
@@ -1045,16 +1174,54 @@ static void test_GetDlgItemText(void)
     BOOL ret;
 
     strcpy(string, "Overwrite Me");
-    ret = GetDlgItemTextA(NULL, 0, string, sizeof(string)/sizeof(string[0]));
+    ret = GetDlgItemTextA(NULL, 0, string, ARRAY_SIZE(string));
     ok(!ret, "GetDlgItemText(NULL) shouldn't have succeeded\n");
 
     ok(string[0] == '\0' || broken(!strcmp(string, "Overwrite Me")),
        "string retrieved using GetDlgItemText should have been NULL terminated\n");
 }
 
+static INT_PTR CALLBACK getdlgitem_test_dialog_proc(HWND hdlg, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    if (msg == WM_INITDIALOG)
+    {
+        char text[64];
+        LONG_PTR val;
+        HWND hwnd;
+        BOOL ret;
+
+        hwnd = GetDlgItem(hdlg, -1);
+        ok(hwnd != NULL, "Expected dialog item.\n");
+
+        *text = 0;
+        ret = GetDlgItemTextA(hdlg, -1, text, ARRAY_SIZE(text));
+        ok(ret && !strcmp(text, "Text1"), "Unexpected item text.\n");
+
+        val = GetWindowLongA(hwnd, GWLP_ID);
+        ok(val == -1, "Unexpected id.\n");
+
+        val = GetWindowLongPtrA(hwnd, GWLP_ID);
+        ok(val == -1, "Unexpected id %ld.\n", val);
+
+        hwnd = GetDlgItem(hdlg, -2);
+        ok(hwnd != NULL, "Expected dialog item.\n");
+
+        val = GetWindowLongA(hwnd, GWLP_ID);
+        ok(val == -2, "Unexpected id.\n");
+
+        val = GetWindowLongPtrA(hwnd, GWLP_ID);
+        ok(val == -2, "Unexpected id %ld.\n", val);
+
+        EndDialog(hdlg, 0xdead);
+    }
+
+    return FALSE;
+}
+
 static void test_GetDlgItem(void)
 {
     HWND hwnd, child1, child2, hwnd2;
+    INT_PTR retval;
     BOOL ret;
 
     hwnd = CreateWindowA("button", "parent", WS_VISIBLE, 0, 0, 100, 100, NULL, 0, g_hinst, NULL);
@@ -1101,6 +1268,9 @@ static void test_GetDlgItem(void)
     DestroyWindow(child1);
     DestroyWindow(child2);
     DestroyWindow(hwnd);
+
+    retval = DialogBoxParamA(g_hinst, "GETDLGITEM_TEST_DIALOG", NULL, getdlgitem_test_dialog_proc, 0);
+    ok(retval == 0xdead, "Unexpected return value.\n");
 }
 
 static INT_PTR CALLBACK DestroyDlgWinProc (HWND hDlg, UINT uiMsg,
@@ -1461,7 +1631,7 @@ static INT_PTR CALLBACK test_aw_conversion_dlgproc(HWND hdlg, UINT msg, WPARAM w
            (BYTE)buff[0], (BYTE)buff[1], len);
 
         memset(buffW, 0xff, sizeof(buffW));
-        len = GetWindowTextW(hdlg, buffW, sizeof(buffW)/sizeof(buffW[0]));
+        len = GetWindowTextW(hdlg, buffW, ARRAY_SIZE(buffW));
         ok(buffW[0] == 'W' && buffW[1] == 0xffff && len == 0, "Unexpected window text %#x, %#x, len %d\n",
             buffW[0], buffW[1], len);
 
@@ -1567,7 +1737,7 @@ static INT_PTR CALLBACK test_aw_conversion_dlgproc2(HWND hdlg, UINT msg, WPARAM 
         ok(!strcmp(buff, testtext) && len == 0, "Unexpected window text %s, len %d\n", buff, len);
 
         memset(buffW, 0xff, sizeof(buffW));
-        len = GetWindowTextW(hdlg, buffW, sizeof(buffW)/sizeof(buffW[0]));
+        len = GetWindowTextW(hdlg, buffW, ARRAY_SIZE(buffW));
         ok(buffW[0] == 0 && buffW[1] == 0xffff && len == 0, "Unexpected window text %#x, %#x, len %d\n",
             buffW[0], buffW[1], len);
 
@@ -2015,12 +2185,26 @@ static void test_MessageBox(void)
     UnhookWindowsHookEx(hook);
 }
 
+static INT_PTR CALLBACK custom_test_dialog_proc(HWND hdlg, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    if (msg == WM_INITDIALOG)
+        EndDialog(hdlg, 0);
+
+    return FALSE;
+}
+
+static void test_dialog_custom_data(void)
+{
+    DialogBoxA(g_hinst, "CUSTOM_TEST_DIALOG", NULL, custom_test_dialog_proc);
+}
+
 START_TEST(dialog)
 {
     g_hinst = GetModuleHandleA (0);
 
     if (!RegisterWindowClasses()) assert(0);
 
+    test_dialog_custom_data();
     test_GetNextDlgItem();
     test_IsDialogMessage();
     test_WM_NEXTDLGCTL();

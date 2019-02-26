@@ -794,12 +794,12 @@ static void init_new_decoded_pad(GstElement *bin, GstPad *pad, GSTImpl *This)
     piOutput.dir = PINDIR_OUTPUT;
     piOutput.pFilter = &This->filter.IBaseFilter_iface;
     name = gst_pad_get_name(pad);
-    MultiByteToWideChar(CP_UNIXCP, 0, name, -1, piOutput.achName, sizeof(piOutput.achName) / sizeof(piOutput.achName[0]) - 1);
+    MultiByteToWideChar(CP_UNIXCP, 0, name, -1, piOutput.achName, ARRAY_SIZE(piOutput.achName) - 1);
     TRACE("Name: %s\n", name);
     strcpy(my_name, "qz_sink_");
     strcat(my_name, name);
     g_free(name);
-    piOutput.achName[sizeof(piOutput.achName) / sizeof(piOutput.achName[0]) - 1] = 0;
+    piOutput.achName[ARRAY_SIZE(piOutput.achName) - 1] = 0;
 
     caps = gst_pad_query_caps(pad, NULL);
     caps = gst_caps_make_writable(caps);
@@ -1087,7 +1087,7 @@ static GstBusSyncReply watch_bus(GstBus *bus, GstMessage *msg, gpointer data)
 static void unknown_type(GstElement *bin, GstPad *pad, GstCaps *caps, gpointer user)
 {
     gchar *strcaps = gst_caps_to_string(caps);
-    ERR("Could not find a filter for caps: %s\n", strcaps);
+    ERR("Could not find a filter for caps: %s\n", debugstr_a(strcaps));
     g_free(strcaps);
 }
 
@@ -1259,7 +1259,7 @@ IUnknown * CALLBACK Gstreamer_Splitter_create(IUnknown *pUnkOuter, HRESULT *phr)
     piInput = &This->pInputPin.pin.pinInfo;
     piInput->dir = PINDIR_INPUT;
     piInput->pFilter = &This->filter.IBaseFilter_iface;
-    lstrcpynW(piInput->achName, wcsInputPinName, sizeof(piInput->achName) / sizeof(piInput->achName[0]));
+    lstrcpynW(piInput->achName, wcsInputPinName, ARRAY_SIZE(piInput->achName));
     This->pInputPin.pin.IPin_iface.lpVtbl = &GST_InputPin_Vtbl;
     This->pInputPin.pin.refCount = 1;
     This->pInputPin.pin.pConnectedTo = NULL;
@@ -1470,12 +1470,6 @@ static HRESULT WINAPI GST_GetState(IBaseFilter *iface, DWORD dwMilliSecsTimeout,
     }
 }
 
-static HRESULT WINAPI GST_FindPin(IBaseFilter *iface, LPCWSTR Id, IPin **ppPin)
-{
-    FIXME("(%p)->(%s,%p) stub\n", iface, debugstr_w(Id), ppPin);
-    return E_NOTIMPL;
-}
-
 static const IBaseFilterVtbl GST_Vtbl = {
     GST_QueryInterface,
     BaseFilterImpl_AddRef,
@@ -1488,7 +1482,7 @@ static const IBaseFilterVtbl GST_Vtbl = {
     BaseFilterImpl_SetSyncSource,
     BaseFilterImpl_GetSyncSource,
     BaseFilterImpl_EnumPins,
-    GST_FindPin,
+    BaseFilterImpl_FindPin,
     BaseFilterImpl_QueryFilterInfo,
     BaseFilterImpl_JoinFilterGraph,
     BaseFilterImpl_QueryVendorInfo

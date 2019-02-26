@@ -1008,7 +1008,7 @@ struct vol_caps
 static struct fs_cache *look_up_fs_cache( dev_t dev )
 {
     int i;
-    for (i = 0; i < sizeof(fs_cache)/sizeof(fs_cache[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( fs_cache ); i++)
         if (fs_cache[i].dev == dev)
             return fs_cache+i;
     return NULL;
@@ -1033,7 +1033,7 @@ static void add_fs_cache( dev_t dev, fsid_t fsid, BOOLEAN case_sensitive )
     }
 
     /* Add a new entry */
-    for (i = 0; i < sizeof(fs_cache)/sizeof(fs_cache[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( fs_cache ); i++)
         if (fs_cache[i].dev == 0)
         {
             /* This entry is empty, use it */
@@ -1455,8 +1455,8 @@ static BOOL append_entry( struct dir_data *data, const char *long_name,
     if (short_name)
     {
         short_len = ntdll_umbstowcs( 0, short_name, strlen(short_name),
-                                     short_nameW, sizeof(short_nameW) / sizeof(WCHAR) - 1 );
-        if (short_len == -1) short_len = sizeof(short_nameW) / sizeof(WCHAR) - 1;
+                                     short_nameW, ARRAY_SIZE( short_nameW ) - 1 );
+        if (short_len == -1) short_len = ARRAY_SIZE( short_nameW ) - 1;
         for (i = 0; i < short_len; i++) short_nameW[i] = toupperW( short_nameW[i] );
     }
     else  /* generate a short name if necessary */
@@ -2269,37 +2269,29 @@ done:
  */
 static void init_redirects(void)
 {
-    UNICODE_STRING nt_name;
-    ANSI_STRING unix_name;
-    NTSTATUS status;
+    static const char windows_dir[] = "/dosdevices/c:/windows";
+    const char *config_dir = wine_get_config_dir();
+    char *dir;
     struct stat st;
     unsigned int i;
 
-    if (!RtlDosPathNameToNtPathName_U( user_shared_data->NtSystemRoot, &nt_name, NULL, NULL ))
-    {
-        ERR( "can't convert %s\n", debugstr_w(user_shared_data->NtSystemRoot) );
-        return;
-    }
-    status = wine_nt_to_unix_file_name( &nt_name, &unix_name, FILE_OPEN_IF, FALSE );
-    RtlFreeUnicodeString( &nt_name );
-    if (status)
-    {
-        ERR( "cannot open %s (%x)\n", debugstr_w(user_shared_data->NtSystemRoot), status );
-        return;
-    }
-    if (!stat( unix_name.Buffer, &st ))
+    if (!(dir = RtlAllocateHeap( GetProcessHeap(), 0, strlen(config_dir) + sizeof(windows_dir) ))) return;
+    strcpy( dir, config_dir );
+    strcat( dir, windows_dir );
+    if (!stat( dir, &st ))
     {
         windir.dev = st.st_dev;
         windir.ino = st.st_ino;
-        nb_redirects = sizeof(redirects) / sizeof(redirects[0]);
+        nb_redirects = ARRAY_SIZE( redirects );
         for (i = 0; i < nb_redirects; i++)
         {
             if (!redirects[i].dos_target) continue;
-            redirects[i].unix_target = get_redirect_target( unix_name.Buffer, redirects[i].dos_target );
+            redirects[i].unix_target = get_redirect_target( dir, redirects[i].dos_target );
             TRACE( "%s -> %s\n", debugstr_w(redirects[i].source), redirects[i].unix_target );
         }
     }
-    RtlFreeAnsiString( &unix_name );
+    else ERR( "%s: %s\n", dir, strerror(errno) );
+    RtlFreeHeap( GetProcessHeap(), 0, dir );
 
 }
 
@@ -2473,11 +2465,11 @@ static inline int get_dos_prefix_len( const UNICODE_STRING *name )
 
     if (name->Length >= sizeof(nt_prefixW) &&
         !memcmp( name->Buffer, nt_prefixW, sizeof(nt_prefixW) ))
-        return sizeof(nt_prefixW) / sizeof(WCHAR);
+        return ARRAY_SIZE( nt_prefixW );
 
     if (name->Length >= sizeof(dosdev_prefixW) &&
-        !memicmpW( name->Buffer, dosdev_prefixW, sizeof(dosdev_prefixW)/sizeof(WCHAR) ))
-        return sizeof(dosdev_prefixW) / sizeof(WCHAR);
+        !memicmpW( name->Buffer, dosdev_prefixW, ARRAY_SIZE( dosdev_prefixW )))
+        return ARRAY_SIZE( dosdev_prefixW );
 
     return 0;
 }
@@ -2650,9 +2642,8 @@ static NTSTATUS lookup_unix_name( const WCHAR *name, int name_len, char **buffer
         {
             if (!stat( unix_name, &st ))
             {
-                /* creation fails with STATUS_ACCESS_DENIED for the root of the drive */
                 if (disposition == FILE_CREATE)
-                    return name_len ? STATUS_OBJECT_NAME_COLLISION : STATUS_ACCESS_DENIED;
+                    return STATUS_OBJECT_NAME_COLLISION;
                 return STATUS_SUCCESS;
             }
         }
