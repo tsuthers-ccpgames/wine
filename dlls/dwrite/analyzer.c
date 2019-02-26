@@ -184,6 +184,10 @@ static const struct dwritescript_properties dwritescripts_properties[Script_Last
     { /* Osge */ { 0x6567734f, 219,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('o','s','g','e') },
     { /* Sgnw */ { 0x776e6753,  95,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('s','g','n','w') },
     { /* Tang */ { 0x676e6154, 520,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('t','a','n','g') },
+    { /* Gonm */ { 0x6d6e6f47, 313,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('g','o','n','m') },
+    { /* Nshu */ { 0x7568734e, 499,  1, 0x0020, 0, 0, 1, 1, 0, 0, 0 }, _OT('n','s','h','u') },
+    { /* Soyo */ { 0x6f796f53, 329,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('s','o','y','o') },
+    { /* Zanb */ { 0x626e615a, 339,  8, 0x0020, 0, 1, 1, 0, 0, 0, 0 }, _OT('z','a','n','b') },
 };
 #undef _OT
 
@@ -513,7 +517,7 @@ static HRESULT analyze_linebreaks(const WCHAR *text, UINT32 count, DWRITE_LINE_B
     {
         switch (break_class[i])
         {
-            /* LB7 - do not break before spaces */
+            /* LB7 - do not break before spaces or zero-width space */
             case b_SP:
                 set_break_condition(i, BreakConditionBefore, DWRITE_BREAK_CONDITION_MAY_NOT_BREAK, &state);
                 break;
@@ -527,10 +531,9 @@ static HRESULT analyze_linebreaks(const WCHAR *text, UINT32 count, DWRITE_LINE_B
                 if (j < count-1 && break_class[j+1] != b_ZW)
                     set_break_condition(j, BreakConditionAfter, DWRITE_BREAK_CONDITION_CAN_BREAK, &state);
                 break;
-            /* LB8a - do not break between ZWJ and an ideograph, emoji base or emoji modifier */
+            /* LB8a - do not break after ZWJ */
             case b_ZWJ:
-                if (i < count-1 && (break_class[i+1] == b_ID || break_class[i+1] == b_EB || break_class[i+1] == b_EM))
-                    set_break_condition(i, BreakConditionAfter, DWRITE_BREAK_CONDITION_MAY_NOT_BREAK, &state);
+                set_break_condition(i, BreakConditionAfter, DWRITE_BREAK_CONDITION_MAY_NOT_BREAK, &state);
                 break;
         }
     }

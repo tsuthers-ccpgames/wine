@@ -157,6 +157,9 @@ VOID WINAPI GetSystemInfo(
         default: si->dwProcessorType = PROCESSOR_ARM920;
         }
         break;
+    case PROCESSOR_ARCHITECTURE_ARM64:
+        si->dwProcessorType = 0;
+        break;
     default:
         FIXME("Unknown processor architecture %x\n", sci.Architecture);
         si->dwProcessorType = 0;
@@ -329,10 +332,56 @@ DWORD WINAPI GetActiveProcessorCount(WORD group)
 }
 
 /***********************************************************************
+ *           GetMaximumProcessorCount (KERNEL32.@)
+ */
+DWORD WINAPI GetMaximumProcessorCount(WORD group)
+{
+    SYSTEM_INFO si;
+    DWORD cpus;
+
+    GetSystemInfo( &si );
+    cpus = si.dwNumberOfProcessors;
+
+    FIXME("semi-stub, returning %u\n", cpus);
+    return cpus;
+}
+
+/***********************************************************************
  *           GetEnabledXStateFeatures (KERNEL32.@)
  */
 DWORD64 WINAPI GetEnabledXStateFeatures(void)
 {
     FIXME("\n");
     return 0;
+}
+
+/***********************************************************************
+ *           GetSystemFirmwareTable (KERNEL32.@)
+ */
+UINT WINAPI GetSystemFirmwareTable(DWORD provider, DWORD id, void *buffer, DWORD size)
+{
+    ULONG buffer_size = FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer) + size;
+    SYSTEM_FIRMWARE_TABLE_INFORMATION *sfti = HeapAlloc(GetProcessHeap(), 0, buffer_size);
+    NTSTATUS status;
+
+    TRACE("(0x%08x, 0x%08x, %p, %d)\n", provider, id, buffer, size);
+
+    if (!sfti)
+    {
+        SetLastError(ERROR_OUTOFMEMORY);
+        return 0;
+    }
+
+    sfti->ProviderSignature = provider;
+    sfti->Action = SystemFirmwareTable_Get;
+    sfti->TableID = id;
+
+    status = NtQuerySystemInformation(SystemFirmwareTableInformation, sfti, buffer_size, &buffer_size);
+    buffer_size -= FIELD_OFFSET(SYSTEM_FIRMWARE_TABLE_INFORMATION, TableBuffer);
+    if (buffer_size <= size)
+        memcpy(buffer, sfti->TableBuffer, buffer_size);
+
+    if (status) SetLastError(RtlNtStatusToDosError(status));
+    HeapFree(GetProcessHeap(), 0, sfti);
+    return buffer_size;
 }

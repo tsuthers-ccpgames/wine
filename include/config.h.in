@@ -339,9 +339,6 @@
 /* Define to 1 if you have the `isnan' function. */
 #undef HAVE_ISNAN
 
-/* Define to 1 if you have the `isnanf' function. */
-#undef HAVE_ISNANF
-
 /* Define to 1 if you have the `j0' function. */
 #undef HAVE_J0
 
@@ -602,6 +599,9 @@
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
+
+/* Define to 1 if you have the <Metal/Metal.h> header file. */
+#undef HAVE_METAL_METAL_H
 
 /* Define to 1 if you have the `mmap' function. */
 #undef HAVE_MMAP
@@ -1514,6 +1514,9 @@
 
 /* Define to the soname of the libkrb5 library. */
 #undef SONAME_LIBKRB5
+
+/* Define to the soname of the libMoltenVK library. */
+#undef SONAME_LIBMOLTENVK
 
 /* Define to the soname of the libncurses library. */
 #undef SONAME_LIBNCURSES

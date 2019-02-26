@@ -1186,11 +1186,11 @@ static void dump_dir_exceptions(void)
 }
 
 
-static void dump_image_thunk_data64(const IMAGE_THUNK_DATA64 *il)
+static void dump_image_thunk_data64(const IMAGE_THUNK_DATA64 *il, DWORD thunk_rva)
 {
     /* FIXME: This does not properly handle large images */
     const IMAGE_IMPORT_BY_NAME* iibn;
-    for (; il->u1.Ordinal; il++)
+    for (; il->u1.Ordinal; il++, thunk_rva += sizeof(LONGLONG))
     {
         if (IMAGE_SNAP_BY_ORDINAL64(il->u1.Ordinal))
             printf("  %4u  <by ordinal>\n", (DWORD)IMAGE_ORDINAL64(il->u1.Ordinal));
@@ -1200,7 +1200,7 @@ static void dump_image_thunk_data64(const IMAGE_THUNK_DATA64 *il)
             if (!iibn)
                 printf("Can't grab import by name info, skipping to next ordinal\n");
             else
-                printf("  %4u  %s %x\n", iibn->Hint, iibn->Name, (DWORD)il->u1.AddressOfData);
+                printf("  %4u  %s %x\n", iibn->Hint, iibn->Name, thunk_rva);
         }
     }
 }
@@ -1256,7 +1256,7 @@ static	void	dump_dir_imported_functions(void)
         else
         {
             if(PE_nt_headers->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
-                dump_image_thunk_data64((const IMAGE_THUNK_DATA64*)il);
+                dump_image_thunk_data64((const IMAGE_THUNK_DATA64*)il, importDesc->FirstThunk);
             else
                 dump_image_thunk_data32(il, 0, importDesc->FirstThunk);
             printf("\n");
@@ -1344,7 +1344,7 @@ static void dump_dir_delay_imported_functions(void)
         else
         {
             if (PE_nt_headers->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
-                dump_image_thunk_data64((const IMAGE_THUNK_DATA64 *)il);
+                dump_image_thunk_data64((const IMAGE_THUNK_DATA64 *)il, importDesc->ImportAddressTableRVA);
             else
                 dump_image_thunk_data32(il, offset, importDesc->ImportAddressTableRVA);
             printf("\n");
@@ -1382,6 +1382,7 @@ static	void	dump_dir_debug_dir(const IMAGE_DEBUG_DIRECTORY* idd, int idx)
     case IMAGE_DEBUG_TYPE_POGO:        str = "POGO";       break;
     case IMAGE_DEBUG_TYPE_ILTCG:       str = "ILTCG";      break;
     case IMAGE_DEBUG_TYPE_MPX:         str = "MPX";        break;
+    case IMAGE_DEBUG_TYPE_REPRO:       str = "REPRO";      break;
     }
     printf("  Type:              %u (%s)\n", idd->Type, str);
     printf("  SizeOfData:        %u\n", idd->SizeOfData);
@@ -1654,7 +1655,7 @@ static const char *get_resource_type( unsigned int id )
         "RT_MANIFEST"
     };
 
-    if ((size_t)id < sizeof(types)/sizeof(types[0])) return types[id];
+    if ((size_t)id < ARRAY_SIZE(types)) return types[id];
     return NULL;
 }
 

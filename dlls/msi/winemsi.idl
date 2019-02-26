@@ -51,8 +51,10 @@ struct wire_field {
     int len;
 };
 
+/* compatible with MSIRECORD minus header */
 struct wire_record {
     unsigned int count;
+    UINT64 cookie;
     [size_is(count+1)] struct wire_field fields[];
 };
 
@@ -73,6 +75,10 @@ interface IWineMsiRemote
     UINT remote_DatabaseGetPrimaryKeys( [in] MSIHANDLE db, [in, string] LPCWSTR table, [out] struct wire_record **keys );
     UINT remote_DatabaseGetSummaryInformation( [in] MSIHANDLE db, [in] UINT updatecount, [out] MSIHANDLE *suminfo );
     UINT remote_DatabaseOpenView( [in] MSIHANDLE db, [in, string] LPCWSTR query, [out] MSIHANDLE *view );
+
+    UINT remote_SummaryInfoGetPropertyCount( [in] MSIHANDLE suminfo, [out] UINT *count );
+    UINT remote_SummaryInfoGetProperty( [in] MSIHANDLE suminfo, [in] UINT property, [out] UINT *type, [out] INT *value,
+                                        [out] FILETIME *ft, [out, string] LPWSTR *buf );
 
     MSIHANDLE remote_GetActiveDatabase( [in] MSIHANDLE hinst );
     UINT remote_GetProperty( [in] MSIHANDLE hinst, [in, string] LPCWSTR property, [out, string] LPWSTR *value, [out] DWORD *size );

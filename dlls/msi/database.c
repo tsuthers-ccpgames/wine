@@ -451,7 +451,7 @@ static LPWSTR msi_build_createsql_prelude(LPWSTR table)
 
     static const WCHAR create_fmt[] = {'C','R','E','A','T','E',' ','T','A','B','L','E',' ','`','%','s','`',' ','(',' ',0};
 
-    size = sizeof(create_fmt)/sizeof(create_fmt[0]) + lstrlenW(table) - 2;
+    size = ARRAY_SIZE(create_fmt) + lstrlenW(table) - 2;
     prelude = msi_alloc(size * sizeof(WCHAR));
     if (!prelude)
         return NULL;
@@ -1333,7 +1333,7 @@ static LPWSTR get_key_value(MSIQUERY *view, LPCWSTR key, MSIRECORD *rec)
     if (MSI_RecordGetString(rec, i))  /* check record field is a string */
     {
         /* quote string record fields */
-        const WCHAR szQuote[] = {'\'', 0};
+        static const WCHAR szQuote[] = {'\'', 0};
         sz += 2;
         val = msi_alloc(sz*sizeof(WCHAR));
         if (!val)

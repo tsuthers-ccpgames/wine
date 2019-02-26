@@ -47,6 +47,7 @@ static char *server_dir;
 static char *build_dir;
 static char *user_name;
 static char *argv0_name;
+static char *wineserver64;
 
 #ifdef __GNUC__
 static void fatal_error( const char *err, ... )  __attribute__((noreturn,format(printf,1,2)));
@@ -54,9 +55,11 @@ static void fatal_perror( const char *err, ... )  __attribute__((noreturn,format
 #endif
 
 #if defined(__linux__) || defined(__FreeBSD_kernel__ )
-#define EXE_LINK "/proc/self/exe"
+static const char exe_link[] = "/proc/self/exe";
 #elif defined (__FreeBSD__) || defined(__DragonFly__)
-#define EXE_LINK "/proc/curproc/file"
+static const char exe_link[] = "/proc/curproc/file";
+#else
+static const char exe_link[] = "";
 #endif
 
 /* die on a fatal error */
@@ -151,30 +154,42 @@ static char *get_runtime_libdir(void)
     return NULL;
 }
 
-/* return the directory that contains the main exe at run-time */
-static char *get_runtime_exedir(void)
+/* read a symlink and return its directory */
+static char *symlink_dirname( const char *name )
 {
-#ifdef EXE_LINK
-    char *p, *bindir;
-    int size;
+    char *p, *buffer, *absdir = NULL;
+    int ret, size;
 
     for (size = 256; ; size *= 2)
     {
-        int ret;
-        if (!(bindir = malloc( size ))) return NULL;
-        if ((ret = readlink( EXE_LINK, bindir, size )) == -1) break;
+        if (!(buffer = malloc( size ))) return NULL;
+        if ((ret = readlink( name, buffer, size )) == -1) break;
         if (ret != size)
         {
-            bindir[ret] = 0;
-            if (!(p = strrchr( bindir, '/' ))) break;
-            if (p == bindir) p++;
+            buffer[ret] = 0;
+            if (!(p = strrchr( buffer, '/' ))) break;
+            if (p == buffer) p++;
             *p = 0;
-            return bindir;
+            if (buffer[0] == '/') return buffer;
+            /* make it absolute */
+            absdir = xmalloc( strlen(name) + strlen(buffer) + 1 );
+            strcpy( absdir, name );
+            if (!(p = strrchr( absdir, '/' ))) break;
+            strcpy( p + 1, buffer );
+            free( buffer );
+            return absdir;
         }
-        free( bindir );
+        free( buffer );
     }
-    free( bindir );
-#endif
+    free( buffer );
+    free( absdir );
+    return NULL;
+}
+
+/* return the directory that contains the main exe at run-time */
+static char *get_runtime_exedir(void)
+{
+    if (exe_link[0]) return symlink_dirname( exe_link );
     return NULL;
 }
 
@@ -440,6 +455,16 @@ done:
     if (build_dir)
     {
         argv0_name = build_path( "loader/", basename );
+        if (sizeof(int) == sizeof(void *))
+        {
+            char *loader, *linkname = build_path( build_dir, "loader/wine64" );
+            if ((loader = symlink_dirname( linkname )))
+            {
+                wineserver64 = build_path( loader, "../server/wineserver" );
+                free( loader );
+            }
+            free( linkname );
+        }
     }
     else
     {
@@ -548,7 +573,7 @@ void wine_exec_wine_binary( const char *name, char **argv, const char *env_var )
 
     if (!name) name = argv0_name;  /* no name means default loader */
 
-#ifdef linux
+#if defined(linux) || defined(__APPLE__)
     use_preloader = !strendswith( name, "wineserver" );
 #else
     use_preloader = 0;
@@ -559,7 +584,10 @@ void wine_exec_wine_binary( const char *name, char **argv, const char *env_var )
         /* if we are in build dir and name contains a path, try that */
         if (build_dir)
         {
-            argv[0] = build_path( build_dir, name );
+            if (wineserver64 && !strcmp( name, "server/wineserver" ))
+                argv[0] = xstrdup( wineserver64 );
+            else
+                argv[0] = build_path( build_dir, name );
             preloader_exec( argv, use_preloader );
             free( argv[0] );
         }

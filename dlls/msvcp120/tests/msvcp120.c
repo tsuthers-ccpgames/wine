@@ -25,6 +25,13 @@
 #include "winbase.h"
 
 DWORD expect_idx;
+static int vector_alloc_count;
+static int vector_elem_count;
+typedef struct blocks_to_free{
+    size_t first_block;
+    void *blocks[sizeof(void*)*8];
+    int size_check;
+}compact_block;
 
 #define DEFINE_EXPECT(func) \
     BOOL expect_ ## func, called_ ## func
@@ -36,7 +43,9 @@ struct expect_struct {
     DEFINE_EXPECT(queue_char__Copy_item);
     DEFINE_EXPECT(queue_char__Assign_and_destroy_item);
     DEFINE_EXPECT(concurrent_vector_int_alloc);
-    DEFINE_EXPECT(concurrent_vector_int_free);
+    DEFINE_EXPECT(concurrent_vector_int_destroy);
+    DEFINE_EXPECT(concurrent_vector_int_copy);
+    DEFINE_EXPECT(concurrent_vector_int_assign);
 };
 
 #define SET_EXPECT(func) \
@@ -109,6 +118,14 @@ static void * (WINAPI *call_thiscall_func1)( void *func, void *this );
 static void * (WINAPI *call_thiscall_func2)( void *func, void *this, const void *a );
 static void * (WINAPI *call_thiscall_func3)( void *func, void *this, const void *a,
         const void *b );
+static void * (WINAPI *call_thiscall_func4)( void *func, void *this, const void *a,
+        const void *b, const void *c );
+static void * (WINAPI *call_thiscall_func5)( void *func, void *this, const void *a,
+        const void *b, const void *c, const void *d );
+static void * (WINAPI *call_thiscall_func6)( void *func, void *this, const void *a,
+        const void *b, const void *c, const void *d, const void *e );
+static void * (WINAPI *call_thiscall_func7)( void *func, void *this, const void *a,
+        const void *b, const void *c, const void *d, const void *e, const void *f );
 
 static void init_thiscall_thunk(void)
 {
@@ -122,18 +139,34 @@ static void init_thiscall_thunk(void)
     call_thiscall_func1 = (void *)thunk;
     call_thiscall_func2 = (void *)thunk;
     call_thiscall_func3 = (void *)thunk;
+    call_thiscall_func4 = (void *)thunk;
+    call_thiscall_func5 = (void *)thunk;
+    call_thiscall_func6 = (void *)thunk;
+    call_thiscall_func7 = (void *)thunk;
 }
 
 #define call_func1(func,_this) call_thiscall_func1(func,_this)
 #define call_func2(func,_this,a) call_thiscall_func2(func,_this,(const void*)(a))
 #define call_func3(func,_this,a,b) call_thiscall_func3(func,_this,(const void*)(a),\
         (const void*)(b))
+#define call_func4(func,_this,a,b,c) call_thiscall_func4(func,_this,(const void*)(a),\
+        (const void*)(b),(const void*)(c))
+#define call_func5(func,_this,a,b,c,d) call_thiscall_func5(func,_this,(const void*)(a),\
+        (const void*)(b),(const void*)(c),(const void*)(d))
+#define call_func6(func,_this,a,b,c,d,e) call_thiscall_func6(func,_this,(const void*)(a),\
+        (const void*)(b),(const void*)(c),(const void*)(d),(const void*)(e))
+#define call_func7(func,_this,a,b,c,d,e,f) call_thiscall_func7(func,_this,(const void*)(a),\
+        (const void*)(b),(const void*)(c),(const void*)(d),(const void*)(e),(const void*)(f))
 #else
 
 #define init_thiscall_thunk()
 #define call_func1(func,_this) func(_this)
 #define call_func2(func,_this,a) func(_this,a)
 #define call_func3(func,_this,a,b) func(_this,a,b)
+#define call_func4(func,_this,a,b,c) func(_this,a,b,c)
+#define call_func5(func,_this,a,b,c,d) func(_this,a,b,c,d)
+#define call_func6(func,_this,a,b,c,d,e) func(_this,a,b,c,d,e)
+#define call_func7(func,_this,a,b,c,d,e,f) func(_this,a,b,c,d,e,f)
 #endif /* __i386__ */
 
 static inline float __port_infinity(void)
@@ -232,6 +265,7 @@ static enum file_type (__cdecl *p_tr2_sys__Stat_wchar)(WCHAR const*, int *);
 static enum file_type (__cdecl *p_tr2_sys__Lstat)(char const*, int *);
 static enum file_type (__cdecl *p_tr2_sys__Lstat_wchar)(WCHAR const*, int *);
 static __int64 (__cdecl *p_tr2_sys__Last_write_time)(char const*);
+static __int64 (__cdecl *p_tr2_sys__Last_write_time_wchar)(WCHAR const*);
 static void (__cdecl *p_tr2_sys__Last_write_time_set)(char const*, __int64);
 static void* (__cdecl *p_tr2_sys__Open_dir)(char*, char const*, int *, enum file_type*);
 static char* (__cdecl *p_tr2_sys__Read_dir)(char*, void*, enum file_type*);
@@ -381,6 +415,25 @@ static void* (__thiscall *p_vector_base_v4__Internal_push_back)(
         vector_base_v4*, size_t, size_t*);
 static size_t (__thiscall *p_vector_base_v4__Internal_clear)(
         vector_base_v4*, void (__cdecl*)(void*, size_t));
+static void (__thiscall *p_vector_base_v4__Internal_copy)(
+        vector_base_v4*, vector_base_v4*, size_t, void (__cdecl*)(void*, const void*, size_t));
+static void (__thiscall *p_vector_base_v4__Internal_assign)(
+        vector_base_v4*, vector_base_v4*, size_t, void (__cdecl*)(void*, size_t),
+        void (__cdecl*)(void*, const void*, size_t), void (__cdecl*)(void*, const void*, size_t));
+static void (__thiscall *p_vector_base_v4__Internal_swap)(
+        vector_base_v4*, const vector_base_v4*);
+static void* (__thiscall *p_vector_base_v4__Internal_compact)(
+        vector_base_v4*, size_t, void*, void (__cdecl*)(void*, size_t),
+        void (__cdecl*)(void*, const void*, size_t));
+static size_t (__thiscall *p_vector_base_v4__Internal_grow_by)(
+        vector_base_v4*, size_t, size_t, void (__cdecl*)(void*, const void*, size_t), const void *);
+static size_t (__thiscall *p_vector_base_v4__Internal_grow_to_at_least_with_result)(
+        vector_base_v4*, size_t, size_t, void (__cdecl*)(void*, const void*, size_t), const void *);
+static void (__thiscall *p_vector_base_v4__Internal_reserve)(
+        vector_base_v4*, size_t, size_t, size_t);
+static void (__thiscall *p_vector_base_v4__Internal_resize)(
+        vector_base_v4*, size_t, size_t, size_t, void (__cdecl*)(void*, size_t),
+        void (__cdecl *copy)(void*, const void*, size_t), const void*);
 
 static HMODULE msvcp;
 #define SETNOFAIL(x,y) x = (void*)GetProcAddress(msvcp,y)
@@ -461,6 +514,8 @@ static BOOL init(void)
                 "?_Lstat@sys@tr2@std@@YA?AW4file_type@123@PEB_WAEAH@Z");
         SET(p_tr2_sys__Last_write_time,
                 "?_Last_write_time@sys@tr2@std@@YA_JPEBD@Z");
+        SET(p_tr2_sys__Last_write_time_wchar,
+                "?_Last_write_time@sys@tr2@std@@YA_JPEB_W@Z");
         SET(p_tr2_sys__Last_write_time_set,
                 "?_Last_write_time@sys@tr2@std@@YAXPEBD_J@Z");
         SET(p_tr2_sys__Open_dir,
@@ -523,6 +578,22 @@ static BOOL init(void)
                 "?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KAEA_K@Z");
         SET(p_vector_base_v4__Internal_clear,
                 "?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_KP6AXPEAX_K@Z@Z");
+        SET(p_vector_base_v4__Internal_copy,
+                "?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAXPEBX1@Z@Z");
+        SET(p_vector_base_v4__Internal_assign,
+                "?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEBV123@_KP6AXPEAX1@ZP6AX2PEBX1@Z5@Z");
+        SET(p_vector_base_v4__Internal_swap,
+                "?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IEAAXAEAV123@@Z");
+        SET(p_vector_base_v4__Internal_compact,
+                "?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IEAAPEAX_KPEAXP6AX10@ZP6AX1PEBX0@Z@Z");
+        SET(p_vector_base_v4__Internal_grow_by,
+                "?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_K_K0P6AXPEAXPEBX0@Z2@Z");
+        SET(p_vector_base_v4__Internal_grow_to_at_least_with_result,
+                "?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IEAA_K_K0P6AXPEAXPEBX0@Z2@Z");
+        SET(p_vector_base_v4__Internal_reserve,
+                "?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00@Z");
+        SET(p_vector_base_v4__Internal_resize,
+                "?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IEAAX_K00P6AXPEAX0@ZP6AX1PEBX0@Z3@Z");
     } else {
         SET(p_tr2_sys__File_size,
                 "?_File_size@sys@tr2@std@@YA_KPBD@Z");
@@ -570,6 +641,8 @@ static BOOL init(void)
                 "?_Lstat@sys@tr2@std@@YA?AW4file_type@123@PB_WAAH@Z");
         SET(p_tr2_sys__Last_write_time,
                 "?_Last_write_time@sys@tr2@std@@YA_JPBD@Z");
+        SET(p_tr2_sys__Last_write_time_wchar,
+                "?_Last_write_time@sys@tr2@std@@YA_JPB_W@Z");
         SET(p_tr2_sys__Last_write_time_set,
                 "?_Last_write_time@sys@tr2@std@@YAXPBD_J@Z");
         SET(p_tr2_sys__Open_dir,
@@ -634,6 +707,22 @@ static BOOL init(void)
                 "?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIAAI@Z");
         SET(p_vector_base_v4__Internal_clear,
                 "?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IAEIP6AXPAXI@Z@Z");
+        SET(p_vector_base_v4__Internal_copy,
+                "?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXPBXI@Z@Z");
+        SET(p_vector_base_v4__Internal_assign,
+                "?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAEXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z");
+        SET(p_vector_base_v4__Internal_swap,
+                "?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IAEXAAV123@@Z");
+        SET(p_vector_base_v4__Internal_compact,
+                "?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IAEPAXIPAXP6AX0I@ZP6AX0PBXI@Z@Z");
+        SET(p_vector_base_v4__Internal_grow_by,
+                "?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z");
+        SET(p_vector_base_v4__Internal_grow_to_at_least_with_result,
+                "?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IAEIIIP6AXPAXPBXI@Z1@Z");
+        SET(p_vector_base_v4__Internal_reserve,
+                "?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIII@Z");
+        SET(p_vector_base_v4__Internal_resize,
+                "?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIIIP6AXPAXI@ZP6AX0PBXI@Z2@Z");
 #else
         SET(p__Thrd_current,
                 "_Thrd_current");
@@ -673,6 +762,22 @@ static BOOL init(void)
                 "?_Internal_push_back@_Concurrent_vector_base_v4@details@Concurrency@@IAAPAXIAAI@Z");
         SET(p_vector_base_v4__Internal_clear,
                 "?_Internal_clear@_Concurrent_vector_base_v4@details@Concurrency@@IAAIP6AXPAXI@Z@Z");
+        SET(p_vector_base_v4__Internal_copy,
+                "?_Internal_copy@_Concurrent_vector_base_v4@details@Concurrency@@IAAXABV123@IP6AXPAXPBXI@Z@Z");
+        SET(p_vector_base_v4__Internal_assign,
+                "?_Internal_assign@_Concurrent_vector_base_v4@details@Concurrency@@IAAXABV123@IP6AXPAXI@ZP6AX1PBXI@Z4@Z");
+        SET(p_vector_base_v4__Internal_swap,
+                "?_Internal_swap@_Concurrent_vector_base_v4@details@Concurrency@@IAAXAAV123@@Z");
+        SET(p_vector_base_v4__Internal_compact,
+                "?_Internal_compact@_Concurrent_vector_base_v4@details@Concurrency@@IAAPAXIPAXP6AX0I@ZP6AX0PBXI@Z@Z");
+        SET(p_vector_base_v4__Internal_grow_by,
+                "?_Internal_grow_by@_Concurrent_vector_base_v4@details@Concurrency@@IAAIIIP6AXPAXPBXI@Z1@Z");
+        SET(p_vector_base_v4__Internal_grow_to_at_least_with_result,
+                "?_Internal_grow_to_at_least_with_result@_Concurrent_vector_base_v4@details@Concurrency@@IAAIIIP6AXPAXPBXI@Z1@Z");
+        SET(p_vector_base_v4__Internal_reserve,
+                "?_Internal_reserve@_Concurrent_vector_base_v4@details@Concurrency@@IAAXIII@Z");
+        SET(p_vector_base_v4__Internal_resize,
+                "?_Internal_resize@_Concurrent_vector_base_v4@details@Concurrency@@IAEXIIIP6AXPAXI@ZP6AX0PBXI@Z2@Z");
 #endif
     }
     SET(p__Thrd_equal,
@@ -1374,9 +1479,8 @@ static void test_tr2_sys__Rename(void)
     BY_HANDLE_FILE_INFORMATION info1, info2;
     char temp_path[MAX_PATH], current_path[MAX_PATH];
     LARGE_INTEGER file_size;
-    WCHAR testW[] = {'t','r','2','_','t','e','s','t','_','d','i','r','/','f','1',0};
-    WCHAR testW2[] = {'t','r','2','_','t','e','s','t','_','d','i','r','/','f','w',0};
-    struct {
+    static const WCHAR testW[] = {'t','r','2','_','t','e','s','t','_','d','i','r','/','f','1',0};
+    static const struct {
         char const *old_path;
         char const *new_path;
         int val;
@@ -1387,6 +1491,29 @@ static void test_tr2_sys__Rename(void)
         { NULL, "tr2_test_dir\\NULL_rename", ERROR_INVALID_PARAMETER },
         { "tr2_test_dir\\f1_rename", "tr2_test_dir\\??invalid_name>>", ERROR_INVALID_NAME },
         { "tr2_test_dir\\not_exist_file", "tr2_test_dir\\not_exist_rename", ERROR_FILE_NOT_FOUND }
+    };
+    static const WCHAR f1_renameW[] =
+            {'t','r','2','_','t','e','s','t','_','d','i','r','\\','f','1','_','r','e','n','a','m','e',0};
+    static const WCHAR f1_rename2W[] =
+            {'t','r','2','_','t','e','s','t','_','d','i','r','\\','f','1','_','r','e','n','a','m','e','2',0};
+    static const WCHAR not_existW[] =
+            {'t','r','2','_','t','e','s','t','_','d','i','r','\\','n','o','t','_','e','x','i','s','t',0};
+    static const WCHAR not_exist2W[] =
+            {'t','r','2','_','t','e','s','t','_','d','i','r','\\','n','o','t','_','e','x','i','s','t','2',0};
+    static const WCHAR invalidW[] =
+            {'t','r','2','_','t','e','s','t','_','d','i','r','\\','?','?','i','n','v','a','l','i','d','>',0};
+    static const struct {
+        const WCHAR *old_path;
+        const WCHAR *new_path;
+        int val;
+    } testsW[] = {
+        { testW, f1_renameW, ERROR_SUCCESS },
+        { testW, NULL, ERROR_FILE_NOT_FOUND }, /* Differs from the A version */
+        { testW, f1_renameW, ERROR_FILE_NOT_FOUND },
+        { NULL, f1_rename2W, ERROR_PATH_NOT_FOUND }, /* Differs from the A version */
+        { f1_renameW, invalidW, ERROR_INVALID_NAME },
+        { not_existW, not_exist2W, ERROR_FILE_NOT_FOUND },
+        { not_existW, invalidW, ERROR_FILE_NOT_FOUND }
     };
 
     memset(current_path, 0, MAX_PATH);
@@ -1402,7 +1529,7 @@ static void test_tr2_sys__Rename(void)
     CloseHandle(file);
 
     ret = p_tr2_sys__Rename("tr2_test_dir\\f1", "tr2_test_dir\\f1");
-    todo_wine ok(ERROR_SUCCESS == ret, "test_tr2_sys__Rename(): expect: ERROR_SUCCESS, got %d\n", ret);
+    ok(ERROR_SUCCESS == ret, "test_tr2_sys__Rename(): expect: ERROR_SUCCESS, got %d\n", ret);
     for(i=0; i<ARRAY_SIZE(tests); i++) {
         errno = 0xdeadbeef;
         if(tests[i].val == ERROR_SUCCESS) {
@@ -1438,10 +1565,34 @@ static void test_tr2_sys__Rename(void)
     ok(ret == ERROR_ALREADY_EXISTS, "test_tr2_sys__Rename(): expect: ERROR_ALREADY_EXISTS, got %d\n", ret);
     ok(p_tr2_sys__File_size("tr2_test_dir\\f1") == 7, "test_tr2_sys__Rename(): expect: 7, got %s\n", wine_dbgstr_longlong(p_tr2_sys__File_size("tr2_test_dir\\f1")));
     ok(p_tr2_sys__File_size("tr2_test_dir\\f1_rename") == 0, "test_tr2_sys__Rename(): expect: 0, got %s\n",wine_dbgstr_longlong(p_tr2_sys__File_size("tr2_test_dir\\f1_rename")));
-    ret = p_tr2_sys__Rename_wchar(testW, testW2);
-    ok(ret == ERROR_SUCCESS, "tr2_sys__Rename_wchar(): expect: ERROR_SUCCESS, got %d\n",  ret);
 
-    ok(DeleteFileW(testW2), "expect fw to exist\n");
+    ok(DeleteFileA("tr2_test_dir\\f1_rename"), "expect f1_rename to exist\n");
+
+    for(i=0; i<ARRAY_SIZE(testsW); i++) {
+        errno = 0xdeadbeef;
+        if(testsW[i].val == ERROR_SUCCESS) {
+            h1 = CreateFileW(testsW[i].old_path, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    NULL, OPEN_EXISTING, 0, 0);
+            ok(h1 != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+            ok(GetFileInformationByHandle(h1, &info1), "GetFileInformationByHandle failed\n");
+            CloseHandle(h1);
+        }
+        SetLastError(0xdeadbeef);
+        ret = p_tr2_sys__Rename_wchar(testsW[i].old_path, testsW[i].new_path);
+        ok(ret == testsW[i].val, "test_tr2_sys__Rename_wchar(): test %d expect: %d, got %d\n", i+1, testsW[i].val, ret);
+        ok(errno == 0xdeadbeef, "test_tr2_sys__Rename_wchar(): test %d errno expect 0xdeadbeef, got %d\n", i+1, errno);
+        if(ret == ERROR_SUCCESS) {
+            h2 = CreateFileW(testsW[i].new_path, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    NULL, OPEN_EXISTING, 0, 0);
+            ok(h2 != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+            ok(GetFileInformationByHandle(h2, &info2), "GetFileInformationByHandle failed\n");
+            CloseHandle(h2);
+            ok(info1.nFileIndexHigh == info2.nFileIndexHigh
+                    && info1.nFileIndexLow == info2.nFileIndexLow,
+                    "test_tr2_sys__Rename_wchar(): test %d expect two files equivalent\n", i+1);
+        }
+    }
+
     ok(DeleteFileA("tr2_test_dir\\f1_rename"), "expect f1_rename to exist\n");
     ret = p_tr2_sys__Remove_dir("tr2_test_dir");
     ok(ret == 1, "test_tr2_sys__Remove_dir(): expect %d got %d\n", 1, ret);
@@ -1581,6 +1732,7 @@ static void test_tr2_sys__Last_write_time(void)
     HANDLE file;
     int ret;
     __int64 last_write_time, newtime;
+    static const WCHAR fileW[] = {'t','r','2','_','t','e','s','t','_','d','i','r','/','f','1',0};
     ret = p_tr2_sys__Make_dir("tr2_test_dir");
     ok(ret == 1, "tr2_sys__Make_dir() expect 1 got %d\n", ret);
 
@@ -1589,6 +1741,9 @@ static void test_tr2_sys__Last_write_time(void)
     CloseHandle(file);
 
     last_write_time = p_tr2_sys__Last_write_time("tr2_test_dir/f1");
+    newtime = p_tr2_sys__Last_write_time_wchar(fileW);
+    ok(last_write_time == newtime, "last_write_time = %s, newtime = %s\n",
+            wine_dbgstr_longlong(last_write_time), wine_dbgstr_longlong(newtime));
     newtime = last_write_time + 123456789;
     p_tr2_sys__Last_write_time_set("tr2_test_dir/f1", newtime);
     todo_wine ok(last_write_time == p_tr2_sys__Last_write_time("tr2_test_dir/f1"),
@@ -2451,13 +2606,16 @@ static DWORD WINAPI queue_pop_thread(void*arg)
 static void* __cdecl concurrent_vector_int_alloc(vector_base_v4 *this, size_t n)
 {
     CHECK_EXPECT(concurrent_vector_int_alloc);
+    vector_alloc_count++;
     return malloc(n*sizeof(int));
 }
 
-static void __cdecl concurrent_vector_int_free(void *ptr, size_t n)
+static void __cdecl concurrent_vector_int_destroy(void *ptr, size_t n)
 {
-    CHECK_EXPECT2(concurrent_vector_int_free);
-    free(ptr);
+    CHECK_EXPECT2(concurrent_vector_int_destroy);
+    ok(vector_elem_count >= n, "invalid destroy\n");
+    vector_elem_count -= n;
+    memset(ptr, 0xff, sizeof(int)*n);
 }
 
 static void concurrent_vector_int_ctor(vector_base_v4 *this)
@@ -2465,6 +2623,38 @@ static void concurrent_vector_int_ctor(vector_base_v4 *this)
     memset(this, 0, sizeof(*this));
     this->allocator = concurrent_vector_int_alloc;
     this->segment = &this->storage[0];
+}
+
+static void concurrent_vector_int_dtor(vector_base_v4 *this)
+{
+    size_t blocks;
+
+    blocks = (size_t)call_func2(p_vector_base_v4__Internal_clear,
+            this, concurrent_vector_int_destroy);
+    for(blocks--; blocks >= this->first_block; blocks--) {
+        vector_alloc_count--;
+        free(this->segment[blocks]);
+    }
+
+    if(this->first_block) {
+        vector_alloc_count--;
+        free(this->segment[0]);
+    }
+
+    call_func1(p_vector_base_v4_dtor, this);
+}
+
+static void __cdecl concurrent_vector_int_copy(void *dst, const void *src, size_t n)
+{
+    CHECK_EXPECT2(concurrent_vector_int_copy);
+    vector_elem_count += n;
+    memcpy(dst, src, n*sizeof(int));
+}
+
+static void __cdecl concurrent_vector_int_assign(void *dst, const void *src, size_t n)
+{
+    CHECK_EXPECT2(concurrent_vector_int_assign);
+    memcpy(dst, src, n*sizeof(int));
 }
 
 static void test_queue_base_v4(void)
@@ -2660,9 +2850,10 @@ static void test_queue_base_v4(void)
 
 static void test_vector_base_v4(void)
 {
-    vector_base_v4 vector;
+    vector_base_v4 vector, v2;
     size_t idx, size;
-    int *data;
+    compact_block b;
+    int i, *data;
 
     concurrent_vector_int_ctor(&vector);
 
@@ -2678,6 +2869,7 @@ static void test_vector_base_v4(void)
     CHECK_CALLED(concurrent_vector_int_alloc);
     ok(data != NULL, "_Internal_push_back returned NULL\n");
     ok(idx == 0, "idx got %ld expected %d\n", (long)idx, 0);
+    vector_elem_count++;
     *data = 1;
     ok(data == vector.storage[0], "vector.storage[0] got %p expected %p\n",
             vector.storage[0], data);
@@ -2685,13 +2877,15 @@ static void test_vector_base_v4(void)
             (long)vector.first_block);
     ok(vector.early_size == 1, "vector.early_size got %ld expected 1\n",
             (long)vector.early_size);
-
+    ok(vector.segment == vector.storage, "vector.segment got %p expected %p\n",
+            vector.segment, vector.storage);
     size = (size_t)call_func1(p_vector_base_v4__Internal_capacity, &vector);
     ok(size == 2, "size of vector got %ld expected 2\n", (long)size);
 
     data = call_func3(p_vector_base_v4__Internal_push_back, &vector, sizeof(int), &idx);
     ok(data != NULL, "_Internal_push_back returned NULL\n");
     ok(idx == 1, "idx got %ld expected 1\n", (long)idx);
+    vector_elem_count++;
     *data = 2;
     ok(vector.first_block == 1, "vector.first_block got %ld expected 1\n",
             (long)vector.first_block);
@@ -2706,18 +2900,21 @@ static void test_vector_base_v4(void)
     CHECK_CALLED(concurrent_vector_int_alloc);
     ok(data != NULL, "_Internal_push_back returned NULL\n");
     ok(idx == 2, "idx got %ld expected 2\n", (long)idx);
+    vector_elem_count++;
     *data = 3;
+    ok(vector.segment == vector.storage, "vector.segment got %p expected %p\n",
+            vector.segment, vector.storage);
     ok(vector.first_block == 1, "vector.first_block got %ld expected 1\n",
             (long)vector.first_block);
     ok(vector.early_size == 3, "vector.early_size got %ld expected 3\n",
             (long)vector.early_size);
-
     size = (size_t)call_func1(p_vector_base_v4__Internal_capacity, &vector);
     ok(size == 4, "size of vector got %ld expected %d\n", (long)size, 4);
 
     data = call_func3(p_vector_base_v4__Internal_push_back, &vector, sizeof(int), &idx);
     ok(data != NULL, "_Internal_push_back returned NULL\n");
     ok(idx == 3, "idx got %ld expected 3\n", (long)idx);
+    vector_elem_count++;
     *data = 4;
     size = (size_t)call_func1(p_vector_base_v4__Internal_capacity, &vector);
     ok(size == 4, "size of vector got %ld expected 4\n", (long)size);
@@ -2726,21 +2923,389 @@ static void test_vector_base_v4(void)
     data = call_func3(p_vector_base_v4__Internal_push_back, &vector, sizeof(int), &idx);
     CHECK_CALLED(concurrent_vector_int_alloc);
     ok(data != NULL, "_Internal_push_back returned NULL\n");
-    ok(idx == 4, "idx got %ld expected 2\n", (long)idx);
+    ok(idx == 4, "idx got %ld expected 4\n", (long)idx);
+    vector_elem_count++;
     *data = 5;
+    ok(vector.segment == vector.storage, "vector.segment got %p expected %p\n",
+            vector.segment, vector.storage);
     size = (size_t)call_func1(p_vector_base_v4__Internal_capacity, &vector);
     ok(size == 8, "size of vector got %ld expected 8\n", (long)size);
 
-    SET_EXPECT(concurrent_vector_int_free);
+    concurrent_vector_int_ctor(&v2);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    SET_EXPECT(concurrent_vector_int_copy);
+    call_func4(p_vector_base_v4__Internal_copy, &v2, &vector,
+            sizeof(int), concurrent_vector_int_copy);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    CHECK_CALLED(concurrent_vector_int_copy);
+    ok(v2.first_block == 3, "v2.first_block got %ld expected 3\n",
+            (long)v2.first_block);
+    ok(v2.early_size == 5, "v2.early_size got %ld expected 5\n",
+            (long)v2.early_size);
+    ok(v2.segment == v2.storage, "v2.segment got %p expected %p\n",
+            v2.segment, v2.storage);
+    SET_EXPECT(concurrent_vector_int_destroy);
     size = (size_t)call_func2(p_vector_base_v4__Internal_clear,
-            &vector, concurrent_vector_int_free);
-    CHECK_CALLED(concurrent_vector_int_free);
+            &v2, concurrent_vector_int_destroy);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    ok(size == 3, "_Internal_clear returned %ld expected 3\n", (long)size);
+    concurrent_vector_int_dtor(&v2);
+
+    concurrent_vector_int_ctor(&v2);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    vector_elem_count += 3;
+    ok(idx == 2, "idx got %ld expected 2\n", (long)idx);
+    SET_EXPECT(concurrent_vector_int_assign);
+    SET_EXPECT(concurrent_vector_int_copy);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    call_func6(p_vector_base_v4__Internal_assign, &v2, &vector, sizeof(int),
+            concurrent_vector_int_destroy, concurrent_vector_int_assign,
+            concurrent_vector_int_copy);
+    CHECK_CALLED(concurrent_vector_int_assign);
+    CHECK_CALLED(concurrent_vector_int_copy);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n",
+            (long)v2.first_block);
+    ok(v2.early_size == 5, "v2.early_size got %ld expected 5\n",
+            (long)v2.early_size);
+    ok(v2.segment == v2.storage, "v2.segment got %p expected %p\n",
+            v2.segment, v2.storage);
+    SET_EXPECT(concurrent_vector_int_destroy);
+    size = (size_t)call_func2(p_vector_base_v4__Internal_clear,
+            &v2, concurrent_vector_int_destroy);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    ok(size == 3, "_Internal_clear returned %ld expected 3\n", (long)size);
+    concurrent_vector_int_dtor(&v2);
+
+    concurrent_vector_int_ctor(&v2);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    vector_elem_count += 3;
+    ok(idx == 2, "idx got %ld expected 2\n", (long)idx);
+    call_func2(p_vector_base_v4__Internal_swap,
+            &v2, &vector);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n",
+            (long)v2.first_block);
+    ok(v2.early_size == 5, "v2.early_size got %ld expected 5\n",
+            (long)v2.early_size);
+    ok(vector.early_size == 3, "vector.early_size got %ld expected 3\n",
+            (long)vector.early_size);
+    call_func2(p_vector_base_v4__Internal_swap,
+            &v2, &vector);
+    ok(v2.early_size == 3, "v2.early_size got %ld expected 3\n",
+            (long)v2.early_size);
+    ok(vector.early_size == 5, "vector.early_size got %ld expected 5\n",
+            (long)vector.early_size);
+    SET_EXPECT(concurrent_vector_int_destroy);
+    size = (size_t)call_func2(p_vector_base_v4__Internal_clear,
+            &v2, concurrent_vector_int_destroy);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    ok(size == 2, "_Internal_clear returned %ld expected 2\n", (long)size);
+    concurrent_vector_int_dtor(&v2);
+
+    /* test for _Internal_compact */
+    concurrent_vector_int_ctor(&v2);
+    for(i=0; i<2; i++) {
+        SET_EXPECT(concurrent_vector_int_alloc);
+        data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+        CHECK_CALLED(concurrent_vector_int_alloc);
+        ok(data != NULL, "_Internal_push_back returned NULL\n");
+        data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+        ok(data != NULL, "_Internal_push_back returned NULL\n");
+        vector_elem_count += 2;
+    }
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 4, "v2.early_size got %ld expected 4\n", (long)v2.early_size);
+    ok(v2.segment == v2.storage, "v2.segment got %p expected %p\n",
+            v2.segment, v2.storage);
+    memset(&b, 0xff, sizeof(b));
+    SET_EXPECT(concurrent_vector_int_alloc);
+    SET_EXPECT(concurrent_vector_int_copy);
+    SET_EXPECT(concurrent_vector_int_destroy);
+    data = call_func5(p_vector_base_v4__Internal_compact,
+            &v2, sizeof(int), &b, concurrent_vector_int_destroy,
+            concurrent_vector_int_copy);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    CHECK_CALLED(concurrent_vector_int_copy);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    ok(v2.first_block == 2, "v2.first_block got %ld expected 2\n", (long)v2.first_block);
+    ok(v2.early_size == 4,"v2.early_size got %ld expected 4\n", (long)v2.early_size);
+    ok(b.first_block == 1, "b.first_block got %ld expected 1\n", (long)b.first_block);
+    ok(v2.segment == v2.storage, "v2.segment got %p expected %p\n",
+            v2.segment, v2.storage);
+    for(i=0; i<2; i++){
+        ok(b.blocks[i] != NULL, "b.blocks[%d] got NULL\n", i);
+        free(b.blocks[i]);
+        vector_alloc_count--;
+    }
+    for(; i<ARRAY_SIZE(b.blocks); i++)
+        ok(!b.blocks[i], "b.blocks[%d] != NULL\n", i);
+    ok(b.size_check == -1, "b.size_check = %x\n", b.size_check);
+
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    for(i=0; i<3; i++){
+        data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+        ok(data != NULL, "_Internal_push_back returned NULL\n");
+    }
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    vector_elem_count += 5;
+    ok(v2.first_block == 2, "v2.first_block got %ld expected 2\n", (long)v2.first_block);
+    ok(v2.early_size == 9, "v2.early_size got %ld expected 9\n", (long)v2.early_size);
+    ok(v2.segment != v2.storage, "v2.segment got %p expected %p\n", v2.segment, v2.storage);
+    for(i = 4;i < 32;i++)
+        ok(v2.segment[i] == 0, "v2.segment[%d] got %p expected 0\n",
+                i, v2.segment[i]);
+    memset(&b, 0xff, sizeof(b));
+    SET_EXPECT(concurrent_vector_int_alloc);
+    SET_EXPECT(concurrent_vector_int_copy);
+    SET_EXPECT(concurrent_vector_int_destroy);
+    data = call_func5(p_vector_base_v4__Internal_compact,
+            &v2, sizeof(int), &b, concurrent_vector_int_destroy,
+            concurrent_vector_int_copy);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    CHECK_CALLED(concurrent_vector_int_copy);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    ok(v2.first_block == 4, "v2.first_block got %ld expected 4\n", (long)v2.first_block);
+    ok(v2.early_size == 9, "v2.early_size got %ld expected 9\n", (long)v2.early_size);
+    ok(b.first_block == 2, "b.first_block got %ld expected 2\n", (long)b.first_block);
+    ok(v2.segment != v2.storage, "v2.segment got %p expected %p\n", v2.segment, v2.storage);
+    for(i = 4;i < 32;i++)
+        ok(v2.segment[i] == 0, "v2.segment[%d] got %p\n",
+                i, v2.segment[i]);
+    for(i=0; i<4; i++){
+        ok(b.blocks[i] != NULL, "b.blocks[%d] got NULL\n", i);
+        /* only b.blocks[0] and b.blocks[>=b.first_block] are used */
+        if(i == b.first_block-1) continue;
+        free(b.blocks[i]);
+        vector_alloc_count--;
+    }
+    for(; i<ARRAY_SIZE(b.blocks); i++)
+        ok(!b.blocks[i], "b.blocks[%d] != NULL\n", i);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    call_func4(p_vector_base_v4__Internal_reserve,
+            &v2, 17, sizeof(int), 32);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    data = call_func5(p_vector_base_v4__Internal_compact,
+            &v2, sizeof(int), &b, concurrent_vector_int_destroy,
+            concurrent_vector_int_copy);
+    ok(v2.first_block == 4, "v2.first_block got %ld expected 4\n", (long)v2.first_block);
+    ok(v2.early_size == 9, "v2.early_size got %ld expected 9\n", (long)v2.early_size);
+    ok(b.first_block == 4, "b.first_block got %ld expected 2\n", (long)b.first_block);
+    ok(v2.segment != v2.storage, "v2.segment got %p expected %p\n", v2.segment, v2.storage);
+    for(i = 4; i < 32; i++)
+        ok(v2.segment[i] == 0, "v2.segment[%d] got %p\n",
+                i, v2.segment[i]);
+    for(i=0; i<4; i++)
+        ok(!b.blocks[i], "b.blocks[%d] != NULL\n", i);
+    for(; i < 5; i++) {
+        ok(b.blocks[i] != NULL, "b.blocks[%d] got NULL\n", i);
+        free(b.blocks[i]);
+        vector_alloc_count--;
+    }
+    for(; i<ARRAY_SIZE(b.blocks); i++)
+        ok(!b.blocks[i], "b.blocks[%d] != NULL\n", i);
+    SET_EXPECT(concurrent_vector_int_destroy);
+    size = (size_t)call_func2(p_vector_base_v4__Internal_clear,
+            &v2, concurrent_vector_int_destroy);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    ok(size == 4, "_Internal_clear returned %ld expected 4\n", (long)size);
+    concurrent_vector_int_dtor(&v2);
+
+    /* test for Internal_grow_by */
+    concurrent_vector_int_ctor(&v2);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    vector_elem_count += 2;
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 2, "v2.early_size got %ld expected 2\n", (long)v2.early_size);
+    i = 0;
+    SET_EXPECT(concurrent_vector_int_alloc);
+    SET_EXPECT(concurrent_vector_int_copy);
+    idx = (size_t)call_func5(p_vector_base_v4__Internal_grow_by,
+            &v2, 1, sizeof(int), concurrent_vector_int_copy, &i);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    CHECK_CALLED(concurrent_vector_int_copy);
+    ok(idx == 2, "_Internal_grow_by returned %ld expected 2\n", (long)idx);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 3, "v2.early_size got %ld expected 3\n", (long)v2.early_size);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    SET_EXPECT(concurrent_vector_int_copy);
+    idx = (size_t)call_func5(p_vector_base_v4__Internal_grow_by,
+            &v2, 2, sizeof(int), concurrent_vector_int_copy, &i);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    CHECK_CALLED(concurrent_vector_int_copy);
+    ok(idx == 3, "_Internal_grow_by returned %ld expected 3\n", (long)idx);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 5, "v2.early_size got %ld expected 5\n", (long)v2.early_size);
+    SET_EXPECT(concurrent_vector_int_destroy);
+    size = (size_t)call_func2(p_vector_base_v4__Internal_clear,
+            &v2, concurrent_vector_int_destroy);
+    ok(size == 3, "_Internal_clear returned %ld expected 3\n", (long)size);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    concurrent_vector_int_dtor(&v2);
+
+    /* test for Internal_grow_to_at_least_with_result */
+    concurrent_vector_int_ctor(&v2);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    vector_elem_count += 2;
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 2, "v2.early_size got %ld expected 2\n", (long)v2.early_size);
+    i = 0;
+    SET_EXPECT(concurrent_vector_int_alloc);
+    SET_EXPECT(concurrent_vector_int_copy);
+    idx = (size_t)call_func5(p_vector_base_v4__Internal_grow_to_at_least_with_result,
+            &v2, 3, sizeof(int), concurrent_vector_int_copy, &i);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    CHECK_CALLED(concurrent_vector_int_copy);
+    ok(idx == 2, "_Internal_grow_to_at_least_with_result returned %ld expected 2\n", (long)idx);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 3, "v2.early_size got %ld expected 3\n", (long)v2.early_size);
+    i = 0;
+    SET_EXPECT(concurrent_vector_int_alloc);
+    SET_EXPECT(concurrent_vector_int_copy);
+    idx = (size_t)call_func5(p_vector_base_v4__Internal_grow_to_at_least_with_result,
+            &v2, 5, sizeof(int), concurrent_vector_int_copy, &i);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    CHECK_CALLED(concurrent_vector_int_copy);
+    ok(idx == 3, "_Internal_grow_to_at_least_with_result returned %ld expected 3\n", (long)idx);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 5, "v2.early_size got %ld expected 5\n", (long)v2.early_size);
+    SET_EXPECT(concurrent_vector_int_destroy);
+    size = (size_t)call_func2(p_vector_base_v4__Internal_clear,
+            &v2, concurrent_vector_int_destroy);
+    ok(size == 3, "_Internal_clear returned %ld expected 3\n", (long)size);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    concurrent_vector_int_dtor(&v2);
+
+    /* test for _Internal_reserve */
+    concurrent_vector_int_ctor(&v2);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    vector_elem_count += 2;
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 2, "v2.early_size got %ld expected 2\n", (long)v2.early_size);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    call_func4(p_vector_base_v4__Internal_reserve,
+            &v2, 3, sizeof(int), 4);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 2, "v2.early_size got %ld expected 2\n", (long)v2.early_size);
+    ok(v2.segment == v2.storage, "v2.segment got %p expected %p\n",
+            v2.segment, v2.storage);
+    size = (size_t)call_func1(p_vector_base_v4__Internal_capacity, &v2);
+    ok(size == 4, "size of vector got %ld expected 4\n", (long)size);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    call_func4(p_vector_base_v4__Internal_reserve,
+            &v2, 5, sizeof(int), 8);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 2, "v2.early_size got %ld expected 2\n", (long)v2.early_size);
+    ok(v2.segment == v2.storage, "v2.segment got %p expected %p\n",
+            v2.segment, v2.storage);
+    size = (size_t)call_func1(p_vector_base_v4__Internal_capacity, &v2);
+    ok(size == 8, "size of vector got %ld expected 8\n", (long)size);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    call_func4(p_vector_base_v4__Internal_reserve,
+            &v2, 9, sizeof(int), 16);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 2, "v2.early_size got %ld expected 2\n", (long)v2.early_size);
+    ok(v2.segment != v2.storage, "v2.segment got %p expected %p\n", v2.segment, v2.storage);
+    for(i = 4;i < 32;i++)
+        ok(v2.segment[i] == 0, "v2.segment[%d] got %p\n",
+            i, v2.segment[i]);
+    size = (size_t)call_func1(p_vector_base_v4__Internal_capacity, &v2);
+    ok(size == 16, "size of vector got %ld expected 8\n", (long)size);
+
+    SET_EXPECT(concurrent_vector_int_destroy);
+    size = (size_t)call_func2(p_vector_base_v4__Internal_clear,
+            &v2, concurrent_vector_int_destroy);
+    ok(size == 4, "_Internal_clear returned %ld expected 4\n", (long)size);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    concurrent_vector_int_dtor(&v2);
+
+    /* test for _Internal_resize */
+    concurrent_vector_int_ctor(&v2);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    data = call_func3(p_vector_base_v4__Internal_push_back, &v2, sizeof(int), &idx);
+    ok(data != NULL, "_Internal_push_back returned NULL\n");
+    vector_elem_count += 2;
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 2, "v2.early_size got %ld expected 2\n", (long)v2.early_size);
+    i = 0;
+    SET_EXPECT(concurrent_vector_int_destroy);
+    call_func7(p_vector_base_v4__Internal_resize,
+            &v2, 1, sizeof(int), 4, concurrent_vector_int_destroy, concurrent_vector_int_copy, &i);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 1, "v2.early_size got %ld expected 1\n", (long)v2.early_size);
+    SET_EXPECT(concurrent_vector_int_alloc);
+    SET_EXPECT(concurrent_vector_int_copy);
+    call_func7(p_vector_base_v4__Internal_resize,
+            &v2, 3, sizeof(int), 4, concurrent_vector_int_destroy, concurrent_vector_int_copy, &i);
+    CHECK_CALLED(concurrent_vector_int_alloc);
+    CHECK_CALLED(concurrent_vector_int_copy);
+    ok(v2.first_block == 1, "v2.first_block got %ld expected 1\n", (long)v2.first_block);
+    ok(v2.early_size == 3, "v2.early_size got %ld expected 3\n", (long)v2.early_size);
+    SET_EXPECT(concurrent_vector_int_destroy);
+    size = (size_t)call_func2(p_vector_base_v4__Internal_clear,
+            &v2, concurrent_vector_int_destroy);
+    ok(size == 2, "_Internal_clear returned %ld expected 2\n", (long)size);
+    CHECK_CALLED(concurrent_vector_int_destroy);
+    concurrent_vector_int_dtor(&v2);
+
+    SET_EXPECT(concurrent_vector_int_destroy);
+    size = (size_t)call_func2(p_vector_base_v4__Internal_clear,
+            &vector, concurrent_vector_int_destroy);
+    CHECK_CALLED(concurrent_vector_int_destroy);
     ok(size == 3, "_Internal_clear returned %ld\n", (long)size);
     ok(vector.first_block == 1, "vector.first_block got %ld expected 1\n",
             (long)vector.first_block);
     ok(vector.early_size == 0, "vector.early_size got %ld expected 0\n",
             (long)vector.early_size);
-    call_func1(p_vector_base_v4_dtor, &vector);
+    concurrent_vector_int_dtor(&vector);
+
+    ok(!vector_elem_count, "vector_elem_count = %d, expected 0\n", vector_elem_count);
+    ok(!vector_alloc_count, "vector_alloc_count = %d, expected 0\n", vector_alloc_count);
 }
 
 START_TEST(msvcp120)

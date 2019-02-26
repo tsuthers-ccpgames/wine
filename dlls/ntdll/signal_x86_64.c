@@ -2160,8 +2160,12 @@ NTSTATUS WINAPI NtSetContextThread( HANDLE handle, const CONTEXT *context )
 NTSTATUS WINAPI NtGetContextThread( HANDLE handle, CONTEXT *context )
 {
     NTSTATUS ret;
-    DWORD needed_flags = context->ContextFlags;
+    DWORD needed_flags;
     BOOL self = (handle == GetCurrentThread());
+
+    if (!context) return STATUS_INVALID_PARAMETER;
+
+    needed_flags = context->ContextFlags;
 
     /* debug registers require a server call */
     if (context->ContextFlags & (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_AMD64)) self = FALSE;
@@ -3243,7 +3247,7 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *ucontext )
  */
 int CDECL __wine_set_signal_handler(unsigned int sig, wine_signal_handler wsh)
 {
-    if (sig >= sizeof(handlers) / sizeof(handlers[0])) return -1;
+    if (sig >= ARRAY_SIZE(handlers)) return -1;
     if (handlers[sig] != NULL) return -2;
     handlers[sig] = wsh;
     return 0;
@@ -3499,6 +3503,27 @@ BOOLEAN CDECL RtlInstallFunctionTableCallback( DWORD64 table, DWORD64 base, DWOR
     RtlLeaveCriticalSection( &dynamic_unwind_section );
 
     return TRUE;
+}
+
+
+/*************************************************************************
+ *              RtlAddGrowableFunctionTable   (NTDLL.@)
+ */
+DWORD WINAPI RtlAddGrowableFunctionTable( void **table, RUNTIME_FUNCTION *functions, DWORD count, DWORD max_count,
+                                          ULONG_PTR base, ULONG_PTR end )
+{
+    FIXME( "(%p, %p, %d, %d, %ld, %ld) semi-stub!\n", table, functions, count, max_count, base, end );
+    if (table) *table = NULL;
+    return RtlAddFunctionTable(functions, count, base);
+}
+
+
+/*************************************************************************
+ *              RtlGrowFunctionTable   (NTDLL.@)
+ */
+void WINAPI RtlGrowFunctionTable( void *table, DWORD count )
+{
+    FIXME( "(%p, %d) stub!\n", table, count );
 }
 
 
@@ -4366,7 +4391,7 @@ static void WINAPI call_thread_func( LPTHREAD_START_ROUTINE entry, void *arg )
         TRACE_(relay)( "\1Starting thread proc %p (arg=%p)\n", entry, arg );
         RtlExitUserThread( entry( arg ));
     }
-    __EXCEPT(unhandled_exception_filter)
+    __EXCEPT(call_unhandled_exception_filter)
     {
         NtTerminateThread( GetCurrentThread(), GetExceptionCode() );
     }

@@ -281,7 +281,7 @@ int get_clipped_rects( const dib_info *dib, const RECT *rc, HRGN clip, struct cl
         if (region->rects[i].top >= rect.bottom) break;
         if (!intersect_rect( out, &rect, &region->rects[i] )) continue;
         out++;
-        if (out == &clip_rects->buffer[sizeof(clip_rects->buffer) / sizeof(RECT)])
+        if (out == &clip_rects->buffer[ARRAY_SIZE( clip_rects->buffer )])
         {
             clip_rects->rects = HeapAlloc( GetProcessHeap(), 0, region->numRects * sizeof(RECT) );
             if (!clip_rects->rects) return 0;
@@ -572,7 +572,6 @@ void dibdrv_set_window_surface( DC *dc, struct window_surface *surface )
 {
     char buffer[FIELD_OFFSET( BITMAPINFO, bmiColors[256] )];
     BITMAPINFO *info = (BITMAPINFO *)buffer;
-    RECT rect;
     void *bits;
     PHYSDEV windev;
     struct windrv_physdev *physdev;
@@ -599,12 +598,8 @@ void dibdrv_set_window_surface( DC *dc, struct window_surface *surface )
         dibdrv = physdev->dibdrv;
         bits = surface->funcs->get_info( surface, info );
         init_dib_info_from_bitmapinfo( &dibdrv->dib, info, bits );
-        /* clip the device rect to the surface */
-        rect = surface->rect;
-        offset_rect( &rect, dc->device_rect.left, dc->device_rect.top );
-        intersect_rect( &dc->device_rect, &dc->device_rect, &rect );
         dibdrv->dib.rect = dc->vis_rect;
-        offset_rect( &dibdrv->dib.rect, -rect.left, -rect.top );
+        offset_rect( &dibdrv->dib.rect, -dc->device_rect.left, -dc->device_rect.top );
         dibdrv->bounds = surface->funcs->get_bounds( surface );
         DC_InitDC( dc );
     }

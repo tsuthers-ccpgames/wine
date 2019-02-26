@@ -95,7 +95,7 @@ static const WCHAR gtW[] = {'>',0};
 static const WCHAR commentW[] = {'<','!','-','-',0};
 static const WCHAR piW[] = {'<','?',0};
 
-static BOOL is_namestartchar(WCHAR ch);
+BOOL is_namestartchar(WCHAR ch);
 
 static const char *debugstr_nodetype(XmlNodeType nodetype)
 {
@@ -1019,9 +1019,9 @@ static void readerinput_switchencoding(xmlreaderinput *readerinput, xml_encoding
     encoded_buffer *src = &readerinput->buffer->encoded;
     encoded_buffer *dest = &readerinput->buffer->utf16;
     int len, dest_len;
+    UINT cp = ~0u;
     HRESULT hr;
     WCHAR *ptr;
-    UINT cp;
 
     hr = get_code_page(enc, &cp);
     if (FAILED(hr)) return;
@@ -1491,7 +1491,7 @@ static inline BOOL is_char(WCHAR ch)
 }
 
 /* [13] PubidChar ::= #x20 | #xD | #xA | [a-zA-Z0-9] | [-'()+,./:=?;!*#@$_%] */
-static inline BOOL is_pubchar(WCHAR ch)
+BOOL is_pubchar(WCHAR ch)
 {
     return (ch == ' ') ||
            (ch >= 'a' && ch <= 'z') ||
@@ -1504,7 +1504,7 @@ static inline BOOL is_pubchar(WCHAR ch)
            (ch == '_') || (ch == '\r') || (ch == '\n');
 }
 
-static inline BOOL is_namestartchar(WCHAR ch)
+BOOL is_namestartchar(WCHAR ch)
 {
     return (ch == ':') || (ch >= 'A' && ch <= 'Z') ||
            (ch == '_') || (ch >= 'a' && ch <= 'z') ||
@@ -1524,7 +1524,7 @@ static inline BOOL is_namestartchar(WCHAR ch)
 }
 
 /* [4 NS] NCName ::= Name - (Char* ':' Char*) */
-static inline BOOL is_ncnamechar(WCHAR ch)
+BOOL is_ncnamechar(WCHAR ch)
 {
     return (ch >= 'A' && ch <= 'Z') ||
            (ch == '_') || (ch >= 'a' && ch <= 'z') ||
@@ -1548,7 +1548,7 @@ static inline BOOL is_ncnamechar(WCHAR ch)
            (ch >= 0xfdf0 && ch <= 0xfffd);
 }
 
-static inline BOOL is_namechar(WCHAR ch)
+BOOL is_namechar(WCHAR ch)
 {
     return (ch == ':') || is_ncnamechar(ch);
 }

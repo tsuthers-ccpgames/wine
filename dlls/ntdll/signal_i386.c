@@ -2221,7 +2221,7 @@ static void usr1_handler( int signal, siginfo_t *siginfo, void *sigcontext )
  */
 int CDECL __wine_set_signal_handler(unsigned int sig, wine_signal_handler wsh)
 {
-    if (sig >= sizeof(handlers) / sizeof(handlers[0])) return -1;
+    if (sig >= ARRAY_SIZE(handlers)) return -1;
     if (handlers[sig] != NULL) return -2;
     handlers[sig] = wsh;
     return 0;
@@ -2499,6 +2499,19 @@ NTSTATUS WINAPI NtRaiseException( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL 
 }
 
 
+/*******************************************************************
+ *		raise_exception_full_context
+ *
+ * Raise an exception with the full CPU context.
+ */
+void raise_exception_full_context( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL first_chance )
+{
+    save_fpu( context );
+    /* FIXME: extended registers, debug registers */
+    RtlRaiseStatus( NtRaiseException( rec, context, first_chance ));
+}
+
+
 /***********************************************************************
  *		RtlRaiseException (NTDLL.@)
  */
@@ -2520,9 +2533,7 @@ __ASM_STDCALL_FUNC( RtlRaiseException, 4,
                     "pushl $1\n\t"
                     "pushl %eax\n\t"
                     "pushl %ecx\n\t"
-                    "call " __ASM_NAME("NtRaiseException") __ASM_STDCALL(12) "\n\t"
-                    "pushl %eax\n\t"
-                    "call " __ASM_NAME("RtlRaiseStatus") __ASM_STDCALL(4) "\n\t"
+                    "call " __ASM_NAME("raise_exception_full_context") "\n\t"
                     "leave\n\t"
                     __ASM_CFI(".cfi_def_cfa %esp,4\n\t")
                     __ASM_CFI(".cfi_same_value %ebp\n\t")
@@ -2653,7 +2664,7 @@ void DECLSPEC_HIDDEN call_thread_func( LPTHREAD_START_ROUTINE entry, void *arg )
         TRACE_(relay)( "\1Starting thread proc %p (arg=%p)\n", entry, arg );
         RtlExitUserThread( call_thread_func_wrapper( entry, arg ));
     }
-    __EXCEPT(unhandled_exception_filter)
+    __EXCEPT(call_unhandled_exception_filter)
     {
         NtTerminateThread( GetCurrentThread(), GetExceptionCode() );
     }

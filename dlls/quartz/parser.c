@@ -109,7 +109,7 @@ HRESULT Parser_Create(ParserImpl* pParser, const IBaseFilterVtbl *Parser_Vtbl, c
     /* construct input pin */
     piInput.dir = PINDIR_INPUT;
     piInput.pFilter = &pParser->filter.IBaseFilter_iface;
-    lstrcpynW(piInput.achName, wcsInputPinName, sizeof(piInput.achName) / sizeof(piInput.achName[0]));
+    lstrcpynW(piInput.achName, wcsInputPinName, ARRAY_SIZE(piInput.achName));
 
     if (!start)
         start = Parser_ChangeStart;
@@ -400,16 +400,6 @@ HRESULT WINAPI Parser_GetSyncSource(IBaseFilter * iface, IReferenceClock **ppClo
 HRESULT WINAPI Parser_EnumPins(IBaseFilter * iface, IEnumPins **ppEnum)
 {
     return BaseFilterImpl_EnumPins(iface,ppEnum);
-}
-
-HRESULT WINAPI Parser_FindPin(IBaseFilter * iface, LPCWSTR Id, IPin **ppPin)
-{
-    ParserImpl *This = impl_from_IBaseFilter(iface);
-    FIXME("(%p)->(%s,%p)\n", This, debugstr_w(Id), ppPin);
-
-    /* FIXME: critical section */
-
-    return E_NOTIMPL;
 }
 
 HRESULT WINAPI Parser_QueryFilterInfo(IBaseFilter * iface, FILTER_INFO *pInfo)

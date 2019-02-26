@@ -751,12 +751,11 @@ static void trace_gss_status( OM_uint32 major_status, OM_uint32 minor_status )
 
 static void expirytime_gss_to_sspi( OM_uint32 expirytime, TimeStamp *timestamp )
 {
-    SYSTEMTIME time;
     FILETIME filetime;
     ULARGE_INTEGER tmp;
 
-    GetLocalTime( &time );
-    SystemTimeToFileTime( &time, &filetime );
+    GetSystemTimeAsFileTime( &filetime );
+    FileTimeToLocalFileTime( &filetime, &filetime );
     tmp.QuadPart = ((ULONGLONG)filetime.dwLowDateTime | (ULONGLONG)filetime.dwHighDateTime << 32) + expirytime;
     timestamp->LowPart  = tmp.QuadPart;
     timestamp->HighPart = tmp.QuadPart >> 32;
@@ -1331,7 +1330,7 @@ NTSTATUS NTAPI SpLsaModeInitialize(ULONG lsa_version, PULONG package_version,
 
 static NTSTATUS NTAPI kerberos_SpInstanceInit(ULONG version, SECPKG_DLL_FUNCTIONS *dll_function_table, void **user_functions)
 {
-    FIXME("%u,%p,%p: stub\n", version, dll_function_table, user_functions);
+    TRACE("%#x,%p,%p\n", version, dll_function_table, user_functions);
 
     return STATUS_SUCCESS;
 }

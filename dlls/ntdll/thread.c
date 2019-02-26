@@ -55,7 +55,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(thread);
 struct _KUSER_SHARED_DATA *user_shared_data = NULL;
 static const WCHAR default_windirW[] = {'C',':','\\','w','i','n','d','o','w','s',0};
 
-PUNHANDLED_EXCEPTION_FILTER unhandled_exception_filter = NULL;
 void (WINAPI *kernel32_start_process)(LPTHREAD_START_ROUTINE,void*) = NULL;
 
 /* info passed to a starting thread */
@@ -69,7 +68,7 @@ struct startup_info
 static PEB *peb;
 static PEB_LDR_DATA ldr;
 static RTL_USER_PROCESS_PARAMETERS params;  /* default parameters if no parent */
-static WCHAR current_dir[MAX_NT_PATH_LENGTH];
+static WCHAR current_dir[MAX_PATH];
 static RTL_BITMAP tls_bitmap;
 static RTL_BITMAP tls_expansion_bitmap;
 static RTL_BITMAP fls_bitmap;
@@ -105,7 +104,7 @@ static inline void get_unicode_string( UNICODE_STRING *str, WCHAR **src, WCHAR *
  *
  * Fill the RTL_USER_PROCESS_PARAMETERS structure from the server.
  */
-static NTSTATUS init_user_process_params( SIZE_T data_size, HANDLE *exe_file )
+static NTSTATUS init_user_process_params( SIZE_T data_size )
 {
     void *ptr;
     WCHAR *src, *dst;
@@ -125,14 +124,13 @@ static NTSTATUS init_user_process_params( SIZE_T data_size, HANDLE *exe_file )
             data_size = wine_server_reply_size( reply );
             info_size = reply->info_size;
             env_size  = data_size - info_size;
-            *exe_file = wine_server_ptr_handle( reply->exe_file );
         }
     }
     SERVER_END_REQ;
     if (status != STATUS_SUCCESS) goto done;
 
     size = sizeof(*params);
-    size += MAX_NT_PATH_LENGTH * sizeof(WCHAR);
+    size += sizeof(current_dir);
     size += info->dllpath_len + sizeof(WCHAR);
     size += info->imagepath_len + sizeof(WCHAR);
     size += info->cmdline_len + sizeof(WCHAR);
@@ -171,8 +169,8 @@ static NTSTATUS init_user_process_params( SIZE_T data_size, HANDLE *exe_file )
 
     /* current directory needs more space */
     get_unicode_string( &params->CurrentDirectory.DosPath, &src, &dst, info->curdir_len );
-    params->CurrentDirectory.DosPath.MaximumLength = MAX_NT_PATH_LENGTH * sizeof(WCHAR);
-    dst = (WCHAR *)(params + 1) + MAX_NT_PATH_LENGTH;
+    params->CurrentDirectory.DosPath.MaximumLength = sizeof(current_dir);
+    dst = (WCHAR *)(params + 1) + ARRAY_SIZE(current_dir);
 
     get_unicode_string( &params->DllPath, &src, &dst, info->dllpath_len );
     get_unicode_string( &params->ImagePathName, &src, &dst, info->imagepath_len );
@@ -273,13 +271,12 @@ static ULONG_PTR get_image_addr(void)
  *
  * NOTES: The first allocated TEB on NT is at 0x7ffde000.
  */
-HANDLE thread_init(void)
+void thread_init(void)
 {
     TEB *teb;
     void *addr;
     BOOL suspend;
     SIZE_T size, info_size;
-    HANDLE exe_file = 0;
     LARGE_INTEGER now;
     NTSTATUS status;
     struct ntdll_thread_data *thread_data;
@@ -378,7 +375,7 @@ HANDLE thread_init(void)
     /* allocate user parameters */
     if (info_size)
     {
-        init_user_process_params( info_size, &exe_file );
+        init_user_process_params( info_size );
     }
     else
     {
@@ -404,8 +401,6 @@ HANDLE thread_init(void)
     fill_cpu_info();
 
     NtCreateKeyedEvent( &keyed_event, GENERIC_READ | GENERIC_WRITE, NULL, 0 );
-
-    return exe_file;
 }
 
 
@@ -544,7 +539,7 @@ NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle_ptr, ACCESS_MASK access, OBJECT
 /***********************************************************************
  *              RtlCreateUserThread   (NTDLL.@)
  */
-NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, const SECURITY_DESCRIPTOR *descr,
+NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, SECURITY_DESCRIPTOR *descr,
                                      BOOLEAN suspended, PVOID stack_addr,
                                      SIZE_T stack_reserve, SIZE_T stack_commit,
                                      PRTL_THREAD_START_ROUTINE start, void *param,
@@ -561,6 +556,8 @@ NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, const SECURITY_DESCRIPTOR *
     int request_pipe[2];
     NTSTATUS status;
     SIZE_T extra_stack = PTHREAD_STACK_MIN;
+    data_size_t len = 0;
+    struct object_attributes *objattr = NULL;
 
     if (process != NtCurrentProcess())
     {
@@ -587,15 +584,27 @@ NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, const SECURITY_DESCRIPTOR *
         return result.create_thread.status;
     }
 
-    if (server_pipe( request_pipe ) == -1) return STATUS_TOO_MANY_OPENED_FILES;
+    if (descr)
+    {
+        OBJECT_ATTRIBUTES thread_attr;
+        InitializeObjectAttributes( &thread_attr, NULL, 0, NULL, descr );
+        if ((status = alloc_object_attributes( &thread_attr, &objattr, &len ))) return status;
+    }
+
+    if (server_pipe( request_pipe ) == -1)
+    {
+        RtlFreeHeap( GetProcessHeap(), 0, objattr );
+        return STATUS_TOO_MANY_OPENED_FILES;
+    }
     wine_server_send_fd( request_pipe[0] );
 
     SERVER_START_REQ( new_thread )
     {
+        req->process    = wine_server_obj_handle( process );
         req->access     = THREAD_ALL_ACCESS;
-        req->attributes = 0;  /* FIXME */
         req->suspend    = suspended;
         req->request_fd = request_pipe[0];
+        wine_server_add_data( req, objattr, len );
         if (!(status = wine_server_call( req )))
         {
             handle = wine_server_ptr_handle( reply->handle );
@@ -605,6 +614,7 @@ NTSTATUS WINAPI RtlCreateUserThread( HANDLE process, const SECURITY_DESCRIPTOR *
     }
     SERVER_END_REQ;
 
+    RtlFreeHeap( GetProcessHeap(), 0, objattr );
     if (status)
     {
         close( request_pipe[1] );
@@ -1288,10 +1298,9 @@ NTSTATUS WINAPI NtSetInformationThread( HANDLE handle, THREADINFOCLASS class,
             ULONG_PTR req_aff;
 
             if (length != sizeof(ULONG_PTR)) return STATUS_INVALID_PARAMETER;
-            req_aff = *(const ULONG_PTR *)data;
-            if ((ULONG)req_aff == ~0u) req_aff = affinity_mask;
-            else if (req_aff & ~affinity_mask) return STATUS_INVALID_PARAMETER;
-            else if (!req_aff) return STATUS_INVALID_PARAMETER;
+            req_aff = *(const ULONG_PTR *)data & affinity_mask;
+            if (!req_aff) return STATUS_INVALID_PARAMETER;
+
             SERVER_START_REQ( set_thread_info )
             {
                 req->handle   = wine_server_obj_handle( handle );

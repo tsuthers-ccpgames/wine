@@ -49,6 +49,7 @@
 #undef LoadResource
 #undef GetCurrentThread
 #include <pthread.h>
+#include <mach-o/getsect.h>
 #else
 extern char **environ;
 #endif
@@ -387,11 +388,15 @@ static void *map_dll( const IMAGE_NT_HEADERS *nt_descr )
     IMAGE_NT_HEADERS *nt;
     IMAGE_SECTION_HEADER *sec;
     BYTE *addr;
-    DWORD code_start, data_start, data_end;
+    DWORD code_start, code_end, data_start, data_end;
     const size_t page_size = sysconf( _SC_PAGESIZE );
     const size_t page_mask = page_size - 1;
     int delta, nb_sections = 2;  /* code + data */
     unsigned int i;
+#ifdef __APPLE__
+    Dl_info dli;
+    unsigned long data_size;
+#endif
 
     size_t size = (sizeof(IMAGE_DOS_HEADER)
                    + sizeof(IMAGE_NT_HEADERS)
@@ -425,7 +430,15 @@ static void *map_dll( const IMAGE_NT_HEADERS *nt_descr )
     delta      = (const BYTE *)nt_descr - addr;
     code_start = page_size;
     data_start = delta & ~page_mask;
+#ifdef __APPLE__
+    /* Need the mach_header, not the PE header, to give to getsegmentdata(3) */
+    dladdr(addr, &dli);
+    code_end   = getsegmentdata(dli.dli_fbase, "__DATA", &data_size) - addr;
+    data_end   = (code_end + data_size + page_mask) & ~page_mask;
+#else
+    code_end   = data_start;
     data_end   = (nt->OptionalHeader.SizeOfImage + delta + page_mask) & ~page_mask;
+#endif
 
     fixup_rva_ptrs( &nt->OptionalHeader.AddressOfEntryPoint, addr, 1 );
 
@@ -434,7 +447,7 @@ static void *map_dll( const IMAGE_NT_HEADERS *nt_descr )
 #ifndef _WIN64
     nt->OptionalHeader.BaseOfData                  = data_start;
 #endif
-    nt->OptionalHeader.SizeOfCode                  = data_start - code_start;
+    nt->OptionalHeader.SizeOfCode                  = code_end - code_start;
     nt->OptionalHeader.SizeOfInitializedData       = data_end - data_start;
     nt->OptionalHeader.SizeOfUninitializedData     = 0;
     nt->OptionalHeader.SizeOfImage                 = data_end;
@@ -443,7 +456,7 @@ static void *map_dll( const IMAGE_NT_HEADERS *nt_descr )
     /* Build the code section */
 
     memcpy( sec->Name, ".text", sizeof(".text") );
-    sec->SizeOfRawData = data_start - code_start;
+    sec->SizeOfRawData = code_end - code_start;
     sec->Misc.VirtualSize = sec->SizeOfRawData;
     sec->VirtualAddress   = code_start;
     sec->PointerToRawData = code_start;
@@ -696,6 +709,7 @@ struct apple_stack_info
  * Callback for wine_mmap_enum_reserved_areas to allocate space for
  * the secondary thread's stack.
  */
+#ifndef _WIN64
 static int apple_alloc_thread_stack( void *base, size_t size, void *arg )
 {
     struct apple_stack_info *info = arg;
@@ -712,6 +726,7 @@ static int apple_alloc_thread_stack( void *base, size_t size, void *arg )
                                   info->desired_size, PROT_READ|PROT_WRITE, MAP_FIXED );
     return (info->stack != (void *)-1);
 }
+#endif
 
 /***********************************************************************
  *           apple_create_wine_thread
@@ -729,6 +744,7 @@ static void apple_create_wine_thread( void *init_func )
 
     if (!pthread_attr_init( &attr ))
     {
+#ifndef _WIN64
         struct apple_stack_info info;
 
         /* Try to put the new thread's stack in the reserved area.  If this
@@ -740,6 +756,7 @@ static void apple_create_wine_thread( void *init_func )
             wine_mmap_remove_reserved_area( info.stack, info.desired_size, 0 );
             pthread_attr_setstackaddr( &attr, (char*)info.stack + info.desired_size );
         }
+#endif
 
         if (!pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE ) &&
             !pthread_create( &thread, &attr, init_func, NULL ))

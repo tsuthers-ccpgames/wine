@@ -1054,8 +1054,8 @@ HRESULT load_script(HTMLScriptElement *script_elem, const WCHAR *src, BOOL async
 
     static const WCHAR wine_schemaW[] = {'w','i','n','e',':'};
 
-    if(strlenW(src) > sizeof(wine_schemaW)/sizeof(WCHAR) && !memcmp(src, wine_schemaW, sizeof(wine_schemaW)))
-        src += sizeof(wine_schemaW)/sizeof(WCHAR);
+    if(strlenW(src) > ARRAY_SIZE(wine_schemaW) && !memcmp(src, wine_schemaW, sizeof(wine_schemaW)))
+        src += ARRAY_SIZE(wine_schemaW);
 
     TRACE("(%p %s %x)\n", script_elem, debugstr_w(src), async);
 
@@ -1171,11 +1171,11 @@ static GUID get_default_script_guid(HTMLInnerWindow *window)
 
 static BOOL get_guid_from_type(LPCWSTR type, GUID *guid)
 {
-    const WCHAR text_javascriptW[] =
+    static const WCHAR text_javascriptW[] =
         {'t','e','x','t','/','j','a','v','a','s','c','r','i','p','t',0};
-    const WCHAR text_jscriptW[] =
+    static const WCHAR text_jscriptW[] =
         {'t','e','x','t','/','j','s','c','r','i','p','t',0};
-    const WCHAR text_vbscriptW[] =
+    static const WCHAR text_vbscriptW[] =
         {'t','e','x','t','/','v','b','s','c','r','i','p','t',0};
 
     /* FIXME: Handle more types */

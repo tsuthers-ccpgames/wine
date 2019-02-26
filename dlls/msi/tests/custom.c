@@ -30,6 +30,7 @@
 #include <msxml.h>
 #include <msi.h>
 #include <msiquery.h>
+#include <msidefs.h>
 
 static int todo_level, todo_do_loop;
 
@@ -276,10 +277,16 @@ static void test_props(MSIHANDLE hinst)
 
 static void test_db(MSIHANDLE hinst)
 {
-    MSIHANDLE hdb, view, rec, rec2, suminfo;
+    static const UINT prop_type[20] = { VT_EMPTY, VT_EMPTY, VT_LPSTR, VT_EMPTY, VT_EMPTY,
+                                        VT_EMPTY, VT_EMPTY, VT_LPSTR, VT_EMPTY, VT_LPSTR,
+                                        VT_EMPTY, VT_EMPTY, VT_EMPTY, VT_EMPTY, VT_I4,
+                                        VT_I4, VT_EMPTY, VT_EMPTY, VT_EMPTY, VT_EMPTY };
+    MSIHANDLE hdb, hdb2, view, rec, rec2, suminfo;
     char buffer[10];
     DWORD sz;
-    UINT r;
+    UINT r, count, type, i;
+    INT int_value;
+    FILETIME ft;
 
     hdb = MsiGetActiveDatabase(hinst);
     ok(hinst, hdb, "MsiGetActiveDatabase failed\n");
@@ -304,6 +311,17 @@ static void test_db(MSIHANDLE hinst)
     ok(hinst, !r, "got %u\n", r);
     ok(hinst, sz == strlen(buffer), "got size %u\n", sz);
     ok(hinst, !strcmp(buffer, "Name"), "got '%s'\n", buffer);
+
+    /* Test MsiGetActiveDatabase + MsiDatabaseIsTablePersistent once again */
+    hdb2 = MsiGetActiveDatabase(hinst);
+    ok(hinst, hdb2, "MsiGetActiveDatabase failed\n");
+    ok(hinst, hdb2 != hdb, "db handles should be different\n");
+
+    r = MsiDatabaseIsTablePersistentA(hdb2, "Test");
+    ok(hinst, r == MSICONDITION_TRUE, "got %u\n", r);
+
+    r = MsiCloseHandle(hdb2);
+    ok(hinst, !r, "got %u\n", r);
 
     r = MsiCloseHandle(rec2);
     ok(hinst, !r, "got %u\n", r);
@@ -451,6 +469,66 @@ static void test_db(MSIHANDLE hinst)
 
     r = MsiGetSummaryInformationA(hdb, NULL, 1, &suminfo);
     ok(hinst, !r, "got %u\n", r);
+
+    r = MsiSummaryInfoGetPropertyCount(suminfo, NULL);
+    ok(hinst, r == RPC_X_NULL_REF_POINTER, "got %u\n", r);
+
+    count = 0xdeadbeef;
+    r = MsiSummaryInfoGetPropertyCount(suminfo, &count);
+    ok(hinst, !r, "got %u\n", r);
+    ok(hinst, count == 5, "got %u\n", count);
+
+    r = MsiSummaryInfoGetPropertyA(suminfo, 0, NULL, NULL, NULL, NULL, NULL);
+    ok(hinst, r == RPC_X_NULL_REF_POINTER, "got %u\n", r);
+
+    for (i = 0; i < 20; i++)
+    {
+        /* for some reason query for PID_TITLE leads to install failure under Windows */
+        if (i == PID_TITLE) continue;
+
+        type = 0xdeadbeef;
+        int_value = 0xdeadbeef;
+        *buffer = 0;
+        sz = sizeof(buffer);
+        r = MsiSummaryInfoGetPropertyA(suminfo, i, &type, &int_value, &ft, buffer, &sz);
+        if (sz == sizeof(buffer) || i == PID_TEMPLATE)
+            ok(hinst, !r, "%u: got %u\n", i, r);
+        else
+            ok(hinst, r == ERROR_MORE_DATA, "%u: got %u\n", i, r);
+        ok(hinst, type == prop_type[i], "%u: expected %u, got %u\n", i, prop_type[i], type);
+        if (i == PID_PAGECOUNT)
+            ok(hinst, int_value == 100, "%u: got %u\n", i, int_value);
+        else
+            ok(hinst, int_value == 0, "%u: got %u\n", i, int_value);
+        if (i == PID_TEMPLATE)
+        {
+            ok(hinst, sz == 5, "%u: got %u\n", i, sz);
+            ok(hinst, !lstrcmpA(buffer, ";1033"), "%u: got %s\n", i, buffer);
+        }
+        else if (i == PID_REVNUMBER)
+        {
+            ok(hinst, sz == 76, "%u: got %u\n", i, sz);
+            ok(hinst, !lstrcmpA(buffer, "{004757CA"), "%u: got %s\n", i, buffer);
+        }
+        else
+        {
+            ok(hinst, sz == sizeof(buffer), "%u: got %u\n", i, sz);
+            ok(hinst, !*buffer, "%u: got %s\n", i, buffer);
+        }
+    }
+
+    GetSystemTimeAsFileTime(&ft);
+
+    for (i = 0; i < 20; i++)
+    {
+        WCHAR emptyW[1] = { 0 };
+
+        r = MsiSummaryInfoSetPropertyA(suminfo, i, prop_type[i], 1252, &ft, "");
+        ok(hinst, r == ERROR_FUNCTION_FAILED, "%u: got %u\n", i, r);
+
+        r = MsiSummaryInfoSetPropertyW(suminfo, i, prop_type[i], 1252, &ft, emptyW);
+        ok(hinst, r == ERROR_FUNCTION_FAILED, "%u: got %u\n", i, r);
+    }
 
     r = MsiCloseHandle(suminfo);
     ok(hinst, !r, "got %u\n", r);
@@ -1150,6 +1228,46 @@ UINT WINAPI da_deferred(MSIHANDLE hinst)
     return ERROR_SUCCESS;
 }
 
+static int global_state;
+
+UINT WINAPI process1(MSIHANDLE hinst)
+{
+    SetEnvironmentVariableA("MSI_PROCESS_TEST","1");
+    global_state++;
+    return ERROR_SUCCESS;
+}
+
+UINT WINAPI process2(MSIHANDLE hinst)
+{
+    char env[2] = {0};
+    DWORD r = GetEnvironmentVariableA("MSI_PROCESS_TEST", env, sizeof(env));
+    ok(hinst, r == 1, "got %d, error %u\n", r, GetLastError());
+    ok(hinst, !strcmp(env, "1"), "got %s\n", env);
+    ok(hinst, !global_state, "got global_state %d\n", global_state);
+    return ERROR_SUCCESS;
+}
+
+UINT WINAPI async1(MSIHANDLE hinst)
+{
+    HANDLE event = CreateEventA(NULL, TRUE, FALSE, "wine_msi_async_test");
+    HANDLE event2 = CreateEventA(NULL, TRUE, FALSE, "wine_msi_async_test2");
+    DWORD r = WaitForSingleObject(event, 10000);
+    ok(hinst, !r, "wait timed out\n");
+    SetEvent(event2);
+    return ERROR_SUCCESS;
+}
+
+UINT WINAPI async2(MSIHANDLE hinst)
+{
+    HANDLE event = CreateEventA(NULL, TRUE, FALSE, "wine_msi_async_test");
+    HANDLE event2 = CreateEventA(NULL, TRUE, FALSE, "wine_msi_async_test2");
+    DWORD r;
+    SetEvent(event);
+    r = WaitForSingleObject(event2, 10000);
+    ok(hinst, !r, "wait timed out\n");
+    return ERROR_SUCCESS;
+}
+
 static BOOL pf_exists(const char *file)
 {
     char path[MAX_PATH];
@@ -1163,52 +1281,42 @@ static BOOL pf_exists(const char *file)
 
 UINT WINAPI cf_present(MSIHANDLE hinst)
 {
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     ok(hinst, pf_exists("msitest\\first"), "folder absent\n");
     ok(hinst, pf_exists("msitest\\second"), "folder absent\n");
     ok(hinst, pf_exists("msitest\\third"), "folder absent\n");
-}
     return ERROR_SUCCESS;
 }
 
 UINT WINAPI cf_absent(MSIHANDLE hinst)
 {
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     ok(hinst, !pf_exists("msitest\\first"), "folder present\n");
     ok(hinst, !pf_exists("msitest\\second"), "folder present\n");
     ok(hinst, !pf_exists("msitest\\third"), "folder present\n");
-}
     return ERROR_SUCCESS;
 }
 
 UINT WINAPI file_present(MSIHANDLE hinst)
 {
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     ok(hinst, pf_exists("msitest\\first\\one.txt"), "file absent\n");
     ok(hinst, pf_exists("msitest\\second\\two.txt"), "file absent\n");
-}
     return ERROR_SUCCESS;
 }
 
 UINT WINAPI file_absent(MSIHANDLE hinst)
 {
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     ok(hinst, !pf_exists("msitest\\first\\one.txt"), "file present\n");
     ok(hinst, !pf_exists("msitest\\second\\two.txt"), "file present\n");
-}
     return ERROR_SUCCESS;
 }
 
 UINT WINAPI crs_present(MSIHANDLE hinst)
 {
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, pf_exists("msitest\\shortcut.lnk"), "shortcut absent\n");
     return ERROR_SUCCESS;
 }
 
 UINT WINAPI crs_absent(MSIHANDLE hinst)
 {
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, !pf_exists("msitest\\shortcut.lnk"), "shortcut present\n");
     return ERROR_SUCCESS;
 }
@@ -1218,7 +1326,6 @@ UINT WINAPI sds_present(MSIHANDLE hinst)
     SC_HANDLE manager, service;
     manager = OpenSCManagerA(NULL, NULL, SC_MANAGER_ALL_ACCESS);
     service = OpenServiceA(manager, "TestService3", GENERIC_ALL);
-todo_wine
     ok(hinst, !!service, "service absent: %u\n", GetLastError());
     CloseServiceHandle(service);
     CloseServiceHandle(manager);
@@ -1252,7 +1359,6 @@ UINT WINAPI sis_absent(MSIHANDLE hinst)
     SC_HANDLE manager, service;
     manager = OpenSCManagerA(NULL, NULL, SC_MANAGER_ALL_ACCESS);
     service = OpenServiceA(manager, "TestService", GENERIC_ALL);
-todo_wine
     ok(hinst, !service, "service present\n");
     if (service) CloseServiceHandle(service);
     CloseServiceHandle(manager);
@@ -1269,7 +1375,6 @@ UINT WINAPI sss_started(MSIHANDLE hinst)
     service = OpenServiceA(manager, "Spooler", SC_MANAGER_ALL_ACCESS);
     ret = QueryServiceStatus(service, &status);
     ok(hinst, ret, "QueryServiceStatus failed: %u\n", GetLastError());
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, status.dwCurrentState == SERVICE_RUNNING, "got %u\n", status.dwCurrentState);
 
     CloseServiceHandle(service);
@@ -1296,10 +1401,8 @@ UINT WINAPI sss_stopped(MSIHANDLE hinst)
 
 UINT WINAPI rd_present(MSIHANDLE hinst)
 {
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     ok(hinst, pf_exists("msitest\\original2.txt"), "file absent\n");
     ok(hinst, pf_exists("msitest\\duplicate.txt"), "file absent\n");
-}
     ok(hinst, !pf_exists("msitest\\original3.txt"), "file present\n");
     ok(hinst, !pf_exists("msitest\\duplicate2.txt"), "file present\n");
     return ERROR_SUCCESS;
@@ -1307,10 +1410,8 @@ todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
 
 UINT WINAPI rd_absent(MSIHANDLE hinst)
 {
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     ok(hinst, !pf_exists("msitest\\original2.txt"), "file present\n");
     ok(hinst, !pf_exists("msitest\\duplicate.txt"), "file present\n");
-}
     ok(hinst, !pf_exists("msitest\\original3.txt"), "file present\n");
     ok(hinst, !pf_exists("msitest\\duplicate2.txt"), "file present\n");
     return ERROR_SUCCESS;
@@ -1323,9 +1424,10 @@ UINT WINAPI odbc_present(MSIHANDLE hinst)
     WORD len;
     BOOL r;
 
+    buffer[0] = 0;
+    len = sizeof(buffer);
     r = SQLGetInstalledDrivers(buffer, sizeof(buffer), &len);
-    ok(hinst, len < sizeof(buffer), "buffer too small\n");
-    ok(hinst, r, "SQLGetInstalledDrivers failed\n");
+    if (r) ok(hinst, len < sizeof(buffer), "buffer too small\n");
     for (p = buffer; *p; p += strlen(p) + 1)
     {
         if (!strcmp(p, "ODBC test driver"))
@@ -1333,10 +1435,8 @@ UINT WINAPI odbc_present(MSIHANDLE hinst)
         if (!strcmp(p, "ODBC test driver2"))
             gotdriver2 = 1;
     }
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     ok(hinst, gotdriver, "driver absent\n");
     ok(hinst, gotdriver2, "driver 2 absent\n");
-}
     return ERROR_SUCCESS;
 }
 
@@ -1347,9 +1447,10 @@ UINT WINAPI odbc_absent(MSIHANDLE hinst)
     WORD len;
     BOOL r;
 
+    buffer[0] = 0;
+    len = sizeof(buffer);
     r = SQLGetInstalledDrivers(buffer, sizeof(buffer), &len);
-    ok(hinst, len < sizeof(buffer), "buffer too small\n");
-    ok(hinst, r, "SQLGetInstalledDrivers failed\n");
+    if (r) ok(hinst, len < sizeof(buffer), "buffer too small\n");
     for (p = buffer; *p; p += strlen(p) + 1)
     {
         if (!strcmp(p, "ODBC test driver"))
@@ -1357,10 +1458,8 @@ UINT WINAPI odbc_absent(MSIHANDLE hinst)
         if (!strcmp(p, "ODBC test driver2"))
             gotdriver2 = 1;
     }
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     ok(hinst, !gotdriver, "driver present\n");
     ok(hinst, !gotdriver2, "driver 2 present\n");
-}
     return ERROR_SUCCESS;
 }
 
@@ -1373,10 +1472,8 @@ UINT WINAPI mov_present(MSIHANDLE hinst)
 
 UINT WINAPI mov_absent(MSIHANDLE hinst)
 {
-todo_wine {
     ok(hinst, !pf_exists("msitest\\canada"), "file present\n");
     ok(hinst, !pf_exists("msitest\\dominica"), "file present\n");
-}
     return ERROR_SUCCESS;
 }
 
@@ -1410,9 +1507,7 @@ UINT WINAPI pa_present(MSIHANDLE hinst)
 
     res = RegOpenKeyA(HKEY_CURRENT_USER, path_dotnet, &key);
     ok(hinst, !res, "got %d\n", res);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     check_reg_str(hinst, key, name_dotnet, "rcHQPHq?CA@Uv-XqMI1e>Z'q,T*76M@=YEg6My?~]");
-}
     RegCloseKey(key);
 
     return ERROR_SUCCESS;
@@ -1427,9 +1522,7 @@ UINT WINAPI pa_absent(MSIHANDLE hinst)
     ok(hinst, !res || res == ERROR_FILE_NOT_FOUND, "got %d\n", res);
     if (!res)
     {
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
         check_reg_str(hinst, key, name_dotnet, NULL);
-}
         RegCloseKey(key);
     }
     return ERROR_SUCCESS;
@@ -1462,7 +1555,6 @@ UINT WINAPI ppc_absent(MSIHANDLE hinst)
     UINT r;
 
     r = RegOpenKeyExA(HKEY_LOCAL_MACHINE, ppc_key, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key);
-todo_wine
     ok(hinst, r == ERROR_FILE_NOT_FOUND, "got %u\n", r);
     return ERROR_SUCCESS;
 }
@@ -1474,12 +1566,10 @@ UINT WINAPI pub_present(MSIHANDLE hinst)
     HKEY key;
     LONG res;
 
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyA(HKEY_CURRENT_USER, pub_key, &key);
     ok(hinst, !res, "got %u\n", res);
     res = RegQueryValueExA(key, "english.txt", NULL, NULL, NULL, NULL);
     ok(hinst, !res, "got %u\n", res);
-}
     RegCloseKey(key);
     return ERROR_SUCCESS;
 }
@@ -1490,7 +1580,6 @@ UINT WINAPI pub_absent(MSIHANDLE hinst)
     LONG res;
 
     res = RegOpenKeyA(HKEY_CURRENT_USER, pub_key, &key);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
     return ERROR_SUCCESS;
 }
@@ -1504,7 +1593,6 @@ UINT WINAPI pf_present(MSIHANDLE hinst)
     HKEY key;
     LONG res;
 
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyExA(HKEY_CLASSES_ROOT, pf_classkey, 0, KEY_READ | KEY_WOW64_64KEY, &key);
     ok(hinst, !res, "got %u\n", res);
     check_reg_str(hinst, key, "feature", "");
@@ -1516,7 +1604,6 @@ todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     check_reg_str(hinst, key, "feature", "VGtfp^p+,?82@JU1j_KE");
     check_reg_str(hinst, key, "montecristo", "VGtfp^p+,?82@JU1j_KE");
     RegCloseKey(key);
-}
 
     return ERROR_SUCCESS;
 }
@@ -1527,11 +1614,9 @@ UINT WINAPI pf_absent(MSIHANDLE hinst)
     LONG res;
 
     res = RegOpenKeyExA(HKEY_CLASSES_ROOT, pf_classkey, 0, KEY_READ | KEY_WOW64_64KEY, &key);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     res = RegOpenKeyExA(HKEY_LOCAL_MACHINE, pf_userkey, 0, KEY_READ | KEY_WOW64_64KEY, &key);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     return ERROR_SUCCESS;
@@ -1560,7 +1645,6 @@ UINT WINAPI pp_absent(MSIHANDLE hinst)
     LONG res;
 
     res = RegOpenKeyExA(HKEY_CLASSES_ROOT, pp_prodkey, 0, KEY_READ | KEY_WOW64_64KEY, &key);
-todo_wine
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     return ERROR_SUCCESS;
@@ -1571,7 +1655,6 @@ UINT WINAPI rci_present(MSIHANDLE hinst)
     HKEY key;
     LONG res;
 
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyExA(HKEY_CLASSES_ROOT, "CLSID\\{110913E7-86D1-4BF3-9922-BA103FCDDDFA}",
         0, KEY_READ | KEY_WOW64_32KEY, &key);
     ok(hinst, !res, "got %u\n", res);
@@ -1584,7 +1667,6 @@ todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "AppID\\{CFCC3B38-E683-497D-9AB4-CB40AAFE307F}", &key);
     ok(hinst, !res, "got %u\n", res);
     RegCloseKey(key);
-}
 
     return ERROR_SUCCESS;
 }
@@ -1594,7 +1676,6 @@ UINT WINAPI rci_absent(MSIHANDLE hinst)
     HKEY key;
     LONG res;
 
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyExA(HKEY_CLASSES_ROOT, "CLSID\\{110913E7-86D1-4BF3-9922-BA103FCDDDFA}",
         0, KEY_READ | KEY_WOW64_32KEY, &key);
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
@@ -1604,7 +1685,6 @@ todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
 
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "AppID\\{CFCC3B38-E683-497D-9AB4-CB40AAFE307F}", &key);
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
-}
 
     return ERROR_SUCCESS;
 }
@@ -1614,7 +1694,6 @@ UINT WINAPI rei_present(MSIHANDLE hinst)
     HKEY key;
     LONG res;
 
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, ".extension", &key);
     ok(hinst, !res, "got %u\n", res);
     RegCloseKey(key);
@@ -1622,7 +1701,6 @@ todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "Prog.Id.1\\shell\\Open\\command", &key);
     ok(hinst, !res, "got %u\n", res);
     RegCloseKey(key);
-}
 
     return ERROR_SUCCESS;
 }
@@ -1632,13 +1710,11 @@ UINT WINAPI rei_absent(MSIHANDLE hinst)
     HKEY key;
     LONG res;
 
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, ".extension", &key);
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "Prog.Id.1\\shell\\Open\\command", &key);
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
-}
 
     return ERROR_SUCCESS;
 }
@@ -1653,7 +1729,6 @@ UINT WINAPI font_present(MSIHANDLE hinst)
     res = RegOpenKeyExA(HKEY_LOCAL_MACHINE, font_key, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key);
     ok(hinst, !res, "got %u\n", res);
     res = RegQueryValueExA(key, "msi test font", NULL, NULL, NULL, NULL);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, !res, "got %u\n", res);
     RegCloseKey(key);
 
@@ -1667,9 +1742,7 @@ UINT WINAPI font_absent(MSIHANDLE hinst)
 
     res = RegOpenKeyExA(HKEY_LOCAL_MACHINE, font_key, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key);
     ok(hinst, !res, "got %u\n", res);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     check_reg_str(hinst, key, "msi test font", NULL);
-}
     RegCloseKey(key);
 
     return ERROR_SUCCESS;
@@ -1681,7 +1754,6 @@ UINT WINAPI rmi_present(MSIHANDLE hinst)
     LONG res;
 
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "MIME\\Database\\Content Type\\mime/type", &key);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, !res, "got %u\n", res);
 
     return ERROR_SUCCESS;
@@ -1693,7 +1765,6 @@ UINT WINAPI rmi_absent(MSIHANDLE hinst)
     LONG res;
 
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "MIME\\Database\\Content Type\\mime/type", &key);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     return ERROR_SUCCESS;
@@ -1721,7 +1792,6 @@ UINT WINAPI rp_absent(MSIHANDLE hinst)
     LONG res;
 
     res = RegOpenKeyExA(HKEY_LOCAL_MACHINE, rp_key, 0, KEY_READ | KEY_WOW64_32KEY, &key);
-todo_wine
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     return ERROR_SUCCESS;
@@ -1732,7 +1802,6 @@ UINT WINAPI rpi_present(MSIHANDLE hinst)
     HKEY key;
     LONG res;
 
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyExA(HKEY_CLASSES_ROOT, "CLSID\\{110913E7-86D1-4BF3-9922-BA103FCDDDFA}",
         0, KEY_READ | KEY_WOW64_32KEY, &key);
     ok(hinst, !res, "got %u\n", res);
@@ -1749,7 +1818,6 @@ todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "Winetest.Class.2", &key);
     ok(hinst, !res, "got %u\n", res);
     RegCloseKey(key);
-}
 
     return ERROR_SUCCESS;
 }
@@ -1759,7 +1827,6 @@ UINT WINAPI rpi_absent(MSIHANDLE hinst)
     HKEY key;
     LONG res;
 
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     res = RegOpenKeyExA(HKEY_CLASSES_ROOT, "CLSID\\{110913E7-86D1-4BF3-9922-BA103FCDDDFA}",
         0, KEY_READ | KEY_WOW64_32KEY, &key);
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
@@ -1772,7 +1839,6 @@ todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
 
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "Winetest.Class.2", &key);
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
-}
 
     return ERROR_SUCCESS;
 }
@@ -1799,7 +1865,6 @@ UINT WINAPI ru_absent(MSIHANDLE hinst)
     LONG res;
 
     res = RegOpenKeyExA(HKEY_LOCAL_MACHINE, ru_key, 0, KEY_READ | KEY_WOW64_64KEY, &key);
-todo_wine
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     return ERROR_SUCCESS;
@@ -1814,10 +1879,8 @@ UINT WINAPI tl_present(MSIHANDLE hinst)
     HRESULT hr;
 
     hr = LoadRegTypeLib(&LIBID_register_test, 7, 1, 0, &tlb);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, hr == S_OK, "got %#x\n", hr);
-    if (tlb)
-        ITypeLib_Release(tlb);
+    ITypeLib_Release(tlb);
 
     return ERROR_SUCCESS;
 }
@@ -1828,7 +1891,6 @@ UINT WINAPI tl_absent(MSIHANDLE hinst)
     HRESULT hr;
 
     hr = LoadRegTypeLib(&LIBID_register_test, 7, 1, 0, &tlb);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, hr == TYPE_E_LIBNOTREGISTERED, "got %#x\n", hr);
 
     return ERROR_SUCCESS;
@@ -1840,7 +1902,6 @@ UINT WINAPI sr_present(MSIHANDLE hinst)
     LONG res;
 
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "selfreg_test", &key);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, !res, "got %u\n", res);
     RegCloseKey(key);
 
@@ -1853,7 +1914,6 @@ UINT WINAPI sr_absent(MSIHANDLE hinst)
     LONG res;
 
     res = RegOpenKeyA(HKEY_CLASSES_ROOT, "selfreg_test", &key);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, res == ERROR_FILE_NOT_FOUND, "got %u\n", res);
 
     return ERROR_SUCCESS;
@@ -1866,10 +1926,8 @@ UINT WINAPI env_present(MSIHANDLE hinst)
 
     res = RegOpenKeyA(HKEY_CURRENT_USER, "Environment", &key);
     ok(hinst, !res, "got %u\n", res);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     check_reg_str(hinst, key, "MSITESTVAR3", "1");
     check_reg_str(hinst, key, "MSITESTVAR4", "1");
-}
     RegCloseKey(key);
 
     return ERROR_SUCCESS;
@@ -1882,10 +1940,8 @@ UINT WINAPI env_absent(MSIHANDLE hinst)
 
     res = RegOpenKeyA(HKEY_CURRENT_USER, "Environment", &key);
     ok(hinst, !res, "got %u\n", res);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED)) {
     check_reg_str(hinst, key, "MSITESTVAR3", NULL);
     check_reg_str(hinst, key, "MSITESTVAR4", NULL);
-}
     RegCloseKey(key);
 
     return ERROR_SUCCESS;
@@ -1901,7 +1957,6 @@ UINT WINAPI ini_present(MSIHANDLE hinst)
     strcat(path, "\\msitest\\test.ini");
 
     len = GetPrivateProfileStringA("section1", "key1", NULL, buf, sizeof(buf), path);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, len == 6, "got %u\n", len);
 
     return ERROR_SUCCESS;
@@ -1917,7 +1972,6 @@ UINT WINAPI ini_absent(MSIHANDLE hinst)
     strcat(path, "\\msitest\\test.ini");
 
     len = GetPrivateProfileStringA("section1", "key1", NULL, buf, sizeof(buf), path);
-todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     ok(hinst, !len, "got %u\n", len);
 
     return ERROR_SUCCESS;
@@ -1930,7 +1984,6 @@ UINT WINAPI wrv_present(MSIHANDLE hinst)
 
     res = RegOpenKeyA(HKEY_CURRENT_USER, "msitest", &key);
     ok(hinst, !res, "got %u\n", res);
-    todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     check_reg_str(hinst, key, "sz", "string");
     RegCloseKey(key);
 
@@ -1944,7 +1997,6 @@ UINT WINAPI wrv_absent(MSIHANDLE hinst)
 
     res = RegOpenKeyA(HKEY_CURRENT_USER, "msitest", &key);
     ok(hinst, !res, "got %u\n", res);
-    todo_wine_if(!MsiGetMode(hinst, MSIRUNMODE_SCHEDULED))
     check_reg_str(hinst, key, "sz", NULL);
     RegCloseKey(key);
 

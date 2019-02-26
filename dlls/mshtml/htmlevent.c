@@ -230,7 +230,7 @@ static eventid_t str_to_eid(const WCHAR *str)
 {
     int i;
 
-    for(i=0; i < sizeof(event_info)/sizeof(event_info[0]); i++) {
+    for(i=0; i < ARRAY_SIZE(event_info); i++) {
         if(!strcmpW(event_info[i].name, str))
             return i;
     }
@@ -245,7 +245,7 @@ static eventid_t attr_to_eid(const WCHAR *str)
     if((str[0] != 'o' && str[0] != 'O') || (str[1] != 'n' && str[1] != 'N'))
         return EVENTID_LAST;
 
-    for(i=0; i < sizeof(event_info)/sizeof(event_info[0]); i++) {
+    for(i=0; i < ARRAY_SIZE(event_info); i++) {
         if(!strcmpW(event_info[i].name, str+2) && event_info[i].dispid)
             return i;
     }
@@ -2301,24 +2301,26 @@ static BOOL is_cp_event(cp_static_data_t *data, DISPID dispid)
 static void call_event_handlers(EventTarget *event_target, DOMEvent *event, dispatch_mode_t dispatch_mode)
 {
     const listener_container_t *container = get_listener_container(event_target, event->type, FALSE);
-    const BOOL use_quirks = use_event_quirks(event_target);
     event_listener_t *listener, listeners_buf[8], *listeners = listeners_buf;
     unsigned listeners_cnt, listeners_size;
     ConnectionPointContainer *cp_container = NULL;
     const event_target_vtbl_t *vtbl = NULL;
+    BOOL skip_onevent_listener = FALSE;
     VARIANT v;
     HRESULT hres;
 
     assert(!event->current_target);
     event->current_target = event_target;
 
-    if(use_quirks && container && !list_empty(&container->listeners)
-       && event->phase != DEP_CAPTURING_PHASE) {
+    if(container && !list_empty(&container->listeners) && event->phase != DEP_CAPTURING_PHASE) {
         listener = LIST_ENTRY(list_tail(&container->listeners), event_listener_t, entry);
-        if(listener && listener->function && listener->type == LISTENER_TYPE_ONEVENT) {
+        if(listener && listener->function && listener->type == LISTENER_TYPE_ONEVENT
+                && use_event_quirks(event_target)) {
             DISPID named_arg = DISPID_THIS;
             VARIANTARG arg;
             DISPPARAMS dp = {&arg, &named_arg, 1, 1};
+
+            skip_onevent_listener = TRUE;
 
             V_VT(&arg) = VT_DISPATCH;
             V_DISPATCH(&arg) = (IDispatch*)&event_target->dispex.IDispatchEx_iface;
@@ -2345,7 +2347,7 @@ static void call_event_handlers(EventTarget *event_target, DOMEvent *event, disp
     }
 
     listeners_cnt = 0;
-    listeners_size = sizeof(listeners_buf)/sizeof(*listeners_buf);
+    listeners_size = ARRAY_SIZE(listeners_buf);
 
     if(container) {
         LIST_FOR_EACH_ENTRY(listener, &container->listeners, event_listener_t, entry) {
@@ -2353,7 +2355,7 @@ static void call_event_handlers(EventTarget *event_target, DOMEvent *event, disp
                 continue;
             switch(listener->type) {
             case LISTENER_TYPE_ONEVENT:
-                if(use_quirks || event->phase == DEP_CAPTURING_PHASE)
+                if(skip_onevent_listener || event->phase == DEP_CAPTURING_PHASE)
                     continue;
                 break;
             case LISTENER_TYPE_CAPTURE:
@@ -2529,7 +2531,7 @@ static HRESULT dispatch_event_object(EventTarget *event_target, DOMEvent *event,
     IEventTarget_AddRef(&event_target->IEventTarget_iface);
 
     chain_cnt = 0;
-    chain_buf_size = sizeof(target_chain_buf)/sizeof(*target_chain_buf);
+    chain_buf_size = ARRAY_SIZE(target_chain_buf);
 
     do {
         if(chain_cnt == chain_buf_size) {

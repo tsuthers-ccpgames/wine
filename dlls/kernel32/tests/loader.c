@@ -48,7 +48,7 @@ struct PROCESS_BASIC_INFORMATION_PRIVATE
 };
 
 static LONG *child_failures;
-static WORD cb_count;
+static WORD cb_count, cb_count_sys;
 static DWORD page_size;
 static BOOL is_win64 = sizeof(void *) > sizeof(int);
 static BOOL is_wow64;
@@ -70,7 +70,8 @@ static NTSTATUS (WINAPI *pLdrUnlockLoaderLock)(ULONG, ULONG_PTR);
 static void (WINAPI *pRtlAcquirePebLock)(void);
 static void (WINAPI *pRtlReleasePebLock)(void);
 static PVOID    (WINAPI *pResolveDelayLoadedAPI)(PVOID, PCIMAGE_DELAYLOAD_DESCRIPTOR,
-                                                 PDELAYLOAD_FAILURE_DLL_CALLBACK, PVOID,
+                                                 PDELAYLOAD_FAILURE_DLL_CALLBACK,
+                                                 PDELAYLOAD_FAILURE_SYSTEM_ROUTINE,
                                                  PIMAGE_THUNK_DATA ThunkAddress,ULONG);
 static PVOID (WINAPI *pRtlImageDirectoryEntryToData)(HMODULE,BOOL,WORD,ULONG *);
 static DWORD (WINAPI *pFlsAlloc)(PFLS_CALLBACK_FUNCTION);
@@ -697,7 +698,7 @@ static void test_Loader(void)
     /* prevent displaying of the "Unable to load this DLL" message box */
     SetErrorMode(SEM_FAILCRITICALERRORS);
 
-    for (i = 0; i < sizeof(td)/sizeof(td[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(td); i++)
     {
         nt_header = nt_header_template;
         nt_header.FileHeader.NumberOfSections = td[i].number_of_sections;
@@ -922,7 +923,7 @@ static void test_Loader(void)
 
             error_match = FALSE;
             for (error_index = 0;
-                 ! error_match && error_index < sizeof(td[i].errors) / sizeof(DWORD);
+                 ! error_match && error_index < ARRAY_SIZE(td[i].errors);
                  error_index++)
             {
                 error_match = td[i].errors[error_index] == GetLastError();
@@ -972,6 +973,24 @@ static void test_Loader(void)
     nt_header.Signature = IMAGE_OS2_SIGNATURE;
     status = map_image_section( &nt_header, &section, section_data, __LINE__ );
     ok( status == STATUS_INVALID_IMAGE_NE_FORMAT, "NtCreateSection error %08x\n", status );
+    for (i = 0; i < 16; i++)
+    {
+        ((IMAGE_OS2_HEADER *)&nt_header)->ne_exetyp = i;
+        status = map_image_section( &nt_header, &section, section_data, __LINE__ );
+        switch (i)
+        {
+        case 2:
+            ok( status == STATUS_INVALID_IMAGE_WIN_16, "NtCreateSection %u error %08x\n", i, status );
+            break;
+        case 5:
+            ok( status == STATUS_INVALID_IMAGE_PROTECT, "NtCreateSection %u error %08x\n", i, status );
+            break;
+        default:
+            ok( status == STATUS_INVALID_IMAGE_NE_FORMAT, "NtCreateSection %u error %08x\n", i, status );
+            break;
+        }
+    }
+    ((IMAGE_OS2_HEADER *)&nt_header)->ne_exetyp = ((IMAGE_OS2_HEADER *)&nt_header_template)->ne_exetyp;
 
     nt_header.Signature = 0xdeadbeef;
     status = map_image_section( &nt_header, &section, section_data, __LINE__ );
@@ -1581,7 +1600,7 @@ static void test_VirtualProtect(void *base, void *section)
 
     orig_prot = old_prot;
 
-    for (i = 0; i < sizeof(td)/sizeof(td[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(td); i++)
     {
         SetLastError(0xdeadbeef);
         ret = VirtualQuery(section, &info, sizeof(info));
@@ -1712,7 +1731,7 @@ static void test_section_access(void)
 
     GetTempPathA(MAX_PATH, temp_path);
 
-    for (i = 0; i < sizeof(td)/sizeof(td[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(td); i++)
     {
         IMAGE_NT_HEADERS nt_header;
 
@@ -2006,13 +2025,15 @@ static void test_import_resolution(void)
 #define MAX_COUNT 10
 static HANDLE attached_thread[MAX_COUNT];
 static DWORD attached_thread_count;
-HANDLE stop_event, event, mutex, semaphore, loader_lock_event, peb_lock_event, heap_lock_event, ack_event;
-static int test_dll_phase, inside_loader_lock, inside_peb_lock, inside_heap_lock;
+static HANDLE event, mutex, semaphore;
+static HANDLE stop_event, loader_lock_event, peb_lock_event, heap_lock_event, cs_lock_event, ack_event;
+static CRITICAL_SECTION cs_lock;
+static int test_dll_phase, inside_loader_lock, inside_peb_lock, inside_heap_lock, inside_cs_lock;
 static LONG fls_callback_count;
 
 static DWORD WINAPI mutex_thread_proc(void *param)
 {
-    HANDLE wait_list[4];
+    HANDLE wait_list[5];
     DWORD ret;
 
     ret = WaitForSingleObject(mutex, 0);
@@ -2024,11 +2045,12 @@ static DWORD WINAPI mutex_thread_proc(void *param)
     wait_list[1] = loader_lock_event;
     wait_list[2] = peb_lock_event;
     wait_list[3] = heap_lock_event;
+    wait_list[4] = cs_lock_event;
 
     trace("%04x: mutex_thread_proc: starting\n", GetCurrentThreadId());
     while (1)
     {
-        ret = WaitForMultipleObjects(sizeof(wait_list)/sizeof(wait_list[0]), wait_list, FALSE, 50);
+        ret = WaitForMultipleObjects(ARRAY_SIZE(wait_list), wait_list, FALSE, 50);
         if (ret == WAIT_OBJECT_0) break;
         else if (ret == WAIT_OBJECT_0 + 1)
         {
@@ -2051,6 +2073,13 @@ static DWORD WINAPI mutex_thread_proc(void *param)
             trace("%04x: mutex_thread_proc: Entering heap lock\n", GetCurrentThreadId());
             HeapLock(GetProcessHeap());
             inside_heap_lock++;
+            SetEvent(ack_event);
+        }
+        else if (ret == WAIT_OBJECT_0 + 4)
+        {
+            trace("%04x: mutex_thread_proc: Entering CS lock\n", GetCurrentThreadId());
+            EnterCriticalSection(&cs_lock);
+            inside_cs_lock++;
             SetEvent(ack_event);
         }
     }
@@ -2159,17 +2188,23 @@ static BOOL WINAPI dll_entry_point(HINSTANCE hinst, DWORD reason, LPVOID param)
              * doesn't call the DLL entry point on process detach either.
              */
             HeapLock(GetProcessHeap());
+todo_wine
             ok(0, "dll_entry_point: process should already deadlock\n");
             break;
         }
+        else if (test_dll_phase == 7)
+        {
+            EnterCriticalSection(&cs_lock);
+        }
 
-        if (test_dll_phase == 0 || test_dll_phase == 1 || test_dll_phase == 3)
+        if (test_dll_phase == 0 || test_dll_phase == 1 || test_dll_phase == 3 || test_dll_phase == 7)
             ok(param != NULL, "dll: param %p\n", param);
         else
             ok(!param, "dll: param %p\n", param);
 
         if (test_dll_phase == 0 || test_dll_phase == 1) expected_code = 195;
         else if (test_dll_phase == 3) expected_code = 196;
+        else if (test_dll_phase == 7) expected_code = 199;
         else expected_code = STILL_ACTIVE;
 
         if (test_dll_phase == 3)
@@ -2487,6 +2522,11 @@ static void child_process(const char *dll_name, DWORD target_offset)
     heap_lock_event = CreateEventW(NULL, FALSE, FALSE, NULL);
     ok(heap_lock_event != 0, "CreateEvent error %d\n", GetLastError());
 
+    InitializeCriticalSection(&cs_lock);
+    SetLastError(0xdeadbeef);
+    cs_lock_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    ok(cs_lock_event != 0, "CreateEvent error %d\n", GetLastError());
+
     SetLastError(0xdeadbeef);
     ack_event = CreateEventW(NULL, FALSE, FALSE, NULL);
     ok(ack_event != 0, "CreateEvent error %d\n", GetLastError());
@@ -2700,6 +2740,20 @@ static void child_process(const char *dll_name, DWORD target_offset)
         /* calling ExitProcess should cause a deadlock */
         trace("call ExitProcess(1)\n");
         ExitProcess(1);
+        ok(0, "ExitProcess should not return\n");
+        break;
+
+    case 7:
+        trace("setting cs_lock_event\n");
+        SetEvent(cs_lock_event);
+        WaitForSingleObject(ack_event, 1000);
+        ok(inside_cs_lock != 0, "inside_cs_lock is not set\n");
+
+        *child_failures = winetest_get_failures();
+
+        /* calling ExitProcess should not cause a deadlock */
+        trace("call ExitProcess(199)\n");
+        ExitProcess(199);
         ok(0, "ExitProcess should not return\n");
         break;
 
@@ -2989,6 +3043,7 @@ static void test_ExitProcess(void)
     ret = CreateProcessA(argv[0], cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
     ok(ret, "CreateProcess(%s) error %d\n", cmdline, GetLastError());
     ret = WaitForSingleObject(pi.hProcess, 5000);
+todo_wine
     ok(ret == WAIT_TIMEOUT || broken(ret == WAIT_OBJECT_0) /* XP */, "child process should fail to terminate\n");
     if (ret != WAIT_OBJECT_0)
     {
@@ -2998,7 +3053,32 @@ static void test_ExitProcess(void)
     ret = WaitForSingleObject(pi.hProcess, 1000);
     ok(ret == WAIT_OBJECT_0, "child process failed to terminate\n");
     GetExitCodeProcess(pi.hProcess, &ret);
+todo_wine
     ok(ret == 201 || broken(ret == 1) /* XP */, "expected exit code 201, got %u\n", ret);
+    if (*child_failures)
+    {
+        trace("%d failures in child process\n", *child_failures);
+        winetest_add_failures(*child_failures);
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    /* phase 7 */
+    *child_failures = -1;
+    sprintf(cmdline, "\"%s\" loader %s %u 7", argv[0], dll_name, target_offset);
+    ret = CreateProcessA(argv[0], cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+    ok(ret, "CreateProcess(%s) error %d\n", cmdline, GetLastError());
+    ret = WaitForSingleObject(pi.hProcess, 5000);
+    ok(ret == WAIT_OBJECT_0, "child process failed to terminate\n");
+    if (ret != WAIT_OBJECT_0)
+    {
+        trace("terminating child process\n");
+        TerminateProcess(pi.hProcess, 199);
+    }
+    ret = WaitForSingleObject(pi.hProcess, 1000);
+    ok(ret == WAIT_OBJECT_0, "child process failed to terminate\n");
+    GetExitCodeProcess(pi.hProcess, &ret);
+    ok(ret == 199, "expected exit code 199, got %u\n", ret);
     if (*child_failures)
     {
         trace("%d failures in child process\n", *child_failures);
@@ -3102,7 +3182,8 @@ static void test_ExitProcess(void)
     if (!ret)
         ok(GetLastError() == ERROR_INVALID_PARAMETER ||
            GetLastError() == ERROR_GEN_FAILURE /* win7 64-bit */ ||
-           GetLastError() == ERROR_INVALID_FUNCTION /* vista 64-bit */,
+           GetLastError() == ERROR_INVALID_FUNCTION /* vista 64-bit */ ||
+           GetLastError() == ERROR_ACCESS_DENIED /* Win10 32-bit */,
            "expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
     SetLastError(0xdeadbeef);
     ctx.ContextFlags = CONTEXT_INTEGER;
@@ -3125,7 +3206,8 @@ static void test_ExitProcess(void)
     if (!ret)
         ok(GetLastError() == ERROR_INVALID_PARAMETER ||
            GetLastError() == ERROR_GEN_FAILURE /* win7 64-bit */ ||
-           GetLastError() == ERROR_INVALID_FUNCTION /* vista 64-bit */,
+           GetLastError() == ERROR_INVALID_FUNCTION /* vista 64-bit */ ||
+           GetLastError() == ERROR_ACCESS_DENIED /* Win10 32-bit */,
            "expected ERROR_INVALID_PARAMETER, got %d\n", GetLastError());
     SetLastError(0xdeadbeef);
     ctx.ContextFlags = CONTEXT_INTEGER;
@@ -3258,6 +3340,14 @@ static PVOID WINAPI failuredllhook(ULONG ul, DELAYLOAD_INFO* pd)
     return (void*)0xdeadbeef;
 }
 
+static PVOID WINAPI failuresyshook(const char *dll, const char *function)
+{
+    ok(!strcmp(dll, "secur32.dll"), "wrong dll: %s\n", dll);
+    ok(!((ULONG_PTR)function >> 16), "expected ordinal, got %p\n", function);
+    cb_count_sys++;
+    return (void*)0x12345678;
+}
+
 static void test_ResolveDelayLoadedAPI(void)
 {
     static const char test_dll[] = "secur32.dll";
@@ -3364,7 +3454,7 @@ static void test_ResolveDelayLoadedAPI(void)
 
     section.PointerToRawData = 0x2000;
     section.VirtualAddress = 0x2000;
-    i = sizeof(td)/sizeof(td[0]);
+    i = ARRAY_SIZE(td);
     section.Misc.VirtualSize = sizeof(test_dll) + sizeof(hint) + sizeof(test_func) + sizeof(HMODULE) +
                                2 * (i + 1) * sizeof(IMAGE_THUNK_DATA);
     ok(section.Misc.VirtualSize <= 0x1000, "Too much tests, add a new section!\n");
@@ -3413,7 +3503,7 @@ static void test_ResolveDelayLoadedAPI(void)
 
     SetFilePointer( hfile, idd.ImportAddressTableRVA, NULL, SEEK_SET );
 
-    for (i = 0; i < sizeof(td)/sizeof(td[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(td); i++)
     {
         /* 0x1a00 is an empty space between delay data and extended delay data, real thunks are not necessary */
         itd32.u1.Function = nt_header.OptionalHeader.ImageBase + 0x1a00 + i * 0x20;
@@ -3427,7 +3517,7 @@ static void test_ResolveDelayLoadedAPI(void)
     ret = WriteFile(hfile, &itd32, sizeof(itd32), &dummy, NULL);
     ok(ret, "WriteFile error %d\n", GetLastError());
 
-    for (i = 0; i < sizeof(td)/sizeof(td[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(td); i++)
     {
         if (td[i].func)
             itd32.u1.AddressOfData = idd.DllNameRVA + sizeof(test_dll);
@@ -3480,7 +3570,7 @@ static void test_ResolveDelayLoadedAPI(void)
         itda = RVAToAddr(delaydir->ImportAddressTableRVA, hlib);
         htarget = LoadLibraryA(RVAToAddr(delaydir->DllNameRVA, hlib));
 
-        for (i = 0; i < sizeof(td)/sizeof(td[0]); i++)
+        for (i = 0; i < ARRAY_SIZE(td); i++)
         {
             void *ret, *load;
 
@@ -3492,8 +3582,9 @@ static void test_ResolveDelayLoadedAPI(void)
                 load = (void *)GetProcAddress(htarget, (char*)iibn->Name);
             }
 
-            cb_count = 0;
-            ret = pResolveDelayLoadedAPI(hlib, delaydir, failuredllhook, NULL, &itda[i], 0);
+            /* test without failure dll callback */
+            cb_count = cb_count_sys = 0;
+            ret = pResolveDelayLoadedAPI(hlib, delaydir, NULL, failuresyshook, &itda[i], 0);
             if (td[i].succeeds)
             {
                 ok(ret != NULL, "Test %u: ResolveDelayLoadedAPI failed\n", i);
@@ -3501,11 +3592,42 @@ static void test_ResolveDelayLoadedAPI(void)
                 ok(ret == (void*)itda[i].u1.AddressOfData, "Test %u: expected %p, got %p\n",
                    i, ret, (void*)itda[i].u1.AddressOfData);
                 ok(!cb_count, "Test %u: Wrong callback count: %d\n", i, cb_count);
+                ok(!cb_count_sys, "Test %u: Wrong sys callback count: %d\n", i, cb_count_sys);
             }
             else
             {
-                ok(ret == (void*)0xdeadbeef, "Test %u: ResolveDelayLoadedAPI succeeded with %p\n", i, ret);
-                ok(cb_count, "Test %u: Wrong callback count: %d\n", i, cb_count);
+                ok(ret == (void*)0x12345678, "Test %u: ResolveDelayLoadedAPI succeeded with %p\n", i, ret);
+                ok(!cb_count, "Test %u: Wrong callback count: %d\n", i, cb_count);
+                ok(cb_count_sys == 1, "Test %u: Wrong sys callback count: %d\n", i, cb_count_sys);
+            }
+
+            /* test with failure dll callback */
+            cb_count = cb_count_sys = 0;
+            ret = pResolveDelayLoadedAPI(hlib, delaydir, failuredllhook, failuresyshook, &itda[i], 0);
+            if (td[i].succeeds)
+            {
+                ok(ret != NULL, "Test %u: ResolveDelayLoadedAPI failed\n", i);
+                ok(ret == load, "Test %u: expected %p, got %p\n", i, load, ret);
+                ok(ret == (void*)itda[i].u1.AddressOfData, "Test %u: expected %p, got %p\n",
+                   i, ret, (void*)itda[i].u1.AddressOfData);
+                ok(!cb_count, "Test %u: Wrong callback count: %d\n", i, cb_count);
+                ok(!cb_count_sys, "Test %u: Wrong sys callback count: %d\n", i, cb_count_sys);
+            }
+            else
+            {
+                if (ret == (void*)0x12345678)
+                {
+                    /* Win10+ sometimes buffers the address of the stub function */
+                    ok(!cb_count, "Test %u: Wrong callback count: %d\n", i, cb_count);
+                    ok(!cb_count_sys, "Test %u: Wrong sys callback count: %d\n", i, cb_count_sys);
+                }
+                else if (ret == (void*)0xdeadbeef)
+                {
+                    ok(cb_count == 1, "Test %u: Wrong callback count: %d\n", i, cb_count);
+                    ok(!cb_count_sys, "Test %u: Wrong sys callback count: %d\n", i, cb_count_sys);
+                }
+                else
+                    ok(0, "Test %u: ResolveDelayLoadedAPI succeeded with %p\n", i, ret);
             }
         }
         delaydir++;

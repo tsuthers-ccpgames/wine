@@ -653,6 +653,8 @@ typedef DWORD FLONG;
 #define PROCESSOR_ARCHITECTURE_IA32_ON_WIN64    10
 #define PROCESSOR_ARCHITECTURE_NEUTRAL          11
 #define PROCESSOR_ARCHITECTURE_ARM64            12
+#define PROCESSOR_ARCHITECTURE_ARM32_ON_WIN64   13
+#define PROCESSOR_ARCHITECTURE_IA32_ON_ARM64    14
 #define PROCESSOR_ARCHITECTURE_UNKNOWN	0xFFFF
 
 /* dwProcessorType */
@@ -759,6 +761,10 @@ typedef struct _MEMORY_BASIC_INFORMATION
 #define CONTAINING_RECORD(address, type, field) \
   ((type *)((PCHAR)(address) - offsetof(type, field)))
 
+#ifdef __WINESRC__
+# define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#endif
+
 /* Types */
 
 typedef struct _LIST_ENTRY {
@@ -772,10 +778,9 @@ typedef struct _SINGLE_LIST_ENTRY {
 
 #ifdef _WIN64
 
-typedef struct DECLSPEC_ALIGN(16) _SLIST_ENTRY *PSLIST_ENTRY;
 typedef struct DECLSPEC_ALIGN(16) _SLIST_ENTRY {
-    PSLIST_ENTRY Next;
-} SLIST_ENTRY;
+    struct _SLIST_ENTRY *Next;
+} SLIST_ENTRY, *PSLIST_ENTRY;
 
 typedef union DECLSPEC_ALIGN(16) _SLIST_HEADER {
     struct {
@@ -1868,6 +1873,9 @@ typedef struct _CONTEXT
     DWORD Wcr[ARM64_MAX_WATCHPOINTS];   /* 378 */
     DWORD64 Wvr[ARM64_MAX_WATCHPOINTS]; /* 380 */
 } CONTEXT;
+
+BOOLEAN CDECL            RtlAddFunctionTable(RUNTIME_FUNCTION*,DWORD,ULONG_PTR);
+BOOLEAN CDECL            RtlDeleteFunctionTable(RUNTIME_FUNCTION*);
 
 #endif /* __aarch64__ */
 
@@ -3486,6 +3494,7 @@ typedef const IMAGE_DELAYLOAD_DESCRIPTOR *PCIMAGE_DELAYLOAD_DESCRIPTOR;
 #define IMAGE_REL_ARM64_TOKEN           0x000C
 #define IMAGE_REL_ARM64_SECTION         0x000D
 #define IMAGE_REL_ARM64_ADDR64          0x000E
+#define IMAGE_REL_ARM64_BRANCH19        0x000F
 
 /* IA64 relocation types */
 #define IMAGE_REL_IA64_ABSOLUTE		0x0000
@@ -3732,6 +3741,7 @@ typedef struct _IMAGE_DEBUG_DIRECTORY {
 #define IMAGE_DEBUG_TYPE_POGO          13
 #define IMAGE_DEBUG_TYPE_ILTCG         14
 #define IMAGE_DEBUG_TYPE_MPX           15
+#define IMAGE_DEBUG_TYPE_REPRO         16
 
 typedef enum ReplacesCorHdrNumericDefines
 {
@@ -4321,6 +4331,7 @@ typedef struct _SID_AND_ATTRIBUTES {
 #define SECURITY_CREATOR_GROUP_RID              __MSABI_LONG(0x00000001)
 #define SECURITY_CREATOR_OWNER_SERVER_RID       __MSABI_LONG(0x00000002)
 #define SECURITY_CREATOR_GROUP_SERVER_RID       __MSABI_LONG(0x00000003)
+#define SECURITY_CREATOR_OWNER_RIGHTS_RID       __MSABI_LONG(0x00000004)
 
 /* S-1-4 */
 #define SECURITY_NON_UNIQUE_AUTHORITY		{0,0,0,0,0,4}
@@ -6050,6 +6061,8 @@ typedef enum _LOGICAL_PROCESSOR_RELATIONSHIP
     RelationAll              = 0xffff
 } LOGICAL_PROCESSOR_RELATIONSHIP;
 
+#define LTP_PC_SMT 0x1
+
 typedef enum _PROCESSOR_CACHE_TYPE
 {
     CacheUnified,
@@ -6266,6 +6279,26 @@ typedef enum _RTL_UMS_SCHEDULER_REASON
 } RTL_UMS_SCHEDULER_REASON, *PRTL_UMS_SCHEDULER_REASON;
 
 typedef void (CALLBACK *PRTL_UMS_SCHEDULER_ENTRY_POINT)(RTL_UMS_SCHEDULER_REASON,ULONG_PTR,PVOID);
+
+typedef enum _PROCESS_MITIGATION_POLICY
+{
+    ProcessDEPPolicy,
+    ProcessASLRPolicy,
+    ProcessDynamicCodePolicy,
+    ProcessStrictHandleCheckPolicy,
+    ProcessSystemCallDisablePolicy,
+    ProcessMitigationOptionsMask,
+    ProcessExtensionPointDisablePolicy,
+    ProcessControlFlowGuardPolicy,
+    ProcessSignaturePolicy,
+    ProcessFontDisablePolicy,
+    ProcessImageLoadPolicy,
+    ProcessSystemCallFilterPolicy,
+    ProcessPayloadRestrictionPolicy,
+    ProcessChildProcessPolicy,
+    ProcessSideChannelIsolationPolicy,
+    MaxProcessMitigationPolicy
+} PROCESS_MITIGATION_POLICY, *PPROCESS_MITIGATION_POLICY;
 
 #ifdef __cplusplus
 }

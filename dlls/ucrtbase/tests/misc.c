@@ -27,6 +27,7 @@
 #include <share.h>
 #include <fcntl.h>
 #include <time.h>
+#include <direct.h>
 
 #include <windef.h>
 #include <winbase.h>
@@ -104,6 +105,9 @@ static HMODULE module;
 static int (CDECL *p_initialize_onexit_table)(MSVCRT__onexit_table_t *table);
 static int (CDECL *p_register_onexit_function)(MSVCRT__onexit_table_t *table, MSVCRT__onexit_t func);
 static int (CDECL *p_execute_onexit_table)(MSVCRT__onexit_table_t *table);
+static int (CDECL *p_o__initialize_onexit_table)(MSVCRT__onexit_table_t *table);
+static int (CDECL *p_o__register_onexit_function)(MSVCRT__onexit_table_t *table, MSVCRT__onexit_t func);
+static int (CDECL *p_o__execute_onexit_table)(MSVCRT__onexit_table_t *table);
 static int (CDECL *p___fpe_flt_rounds)(void);
 static unsigned int (CDECL *p__controlfp)(unsigned int, unsigned int);
 static _invalid_parameter_handler (CDECL *p__set_invalid_parameter_handler)(_invalid_parameter_handler);
@@ -114,7 +118,8 @@ static int (CDECL *p__ltoa_s)(LONG, char*, size_t, int);
 static char* (CDECL *p__get_narrow_winmain_command_line)(void);
 static int (CDECL *p_sopen_dispatch)(const char *, int, int, int, int *, int);
 static int (CDECL *p_sopen_s)(int *, const char *, int, int, int);
-static MSVCRT_lldiv_t (CDECL *p_lldiv)(LONGLONG,LONGLONG);
+static int (WINAPIV *p__open)(const char*, int, ...);
+static MSVCRT_lldiv_t* (CDECL *p_lldiv)(MSVCRT_lldiv_t*,LONGLONG,LONGLONG);
 static int (CDECL *p__isctype)(int,int);
 static int (CDECL *p_isblank)(int);
 static int (CDECL *p__isblank_l)(int,_locale_t);
@@ -125,6 +130,15 @@ static int (CDECL *p_fesetround)(int);
 static void (CDECL *p___setusermatherr)(MSVCRT_matherr_func);
 static int* (CDECL *p_errno)(void);
 static char* (CDECL *p_asctime)(const struct tm *);
+static void (CDECL *p_exit)(int);
+static int (CDECL *p__crt_atexit)(void (CDECL*)(void));
+static int (__cdecl *p_crt_at_quick_exit)(void (__cdecl *func)(void));
+static void (__cdecl *p_quick_exit)(int exitcode);
+static int (__cdecl *p__stat32)(const char*, struct _stat32 *buf);
+static int (__cdecl *p__close)(int);
+static void* (__cdecl *p__o_malloc)(size_t);
+static size_t (__cdecl *p__msize)(void*);
+static void (__cdecl *p_free)(void*);
 
 static void test__initialize_onexit_table(void)
 {
@@ -144,6 +158,15 @@ static void test__initialize_onexit_table(void)
     ret = p_initialize_onexit_table(&table2);
     ok(ret == 0, "got %d\n", ret);
     ok(table2._first == table._first, "got %p, %p\n", table2._first, table._first);
+    ok(table2._last == table._last, "got %p, %p\n", table2._last, table._last);
+    ok(table2._end == table._end, "got %p, %p\n", table2._end, table._end);
+
+    memset(&table2, 0, sizeof(table2));
+    ret = p_o__initialize_onexit_table(&table2);
+    ok(ret == 0, "got %d\n", ret);
+    ok(table2._first == table._first, "got %p, %p\n", table2._first, table._first);
+    ok(table2._last == table._last, "got %p, %p\n", table2._last, table._last);
+    ok(table2._end == table._end, "got %p, %p\n", table2._end, table._end);
 
     /* uninitialized table */
     table._first = table._last = table._end = (void*)0x123;
@@ -222,6 +245,19 @@ static void test__register_onexit_function(void)
     ret = p_register_onexit_function(&table, onexit_func);
     ok(ret == 0, "got %d\n", ret);
     ok(f != table._last, "got %p, initial %p\n", table._last, f);
+
+    f = table._last;
+    ret = p_o__register_onexit_function(&table, NULL);
+    ok(ret == 0, "got %d\n", ret);
+    ok(f != table._last, "got %p, initial %p\n", table._last, f);
+
+    f = table._last;
+    ret = p_o__register_onexit_function(&table, onexit_func);
+    ok(ret == 0, "got %d\n", ret);
+    ok(f != table._last, "got %p, initial %p\n", table._last, f);
+
+    ret = p_execute_onexit_table(&table);
+    ok(ret == 0, "got %d\n", ret);
 }
 
 static void test__execute_onexit_table(void)
@@ -240,7 +276,7 @@ static void test__execute_onexit_table(void)
     ret = p_execute_onexit_table(&table);
     ok(ret == 0, "got %d\n", ret);
 
-    /* same functions registered twice */
+    /* same function registered multiple times */
     ret = p_register_onexit_function(&table, onexit_func);
     ok(ret == 0, "got %d\n", ret);
 
@@ -250,11 +286,33 @@ static void test__execute_onexit_table(void)
     ret = p_register_onexit_function(&table, onexit_func);
     ok(ret == 0, "got %d\n", ret);
 
+    ret = p_o__register_onexit_function(&table, onexit_func);
+    ok(ret == 0, "got %d\n", ret);
+
     ok(table._first != table._end, "got %p, %p\n", table._first, table._end);
     g_onexit_called = 0;
     ret = p_execute_onexit_table(&table);
     ok(ret == 0, "got %d\n", ret);
-    ok(g_onexit_called == 2, "got %d\n", g_onexit_called);
+    ok(g_onexit_called == 3, "got %d\n", g_onexit_called);
+    ok(table._first == table._end, "got %p, %p\n", table._first, table._end);
+
+    ret = p_register_onexit_function(&table, onexit_func);
+    ok(ret == 0, "got %d\n", ret);
+
+    ret = p_register_onexit_function(&table, NULL);
+    ok(ret == 0, "got %d\n", ret);
+
+    ret = p_register_onexit_function(&table, onexit_func);
+    ok(ret == 0, "got %d\n", ret);
+
+    ret = p_o__register_onexit_function(&table, onexit_func);
+    ok(ret == 0, "got %d\n", ret);
+
+    ok(table._first != table._end, "got %p, %p\n", table._first, table._end);
+    g_onexit_called = 0;
+    ret = p_o__execute_onexit_table(&table);
+    ok(ret == 0, "got %d\n", ret);
+    ok(g_onexit_called == 3, "got %d\n", g_onexit_called);
     ok(table._first == table._end, "got %p, %p\n", table._first, table._end);
 
     /* execute again, table is already empty */
@@ -394,6 +452,8 @@ static void test__get_narrow_winmain_command_line(char *path)
             CREATE_DEFAULT_ERROR_MODE|NORMAL_PRIORITY_CLASS,
             NULL, NULL, &startup, &proc);
     winetest_wait_child_process(proc.hProcess);
+    CloseHandle(proc.hProcess);
+    CloseHandle(proc.hThread);
 }
 
 static BOOL init(void)
@@ -408,6 +468,9 @@ static BOOL init(void)
     p_initialize_onexit_table = (void*)GetProcAddress(module, "_initialize_onexit_table");
     p_register_onexit_function = (void*)GetProcAddress(module, "_register_onexit_function");
     p_execute_onexit_table = (void*)GetProcAddress(module, "_execute_onexit_table");
+    p_o__initialize_onexit_table = (void*)GetProcAddress(module, "_o__initialize_onexit_table");
+    p_o__register_onexit_function = (void*)GetProcAddress(module, "_o__register_onexit_function");
+    p_o__execute_onexit_table = (void*)GetProcAddress(module, "_o__execute_onexit_table");
     p___fpe_flt_rounds = (void*)GetProcAddress(module, "__fpe_flt_rounds");
     p__controlfp = (void*)GetProcAddress(module, "_controlfp");
     p__set_invalid_parameter_handler = (void*)GetProcAddress(module, "_set_invalid_parameter_handler");
@@ -418,6 +481,7 @@ static BOOL init(void)
     p__get_narrow_winmain_command_line = (void*)GetProcAddress(GetModuleHandleA("ucrtbase.dll"), "_get_narrow_winmain_command_line");
     p_sopen_dispatch = (void*)GetProcAddress(module, "_sopen_dispatch");
     p_sopen_s = (void*)GetProcAddress(module, "_sopen_s");
+    p__open = (void*)GetProcAddress(module, "_open");
     p_lldiv = (void*)GetProcAddress(module, "lldiv");
     p__isctype = (void*)GetProcAddress(module, "_isctype");
     p_isblank = (void*)GetProcAddress(module, "isblank");
@@ -429,6 +493,15 @@ static BOOL init(void)
     p___setusermatherr = (void*)GetProcAddress(module, "__setusermatherr");
     p_errno = (void*)GetProcAddress(module, "_errno");
     p_asctime = (void*)GetProcAddress(module, "asctime");
+    p__crt_atexit = (void*)GetProcAddress(module, "_crt_atexit");
+    p_exit = (void*)GetProcAddress(module, "exit");
+    p_crt_at_quick_exit = (void*)GetProcAddress(module, "_crt_at_quick_exit");
+    p_quick_exit = (void*)GetProcAddress(module, "quick_exit");
+    p__stat32 = (void*)GetProcAddress(module, "_stat32");
+    p__close = (void*)GetProcAddress(module, "_close");
+    p__o_malloc = (void*)GetProcAddress(module, "_o_malloc");
+    p__msize = (void*)GetProcAddress(module, "_msize");
+    p_free = (void*)GetProcAddress(module, "free");
 
     return TRUE;
 }
@@ -444,7 +517,7 @@ static void test__sopen_dispatch(void)
     ret = p_sopen_dispatch(tempf, _O_CREAT, _SH_DENYWR, 0xff, &fd, 0);
     ok(!ret, "got %d\n", ret);
     ok(fd > 0, "got fd %d\n", fd);
-    _close(fd);
+    p__close(fd);
     unlink(tempf);
 
     p__set_invalid_parameter_handler(global_invalid_parameter_handler);
@@ -457,7 +530,7 @@ static void test__sopen_dispatch(void)
     CHECK_CALLED(global_invalid_parameter_handler);
     if (fd > 0)
     {
-        _close(fd);
+        p__close(fd);
         unlink(tempf);
     }
 
@@ -477,13 +550,13 @@ static void test__sopen_s(void)
     ret = p_sopen_s(&fd, tempf, _O_CREAT, _SH_DENYWR, 0);
     ok(!ret, "got %d\n", ret);
     ok(fd > 0, "got fd %d\n", fd);
-    _close(fd);
+    p__close(fd);
     unlink(tempf);
 
     /* _open() does not validate pmode */
-    fd = _open(tempf, _O_CREAT, 0xff);
+    fd = p__open(tempf, _O_CREAT, 0xff);
     ok(fd > 0, "got fd %d\n", fd);
-    _close(fd);
+    p__close(fd);
     unlink(tempf);
 
     p__set_invalid_parameter_handler(global_invalid_parameter_handler);
@@ -504,7 +577,7 @@ static void test_lldiv(void)
 {
     MSVCRT_lldiv_t r;
 
-    r = p_lldiv((LONGLONG)0x111 << 32 | 0x222, (LONGLONG)1 << 32);
+    p_lldiv(&r, (LONGLONG)0x111 << 32 | 0x222, (LONGLONG)1 << 32);
     ok(r.quot == 0x111, "quot = %s\n", wine_dbgstr_longlong(r.quot));
     ok(r.rem == 0x222, "rem = %s\n", wine_dbgstr_longlong(r.rem));
 }
@@ -683,11 +756,13 @@ static void test_math_errors(void)
     } testsdl[] = {
         {"_scalb", -INFINITY, 1, -1, -1},
         {"_scalb", -1e100, 1, -1, -1},
+        {"_scalb", 0, 1, -1, -1},
         {"_scalb", 1e100, 1, -1, -1},
         {"_scalb", INFINITY, 1, -1, -1},
         {"_scalb", 1, 1e9, ERANGE, _OVERFLOW},
         {"ldexp", -INFINITY, 1, -1, -1},
         {"ldexp", -1e100, 1, -1, -1},
+        {"ldexp", 0, 1, -1, -1},
         {"ldexp", 1e100, 1, -1, -1},
         {"ldexp", INFINITY, 1, -1, -1},
         {"ldexp", 1, -1e9, -1, _UNDERFLOW},
@@ -765,6 +840,220 @@ static void test_asctime(void)
     ok(!strcmp(ret, "Thu Jan  1 00:00:00 1970\n"), "asctime returned %s\n", ret);
 }
 
+static LONG* get_failures_counter(HANDLE *map)
+{
+    *map = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
+            0, sizeof(LONG), "winetest_failures_counter");
+    return MapViewOfFile(*map, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(LONG));
+}
+
+static void free_failures_counter(LONG *mem, HANDLE map)
+{
+    UnmapViewOfFile(mem);
+    CloseHandle(map);
+}
+
+static void set_failures_counter(LONG add)
+{
+    HANDLE failures_map;
+    LONG *failures;
+
+    failures = get_failures_counter(&failures_map);
+    *failures = add;
+    free_failures_counter(failures, failures_map);
+}
+
+static void test_exit(const char *argv0)
+{
+    PROCESS_INFORMATION proc;
+    STARTUPINFOA startup = {0};
+    char path[MAX_PATH];
+    HANDLE failures_map, exit_event, quick_exit_event;
+    LONG *failures;
+    DWORD ret;
+
+    exit_event = CreateEventA(NULL, FALSE, FALSE, "exit_event");
+    quick_exit_event = CreateEventA(NULL, FALSE, FALSE, "quick_exit_event");
+
+    failures = get_failures_counter(&failures_map);
+    sprintf(path, "%s misc exit", argv0);
+    startup.cb = sizeof(startup);
+    CreateProcessA(NULL, path, NULL, NULL, TRUE, 0, NULL, NULL, &startup, &proc);
+    ret = WaitForSingleObject(proc.hProcess, INFINITE);
+    ok(ret == WAIT_OBJECT_0, "child process wait failed\n");
+    GetExitCodeProcess(proc.hProcess, &ret);
+    ok(ret == 1, "child process exited with code %d\n", ret);
+    CloseHandle(proc.hProcess);
+    CloseHandle(proc.hThread);
+    ok(!*failures, "%d tests failed in child process\n", *failures);
+    free_failures_counter(failures, failures_map);
+
+
+    ret = WaitForSingleObject(exit_event, 0);
+    ok(ret == WAIT_OBJECT_0, "exit_event was not set (%x)\n", ret);
+    ret = WaitForSingleObject(quick_exit_event, 0);
+    ok(ret == WAIT_TIMEOUT, "quick_exit_event should not have be set (%x)\n", ret);
+
+    CloseHandle(exit_event);
+    CloseHandle(quick_exit_event);
+}
+
+static int atexit_called;
+
+static void CDECL at_exit_func1(void)
+{
+    HANDLE exit_event = CreateEventA(NULL, FALSE, FALSE, "exit_event");
+
+    ok(exit_event != NULL, "CreateEvent failed: %d\n", GetLastError());
+    ok(atexit_called == 1, "atexit_called = %d\n", atexit_called);
+    atexit_called++;
+    SetEvent(exit_event);
+    CloseHandle(exit_event);
+    set_failures_counter(winetest_get_failures());
+}
+
+static void CDECL at_exit_func2(void)
+{
+    ok(!atexit_called, "atexit_called = %d\n", atexit_called);
+    atexit_called++;
+    set_failures_counter(winetest_get_failures());
+}
+
+static int atquick_exit_called;
+
+static void CDECL at_quick_exit_func1(void)
+{
+    HANDLE quick_exit_event = CreateEventA(NULL, FALSE, FALSE, "quick_exit_event");
+
+    ok(quick_exit_event != NULL, "CreateEvent failed: %d\n", GetLastError());
+    ok(atquick_exit_called == 1, "atquick_exit_called = %d\n", atquick_exit_called);
+    atquick_exit_called++;
+    SetEvent(quick_exit_event);
+    CloseHandle(quick_exit_event);
+    set_failures_counter(winetest_get_failures());
+}
+
+static void CDECL at_quick_exit_func2(void)
+{
+    ok(!atquick_exit_called, "atquick_exit_called = %d\n", atquick_exit_called);
+    atquick_exit_called++;
+    set_failures_counter(winetest_get_failures());
+}
+
+static void test_call_exit(void)
+{
+    ok(!p__crt_atexit(at_exit_func1), "_crt_atexit failed\n");
+    ok(!p__crt_atexit(at_exit_func2), "_crt_atexit failed\n");
+
+    ok(!p_crt_at_quick_exit(at_quick_exit_func1), "_crt_at_quick_exit failed\n");
+    ok(!p_crt_at_quick_exit(at_quick_exit_func2), "_crt_at_quick_exit failed\n");
+
+    set_failures_counter(winetest_get_failures());
+    p_exit(1);
+}
+
+static void test_call_quick_exit(void)
+{
+    ok(!p__crt_atexit(at_exit_func1), "_crt_atexit failed\n");
+    ok(!p__crt_atexit(at_exit_func2), "_crt_atexit failed\n");
+
+    ok(!p_crt_at_quick_exit(at_quick_exit_func1), "_crt_at_quick_exit failed\n");
+    ok(!p_crt_at_quick_exit(at_quick_exit_func2), "_crt_at_quick_exit failed\n");
+
+    set_failures_counter(winetest_get_failures());
+    p_quick_exit(2);
+}
+
+static void test_quick_exit(const char *argv0)
+{
+    PROCESS_INFORMATION proc;
+    STARTUPINFOA startup = {0};
+    char path[MAX_PATH];
+    HANDLE failures_map, exit_event, quick_exit_event;
+    LONG *failures;
+    DWORD ret;
+
+    exit_event = CreateEventA(NULL, FALSE, FALSE, "exit_event");
+    quick_exit_event = CreateEventA(NULL, FALSE, FALSE, "quick_exit_event");
+
+    failures = get_failures_counter(&failures_map);
+    sprintf(path, "%s misc quick_exit", argv0);
+    startup.cb = sizeof(startup);
+    CreateProcessA(NULL, path, NULL, NULL, TRUE, 0, NULL, NULL, &startup, &proc);
+    ret = WaitForSingleObject(proc.hProcess, INFINITE);
+    ok(ret == WAIT_OBJECT_0, "child process wait failed\n");
+    GetExitCodeProcess(proc.hProcess, &ret);
+    ok(ret == 2, "child process exited with code %d\n", ret);
+    CloseHandle(proc.hProcess);
+    CloseHandle(proc.hThread);
+    ok(!*failures, "%d tests failed in child process\n", *failures);
+    free_failures_counter(failures, failures_map);
+
+    ret = WaitForSingleObject(quick_exit_event, 0);
+    ok(ret == WAIT_OBJECT_0, "quick_exit_event was not set (%x)\n", ret);
+    ret = WaitForSingleObject(exit_event, 0);
+    ok(ret == WAIT_TIMEOUT, "exit_event should not have be set (%x)\n", ret);
+
+    CloseHandle(exit_event);
+    CloseHandle(quick_exit_event);
+}
+
+static void test__stat32(void)
+{
+    static const char test_file[] = "\\stat_file.tst";
+    static const char test_dir[] = "\\stat_dir.tst";
+
+    char path[2*MAX_PATH];
+    struct _stat32 buf;
+    int fd, ret;
+    DWORD len;
+
+    len = GetTempPathA(MAX_PATH, path);
+    ok(len, "GetTempPathA failed\n");
+
+    ret = p__stat32("c:", &buf);
+    ok(ret == -1, "_stat32('c:') returned %d\n", ret);
+    ret = p__stat32("c:\\", &buf);
+    ok(!ret, "_stat32('c:\\') returned %d\n", ret);
+
+    memcpy(path+len, test_file, sizeof(test_file));
+    if((fd = open(path, O_WRONLY | O_CREAT | O_BINARY, _S_IREAD |_S_IWRITE)) >= 0)
+    {
+        ret = p__stat32(path, &buf);
+        ok(!ret, "_stat32('%s') returned %d\n", path, ret);
+        strcat(path, "\\");
+        ret = p__stat32(path, &buf);
+        todo_wine ok(ret, "_stat32('%s') returned %d\n", path, ret);
+        close(fd);
+        remove(path);
+    }
+
+    memcpy(path+len, test_dir, sizeof(test_dir));
+    if(!mkdir(path))
+    {
+        ret = p__stat32(path, &buf);
+        ok(!ret, "_stat32('%s') returned %d\n", path, ret);
+        strcat(path, "\\");
+        ret = p__stat32(path, &buf);
+        ok(!ret, "_stat32('%s') returned %d\n", path, ret);
+        rmdir(path);
+    }
+}
+
+static void test__o_malloc(void)
+{
+    void *m;
+    size_t s;
+
+    m = p__o_malloc(1);
+    ok(m != NULL, "p__o_malloc(1) returned NULL\n");
+
+    s = p__msize(m);
+    ok(s == 1, "_msize returned %d\n", (int)s);
+
+    p_free(m);
+}
+
 START_TEST(misc)
 {
     int arg_c;
@@ -775,7 +1064,12 @@ START_TEST(misc)
 
     arg_c = winetest_get_mainargs(&arg_v);
     if(arg_c == 3) {
-        test__get_narrow_winmain_command_line(NULL);
+        if(!strcmp(arg_v[2], "cmd"))
+            test__get_narrow_winmain_command_line(NULL);
+        else if(!strcmp(arg_v[2], "exit"))
+            test_call_exit();
+        else if(!strcmp(arg_v[2], "quick_exit"))
+            test_call_quick_exit();
         return;
     }
 
@@ -791,4 +1085,8 @@ START_TEST(misc)
     test_isblank();
     test_math_errors();
     test_asctime();
+    test_exit(arg_v[0]);
+    test_quick_exit(arg_v[0]);
+    test__stat32();
+    test__o_malloc();
 }

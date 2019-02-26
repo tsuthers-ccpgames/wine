@@ -124,7 +124,7 @@ static const SIZE_T HEAP_freeListSizes[] =
 {
     0x200, 0x400, 0x1000, ~0UL
 };
-#define HEAP_NB_FREE_LISTS (sizeof(HEAP_freeListSizes) / sizeof(HEAP_freeListSizes[0]) + HEAP_NB_SMALL_FREE_LISTS)
+#define HEAP_NB_FREE_LISTS (ARRAY_SIZE( HEAP_freeListSizes ) + HEAP_NB_SMALL_FREE_LISTS)
 
 typedef union
 {
@@ -1662,7 +1662,7 @@ HANDLE WINAPI RtlDestroyHeap( HANDLE heap )
  * NOTES
  *  This call does not SetLastError().
  */
-PVOID WINAPI RtlAllocateHeap( HANDLE heap, ULONG flags, SIZE_T size )
+void * WINAPI DECLSPEC_HOTPATCH RtlAllocateHeap( HANDLE heap, ULONG flags, SIZE_T size )
 {
     ARENA_FREE *pArena;
     ARENA_INUSE *pInUse;
@@ -1747,7 +1747,7 @@ PVOID WINAPI RtlAllocateHeap( HANDLE heap, ULONG flags, SIZE_T size )
  *  Success: TRUE, if ptr is NULL or was freed successfully.
  *  Failure: FALSE.
  */
-BOOLEAN WINAPI RtlFreeHeap( HANDLE heap, ULONG flags, PVOID ptr )
+BOOLEAN WINAPI DECLSPEC_HOTPATCH RtlFreeHeap( HANDLE heap, ULONG flags, void *ptr )
 {
     ARENA_INUSE *pInUse;
     SUBHEAP *subheap;

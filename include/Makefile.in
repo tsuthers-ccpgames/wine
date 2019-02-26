@@ -80,6 +80,7 @@ SOURCES = \
 	cvconst.h \
 	d2d1.idl \
 	d2d1_1.idl \
+	d2d1_2.idl \
 	d2dbasetypes.h \
 	d2derr.h \
 	d3d.h \
@@ -95,6 +96,7 @@ SOURCES = \
 	d3d11_2.idl \
 	d3d11_3.idl \
 	d3d11_4.idl \
+	d3d11on12.idl \
 	d3d11sdklayers.idl \
 	d3d11shader.h \
 	d3d12.idl \
@@ -314,6 +316,7 @@ SOURCES = \
 	inputscope.idl \
 	inseng.idl \
 	inspectable.idl \
+	interactioncontext.h \
 	intshcut.h \
 	ipexport.h \
 	iphlpapi.h \
@@ -398,6 +401,7 @@ SOURCES = \
 	msident.idl \
 	msinkaut.idl \
 	msiquery.h \
+	msopc.idl \
 	mssip.h \
 	msstkppg.h \
 	mstask.idl \
@@ -451,6 +455,7 @@ SOURCES = \
 	msxmldid.h \
 	mtxdm.h \
 	multimon.h \
+	natupnp.idl \
 	nb30.h \
 	ncrypt.h \
 	ndrtypes.h \
@@ -467,6 +472,7 @@ SOURCES = \
 	ntddndis.h \
 	ntddscsi.h \
 	ntddstor.h \
+	ntddvdeo.h \
 	ntdef.h \
 	ntdsapi.h \
 	ntlsa.h \
@@ -492,6 +498,9 @@ SOURCES = \
 	oledberr.h \
 	oledlg.h \
 	oleidl.idl \
+	opcbase.idl \
+	opcobjectmodel.idl \
+	opcparturi.idl \
 	opnrst.idl \
 	optary.idl \
 	patchapi.h \
@@ -519,6 +528,7 @@ SOURCES = \
 	pshpack8.h \
 	pstore.idl \
 	qedit.idl \
+	qos2.h \
 	ras.h \
 	rasdlg.h \
 	raserror.h \
@@ -548,6 +558,7 @@ SOURCES = \
 	rstloc.idl \
 	rstnot.idl \
 	rtutils.h \
+	sal.h \
 	sapi.idl \
 	sapiddk.idl \
 	scarderr.h \
@@ -595,6 +606,7 @@ SOURCES = \
 	strsafe.h \
 	structuredquerycondition.idl \
 	svrapi.h \
+	synchapi.h \
 	t2embapi.h \
 	tapi.h \
 	taskschd.idl \
@@ -631,6 +643,7 @@ SOURCES = \
 	verrsrc.h \
 	vfw.h \
 	vfwmsgs.h \
+	virtdisk.h \
 	vmr9.idl \
 	vmrender.idl \
 	vss.idl \
@@ -662,6 +675,7 @@ SOURCES = \
 	windowsx.h \
 	wine/debug.h \
 	wine/exception.h \
+	wine/fil_data.idl \
 	wine/itss.idl \
 	wine/library.h \
 	wine/svcctl.idl \

@@ -104,6 +104,9 @@ WINE_DEFAULT_DEBUG_CHANNEL(menubuilder);
 #define in_startmenu(csidl)   ((csidl)==CSIDL_STARTMENU || \
                                (csidl)==CSIDL_COMMON_STARTMENU)
 
+#define IS_OPTION_TRUE(ch) \
+    ((ch) == 'y' || (ch) == 'Y' || (ch) == 't' || (ch) == 'T' || (ch) == '1')
+
 /* link file formats */
 
 #include "pshpack1.h"
@@ -398,7 +401,7 @@ static HRESULT convert_to_native_icon(IStream *icoFile, int *indices, int numInd
         WINE_ERR("error 0x%08X creating output file %s\n", hr, wine_dbgstr_w(dosOutputFileName));
         goto end;
     }
-    hr = IWICBitmapEncoder_Initialize(encoder, outputFile, GENERIC_WRITE);
+    hr = IWICBitmapEncoder_Initialize(encoder, outputFile, WICBitmapEncoderNoCache);
     if (FAILED(hr))
     {
         WINE_ERR("error 0x%08X initializing encoder\n", hr);
@@ -1465,13 +1468,13 @@ static BOOL write_desktop_entry(const char *unix_link, const char *location, con
             wine_get_config_dir(), path, args);
     fprintf(file, "Type=Application\n");
     fprintf(file, "StartupNotify=true\n");
-    if (descr && lstrlenA(descr))
+    if (descr && *descr)
         fprintf(file, "Comment=%s\n", descr);
-    if (workdir && lstrlenA(workdir))
+    if (workdir && *workdir)
         fprintf(file, "Path=%s\n", workdir);
-    if (icon && lstrlenA(icon))
+    if (icon && *icon)
         fprintf(file, "Icon=%s\n", icon);
-    if (wmclass && lstrlenA(wmclass))
+    if (wmclass && *wmclass)
         fprintf(file, "StartupWMClass=%s\n", wmclass);
 
     fclose(file);
@@ -1807,7 +1810,7 @@ static BOOL GetLinkLocation( LPCWSTR linkfile, DWORD *loc, char **relative )
 
     WINE_TRACE("%s\n", wine_dbgstr_w(filename));
 
-    for( i=0; i<sizeof(locations)/sizeof(locations[0]); i++ )
+    for( i=0; i<ARRAY_SIZE( locations ); i++ )
     {
         if (!SHGetSpecialFolderPathW( 0, buffer, locations[i], FALSE ))
             continue;
@@ -3619,6 +3622,24 @@ static BOOL init_xdg(void)
     return FALSE;
 }
 
+static BOOL associations_enabled(void)
+{
+    BOOL ret = TRUE;
+    HKEY hkey;
+    BYTE buf[32];
+    DWORD len;
+
+    if ((hkey = open_associations_reg_key()))
+    {
+        len = sizeof(buf);
+        if (!RegQueryValueExA(hkey, "Enable", NULL, NULL, buf, &len))
+            ret = IS_OPTION_TRUE(buf[0]);
+        RegCloseKey( hkey );
+    }
+
+    return ret;
+}
+
 /***********************************************************************
  *
  *           wWinMain
@@ -3654,7 +3675,8 @@ int PASCAL wWinMain (HINSTANCE hInstance, HINSTANCE prev, LPWSTR cmdline, int sh
 	    break;
         if( !strcmpW( token, dash_aW ) )
         {
-            RefreshFileTypeAssociations();
+            if (associations_enabled())
+                RefreshFileTypeAssociations();
             continue;
         }
         if( !strcmpW( token, dash_rW ) )

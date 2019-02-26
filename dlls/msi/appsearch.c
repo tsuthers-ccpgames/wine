@@ -949,8 +949,7 @@ static UINT ACTION_SearchDirectory(MSIPACKAGE *package, MSISIGNATURE *sig,
             if (GetDriveTypeW(pathWithDrive) != DRIVE_FIXED)
                 continue;
 
-            lstrcpynW(pathWithDrive + 3, path,
-                      sizeof(pathWithDrive) / sizeof(pathWithDrive[0]) - 3);
+            lstrcpynW(pathWithDrive + 3, path, ARRAY_SIZE(pathWithDrive) - 3);
 
             if (sig->File)
                 rc = ACTION_RecurseSearchDirectory(package, &val, sig,
@@ -1108,7 +1107,7 @@ static UINT iterate_appsearch(MSIRECORD *row, LPVOID param)
     {
         r = msi_set_property( package->db, propName, value, -1 );
         if (r == ERROR_SUCCESS && !strcmpW( propName, szSourceDir ))
-            msi_reset_folders( package, TRUE );
+            msi_reset_source_folders( package );
 
         msi_free(value);
     }

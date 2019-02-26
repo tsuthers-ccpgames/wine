@@ -122,29 +122,14 @@ static const WORD main_key_scan_dvorak[MAIN_LEN] =
 
 static const WORD main_key_scan_qwerty_jp106[MAIN_LEN] =
 {
-  /* this is my (106-key) keyboard layout, sorry if it doesn't quite match yours */
- /* 1    2    3    4    5    6    7    8    9    0    -    ^    \ */
-   0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x29,
+ /* 1    2    3    4    5    6    7    8    9    0    -    ^    \ (Yen) */
+   0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x7D,
  /* q    w    e    r    t    y    u    i    o    p    @    [ */
    0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1A,0x1B,
  /* a    s    d    f    g    h    j    k    l    ;    :    ] */
    0x1E,0x1F,0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x2B,
- /* z    x    c    v    b    n    m    ,    .    / */
-   0x2C,0x2D,0x2E,0x2F,0x30,0x31,0x32,0x33,0x34,0x35,
-   0x56 /* the 102nd key (actually to the right of l-shift) */
-};
-
-static const WORD main_key_scan_qwerty_macjp[MAIN_LEN] =
-{
- /* 1    2    3    4    5    6    7    8    9    0    -    ^    \ */
-   0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x7d,
- /* q    w    e    r    t    y    u    i    o    p    @    [ */
-   0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1A,0x1B,
- /* a    s    d    f    g    h    j    k    l    ;    :    ] */
-   0x1E,0x1F,0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x27,0x28,0x2B,
- /* z    x    c    v    b    n    m    ,    .    / */
-   0x2C,0x2D,0x2E,0x2F,0x30,0x31,0x32,0x33,0x34,0x35,
-   0x73 /* the 102nd key (actually to the right of l-shift) */
+ /* z    x    c    v    b    n    m    ,    .    /    \ (Underscore) */
+   0x2C,0x2D,0x2E,0x2F,0x30,0x31,0x32,0x33,0x34,0x35,0x73
 };
 
 
@@ -161,21 +146,11 @@ static const WORD main_key_vkey_qwerty[MAIN_LEN] =
 static const WORD main_key_vkey_qwerty_jp106[MAIN_LEN] =
 {
 /* NOTE: this layout must concur with the scan codes layout above */
-   '1','2','3','4','5','6','7','8','9','0',VK_OEM_MINUS,VK_OEM_PLUS,VK_OEM_3,
-   'Q','W','E','R','T','Y','U','I','O','P',VK_OEM_4,VK_OEM_6,
-   'A','S','D','F','G','H','J','K','L',VK_OEM_1,VK_OEM_7,VK_OEM_5,
-   'Z','X','C','V','B','N','M',VK_OEM_COMMA,VK_OEM_PERIOD,VK_OEM_2,
-   VK_OEM_102 /* the 102nd key (actually to the right of l-shift) */
-};
-
-static const WORD main_key_vkey_qwerty_macjp[MAIN_LEN] =
-{
-/* NOTE: this layout must concur with the scan codes layout above */
    '1','2','3','4','5','6','7','8','9','0',VK_OEM_MINUS,VK_OEM_7,VK_OEM_5,
    'Q','W','E','R','T','Y','U','I','O','P',VK_OEM_3,VK_OEM_4,
    'A','S','D','F','G','H','J','K','L',VK_OEM_PLUS,VK_OEM_1,VK_OEM_6,
    'Z','X','C','V','B','N','M',VK_OEM_COMMA,VK_OEM_PERIOD,VK_OEM_2,
-   VK_OEM_102 /* the 102nd key (actually to the right of l-shift) */
+   VK_OEM_102 /* the 102nd key (actually to the left of r-shift) */
 };
 
 static const WORD main_key_vkey_qwerty_v2[MAIN_LEN] =
@@ -940,7 +915,7 @@ static const struct {
  {0x041a, "Croatian keyboard layout", &main_key_HR, &main_key_scan_qwerty, &main_key_vkey_qwertz},
  {0x041a, "Croatian keyboard layout (specific)", &main_key_HR_jelly, &main_key_scan_qwerty, &main_key_vkey_qwerty},
  {0x0411, "Japanese 106 keyboard layout", &main_key_JA_jp106, &main_key_scan_qwerty_jp106, &main_key_vkey_qwerty_jp106},
- {0x0411, "Japanese Mac keyboard layout", &main_key_JA_macjp, &main_key_scan_qwerty_macjp, &main_key_vkey_qwerty_macjp},
+ {0x0411, "Japanese Mac keyboard layout", &main_key_JA_macjp, &main_key_scan_qwerty_jp106, &main_key_vkey_qwerty_jp106},
  {0x0411, "Japanese pc98x1 keyboard layout", &main_key_JA_pc98x1, &main_key_scan_qwerty, &main_key_vkey_qwerty},
  {0x041b, "Slovak keyboard layout", &main_key_SK, &main_key_scan_qwerty, &main_key_vkey_qwerty},
  {0x041b, "Slovak and Czech keyboard layout without dead keys", &main_key_SK_prog, &main_key_scan_qwerty, &main_key_vkey_qwerty},
@@ -1319,6 +1294,26 @@ BOOL X11DRV_KeymapNotify( HWND hwnd, XEvent *event )
     return TRUE;
 }
 
+static void adjust_lock_state( BYTE *keystate, HWND hwnd, WORD vkey, WORD scan, DWORD flags, DWORD time )
+{
+    BYTE prev_state = keystate[vkey] & 0x01;
+
+    X11DRV_send_keyboard_input( hwnd, vkey, scan, flags, time );
+    X11DRV_send_keyboard_input( hwnd, vkey, scan, flags ^ KEYEVENTF_KEYUP, time );
+
+    /* Keyboard hooks may have blocked processing lock keys causing our state
+     * to be different than state on X server side. Although Windows allows hooks
+     * to block changing state, we can't prevent it on X server side. Having
+     * different states would cause us to try to adjust it again on the next
+     * key event. We prevent that by overriding hooks and setting key states here. */
+    if (get_async_key_state( keystate ) && (keystate[vkey] & 0x01) == prev_state)
+    {
+        WARN("keystate %x not changed (%#.2x), probably blocked by hooks\n", vkey, keystate[vkey]);
+        keystate[vkey] ^= 0x01;
+        set_async_key_state( keystate );
+    }
+}
+
 static void update_lock_state( HWND hwnd, WORD vkey, UINT state, DWORD time )
 {
     BYTE keystate[256];
@@ -1334,8 +1329,7 @@ static void update_lock_state( HWND hwnd, WORD vkey, UINT state, DWORD time )
         DWORD flags = 0;
         if (keystate[VK_CAPITAL] & 0x80) flags ^= KEYEVENTF_KEYUP;
         TRACE("Adjusting CapsLock state (%#.2x)\n", keystate[VK_CAPITAL]);
-        X11DRV_send_keyboard_input( hwnd, VK_CAPITAL, 0x3a, flags, time );
-        X11DRV_send_keyboard_input( hwnd, VK_CAPITAL, 0x3a, flags ^ KEYEVENTF_KEYUP, time );
+        adjust_lock_state( keystate, hwnd, VK_CAPITAL, 0x3a, flags, time );
     }
 
     /* Adjust the NUMLOCK state if it has been changed outside wine */
@@ -1344,8 +1338,7 @@ static void update_lock_state( HWND hwnd, WORD vkey, UINT state, DWORD time )
         DWORD flags = KEYEVENTF_EXTENDEDKEY;
         if (keystate[VK_NUMLOCK] & 0x80) flags ^= KEYEVENTF_KEYUP;
         TRACE("Adjusting NumLock state (%#.2x)\n", keystate[VK_NUMLOCK]);
-        X11DRV_send_keyboard_input( hwnd, VK_NUMLOCK, 0x45, flags, time );
-        X11DRV_send_keyboard_input( hwnd, VK_NUMLOCK, 0x45, flags ^ KEYEVENTF_KEYUP, time );
+        adjust_lock_state( keystate, hwnd, VK_NUMLOCK, 0x45, flags, time );
     }
 
     /* Adjust the SCROLLLOCK state if it has been changed outside wine */
@@ -1354,8 +1347,7 @@ static void update_lock_state( HWND hwnd, WORD vkey, UINT state, DWORD time )
         DWORD flags = 0;
         if (keystate[VK_SCROLL] & 0x80) flags ^= KEYEVENTF_KEYUP;
         TRACE("Adjusting ScrLock state (%#.2x)\n", keystate[VK_SCROLL]);
-        X11DRV_send_keyboard_input( hwnd, VK_SCROLL, 0x46, flags, time );
-        X11DRV_send_keyboard_input( hwnd, VK_SCROLL, 0x46, flags ^ KEYEVENTF_KEYUP, time );
+        adjust_lock_state( keystate, hwnd, VK_SCROLL, 0x46, flags, time );
     }
 }
 

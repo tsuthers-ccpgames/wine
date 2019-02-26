@@ -3883,6 +3883,8 @@ HRESULT create_font_collection(IDWriteFactory5 *factory, IDWriteFontFileEnumerat
             if (FAILED(hr))
                 break;
         }
+
+        IDWriteFontFileStream_Release(stream);
     }
 
     LIST_FOR_EACH_ENTRY_SAFE(fileenum, fileenum2, &scannedfiles, struct fontfile_enum, entry) {
@@ -4261,7 +4263,7 @@ HRESULT get_eudc_fontcollection(IDWriteFactory5 *factory, IDWriteFontCollection1
     hr = IDWriteFontCollection1_FindFamilyName(&collection->IDWriteFontCollection1_iface, emptyW,
         &index, &exists);
     if (FAILED(hr) || !exists) {
-        const WCHAR globaldefaultW[] = {'E','U','D','C','.','T','T','E',0};
+        static const WCHAR globaldefaultW[] = {'E','U','D','C','.','T','T','E',0};
         hr = eudc_collection_add_family(factory, collection, emptyW, globaldefaultW);
         if (hr != S_OK)
             WARN("failed to add global default EUDC font, 0x%08x\n", hr);
@@ -5397,7 +5399,6 @@ HRESULT create_glyphrunanalysis(const struct glyphrunanalysis_desc *desc, IDWrit
     analysis->max_glyph_bitmap_size = 0;
     SetRectEmpty(&analysis->bounds);
     analysis->run = *desc->run;
-    analysis->run.fontEmSize *= desc->ppdip;
     IDWriteFontFace_AddRef(analysis->run.fontFace);
     analysis->glyphs = heap_alloc(desc->run->glyphCount * sizeof(*analysis->glyphs));
     analysis->origins = heap_alloc(desc->run->glyphCount * sizeof(*analysis->origins));
@@ -5433,14 +5434,14 @@ HRESULT create_glyphrunanalysis(const struct glyphrunanalysis_desc *desc, IDWrit
     if (FAILED(hr = IDWriteFontFace_QueryInterface(desc->run->fontFace, &IID_IDWriteFontFace1, (void **)&fontface1)))
         WARN("Failed to get IDWriteFontFace1, %#x.\n", hr);
 
-    origin.x = desc->origin_x * desc->ppdip;
-    origin.y = desc->origin_y * desc->ppdip;
+    origin.x = desc->origin.x;
+    origin.y = desc->origin.y;
     for (i = 0; i < desc->run->glyphCount; i++) {
         FLOAT advance;
 
         /* Use nominal advances if not provided by caller. */
         if (desc->run->glyphAdvances)
-            advance = rtl_factor * desc->run->glyphAdvances[i] * desc->ppdip;
+            advance = rtl_factor * desc->run->glyphAdvances[i];
         else {
             INT32 a;
 
@@ -5450,14 +5451,14 @@ HRESULT create_glyphrunanalysis(const struct glyphrunanalysis_desc *desc, IDWrit
             case DWRITE_MEASURING_MODE_NATURAL:
                 if (SUCCEEDED(IDWriteFontFace1_GetDesignGlyphAdvances(fontface1, 1, desc->run->glyphIndices + i, &a,
                         desc->run->isSideways)))
-                    advance = rtl_factor * get_scaled_advance_width(a, desc->run->fontEmSize, &metrics) * desc->ppdip;
+                    advance = rtl_factor * get_scaled_advance_width(a, desc->run->fontEmSize, &metrics);
                 break;
             case DWRITE_MEASURING_MODE_GDI_CLASSIC:
             case DWRITE_MEASURING_MODE_GDI_NATURAL:
                 if (SUCCEEDED(IDWriteFontFace1_GetGdiCompatibleGlyphAdvances(fontface1, desc->run->fontEmSize,
-                        desc->ppdip, desc->transform, desc->measuring_mode == DWRITE_MEASURING_MODE_GDI_NATURAL,
+                        1.0f, desc->transform, desc->measuring_mode == DWRITE_MEASURING_MODE_GDI_NATURAL,
                         desc->run->isSideways, 1, desc->run->glyphIndices + i, &a)))
-                    advance = rtl_factor * floorf(a * desc->run->fontEmSize * desc->ppdip / metrics.designUnitsPerEm + 0.5f);
+                    advance = rtl_factor * floorf(a * desc->run->fontEmSize / metrics.designUnitsPerEm + 0.5f);
                 break;
             default:
                 ;
@@ -5468,8 +5469,8 @@ HRESULT create_glyphrunanalysis(const struct glyphrunanalysis_desc *desc, IDWrit
 
         /* Offsets are optional, appled to pre-transformed origin. */
         if (desc->run->glyphOffsets) {
-            FLOAT advanceoffset = rtl_factor * desc->run->glyphOffsets[i].advanceOffset * desc->ppdip;
-            FLOAT ascenderoffset = -desc->run->glyphOffsets[i].ascenderOffset * desc->ppdip;
+            FLOAT advanceoffset = rtl_factor * desc->run->glyphOffsets[i].advanceOffset;
+            FLOAT ascenderoffset = -desc->run->glyphOffsets[i].ascenderOffset;
 
             if (desc->run->isSideways) {
                 analysis->origins[i].x += ascenderoffset;

@@ -1065,13 +1065,20 @@ BOOL WINAPI SetEndOfFile( HANDLE hFile )
     return FALSE;
 }
 
+
 /**************************************************************************
  *           SetFileCompletionNotificationModes   (KERNEL32.@)
  */
-BOOL WINAPI SetFileCompletionNotificationModes( HANDLE handle, UCHAR flags )
+BOOL WINAPI SetFileCompletionNotificationModes( HANDLE file, UCHAR flags )
 {
-    FIXME("%p %x - stub\n", handle, flags);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    FILE_IO_COMPLETION_NOTIFICATION_INFORMATION info;
+    IO_STATUS_BLOCK io;
+    NTSTATUS status;
+
+    info.Flags = flags;
+    status = NtSetInformationFile( file, &io, &info, sizeof(info), FileIoCompletionNotificationInformation );
+    if (status == STATUS_SUCCESS) return TRUE;
+    SetLastError( RtlNtStatusToDosError(status) );
     return FALSE;
 }
 
@@ -1096,7 +1103,6 @@ BOOL WINAPI SetFileInformationByHandle( HANDLE file, FILE_INFO_BY_HANDLE_CLASS c
     case FileStreamInfo:
     case FileIdBothDirectoryInfo:
     case FileIdBothDirectoryRestartInfo:
-    case FileIoPriorityHintInfo:
     case FileFullDirectoryInfo:
     case FileFullDirectoryRestartInfo:
     case FileStorageInfo:
@@ -1111,7 +1117,9 @@ BOOL WINAPI SetFileInformationByHandle( HANDLE file, FILE_INFO_BY_HANDLE_CLASS c
     case FileDispositionInfo:
         status = NtSetInformationFile( file, &io, info, size, FileDispositionInformation );
         break;
-
+    case FileIoPriorityHintInfo:
+        status = NtSetInformationFile( file, &io, info, size, FileIoPriorityHintInformation );
+        break;
     case FileStandardInfo:
     case FileCompressionInfo:
     case FileAttributeTagInfo:
@@ -1513,7 +1521,7 @@ HANDLE WINAPI CreateFileW( LPCWSTR filename, DWORD access, DWORD sharing,
         static const WCHAR conW[] = {'C','O','N'};
 
         if (LOWORD(dosdev) == sizeof(conW) &&
-            !memicmpW( filename + HIWORD(dosdev)/sizeof(WCHAR), conW, sizeof(conW)/sizeof(WCHAR)))
+            !memicmpW( filename + HIWORD(dosdev)/sizeof(WCHAR), conW, ARRAY_SIZE( conW )))
         {
             switch (access & (GENERIC_READ|GENERIC_WRITE))
             {
@@ -1560,6 +1568,8 @@ HANDLE WINAPI CreateFileW( LPCWSTR filename, DWORD access, DWORD sharing,
         options |= FILE_SYNCHRONOUS_IO_NONALERT;
     if (attributes & FILE_FLAG_RANDOM_ACCESS)
         options |= FILE_RANDOM_ACCESS;
+    if (attributes & FILE_FLAG_WRITE_THROUGH)
+        options |= FILE_WRITE_THROUGH;
     attributes &= FILE_ATTRIBUTE_VALID_FLAGS;
 
     attr.Length = sizeof(attr);
@@ -1580,8 +1590,8 @@ HANDLE WINAPI CreateFileW( LPCWSTR filename, DWORD access, DWORD sharing,
 
     if (sa && sa->bInheritHandle) attr.Attributes |= OBJ_INHERIT;
 
-    status = NtCreateFile( &ret, access | SYNCHRONIZE, &attr, &io, NULL, attributes,
-                           sharing, nt_disposition[creation - CREATE_NEW],
+    status = NtCreateFile( &ret, access | SYNCHRONIZE | FILE_READ_ATTRIBUTES, &attr, &io,
+                           NULL, attributes, sharing, nt_disposition[creation - CREATE_NEW],
                            options, NULL, 0 );
     if (status)
     {

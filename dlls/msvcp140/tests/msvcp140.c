@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <errno.h>
 #include <stdio.h>
 
 #include "windef.h"
@@ -24,6 +25,12 @@
 
 #include "wine/test.h"
 #include "winbase.h"
+
+#define SECSPERDAY        86400
+/* 1601 to 1970 is 369 years plus 89 leap days */
+#define SECS_1601_TO_1970  ((369 * 365 + 89) * (ULONGLONG)SECSPERDAY)
+#define TICKSPERSEC       10000000
+#define TICKS_1601_TO_1970 (SECS_1601_TO_1970 * TICKSPERSEC)
 
 #define DEFINE_EXPECT(func) \
     static BOOL expect_ ## func = FALSE, called_ ## func = FALSE
@@ -170,17 +177,23 @@ static void (__cdecl *p_Close_dir)(void*);
 static MSVCP_bool (__cdecl *p_Current_get)(WCHAR *);
 static MSVCP_bool (__cdecl *p_Current_set)(WCHAR const *);
 static ULONGLONG (__cdecl *p_File_size)(WCHAR const *);
+static __int64 (__cdecl *p_Last_write_time)(WCHAR const*);
+static void (__cdecl *p_Set_last_write_time)(WCHAR const*, __int64);
 static int (__cdecl *p_Link)(WCHAR const*, WCHAR const*);
 static enum file_type (__cdecl *p_Lstat)(WCHAR const *, int *);
 static int (__cdecl *p_Make_dir)(WCHAR const*);
 static void* (__cdecl *p_Open_dir)(WCHAR*, WCHAR const*, int *, enum file_type*);
 static WCHAR* (__cdecl *p_Read_dir)(WCHAR*, void*, enum file_type*);
 static MSVCP_bool (__cdecl *p_Remove_dir)(WCHAR const*);
+static int (__cdecl *p_Rename)(WCHAR const*, WCHAR const*);
 static enum file_type (__cdecl *p_Stat)(WCHAR const *, int *);
 static int (__cdecl *p_Symlink)(WCHAR const*, WCHAR const*);
+static WCHAR* (__cdecl *p_Temp_get)(WCHAR *);
 static int (__cdecl *p_To_byte)(const WCHAR *src, char *dst);
 static int (__cdecl *p_To_wide)(const char *src, WCHAR *dst);
 static int (__cdecl *p_Unlink)(WCHAR const*);
+static ULONG (__cdecl *p__Winerror_message)(ULONG, char*, ULONG);
+static int (__cdecl *p__Winerror_map)(int);
 
 static BOOLEAN (WINAPI *pCreateSymbolicLinkW)(const WCHAR *, const WCHAR *, DWORD);
 
@@ -201,6 +214,7 @@ static BOOL init(void)
     SET(p__Thrd_id, "_Thrd_id");
     SET(p__Task_impl_base__IsNonBlockingThread, "?_IsNonBlockingThread@_Task_impl_base@details@Concurrency@@SA_NXZ");
     SET(p__ContextCallback__IsCurrentOriginSTA, "?_IsCurrentOriginSTA@_ContextCallback@details@Concurrency@@CA_NXZ");
+    SET(p__Winerror_map, "?_Winerror_map@std@@YAHH@Z");
 
     if(sizeof(void*) == 8) { /* 64-bit initialization */
         SET(p_task_continuation_context_ctor, "??0task_continuation_context@Concurrency@@AEAA@XZ");
@@ -217,6 +231,7 @@ static BOOL init(void)
         SET(p__Schedule_chore, "?_Schedule_chore@details@Concurrency@@YAHPEAU_Threadpool_chore@12@@Z");
         SET(p__Reschedule_chore, "?_Reschedule_chore@details@Concurrency@@YAHPEBU_Threadpool_chore@12@@Z");
         SET(p__Release_chore, "?_Release_chore@details@Concurrency@@YAXPEAU_Threadpool_chore@12@@Z");
+        SET(p__Winerror_message, "?_Winerror_message@std@@YAKKPEADK@Z");
     } else {
 #ifdef __arm__
         SET(p_task_continuation_context_ctor, "??0task_continuation_context@Concurrency@@AAA@XZ");
@@ -246,20 +261,25 @@ static BOOL init(void)
         SET(p__Schedule_chore, "?_Schedule_chore@details@Concurrency@@YAHPAU_Threadpool_chore@12@@Z");
         SET(p__Reschedule_chore, "?_Reschedule_chore@details@Concurrency@@YAHPBU_Threadpool_chore@12@@Z");
         SET(p__Release_chore, "?_Release_chore@details@Concurrency@@YAXPAU_Threadpool_chore@12@@Z");
+        SET(p__Winerror_message, "?_Winerror_message@std@@YAKKPADK@Z");
     }
 
     SET(p_Close_dir, "_Close_dir");
     SET(p_Current_get, "_Current_get");
     SET(p_Current_set, "_Current_set");
     SET(p_File_size, "_File_size");
+    SET(p_Last_write_time, "_Last_write_time");
+    SET(p_Set_last_write_time, "_Set_last_write_time");
     SET(p_Link, "_Link");
     SET(p_Lstat, "_Lstat");
     SET(p_Make_dir, "_Make_dir");
     SET(p_Open_dir, "_Open_dir");
     SET(p_Read_dir, "_Read_dir");
     SET(p_Remove_dir, "_Remove_dir");
+    SET(p_Rename, "_Rename");
     SET(p_Stat, "_Stat");
     SET(p_Symlink, "_Symlink");
+    SET(p_Temp_get, "_Temp_get");
     SET(p_To_byte, "_To_byte");
     SET(p_To_wide, "_To_wide");
     SET(p_Unlink, "_Unlink");
@@ -860,13 +880,13 @@ static void test_Stat(void)
     ok(0777 == perms, "_Stat(): perms expect: 0777, got 0%o\n", perms);
 
     if(ret) {
-        todo_wine ok(DeleteFileW(test_f1_linkW), "expect tr2_test_dir/f1_link to exist\n");
-        todo_wine ok(RemoveDirectoryW(test_dir_linkW), "expect tr2_test_dir/dir_link to exist\n");
+        todo_wine ok(DeleteFileW(test_f1_linkW), "expect wine_test_dir/f1_link to exist\n");
+        todo_wine ok(RemoveDirectoryW(test_dir_linkW), "expect wine_test_dir/dir_link to exist\n");
     }
-    ok(DeleteFileW(test_f1W), "expect tr2_test_dir/f1 to exist\n");
+    ok(DeleteFileW(test_f1W), "expect wine_test_dir/f1 to exist\n");
     SetFileAttributesW(test_f2W, FILE_ATTRIBUTE_NORMAL);
-    ok(DeleteFileW(test_f2W), "expect tr2_test_dir/f2 to exist\n");
-    ok(RemoveDirectoryW(test_dirW), "expect tr2_test_dir to exist\n");
+    ok(DeleteFileW(test_f2W), "expect wine_test_dir/f2 to exist\n");
+    ok(RemoveDirectoryW(test_dirW), "expect wine_test_dir to exist\n");
 
     ok(SetCurrentDirectoryW(origin_path), "SetCurrentDirectoryW to origin_path failed\n");
 }
@@ -1060,6 +1080,286 @@ static void test_Unlink(void)
     ok(SetCurrentDirectoryW(current_path), "SetCurrentDirectoryW failed\n");
 }
 
+static void test_Temp_get(void)
+{
+    WCHAR path[MAX_PATH + 1], temp_path[MAX_PATH];
+    WCHAR *retval;
+    DWORD len;
+
+    GetTempPathW(ARRAY_SIZE(temp_path), temp_path);
+
+    /* This crashes on Windows, the input pointer is not validated. */
+    if (0)
+    {
+        retval = p_Temp_get(NULL);
+        ok(!retval, "_Temp_get(): Got %p\n", retval);
+    }
+
+    memset(path, 0xaa, sizeof(path));
+    retval = p_Temp_get(path);
+    ok(retval == path, "_Temp_get(): Got %p, expected %p\n", retval, path);
+    ok(!wcscmp(path, temp_path), "Expected path %s, got %s\n", wine_dbgstr_w(temp_path), wine_dbgstr_w(path));
+    len = wcslen(path);
+    todo_wine ok(path[len + 1] == 0xaaaa, "Too many bytes were zeroed - %x\n", path[len + 1]);
+}
+
+static void test_Rename(void)
+{
+    int ret, i;
+    HANDLE file, h1, h2;
+    BY_HANDLE_FILE_INFORMATION info1, info2;
+    WCHAR temp_path[MAX_PATH], current_path[MAX_PATH];
+    LARGE_INTEGER file_size;
+    static const WCHAR wine_test_dirW[] =
+            {'w','i','n','e','_','t','e','s','t','_','d','i','r',0};
+    static const WCHAR f1W[] =
+            {'w','i','n','e','_','t','e','s','t','_','d','i','r','\\','f','1',0};
+    static const WCHAR f1_renameW[] =
+            {'w','i','n','e','_','t','e','s','t','_','d','i','r','\\','f','1','_','r','e','n','a','m','e',0};
+    static const WCHAR f1_rename2W[] =
+            {'w','i','n','e','_','t','e','s','t','_','d','i','r','\\','f','1','_','r','e','n','a','m','e','2',0};
+    static const WCHAR not_existW[] =
+            {'w','i','n','e','_','t','e','s','t','_','d','i','r','\\','n','o','t','_','e','x','i','s','t',0};
+    static const WCHAR not_exist2W[] =
+            {'w','i','n','e','_','t','e','s','t','_','d','i','r','\\','n','o','t','_','e','x','i','s','t','2',0};
+    static const WCHAR invalidW[] =
+            {'w','i','n','e','_','t','e','s','t','_','d','i','r','\\','?','?','i','n','v','a','l','i','d','>',0};
+    static const struct {
+        const WCHAR *old_path;
+        const WCHAR *new_path;
+        int val;
+    } tests[] = {
+        { f1W, f1_renameW, ERROR_SUCCESS },
+        { f1W, NULL, ERROR_FILE_NOT_FOUND },
+        { f1W, f1_renameW, ERROR_FILE_NOT_FOUND },
+        { NULL, f1_rename2W, ERROR_PATH_NOT_FOUND },
+        { f1_renameW, invalidW, ERROR_INVALID_NAME },
+        { not_existW, not_exist2W, ERROR_FILE_NOT_FOUND },
+        { not_existW, invalidW, ERROR_FILE_NOT_FOUND }
+    };
+
+    memset(current_path, 0, MAX_PATH);
+    GetCurrentDirectoryW(MAX_PATH, current_path);
+    memset(temp_path, 0, MAX_PATH);
+    GetTempPathW(MAX_PATH, temp_path);
+    ok(SetCurrentDirectoryW(temp_path), "SetCurrentDirectoryW to temp_path failed\n");
+    ret = p_Make_dir(wine_test_dirW);
+
+    ok(ret == 1, "_Make_dir(): expect 1 got %d\n", ret);
+    file = CreateFileW(f1W, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+    ok(file != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+    CloseHandle(file);
+
+    ret = p_Rename(f1W, f1W);
+    ok(ERROR_SUCCESS == ret, "_Rename(): expect: ERROR_SUCCESS, got %d\n", ret);
+    for(i=0; i<ARRAY_SIZE(tests); i++) {
+        errno = 0xdeadbeef;
+        if(tests[i].val == ERROR_SUCCESS) {
+            h1 = CreateFileW(tests[i].old_path, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    NULL, OPEN_EXISTING, 0, 0);
+            ok(h1 != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+            ok(GetFileInformationByHandle(h1, &info1), "GetFileInformationByHandle failed\n");
+            CloseHandle(h1);
+        }
+        SetLastError(0xdeadbeef);
+        ret = p_Rename(tests[i].old_path, tests[i].new_path);
+        ok(ret == tests[i].val, "_Rename(): test %d expect: %d, got %d\n", i+1, tests[i].val, ret);
+        ok(errno == 0xdeadbeef, "_Rename(): test %d errno expect 0xdeadbeef, got %d\n", i+1, errno);
+        if(ret == ERROR_SUCCESS) {
+            h2 = CreateFileW(tests[i].new_path, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    NULL, OPEN_EXISTING, 0, 0);
+            ok(h2 != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+            ok(GetFileInformationByHandle(h2, &info2), "GetFileInformationByHandle failed\n");
+            CloseHandle(h2);
+            ok(info1.nFileIndexHigh == info2.nFileIndexHigh
+                    && info1.nFileIndexLow == info2.nFileIndexLow,
+                    "_Rename(): test %d expect two files equivalent\n", i+1);
+        }
+    }
+
+    file = CreateFileW(f1W, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+    ok(file != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+    file_size.QuadPart = 7;
+    ok(SetFilePointerEx(file, file_size, NULL, FILE_BEGIN), "SetFilePointerEx failed\n");
+    ok(SetEndOfFile(file), "SetEndOfFile failed\n");
+    CloseHandle(file);
+    ret = p_Rename(f1W, f1_renameW);
+    ok(ret == ERROR_ALREADY_EXISTS, "_Rename(): expect: ERROR_ALREADY_EXISTS, got %d\n", ret);
+    ok(p_File_size(f1W) == 7, "_Rename(): expect: 7, got %s\n",
+            wine_dbgstr_longlong(p_File_size(f1W)));
+    ok(p_File_size(f1_renameW) == 0, "_Rename(): expect: 0, got %s\n",
+            wine_dbgstr_longlong(p_File_size(f1_renameW)));
+
+    ok(DeleteFileW(f1_renameW), "expect f1_rename to exist\n");
+    ok(DeleteFileW(f1W), "expect f1 to exist\n");
+    ret = p_Remove_dir(wine_test_dirW);
+    ok(ret == 1, "_Remove_dir(): expect %d got %d\n", 1, ret);
+    ok(SetCurrentDirectoryW(current_path), "SetCurrentDirectoryW failed\n");
+}
+
+static void test_Last_write_time(void)
+{
+    HANDLE file;
+    int ret;
+    FILETIME lwt;
+    __int64 last_write_time, newtime, margin_of_error = 10 * TICKSPERSEC;
+    static const WCHAR test_dirW[] = {'w','i','n','e','_','t','e','s','t','_','d','i','r',0};
+    static const WCHAR f1W[] =
+            {'w','i','n','e','_','t','e','s','t','_','d','i','r','\\','f','1',0};
+    static const WCHAR not_existW[] =
+            {'w','i','n','e','_','t','e','s','t','_','d','i','r','\\','n','o','t','_','e','x','i','s','t',0};
+    WCHAR temp_path[MAX_PATH], origin_path[MAX_PATH];
+
+    GetCurrentDirectoryW(ARRAY_SIZE(origin_path), origin_path);
+    GetTempPathW(ARRAY_SIZE(temp_path), temp_path);
+    ok(SetCurrentDirectoryW(temp_path), "SetCurrentDirectoryW to temp_path failed\n");
+
+    ret = p_Make_dir(test_dirW);
+    ok(ret == 1, "_Make_dir() expect 1 got %d\n", ret);
+
+    file = CreateFileW(f1W, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+    ok(file != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+    CloseHandle(file);
+
+    last_write_time = p_Last_write_time(f1W);
+    newtime = last_write_time + 222222;
+    p_Set_last_write_time(f1W, newtime);
+    ok(last_write_time != p_Last_write_time(f1W),
+            "last_write_time should have changed: %s\n",
+            wine_dbgstr_longlong(last_write_time));
+
+    /* test the formula */
+    file = CreateFileW(f1W, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+            NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    ok(file != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+    ok(GetFileTime(file, 0, 0, &lwt), "GetFileTime failed\n");
+    CloseHandle(file);
+    last_write_time = (((__int64)lwt.dwHighDateTime)<< 32) + lwt.dwLowDateTime;
+    last_write_time -= TICKS_1601_TO_1970;
+    ok(newtime-margin_of_error<=last_write_time && last_write_time<=newtime+margin_of_error,
+            "don't fit the formula, last_write_time is %s expected %s\n",
+            wine_dbgstr_longlong(newtime), wine_dbgstr_longlong(last_write_time));
+
+    newtime = 0;
+    p_Set_last_write_time(f1W, newtime);
+    newtime = p_Last_write_time(f1W);
+    file = CreateFileW(f1W, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+            NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    ok(file != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+    ok(GetFileTime(file, 0, 0, &lwt), "GetFileTime failed\n");
+    CloseHandle(file);
+    last_write_time = (((__int64)lwt.dwHighDateTime)<< 32) + lwt.dwLowDateTime;
+    last_write_time -= TICKS_1601_TO_1970;
+    ok(newtime-margin_of_error<=last_write_time && last_write_time<=newtime+margin_of_error,
+            "don't fit the formula, last_write_time is %s expected %s\n",
+            wine_dbgstr_longlong(newtime), wine_dbgstr_longlong(last_write_time));
+
+    newtime = 123456789;
+    p_Set_last_write_time(f1W, newtime);
+    newtime = p_Last_write_time(f1W);
+    file = CreateFileW(f1W, 0, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE,
+            NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    ok(file != INVALID_HANDLE_VALUE, "create file failed: INVALID_HANDLE_VALUE\n");
+    ok(GetFileTime(file, 0, 0, &lwt), "GetFileTime failed\n");
+    CloseHandle(file);
+    last_write_time = (((__int64)lwt.dwHighDateTime)<< 32) + lwt.dwLowDateTime;
+    last_write_time -= TICKS_1601_TO_1970;
+    ok(newtime-margin_of_error<=last_write_time && last_write_time<=newtime+margin_of_error,
+            "don't fit the formula, last_write_time is %s expected %s\n",
+            wine_dbgstr_longlong(newtime), wine_dbgstr_longlong(last_write_time));
+
+    errno = 0xdeadbeef;
+    last_write_time = p_Last_write_time(not_existW);
+    ok(errno == 0xdeadbeef, "_Set_last_write_time(): errno expect 0xdeadbeef, got %d\n", errno);
+    ok(last_write_time == -1, "expect -1 got %s\n", wine_dbgstr_longlong(last_write_time));
+    last_write_time = p_Last_write_time(NULL);
+    ok(last_write_time == -1, "expect -1 got %s\n", wine_dbgstr_longlong(last_write_time));
+
+    errno = 0xdeadbeef;
+    p_Set_last_write_time(not_existW, newtime);
+    ok(errno == 0xdeadbeef, "_Set_last_write_time(): errno expect 0xdeadbeef, got %d\n", errno);
+    p_Set_last_write_time(NULL, newtime);
+    ok(errno == 0xdeadbeef, "_Set_last_write_time(): errno expect 0xdeadbeef, got %d\n", errno);
+
+    ok(DeleteFileW(f1W), "expect wine_test_dir/f1 to exist\n");
+    ret = p_Remove_dir(test_dirW);
+    ok(ret == 1, "p_Remove_dir(): expect 1 got %d\n", ret);
+    ok(SetCurrentDirectoryW(origin_path), "SetCurrentDirectoryW to origin_path failed\n");
+}
+
+static void test__Winerror_message(void)
+{
+    char buf[256], buf_fm[256];
+    ULONG ret, ret_fm;
+
+    ret_fm = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL, 0, 0, buf_fm, sizeof(buf_fm), NULL);
+
+    memset(buf, 'a', sizeof(buf));
+    ret = p__Winerror_message(0, buf, sizeof(buf));
+    ok(ret == ret_fm, "ret = %u, expected %u\n", ret, ret_fm);
+    ok(!strcmp(buf, buf_fm), "buf = %s, expected %s\n", buf, buf_fm);
+
+    memset(buf, 'a', sizeof(buf));
+    ret = p__Winerror_message(0, buf, 2);
+    ok(!ret, "ret = %u\n", ret);
+    ok(buf[0] == 'a', "buf = %s\n", buf);
+}
+
+static void test__Winerror_map(void)
+{
+    static struct {
+        int winerr, doserr;
+        BOOL broken;
+    } tests[] = {
+        {ERROR_INVALID_FUNCTION, ENOSYS}, {ERROR_FILE_NOT_FOUND, ENOENT},
+        {ERROR_PATH_NOT_FOUND, ENOENT}, {ERROR_TOO_MANY_OPEN_FILES, EMFILE},
+        {ERROR_ACCESS_DENIED, EACCES}, {ERROR_INVALID_HANDLE, EINVAL},
+        {ERROR_NOT_ENOUGH_MEMORY, ENOMEM}, {ERROR_INVALID_ACCESS, EACCES},
+        {ERROR_OUTOFMEMORY, ENOMEM}, {ERROR_INVALID_DRIVE, ENODEV},
+        {ERROR_CURRENT_DIRECTORY, EACCES}, {ERROR_NOT_SAME_DEVICE, EXDEV},
+        {ERROR_WRITE_PROTECT, EACCES}, {ERROR_BAD_UNIT, ENODEV},
+        {ERROR_NOT_READY, EAGAIN}, {ERROR_SEEK, EIO}, {ERROR_WRITE_FAULT, EIO},
+        {ERROR_READ_FAULT, EIO}, {ERROR_SHARING_VIOLATION, EACCES},
+        {ERROR_LOCK_VIOLATION, ENOLCK}, {ERROR_HANDLE_DISK_FULL, ENOSPC},
+        {ERROR_NOT_SUPPORTED, ENOTSUP, TRUE}, {ERROR_DEV_NOT_EXIST, ENODEV},
+        {ERROR_FILE_EXISTS, EEXIST}, {ERROR_CANNOT_MAKE, EACCES},
+        {ERROR_INVALID_PARAMETER, EINVAL, TRUE}, {ERROR_OPEN_FAILED, EIO},
+        {ERROR_BUFFER_OVERFLOW, ENAMETOOLONG}, {ERROR_DISK_FULL, ENOSPC},
+        {ERROR_INVALID_NAME, EINVAL}, {ERROR_NEGATIVE_SEEK, EINVAL},
+        {ERROR_BUSY_DRIVE, EBUSY}, {ERROR_DIR_NOT_EMPTY, ENOTEMPTY},
+        {ERROR_BUSY, EBUSY}, {ERROR_ALREADY_EXISTS, EEXIST},
+        {ERROR_LOCKED, ENOLCK}, {ERROR_DIRECTORY, EINVAL},
+        {ERROR_OPERATION_ABORTED, ECANCELED}, {ERROR_NOACCESS, EACCES},
+        {ERROR_CANTOPEN, EIO}, {ERROR_CANTREAD, EIO}, {ERROR_CANTWRITE, EIO},
+        {ERROR_RETRY, EAGAIN}, {ERROR_OPEN_FILES, EBUSY},
+        {ERROR_DEVICE_IN_USE, EBUSY}, {ERROR_REPARSE_TAG_INVALID, EINVAL, TRUE},
+        {WSAEINTR, EINTR}, {WSAEBADF, EBADF}, {WSAEACCES, EACCES},
+        {WSAEFAULT, EFAULT}, {WSAEINVAL, EINVAL}, {WSAEMFILE, EMFILE},
+        {WSAEWOULDBLOCK, EWOULDBLOCK}, {WSAEINPROGRESS, EINPROGRESS},
+        {WSAEALREADY, EALREADY}, {WSAENOTSOCK, ENOTSOCK},
+        {WSAEDESTADDRREQ, EDESTADDRREQ}, {WSAEMSGSIZE, EMSGSIZE},
+        {WSAEPROTOTYPE, EPROTOTYPE}, {WSAENOPROTOOPT, ENOPROTOOPT},
+        {WSAEPROTONOSUPPORT, EPROTONOSUPPORT}, {WSAEOPNOTSUPP, EOPNOTSUPP},
+        {WSAEAFNOSUPPORT, EAFNOSUPPORT}, {WSAEADDRINUSE, EADDRINUSE},
+        {WSAEADDRNOTAVAIL, EADDRNOTAVAIL}, {WSAENETDOWN, ENETDOWN},
+        {WSAENETUNREACH, ENETUNREACH}, {WSAENETRESET, ENETRESET},
+        {WSAECONNABORTED, ECONNABORTED}, {WSAECONNRESET, ECONNRESET},
+        {WSAENOBUFS, ENOBUFS}, {WSAEISCONN, EISCONN}, {WSAENOTCONN, ENOTCONN},
+        {WSAETIMEDOUT, ETIMEDOUT}, {WSAECONNREFUSED, ECONNREFUSED},
+        {WSAENAMETOOLONG, ENAMETOOLONG}, {WSAEHOSTUNREACH, EHOSTUNREACH}
+    };
+    int i, ret;
+
+    for(i=0; i<ARRAY_SIZE(tests); i++)
+    {
+        ret = p__Winerror_map(tests[i].winerr);
+        ok(ret == tests[i].doserr || broken(tests[i].broken && !ret),
+                "_Winerror_map(%d) returned %d, expected %d\n",
+                tests[i].winerr, ret, tests[i].doserr);
+    }
+}
+
 START_TEST(msvcp140)
 {
     if(!init()) return;
@@ -1078,5 +1378,10 @@ START_TEST(msvcp140)
     test_Stat();
     test_dir_operation();
     test_Unlink();
+    test_Temp_get();
+    test_Rename();
+    test_Last_write_time();
+    test__Winerror_message();
+    test__Winerror_map();
     FreeLibrary(msvcp);
 }

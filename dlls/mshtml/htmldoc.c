@@ -910,8 +910,8 @@ static HRESULT WINAPI HTMLDocument_get_expando(IHTMLDocument2 *iface, VARIANT_BO
 static HRESULT WINAPI HTMLDocument_put_charset(IHTMLDocument2 *iface, BSTR v)
 {
     HTMLDocument *This = impl_from_IHTMLDocument2(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_w(v));
-    return E_NOTIMPL;
+    FIXME("(%p)->(%s) returning S_OK\n", This, debugstr_w(v));
+    return S_OK;
 }
 
 static HRESULT WINAPI HTMLDocument_get_charset(IHTMLDocument2 *iface, BSTR *p)
@@ -1191,7 +1191,7 @@ static BOOL cmdid_from_string(const WCHAR *str, OLECMDID *cmdid)
 {
     int i;
 
-    for(i = 0; i < sizeof(command_names)/sizeof(*command_names); i++) {
+    for(i = 0; i < ARRAY_SIZE(command_names); i++) {
         if(!strcmpiW(command_names[i].name, str)) {
             *cmdid = command_names[i].id;
             return TRUE;

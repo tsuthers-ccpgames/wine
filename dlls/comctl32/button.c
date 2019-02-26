@@ -28,7 +28,6 @@
  *  - WM_SETFOCUS: For (manual or automatic) radio buttons, send the parent window BN_CLICKED
  *  - WM_NCCREATE: Turns any BS_OWNERDRAW button into a BS_PUSHBUTTON button.
  *  - WM_SYSKEYUP
- *  - BCM_GETIDEALSIZE
  *
  *  Notifications
  *  - BCN_HOTITEMCHANGE
@@ -42,7 +41,6 @@
  *
  *  Structures/Macros/Definitions
  *  - NMBCHOTITEM
- *  - Button_GetIdealSize
  */
 
 #include <stdarg.h>
@@ -98,7 +96,7 @@ typedef struct _BUTTON_INFO
     } u;
 } BUTTON_INFO;
 
-static UINT BUTTON_CalcLabelRect( const BUTTON_INFO *infoPtr, HDC hdc, RECT *rc );
+static UINT BUTTON_CalcLayoutRects( const BUTTON_INFO *infoPtr, HDC hdc, RECT *labelRc, RECT *imageRc, RECT *textRc );
 static void PB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action );
 static void CB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action );
 static void GB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action );
@@ -128,15 +126,16 @@ static const WORD maxCheckState[MAX_BTN_TYPE] =
     BST_UNCHECKED       /* BS_DEFCOMMANDLINK */
 };
 
-/* These are indices into a states array to determine the theme state for a given theme part. */
-typedef enum
+/* Generic draw states, use get_draw_state() to get specific state for button type */
+enum draw_state
 {
     STATE_NORMAL,
     STATE_DISABLED,
     STATE_HOT,
     STATE_PRESSED,
-    STATE_DEFAULTED
-} ButtonState;
+    STATE_DEFAULTED,
+    DRAW_STATE_COUNT
+};
 
 typedef void (*pfPaint)( const BUTTON_INFO *infoPtr, HDC hdc, UINT action );
 
@@ -160,11 +159,11 @@ static const pfPaint btnPaintFunc[MAX_BTN_TYPE] =
     PB_Paint     /* BS_DEFCOMMANDLINK */
 };
 
-typedef void (*pfThemedPaint)( HTHEME theme, const BUTTON_INFO *infoPtr, HDC hdc, ButtonState drawState, UINT dtflags, BOOL focused);
+typedef void (*pfThemedPaint)( HTHEME theme, const BUTTON_INFO *infoPtr, HDC hdc, int drawState, UINT dtflags, BOOL focused);
 
-static void PB_ThemedPaint( HTHEME theme, const BUTTON_INFO *infoPtr, HDC hdc, ButtonState drawState, UINT dtflags, BOOL focused);
-static void CB_ThemedPaint( HTHEME theme, const BUTTON_INFO *infoPtr, HDC hdc, ButtonState drawState, UINT dtflags, BOOL focused);
-static void GB_ThemedPaint( HTHEME theme, const BUTTON_INFO *infoPtr, HDC hdc, ButtonState drawState, UINT dtflags, BOOL focused);
+static void PB_ThemedPaint( HTHEME theme, const BUTTON_INFO *infoPtr, HDC hdc, int drawState, UINT dtflags, BOOL focused);
+static void CB_ThemedPaint( HTHEME theme, const BUTTON_INFO *infoPtr, HDC hdc, int drawState, UINT dtflags, BOOL focused);
+static void GB_ThemedPaint( HTHEME theme, const BUTTON_INFO *infoPtr, HDC hdc, int drawState, UINT dtflags, BOOL focused);
 
 static const pfThemedPaint btnThemedPaintFunc[MAX_BTN_TYPE] =
 {
@@ -184,6 +183,32 @@ static const pfThemedPaint btnThemedPaintFunc[MAX_BTN_TYPE] =
     NULL,           /* BS_DEFSPLITBUTTON */
     NULL,           /* BS_COMMANDLINK */
     NULL,           /* BS_DEFCOMMANDLINK */
+};
+
+typedef BOOL (*pfGetIdealSize)(BUTTON_INFO *infoPtr, SIZE *size);
+
+static BOOL PB_GetIdealSize(BUTTON_INFO *infoPtr, SIZE *size);
+static BOOL CB_GetIdealSize(BUTTON_INFO *infoPtr, SIZE *size);
+static BOOL GB_GetIdealSize(BUTTON_INFO *infoPtr, SIZE *size);
+
+static const pfGetIdealSize btnGetIdealSizeFunc[MAX_BTN_TYPE] = {
+    PB_GetIdealSize, /* BS_PUSHBUTTON */
+    PB_GetIdealSize, /* BS_DEFPUSHBUTTON */
+    CB_GetIdealSize, /* BS_CHECKBOX */
+    CB_GetIdealSize, /* BS_AUTOCHECKBOX */
+    CB_GetIdealSize, /* BS_RADIOBUTTON */
+    GB_GetIdealSize, /* BS_3STATE */
+    GB_GetIdealSize, /* BS_AUTO3STATE */
+    GB_GetIdealSize, /* BS_GROUPBOX */
+    PB_GetIdealSize, /* BS_USERBUTTON */
+    CB_GetIdealSize, /* BS_AUTORADIOBUTTON */
+    GB_GetIdealSize, /* BS_PUSHBOX */
+    GB_GetIdealSize, /* BS_OWNERDRAW */
+    /* GetIdealSize() for following types are unimplemented, use BS_PUSHBUTTON's for now */
+    PB_GetIdealSize, /* BS_SPLITBUTTON */
+    PB_GetIdealSize, /* BS_DEFSPLITBUTTON */
+    PB_GetIdealSize, /* BS_COMMANDLINK */
+    PB_GetIdealSize  /* BS_DEFCOMMANDLINK */
 };
 
 static inline UINT get_button_type( LONG window_style )
@@ -284,6 +309,63 @@ static UINT BUTTON_BStoDT( DWORD style, DWORD ex_style )
     }
 
     return dtStyle;
+}
+
+static int get_draw_state(const BUTTON_INFO *infoPtr)
+{
+    static const int pb_states[DRAW_STATE_COUNT] = { PBS_NORMAL, PBS_DISABLED, PBS_HOT, PBS_PRESSED, PBS_DEFAULTED };
+    static const int cb_states[3][DRAW_STATE_COUNT] =
+    {
+        { CBS_UNCHECKEDNORMAL, CBS_UNCHECKEDDISABLED, CBS_UNCHECKEDHOT, CBS_UNCHECKEDPRESSED, CBS_UNCHECKEDNORMAL },
+        { CBS_CHECKEDNORMAL, CBS_CHECKEDDISABLED, CBS_CHECKEDHOT, CBS_CHECKEDPRESSED, CBS_CHECKEDNORMAL },
+        { CBS_MIXEDNORMAL, CBS_MIXEDDISABLED, CBS_MIXEDHOT, CBS_MIXEDPRESSED, CBS_MIXEDNORMAL }
+    };
+    static const int rb_states[2][DRAW_STATE_COUNT] =
+    {
+        { RBS_UNCHECKEDNORMAL, RBS_UNCHECKEDDISABLED, RBS_UNCHECKEDHOT, RBS_UNCHECKEDPRESSED, RBS_UNCHECKEDNORMAL },
+        { RBS_CHECKEDNORMAL, RBS_CHECKEDDISABLED, RBS_CHECKEDHOT, RBS_CHECKEDPRESSED, RBS_CHECKEDNORMAL }
+    };
+    static const int gb_states[DRAW_STATE_COUNT] = { GBS_NORMAL, GBS_DISABLED, GBS_NORMAL, GBS_NORMAL, GBS_NORMAL };
+    LONG style = GetWindowLongW(infoPtr->hwnd, GWL_STYLE);
+    UINT type = get_button_type(style);
+    int check_state = infoPtr->state & 3;
+    enum draw_state state;
+
+    if (!IsWindowEnabled(infoPtr->hwnd))
+        state = STATE_DISABLED;
+    else if (infoPtr->state & BST_PUSHED)
+        state = STATE_PRESSED;
+    else if (infoPtr->state & BST_HOT)
+        state = STATE_HOT;
+    else if (infoPtr->state & BST_FOCUS)
+        state = STATE_DEFAULTED;
+    else
+        state = STATE_NORMAL;
+
+    switch (type)
+    {
+    case BS_PUSHBUTTON:
+    case BS_DEFPUSHBUTTON:
+    case BS_USERBUTTON:
+    case BS_SPLITBUTTON:
+    case BS_DEFSPLITBUTTON:
+    case BS_COMMANDLINK:
+    case BS_DEFCOMMANDLINK:
+        return pb_states[state];
+    case BS_CHECKBOX:
+    case BS_AUTOCHECKBOX:
+        return cb_states[check_state][state];
+    case BS_RADIOBUTTON:
+    case BS_3STATE:
+    case BS_AUTO3STATE:
+    case BS_AUTORADIOBUTTON:
+        return rb_states[check_state][state];
+    case BS_GROUPBOX:
+        return gb_states[state];
+    default:
+        WARN("Unsupported button type 0x%08x\n", type);
+        return PBS_NORMAL;
+    }
 }
 
 static LRESULT CALLBACK BUTTON_WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -402,20 +484,9 @@ static LRESULT CALLBACK BUTTON_WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, L
 
         if (theme && btnThemedPaintFunc[btn_type])
         {
-            ButtonState drawState;
-            UINT dtflags;
+            int drawState = get_draw_state(infoPtr);
+            UINT dtflags = BUTTON_BStoDT(style, GetWindowLongW(hWnd, GWL_EXSTYLE));
 
-            if (IsWindowEnabled( hWnd ))
-            {
-                if (infoPtr->state & BST_PUSHED) drawState = STATE_PRESSED;
-                else if (infoPtr->state & BST_HOT) drawState = STATE_HOT;
-                else if (infoPtr->state & BST_FOCUS) drawState = STATE_DEFAULTED;
-                else drawState = STATE_NORMAL;
-            }
-            else
-                drawState = STATE_DISABLED;
-
-            dtflags = BUTTON_BStoDT(style, GetWindowLongW(hWnd, GWL_EXSTYLE));
             btnThemedPaintFunc[btn_type](theme, infoPtr, hdc, drawState, dtflags, infoPtr->state & BST_FOCUS);
         }
         else if (btnPaintFunc[btn_type])
@@ -568,7 +639,7 @@ static LRESULT CALLBACK BUTTON_WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, L
             /* FIXME: check other BS_* handlers */
             if (btn_type == BS_GROUPBOX)
                 InflateRect(&rc, -7, 1); /* GB_Paint does this */
-            BUTTON_CalcLabelRect(infoPtr, hdc, &rc);
+            BUTTON_CalcLayoutRects(infoPtr, hdc, &rc, NULL, NULL);
             /* Clip by client rect bounds */
             if (rc.right > client.right) rc.right = client.right;
             if (rc.bottom > client.bottom) rc.bottom = client.bottom;
@@ -799,6 +870,15 @@ static LRESULT CALLBACK BUTTON_WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, L
         return TRUE;
     }
 
+    case BCM_GETIDEALSIZE:
+    {
+        SIZE *size = (SIZE *)lParam;
+
+        if (!size) return FALSE;
+
+        return btnGetIdealSizeFunc[btn_type](infoPtr, size);
+    }
+
     case WM_NCHITTEST:
         if(btn_type == BS_GROUPBOX) return HTTRANSPARENT;
         /* fall through */
@@ -808,95 +888,484 @@ static LRESULT CALLBACK BUTTON_WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, L
     return 0;
 }
 
+/* If maxWidth is zero, rectangle width is unlimited */
+static RECT BUTTON_GetTextRect(const BUTTON_INFO *infoPtr, HDC hdc, const WCHAR *text, LONG maxWidth)
+{
+    LONG style = GetWindowLongW(infoPtr->hwnd, GWL_STYLE);
+    LONG exStyle = GetWindowLongW(infoPtr->hwnd, GWL_EXSTYLE);
+    UINT dtStyle = BUTTON_BStoDT(style, exStyle);
+    HFONT hPrevFont;
+    RECT rect = {0};
+
+    rect.right = maxWidth;
+    hPrevFont = SelectObject(hdc, infoPtr->font);
+    /* Calculate height without DT_VCENTER and DT_BOTTOM to get the correct height */
+    DrawTextW(hdc, text, -1, &rect, (dtStyle & ~(DT_VCENTER | DT_BOTTOM)) | DT_CALCRECT);
+    if (hPrevFont) SelectObject(hdc, hPrevFont);
+
+    return rect;
+}
+
+static BOOL show_image_only(const BUTTON_INFO *infoPtr)
+{
+    LONG style = GetWindowLongW(infoPtr->hwnd, GWL_STYLE);
+    return (style & (BS_ICON | BS_BITMAP)) && (infoPtr->u.image || infoPtr->imagelist.himl);
+}
+
+static BOOL show_image_and_text(const BUTTON_INFO *infoPtr)
+{
+    LONG style = GetWindowLongW(infoPtr->hwnd, GWL_STYLE);
+    UINT type = get_button_type(style);
+    return !(style & (BS_ICON | BS_BITMAP))
+           && ((infoPtr->u.image
+                && (type == BS_PUSHBUTTON || type == BS_DEFPUSHBUTTON || type == BS_USERBUTTON || type == BS_SPLITBUTTON
+                    || type == BS_DEFSPLITBUTTON || type == BS_COMMANDLINK || type == BS_DEFCOMMANDLINK))
+               || (infoPtr->imagelist.himl && type != BS_GROUPBOX));
+}
+
+static BOOL show_image(const BUTTON_INFO *infoPtr)
+{
+    return show_image_only(infoPtr) || show_image_and_text(infoPtr);
+}
+
+/* Get a bounding rectangle that is large enough to contain a image and a text side by side.
+ * Note: (left,top) of the result rectangle may not be (0,0), offset it by yourself if needed */
+static RECT BUTTON_GetBoundingLabelRect(LONG style, const RECT *textRect, const RECT *imageRect)
+{
+    RECT labelRect;
+    RECT rect = *imageRect;
+    INT textWidth = textRect->right - textRect->left;
+    INT textHeight = textRect->bottom - textRect->top;
+    INT imageWidth = imageRect->right - imageRect->left;
+    INT imageHeight = imageRect->bottom - imageRect->top;
+
+    if ((style & BS_CENTER) == BS_RIGHT)
+        OffsetRect(&rect, textWidth, 0);
+    else if ((style & BS_CENTER) == BS_LEFT)
+        OffsetRect(&rect, -imageWidth, 0);
+    else if ((style & BS_VCENTER) == BS_BOTTOM)
+        OffsetRect(&rect, 0, textHeight);
+    else if ((style & BS_VCENTER) == BS_TOP)
+        OffsetRect(&rect, 0, -imageHeight);
+    else
+        OffsetRect(&rect, -imageWidth, 0);
+
+    UnionRect(&labelRect, textRect, &rect);
+    return labelRect;
+}
+
+/* Position a rectangle inside a bounding rectangle according to button alignment flags */
+static void BUTTON_PositionRect(LONG style, const RECT *outerRect, RECT *innerRect, const RECT *margin)
+{
+    INT width = innerRect->right - innerRect->left;
+    INT height = innerRect->bottom - innerRect->top;
+
+    if ((style & WS_EX_RIGHT) && !(style & BS_CENTER)) style |= BS_CENTER;
+
+    if (!(style & BS_CENTER))
+    {
+        /* Push button's text is centered by default, all other types have left aligned text */
+        if (get_button_type(style) <= BS_DEFPUSHBUTTON)
+            style |= BS_CENTER;
+        else
+            style |= BS_LEFT;
+    }
+
+    if (!(style & BS_VCENTER))
+    {
+        /* Group box's text is top aligned by default */
+        if (get_button_type(style) == BS_GROUPBOX)
+            style |= BS_TOP;
+    }
+
+    switch (style & BS_CENTER)
+    {
+    case BS_CENTER:
+        innerRect->left = outerRect->left + (outerRect->right - outerRect->left - width) / 2;
+        innerRect->right = innerRect->left + width;
+        break;
+    case BS_RIGHT:
+        innerRect->right = outerRect->right - margin->right;
+        innerRect->left = innerRect->right - width;
+        break;
+    case BS_LEFT:
+    default:
+        innerRect->left = outerRect->left + margin->left;
+        innerRect->right = innerRect->left + width;
+        break;
+    }
+
+    switch (style & BS_VCENTER)
+    {
+    case BS_TOP:
+        innerRect->top = outerRect->top + margin->top;
+        innerRect->bottom = innerRect->top + height;
+        break;
+    case BS_BOTTOM:
+        innerRect->bottom = outerRect->bottom - margin->bottom;
+        innerRect->top = innerRect->bottom - height;
+        break;
+    case BS_VCENTER:
+    default:
+        innerRect->top = outerRect->top + (outerRect->bottom - outerRect->top - height) / 2;
+        innerRect->bottom = innerRect->top + height;
+        break;
+    }
+}
+
+/* Convert imagelist align style to button align style */
+static UINT BUTTON_ILStoBS(UINT align)
+{
+    switch (align)
+    {
+    case BUTTON_IMAGELIST_ALIGN_TOP:
+        return BS_CENTER | BS_TOP;
+    case BUTTON_IMAGELIST_ALIGN_BOTTOM:
+        return BS_CENTER | BS_BOTTOM;
+    case BUTTON_IMAGELIST_ALIGN_CENTER:
+        return BS_CENTER | BS_VCENTER;
+    case BUTTON_IMAGELIST_ALIGN_RIGHT:
+        return BS_RIGHT | BS_VCENTER;
+    case BUTTON_IMAGELIST_ALIGN_LEFT:
+    default:
+        return BS_LEFT | BS_VCENTER;
+    }
+}
+
+static SIZE BUTTON_GetImageSize(const BUTTON_INFO *infoPtr)
+{
+    ICONINFO iconInfo;
+    BITMAP bm = {0};
+    SIZE size = {0};
+
+    /* ImageList has priority over image */
+    if (infoPtr->imagelist.himl)
+        ImageList_GetIconSize(infoPtr->imagelist.himl, &size.cx, &size.cy);
+    else if (infoPtr->u.image)
+    {
+        if (infoPtr->image_type == IMAGE_ICON)
+        {
+            GetIconInfo(infoPtr->u.icon, &iconInfo);
+            GetObjectW(iconInfo.hbmColor, sizeof(bm), &bm);
+            DeleteObject(iconInfo.hbmColor);
+            DeleteObject(iconInfo.hbmMask);
+        }
+        else if (infoPtr->image_type == IMAGE_BITMAP)
+            GetObjectW(infoPtr->u.bitmap, sizeof(bm), &bm);
+
+        size.cx = bm.bmWidth;
+        size.cy = bm.bmHeight;
+    }
+
+    return size;
+}
+
+static const RECT *BUTTON_GetTextMargin(const BUTTON_INFO *infoPtr)
+{
+    static const RECT oneMargin = {1, 1, 1, 1};
+
+    /* Use text margin only when showing both image and text, and image is not imagelist */
+    if (show_image_and_text(infoPtr) && !infoPtr->imagelist.himl)
+        return &infoPtr->text_margin;
+    else
+        return &oneMargin;
+}
+
+static void BUTTON_GetClientRectSize(BUTTON_INFO *infoPtr, SIZE *size)
+{
+    RECT rect;
+    GetClientRect(infoPtr->hwnd, &rect);
+    size->cx = rect.right - rect.left;
+    size->cy = rect.bottom - rect.top;
+}
+
+static void BUTTON_GetTextIdealSize(BUTTON_INFO *infoPtr, LONG maxWidth, SIZE *size)
+{
+    WCHAR *text = get_button_text(infoPtr);
+    HDC hdc;
+    RECT rect;
+    const RECT *margin = BUTTON_GetTextMargin(infoPtr);
+
+    if (maxWidth != 0)
+    {
+        maxWidth -= margin->right + margin->right;
+        if (maxWidth <= 0) maxWidth = 1;
+    }
+
+    hdc = GetDC(infoPtr->hwnd);
+    rect = BUTTON_GetTextRect(infoPtr, hdc, text, maxWidth);
+    ReleaseDC(infoPtr->hwnd, hdc);
+    heap_free(text);
+
+    size->cx = rect.right - rect.left + margin->left + margin->right;
+    size->cy = rect.bottom - rect.top + margin->top + margin->bottom;
+}
+
+static void BUTTON_GetLabelIdealSize(BUTTON_INFO *infoPtr, LONG maxWidth, SIZE *size)
+{
+    LONG style = GetWindowLongW(infoPtr->hwnd, GWL_STYLE);
+    SIZE imageSize;
+    SIZE textSize;
+    BOOL horizontal;
+
+    imageSize = BUTTON_GetImageSize(infoPtr);
+    if (infoPtr->imagelist.himl)
+    {
+        imageSize.cx += infoPtr->imagelist.margin.left + infoPtr->imagelist.margin.right;
+        imageSize.cy += infoPtr->imagelist.margin.top + infoPtr->imagelist.margin.bottom;
+        if (infoPtr->imagelist.uAlign == BUTTON_IMAGELIST_ALIGN_TOP
+            || infoPtr->imagelist.uAlign == BUTTON_IMAGELIST_ALIGN_BOTTOM)
+            horizontal = FALSE;
+        else
+            horizontal = TRUE;
+    }
+    else
+    {
+        /* horizontal alignment flags has priority over vertical ones if both are specified */
+        if (!(style & (BS_CENTER | BS_VCENTER)) || ((style & BS_CENTER) && (style & BS_CENTER) != BS_CENTER)
+            || !(style & BS_VCENTER) || (style & BS_VCENTER) == BS_VCENTER)
+            horizontal = TRUE;
+        else
+            horizontal = FALSE;
+    }
+
+    if (horizontal)
+    {
+        if (maxWidth != 0)
+        {
+            maxWidth -= imageSize.cx;
+            if (maxWidth <= 0) maxWidth = 1;
+        }
+        BUTTON_GetTextIdealSize(infoPtr, maxWidth, &textSize);
+        size->cx = textSize.cx + imageSize.cx;
+        size->cy = max(textSize.cy, imageSize.cy);
+    }
+    else
+    {
+        BUTTON_GetTextIdealSize(infoPtr, maxWidth, &textSize);
+        size->cx = max(textSize.cx, imageSize.cx);
+        size->cy = textSize.cy + imageSize.cy;
+    }
+}
+
+static BOOL GB_GetIdealSize(BUTTON_INFO *infoPtr, SIZE *size)
+{
+    BUTTON_GetClientRectSize(infoPtr, size);
+    return TRUE;
+}
+
+static BOOL CB_GetIdealSize(BUTTON_INFO *infoPtr, SIZE *size)
+{
+    LONG style = GetWindowLongW(infoPtr->hwnd, GWL_STYLE);
+    WCHAR *text = get_button_text(infoPtr);
+    HDC hdc;
+    HFONT hfont;
+    SIZE labelSize;
+    INT textOffset;
+    INT textLength = 0;
+    double scaleX;
+    double scaleY;
+    LONG checkboxWidth, checkboxHeight;
+    LONG maxWidth = 0;
+
+    if (text) textLength = lstrlenW(text);
+    heap_free(text);
+    if (textLength == 0)
+    {
+        BUTTON_GetClientRectSize(infoPtr, size);
+        return TRUE;
+    }
+
+    hdc = GetDC(infoPtr->hwnd);
+    scaleX = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0;
+    scaleY = GetDeviceCaps(hdc, LOGPIXELSY) / 96.0;
+    if ((hfont = infoPtr->font)) SelectObject(hdc, hfont);
+    GetCharWidthW(hdc, '0', '0', &textOffset);
+    textOffset /= 2;
+    ReleaseDC(infoPtr->hwnd, hdc);
+
+    checkboxWidth = 12 * scaleX + 1;
+    checkboxHeight = 12 * scaleY + 1;
+    if (size->cx)
+    {
+        maxWidth = size->cx - checkboxWidth - textOffset;
+        if (maxWidth <= 0) maxWidth = 1;
+    }
+
+    /* Checkbox doesn't support both image(but not image list) and text */
+    if (!(style & (BS_ICON | BS_BITMAP)) && infoPtr->u.image)
+        BUTTON_GetTextIdealSize(infoPtr, maxWidth, &labelSize);
+    else
+        BUTTON_GetLabelIdealSize(infoPtr, maxWidth, &labelSize);
+
+    size->cx = labelSize.cx + checkboxWidth + textOffset;
+    size->cy = max(labelSize.cy, checkboxHeight);
+
+    return TRUE;
+}
+
+static BOOL PB_GetIdealSize(BUTTON_INFO *infoPtr, SIZE *size)
+{
+    WCHAR *text = get_button_text(infoPtr);
+    SIZE labelSize;
+    INT textLength = 0;
+
+    if (text) textLength = lstrlenW(text);
+
+    if (textLength == 0)
+    {
+        BUTTON_GetClientRectSize(infoPtr, size);
+        heap_free(text);
+        return TRUE;
+    }
+    heap_free(text);
+
+    /* Ideal size include text size even if image only flags(BS_ICON, BS_BITMAP) are specified */
+    BUTTON_GetLabelIdealSize(infoPtr, size->cx, &labelSize);
+
+    size->cx = labelSize.cx;
+    size->cy = labelSize.cy;
+
+    return TRUE;
+}
+
 /**********************************************************************
- *       BUTTON_CalcLabelRect
+ *       BUTTON_CalcLayoutRects
  *
- *   Calculates label's rectangle depending on button style.
+ *   Calculates the rectangles of the button label(image and text) and its parts depending on a button's style.
  *
  * Returns flags to be passed to DrawText.
  * Calculated rectangle doesn't take into account button state
  * (pushed, etc.). If there is nothing to draw (no text/image) output
  * rectangle is empty, and return value is (UINT)-1.
+ *
+ * PARAMS:
+ * infoPtr [I]   Button pointer
+ * hdc     [I]   Handle to device context to draw to
+ * labelRc [I/O] Input the rect the label to be positioned in, and output the label rect
+ * imageRc [O]   Optional, output the image rect
+ * textRc  [O]   Optional, output the text rect
  */
-static UINT BUTTON_CalcLabelRect(const BUTTON_INFO *infoPtr, HDC hdc, RECT *rc)
+static UINT BUTTON_CalcLayoutRects(const BUTTON_INFO *infoPtr, HDC hdc, RECT *labelRc, RECT *imageRc, RECT *textRc)
 {
    LONG style = GetWindowLongW( infoPtr->hwnd, GWL_STYLE );
    LONG ex_style = GetWindowLongW( infoPtr->hwnd, GWL_EXSTYLE );
+   LONG split_style = infoPtr->imagelist.himl ? BUTTON_ILStoBS(infoPtr->imagelist.uAlign) : style;
    WCHAR *text = get_button_text(infoPtr);
-   ICONINFO    iconInfo;
-   BITMAP      bm = { 0 };
-   UINT        dtStyle = BUTTON_BStoDT( style, ex_style );
-   RECT        r = *rc;
-   INT         n;
+   SIZE imageSize = BUTTON_GetImageSize(infoPtr);
+   UINT dtStyle = BUTTON_BStoDT(style, ex_style);
+   RECT labelRect, imageRect, imageRectWithMargin, textRect;
+   LONG imageMarginWidth, imageMarginHeight;
+   const RECT *textMargin = BUTTON_GetTextMargin(infoPtr);
+   RECT emptyMargin = {0};
+   LONG maxTextWidth;
 
    /* Calculate label rectangle according to label type */
-   /* FIXME: Doesn't support showing both image and text yet */
-   if (infoPtr->u.image)
+   if ((imageSize.cx == 0 && imageSize.cy == 0) && (text == NULL || text[0] == '\0'))
    {
-       if (infoPtr->image_type == IMAGE_ICON)
-       {
-           GetIconInfo(infoPtr->u.icon, &iconInfo);
-           GetObjectW(iconInfo.hbmColor, sizeof(bm), &bm);
-           DeleteObject(iconInfo.hbmColor);
-           DeleteObject(iconInfo.hbmMask);
-       }
-       else if (infoPtr->image_type == IMAGE_BITMAP)
-       {
-           GetObjectW(infoPtr->u.bitmap, sizeof(bm), &bm);
-       }
-
-       r.right = r.left + bm.bmWidth;
-       r.bottom = r.top + bm.bmHeight;
-   }
-   else if (text && text[0])
-   {
-       HFONT hFont, hPrevFont = 0;
-
-       if ((hFont = infoPtr->font)) hPrevFont = SelectObject(hdc, hFont);
-       DrawTextW(hdc, text, -1, &r, dtStyle | DT_CALCRECT);
-       if (hPrevFont) SelectObject(hdc, hPrevFont);
-   }
-
-   if ((infoPtr->u.image && bm.bmWidth == 0 && bm.bmHeight == 0)
-       || (text == NULL || text[0] == '\0'))
-   {
-       rc->right = r.left;
-       rc->bottom = r.top;
+       SetRectEmpty(labelRc);
+       SetRectEmpty(imageRc);
+       SetRectEmpty(textRc);
        heap_free(text);
        return (UINT)-1;
    }
+
+   SetRect(&imageRect, 0, 0, imageSize.cx, imageSize.cy);
+   imageRectWithMargin = imageRect;
+   if (infoPtr->imagelist.himl)
+   {
+       imageRectWithMargin.top -= infoPtr->imagelist.margin.top;
+       imageRectWithMargin.bottom += infoPtr->imagelist.margin.bottom;
+       imageRectWithMargin.left -= infoPtr->imagelist.margin.left;
+       imageRectWithMargin.right += infoPtr->imagelist.margin.right;
+   }
+
+   /* Show image only */
+   if (show_image_only(infoPtr))
+   {
+       BUTTON_PositionRect(style, labelRc, &imageRect,
+                           infoPtr->imagelist.himl ? &infoPtr->imagelist.margin : &emptyMargin);
+       labelRect = imageRect;
+       SetRectEmpty(&textRect);
+   }
+   else
+   {
+       /* Get text rect */
+       maxTextWidth = labelRc->right - labelRc->left;
+       textRect = BUTTON_GetTextRect(infoPtr, hdc, text, maxTextWidth);
+
+       /* Show image and text */
+       if (show_image_and_text(infoPtr))
+       {
+           RECT boundingLabelRect, boundingImageRect, boundingTextRect;
+
+           /* Get label rect */
+           /* Image list may have different alignment than the button, use the whole rect for label in this case */
+           if (infoPtr->imagelist.himl)
+               labelRect = *labelRc;
+           else
+           {
+               /* Get a label bounding rectangle to position the label in the user specified label rectangle because
+                * text and image need to align together. */
+               boundingLabelRect = BUTTON_GetBoundingLabelRect(split_style, &textRect, &imageRectWithMargin);
+               BUTTON_PositionRect(split_style, labelRc, &boundingLabelRect, &emptyMargin);
+               labelRect = boundingLabelRect;
+           }
+
+           /* When imagelist has center align, use the whole rect for imagelist and text */
+           if(infoPtr->imagelist.himl && infoPtr->imagelist.uAlign == BUTTON_IMAGELIST_ALIGN_CENTER)
+           {
+               boundingImageRect = labelRect;
+               boundingTextRect = labelRect;
+               BUTTON_PositionRect(split_style, &boundingImageRect, &imageRect,
+                                   infoPtr->imagelist.himl ? &infoPtr->imagelist.margin : &emptyMargin);
+               /* Text doesn't use imagelist align */
+               BUTTON_PositionRect(style, &boundingTextRect, &textRect, textMargin);
+           }
+           else
+           {
+               /* Get image rect */
+               /* Split the label rect to two halves as two bounding rectangles for image and text */
+               boundingImageRect = labelRect;
+               imageMarginWidth = imageRectWithMargin.right - imageRectWithMargin.left;
+               imageMarginHeight = imageRectWithMargin.bottom - imageRectWithMargin.top;
+               if ((split_style & BS_CENTER) == BS_RIGHT)
+                   boundingImageRect.left = boundingImageRect.right - imageMarginWidth;
+               else if ((split_style & BS_CENTER) == BS_LEFT)
+                   boundingImageRect.right = boundingImageRect.left + imageMarginWidth;
+               else if ((split_style & BS_VCENTER) == BS_BOTTOM)
+                   boundingImageRect.top = boundingImageRect.bottom - imageMarginHeight;
+               else if ((split_style & BS_VCENTER) == BS_TOP)
+                   boundingImageRect.bottom = boundingImageRect.top + imageMarginHeight;
+               else
+                   boundingImageRect.right = boundingImageRect.left + imageMarginWidth;
+               BUTTON_PositionRect(split_style, &boundingImageRect, &imageRect,
+                                   infoPtr->imagelist.himl ? &infoPtr->imagelist.margin : &emptyMargin);
+
+               /* Get text rect */
+               SubtractRect(&boundingTextRect, &labelRect, &boundingImageRect);
+               /* Text doesn't use imagelist align */
+               BUTTON_PositionRect(style, &boundingTextRect, &textRect, textMargin);
+           }
+       }
+       /* Show text only */
+       else
+       {
+           if (get_button_type(style) != BS_GROUPBOX)
+               BUTTON_PositionRect(style, labelRc, &textRect, textMargin);
+           else
+               /* GroupBox is always top aligned */
+               BUTTON_PositionRect((style & ~BS_VCENTER) | BS_TOP, labelRc, &textRect, textMargin);
+           labelRect = textRect;
+           SetRectEmpty(&imageRect);
+       }
+   }
    heap_free(text);
 
-   /* Position label inside bounding rectangle according to
-    * alignment flags. (calculated rect is always left-top aligned).
-    * If label is aligned to any side - shift label in opposite
-    * direction to leave extra space for focus rectangle.
-    */
-   switch (dtStyle & (DT_CENTER|DT_RIGHT))
-   {
-      case DT_LEFT:    r.left++;  r.right++;  break;
-      case DT_CENTER:  n = r.right - r.left;
-                       r.left   = rc->left + ((rc->right - rc->left) - n) / 2;
-                       r.right  = r.left + n; break;
-      case DT_RIGHT:   n = r.right - r.left;
-                       r.right  = rc->right - 1;
-                       r.left   = r.right - n;
-                       break;
-   }
+   CopyRect(labelRc, &labelRect);
+   CopyRect(imageRc, &imageRect);
+   CopyRect(textRc, &textRect);
 
-   switch (dtStyle & (DT_VCENTER|DT_BOTTOM))
-   {
-      case DT_TOP:     r.top++;  r.bottom++;  break;
-      case DT_VCENTER: n = r.bottom - r.top;
-                       r.top    = rc->top + ((rc->bottom - rc->top) - n) / 2;
-                       r.bottom = r.top + n;  break;
-      case DT_BOTTOM:  n = r.bottom - r.top;
-                       r.bottom = rc->bottom - 1;
-                       r.top    = r.bottom - n;
-                       break;
-   }
-
-   *rc = r;
    return dtStyle;
 }
 
@@ -915,20 +1384,27 @@ static BOOL CALLBACK BUTTON_DrawTextCallback(HDC hdc, LPARAM lp, WPARAM wp, int 
    return TRUE;
 }
 
-
 /**********************************************************************
  *       BUTTON_DrawLabel
  *
  *   Common function for drawing button label.
+ *
+ * FIXME:
+ *      1. When BS_SINGLELINE is specified and text contains '\t', '\n' or '\r' in the middle, they are rendered as
+ *         squares now whereas they should be ignored.
+ *      2. When BS_MULTILINE is specified and text contains space in the middle, the space mistakenly be rendered as newline.
  */
-static void BUTTON_DrawLabel(const BUTTON_INFO *infoPtr, HDC hdc, UINT dtFlags, const RECT *rc)
+static void BUTTON_DrawLabel(const BUTTON_INFO *infoPtr, HDC hdc, UINT dtFlags, const RECT *imageRect,
+                             const RECT *textRect)
 {
    DRAWSTATEPROC lpOutputProc = NULL;
    LPARAM lp;
    WPARAM wp = 0;
    HBRUSH hbr = 0;
    UINT flags = IsWindowEnabled(infoPtr->hwnd) ? DSS_NORMAL : DSS_DISABLED;
+   UINT imageFlags;
    LONG state = infoPtr->state;
+   LONG draw_state;
    LONG style = GetWindowLongW( infoPtr->hwnd, GWL_STYLE );
    WCHAR *text = NULL;
 
@@ -943,35 +1419,50 @@ static void BUTTON_DrawLabel(const BUTTON_INFO *infoPtr, HDC hdc, UINT dtFlags, 
       flags |= DSS_MONO;
    }
 
-   /* FIXME: Support drawing label with both image and text */
-   if (infoPtr->u.image != 0)
+   if (show_image(infoPtr))
    {
-       switch (infoPtr->image_type)
+       if (infoPtr->imagelist.himl)
        {
-       case IMAGE_ICON:
-           flags |= DST_ICON;
-           lp = (LPARAM)infoPtr->u.icon;
-           break;
-       case IMAGE_BITMAP:
-           flags |= DST_BITMAP;
-           lp = (LPARAM)infoPtr->u.bitmap;
-           break;
-       default:
-           return;
+           if (ImageList_GetImageCount(infoPtr->imagelist.himl) == 1)
+               ImageList_Draw(infoPtr->imagelist.himl, 0, hdc, imageRect->left, imageRect->top, ILD_NORMAL);
+           else
+           {
+               draw_state = get_draw_state(infoPtr);
+               ImageList_Draw(infoPtr->imagelist.himl, draw_state - 1, hdc, imageRect->left, imageRect->top,
+                              ILD_NORMAL);
+           }
+       }
+       else
+       {
+           switch (infoPtr->image_type)
+           {
+           case IMAGE_ICON:
+               imageFlags = flags | DST_ICON;
+               lp = (LPARAM)infoPtr->u.icon;
+               break;
+           case IMAGE_BITMAP:
+               imageFlags = flags | DST_BITMAP;
+               lp = (LPARAM)infoPtr->u.bitmap;
+               break;
+           default:
+               return;
+           }
+
+           DrawStateW(hdc, hbr, lpOutputProc, lp, wp, imageRect->left, imageRect->top,
+                      imageRect->right - imageRect->left, imageRect->bottom - imageRect->top, imageFlags);
        }
    }
-   else
-   {
-       /* DST_COMPLEX -- is 0 */
-       lpOutputProc = BUTTON_DrawTextCallback;
-       if (!(text = get_button_text(infoPtr))) return;
-       lp = (LPARAM)text;
-       wp = dtFlags;
-   }
 
-   DrawStateW(hdc, hbr, lpOutputProc, lp, wp, rc->left, rc->top,
-              rc->right - rc->left, rc->bottom - rc->top, flags);
-   heap_free( text );
+   if (show_image_only(infoPtr)) return;
+
+   /* DST_COMPLEX -- is 0 */
+   lpOutputProc = BUTTON_DrawTextCallback;
+   if (!(text = get_button_text(infoPtr))) return;
+   lp = (LPARAM)text;
+   wp = dtFlags;
+   DrawStateW(hdc, hbr, lpOutputProc, lp, wp, textRect->left, textRect->top, textRect->right - textRect->left,
+              textRect->bottom - textRect->top, flags);
+   heap_free(text);
 }
 
 /**********************************************************************
@@ -979,7 +1470,7 @@ static void BUTTON_DrawLabel(const BUTTON_INFO *infoPtr, HDC hdc, UINT dtFlags, 
  */
 static void PB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
 {
-    RECT     rc, r;
+    RECT     rc, labelRect, imageRect, textRect;
     UINT     dtFlags, uState;
     HPEN     hOldPen, hpen;
     HBRUSH   hOldBrush;
@@ -1035,18 +1526,19 @@ static void PB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
     DrawFrameControl( hDC, &rc, DFC_BUTTON, uState );
 
     /* draw button label */
-    r = rc;
-    dtFlags = BUTTON_CalcLabelRect(infoPtr, hDC, &r);
+    labelRect = rc;
+    /* Shrink label rect at all sides by 2 so that the content won't touch the surrounding frame */
+    InflateRect(&labelRect, -2, -2);
+    dtFlags = BUTTON_CalcLayoutRects(infoPtr, hDC, &labelRect, &imageRect, &textRect);
 
     if (dtFlags == (UINT)-1L)
        goto cleanup;
 
-    if (pushedState)
-       OffsetRect(&r, 1, 1);
+    if (pushedState) OffsetRect(&labelRect, 1, 1);
 
     oldTxtColor = SetTextColor( hDC, GetSysColor(COLOR_BTNTEXT) );
 
-    BUTTON_DrawLabel(infoPtr, hDC, dtFlags, &r);
+    BUTTON_DrawLabel(infoPtr, hDC, dtFlags, &imageRect, &textRect);
 
     SetTextColor( hDC, oldTxtColor );
 
@@ -1072,7 +1564,7 @@ draw_focus:
 
 static void CB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
 {
-    RECT rbox, rtext, client;
+    RECT rbox, labelRect, imageRect, textRect, client;
     HBRUSH hBrush;
     int delta, text_offset, checkBoxWidth, checkBoxHeight;
     UINT dtFlags;
@@ -1090,10 +1582,10 @@ static void CB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
     }
 
     GetClientRect(infoPtr->hwnd, &client);
-    rbox = rtext = client;
+    rbox = labelRect = client;
 
-    checkBoxWidth  = 12 * GetDeviceCaps( hDC, LOGPIXELSX ) / 96 + 1;
-    checkBoxHeight = 12 * GetDeviceCaps( hDC, LOGPIXELSY ) / 96 + 1;
+    checkBoxWidth  = 12 * GetDpiForWindow( infoPtr->hwnd ) / 96 + 1;
+    checkBoxHeight = 12 * GetDpiForWindow( infoPtr->hwnd ) / 96 + 1;
 
     if ((hFont = infoPtr->font)) SelectObject( hDC, hFont );
     GetCharWidthW( hDC, '0', '0', &text_offset );
@@ -1108,12 +1600,12 @@ static void CB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
 
     if (style & BS_LEFTTEXT || ex_style & WS_EX_RIGHT)
     {
-        rtext.right -= checkBoxWidth + text_offset;
+        labelRect.right -= checkBoxWidth + text_offset;
         rbox.left = rbox.right - checkBoxWidth;
     }
     else
     {
-        rtext.left += checkBoxWidth + text_offset;
+        labelRect.left += checkBoxWidth + text_offset;
         rbox.right = checkBoxWidth;
     }
 
@@ -1122,14 +1614,14 @@ static void CB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
     if (action == ODA_DRAWENTIRE) FillRect( hDC, &client, hBrush );
 
     /* Draw label */
-    client = rtext;
-    dtFlags = BUTTON_CalcLabelRect(infoPtr, hDC, &rtext);
+    client = labelRect;
+    dtFlags = BUTTON_CalcLayoutRects(infoPtr, hDC, &labelRect, &imageRect, &textRect);
 
     /* Only adjust rbox when rtext is valid */
     if (dtFlags != (UINT)-1L)
     {
-	rbox.top = rtext.top;
-	rbox.bottom = rtext.bottom;
+        rbox.top = labelRect.top;
+        rbox.bottom = labelRect.bottom;
     }
 
     /* Draw the check-box bitmap */
@@ -1182,16 +1674,15 @@ static void CB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
     if (dtFlags == (UINT)-1L) /* Noting to draw */
 	return;
 
-    if (action == ODA_DRAWENTIRE)
-        BUTTON_DrawLabel(infoPtr, hDC, dtFlags, &rtext);
+    if (action == ODA_DRAWENTIRE) BUTTON_DrawLabel(infoPtr, hDC, dtFlags, &imageRect, &textRect);
 
     /* ... and focus */
     if (action == ODA_FOCUS || (state & BST_FOCUS))
     {
-	rtext.left--;
-	rtext.right++;
-	IntersectRect(&rtext, &rtext, &client);
-	DrawFocusRect( hDC, &rtext );
+        labelRect.left--;
+        labelRect.right++;
+        IntersectRect(&labelRect, &labelRect, &client);
+        DrawFocusRect(hDC, &labelRect);
     }
     SelectClipRgn( hDC, hrgn );
     if (hrgn) DeleteObject( hrgn );
@@ -1227,7 +1718,7 @@ static void BUTTON_CheckAutoRadioButton( HWND hwnd )
 
 static void GB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
 {
-    RECT rc, rcFrame;
+    RECT labelRect, imageRect, textRect, rcFrame;
     HBRUSH hbr;
     HFONT hFont;
     UINT dtFlags;
@@ -1243,16 +1734,16 @@ static void GB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
     hbr = (HBRUSH)SendMessageW(parent, WM_CTLCOLORSTATIC, (WPARAM)hDC, (LPARAM)infoPtr->hwnd);
     if (!hbr) /* did the app forget to call defwindowproc ? */
         hbr = (HBRUSH)DefWindowProcW(parent, WM_CTLCOLORSTATIC, (WPARAM)hDC, (LPARAM)infoPtr->hwnd);
-    GetClientRect( infoPtr->hwnd, &rc);
-    rcFrame = rc;
-    hrgn = set_control_clipping( hDC, &rc );
+    GetClientRect(infoPtr->hwnd, &labelRect);
+    rcFrame = labelRect;
+    hrgn = set_control_clipping(hDC, &labelRect);
 
     GetTextMetricsW (hDC, &tm);
     rcFrame.top += (tm.tmHeight / 2) - 1;
     DrawEdge (hDC, &rcFrame, EDGE_ETCHED, BF_RECT | ((style & BS_FLAT) ? BF_FLAT : 0));
 
-    InflateRect(&rc, -7, 1);
-    dtFlags = BUTTON_CalcLabelRect(infoPtr, hDC, &rc);
+    InflateRect(&labelRect, -7, 1);
+    dtFlags = BUTTON_CalcLayoutRects(infoPtr, hDC, &labelRect, &imageRect, &textRect);
 
     if (dtFlags != (UINT)-1)
     {
@@ -1262,11 +1753,15 @@ static void GB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
          */
 
         /* There is 1-pixel margin at the left, right, and bottom */
-        rc.left--; rc.right++; rc.bottom++;
-        FillRect(hDC, &rc, hbr);
-        rc.left++; rc.right--; rc.bottom--;
+        labelRect.left--;
+        labelRect.right++;
+        labelRect.bottom++;
+        FillRect(hDC, &labelRect, hbr);
+        labelRect.left++;
+        labelRect.right--;
+        labelRect.bottom--;
 
-        BUTTON_DrawLabel(infoPtr, hDC, dtFlags, &rc);
+        BUTTON_DrawLabel(infoPtr, hDC, dtFlags, &imageRect, &textRect);
     }
     SelectClipRgn( hDC, hrgn );
     if (hrgn) DeleteObject( hrgn );
@@ -1352,14 +1847,11 @@ static void OB_Paint( const BUTTON_INFO *infoPtr, HDC hDC, UINT action )
     if (hrgn) DeleteObject( hrgn );
 }
 
-static void PB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, ButtonState drawState, UINT dtFlags, BOOL focused)
+static void PB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, int state, UINT dtFlags, BOOL focused)
 {
-    static const int states[] = { PBS_NORMAL, PBS_DISABLED, PBS_HOT, PBS_PRESSED, PBS_DEFAULTED };
-
     RECT bgRect, textRect;
     HFONT font = infoPtr->font;
     HFONT hPrevFont = font ? SelectObject(hDC, font) : NULL;
-    int state = states[ drawState ];
     WCHAR *text = get_button_text(infoPtr);
 
     GetClientRect(infoPtr->hwnd, &bgRect);
@@ -1392,31 +1884,14 @@ static void PB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, Bu
     if (hPrevFont) SelectObject(hDC, hPrevFont);
 }
 
-static void CB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, ButtonState drawState, UINT dtFlags, BOOL focused)
+static void CB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, int state, UINT dtFlags, BOOL focused)
 {
-    static const int cb_states[3][5] =
-    {
-        { CBS_UNCHECKEDNORMAL, CBS_UNCHECKEDDISABLED, CBS_UNCHECKEDHOT, CBS_UNCHECKEDPRESSED, CBS_UNCHECKEDNORMAL },
-        { CBS_CHECKEDNORMAL, CBS_CHECKEDDISABLED, CBS_CHECKEDHOT, CBS_CHECKEDPRESSED, CBS_CHECKEDNORMAL },
-        { CBS_MIXEDNORMAL, CBS_MIXEDDISABLED, CBS_MIXEDHOT, CBS_MIXEDPRESSED, CBS_MIXEDNORMAL }
-    };
-
-    static const int rb_states[2][5] =
-    {
-        { RBS_UNCHECKEDNORMAL, RBS_UNCHECKEDDISABLED, RBS_UNCHECKEDHOT, RBS_UNCHECKEDPRESSED, RBS_UNCHECKEDNORMAL },
-        { RBS_CHECKEDNORMAL, RBS_CHECKEDDISABLED, RBS_CHECKEDHOT, RBS_CHECKEDPRESSED, RBS_CHECKEDNORMAL }
-    };
-
     SIZE sz;
     RECT bgRect, textRect;
     HFONT font, hPrevFont = NULL;
-    int checkState = infoPtr->state & 3;
     DWORD dwStyle = GetWindowLongW(infoPtr->hwnd, GWL_STYLE);
     UINT btn_type = get_button_type( dwStyle );
     int part = (btn_type == BS_RADIOBUTTON) || (btn_type == BS_AUTORADIOBUTTON) ? BP_RADIOBUTTON : BP_CHECKBOX;
-    int state = (part == BP_CHECKBOX)
-              ? cb_states[ checkState ][ drawState ]
-              : rb_states[ checkState ][ drawState ];
     WCHAR *text = get_button_text(infoPtr);
     LOGFONTW lf;
     BOOL created_font = FALSE;
@@ -1478,12 +1953,9 @@ static void CB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, Bu
     if (hPrevFont) SelectObject(hDC, hPrevFont);
 }
 
-static void GB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, ButtonState drawState, UINT dtFlags, BOOL focused)
+static void GB_ThemedPaint(HTHEME theme, const BUTTON_INFO *infoPtr, HDC hDC, int state, UINT dtFlags, BOOL focused)
 {
-    static const int states[] = { GBS_NORMAL, GBS_DISABLED, GBS_NORMAL, GBS_NORMAL, GBS_NORMAL };
-
     RECT bgRect, textRect, contentRect;
-    int state = states[ drawState ];
     WCHAR *text = get_button_text(infoPtr);
     LOGFONTW lf;
     HFONT font, hPrevFont = NULL;

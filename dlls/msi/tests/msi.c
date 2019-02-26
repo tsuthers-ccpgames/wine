@@ -34,11 +34,13 @@
 #include "wine/test.h"
 #include "utils.h"
 
+#define GUID_SIZE (39)
+#define SQUASHED_GUID_SIZE (33)
+
 static BOOL is_wow64;
 static const char msifile[] = "winetest.msi";
 static const WCHAR msifileW[] = {'w','i','n','e','t','e','s','t','.','m','s','i',0};
 
-static BOOL (WINAPI *pConvertSidToStringSidA)(PSID, LPSTR*);
 static LONG (WINAPI *pRegDeleteKeyExA)(HKEY, LPCSTR, REGSAM, DWORD);
 static BOOL (WINAPI *pIsWow64Process)(HANDLE, PBOOL);
 
@@ -104,7 +106,6 @@ static void init_functionpointers(void)
     GET_PROC(hmsi, MsiEnumComponentsExA)
     GET_PROC(hmsi, MsiSourceListGetInfoA)
 
-    GET_PROC(hadvapi32, ConvertSidToStringSidA)
     GET_PROC(hadvapi32, RegDeleteKeyExA)
     GET_PROC(hkernel32, IsWow64Process)
 
@@ -338,22 +339,23 @@ static const char spf_custom_action_dat[] =
     "Action\tType\tSource\tTarget\tISComments\n"
     "s72\ti2\tS64\tS0\tS255\n"
     "CustomAction\tAction\n"
-    "SetFolderProp\t51\tMSITESTDIR\t[ProgramFilesFolder]\\msitest\\added\t\n";
+    "SetFolderProp\t51\tMSITESTDIR\t[ProgramFilesFolder]\\msitest\\added\t\n"
+    "SetFolderProp2\t51\tMSITESTDIR\t[ProgramFilesFolder]\\msitest\\added\\added2\t\n";
 
 static const char spf_install_exec_seq_dat[] =
     "Action\tCondition\tSequence\n"
     "s72\tS255\tI2\n"
     "InstallExecuteSequence\tAction\n"
-    "CostFinalize\t\t1000\n"
     "CostInitialize\t\t800\n"
     "FileCost\t\t900\n"
     "SetFolderProp\t\t950\n"
+    "SetFolderProp2\t\t960\n"
+    "CostFinalize\t\t1000\n"
+    "InstallValidate\t\t1400\n"
+    "InstallInitialize\t\t1500\n"
     "InstallFiles\t\t4000\n"
     "InstallServices\t\t5000\n"
-    "InstallFinalize\t\t6600\n"
-    "InstallInitialize\t\t1500\n"
-    "InstallValidate\t\t1400\n"
-    "LaunchConditions\t\t100";
+    "InstallFinalize\t\t6600\n";
 
 static const char spf_install_ui_seq_dat[] =
     "Action\tCondition\tSequence\n"
@@ -363,6 +365,68 @@ static const char spf_install_ui_seq_dat[] =
     "FileCost\t\t900\n"
     "CostFinalize\t\t1000\n"
     "ExecuteAction\t\t1100\n";
+
+static const char spf_directory_dat[] =
+    "Directory\tDirectory_Parent\tDefaultDir\n"
+    "s72\tS72\tl255\n"
+    "Directory\tDirectory\n"
+    "PARENTDIR\tTARGETDIR\tparent\n"
+    "CHILDDIR\tPARENTDIR\tchild\n"
+    "MSITESTDIR\tProgramFilesFolder\tmsitest\n"
+    "ProgramFilesFolder\tTARGETDIR\t.\n"
+    "TARGETDIR\t\tSourceDir";
+
+static const char spf_component_dat[] =
+    "Component\tComponentId\tDirectory_\tAttributes\tCondition\tKeyPath\n"
+    "s72\tS38\ts72\ti2\tS255\tS72\n"
+    "Component\tComponent\n"
+    "maximus\t{DF2CBABC-3BCC-47E5-A998-448D1C0C895B}\tMSITESTDIR\t0\tUILevel=5\tmaximus\n";
+
+static const char spf2_install_exec_seq_dat[] =
+    "Action\tCondition\tSequence\n"
+    "s72\tS255\tI2\n"
+    "InstallExecuteSequence\tAction\n"
+    "CostInitialize\t\t800\n"
+    "FileCost\t\t900\n"
+    "FormatParentFolderCheck\t\t910\n"
+    "FormatChildFolderCheck\t\t920\n"
+    "CheckParentFolder\tNOT PARENTDIR=PARENTDIRCHECK\t930\n"
+    "CheckChildFolder\tNOT CHILDDIR=CHILDDIRCHECK\t940\n"
+    "FormatParentFolderCheck2\t\t945\n"
+    "SetParentFolder\t\t950\n"
+    "CheckParentFolder2\tNOT PARENTDIR=PARENTDIRCHECK\t960\n"
+    "CheckChildFolder2\tNOT CHILDDIR=CHILDDIRCHECK\t970\n"
+    "CostFinalize\t\t1000\n"
+    "FormatParentFolderCheck3\t\t1005\n"
+    "CheckParentFolder3\tNOT PARENTDIR=PARENTDIRCHECK\t1010\n"
+    "CheckChildFolder3\tNOT CHILDDIR=CHILDDIRCHECK\t1020\n"
+    "InstallValidate\t\t1400\n"
+    "InstallInitialize\t\t1500\n"
+    "InstallFiles\t\t4000\n"
+    "CreateShortcuts\t\t4100\n"
+    "InstallFinalize\t\t6600\n";
+
+static const char spf2_custom_action_dat[] =
+    "Action\tType\tSource\tTarget\tISComments\n"
+    "s72\ti2\tS64\tS0\tS255\n"
+    "CustomAction\tAction\n"
+    "FormatParentFolderCheck\t51\tPARENTDIRCHECK\t[TARGETDIR]parent\\\t\n"
+    "FormatChildFolderCheck\t51\tCHILDDIRCHECK\t[TARGETDIR]parent\\child\\\t\n"
+    "CheckParentFolder\t19\tPARENTDIR\tparent prop wrong before set: [PARENTDIR]\t\n"
+    "CheckChildFolder\t19\tCHILDDIR\tchild prop wrong before set: [CHILDDIR]\t\n"
+    "FormatParentFolderCheck2\t51\tPARENTDIRCHECK\t[ProgramFilesFolder]msitest\\parent\t\n"
+    "SetParentFolder\t51\tPARENTDIR\t[PARENTDIRCHECK]\t\n"
+    "CheckParentFolder2\t19\tPARENTDIR\tparent prop wrong after set: [PARENTDIR]\t\n"
+    "CheckChildFolder2\t19\tCHILDDIR\tchild prop wrong after set: [CHILDDIR]\t\n"
+    "FormatParentFolderCheck3\t51\tPARENTDIRCHECK\t[ProgramFilesFolder]msitest\\parent\\\t\n"
+    "CheckParentFolder3\t19\tPARENTDIR\tparent prop wrong after CostFinalize: [PARENTDIR]\t\n"
+    "CheckChildFolder3\t19\tCHILDDIR\tchild prop wrong after CostFinalize: [CHILDDIR]\t\n";
+
+static const char shortcut_dat[] =
+    "Shortcut\tDirectory_\tName\tComponent_\tTarget\tArguments\tDescription\tHotkey\tIcon_\tIconIndex\tShowCmd\tWkDir\n"
+    "s72\ts72\tl128\ts72\ts72\tS255\tL255\tI2\tS72\tI2\tI2\tS72\n"
+    "Shortcut\tShortcut\n"
+    "Shortcut\tCHILDDIR\tShortcut\tmaximus\t[#maximus]\t\tShortcut\t\t\t\t\tMSITESTDIR\n";
 
 static const char sd_file_dat[] =
     "File\tComponent_\tFileName\tFileSize\tVersion\tLanguage\tAttributes\tSequence\n"
@@ -647,6 +711,21 @@ static const msi_table spf_tables[] =
     ADD_TABLE(spf_custom_action),
     ADD_TABLE(spf_install_exec_seq),
     ADD_TABLE(spf_install_ui_seq)
+};
+
+static const msi_table spf2_tables[] =
+{
+    ADD_TABLE(spf_component),
+    ADD_TABLE(spf_directory),
+    ADD_TABLE(lus_feature),
+    ADD_TABLE(lus_feature_comp),
+    ADD_TABLE(lus_file),
+    ADD_TABLE(lus0_media),
+    ADD_TABLE(property),
+    ADD_TABLE(spf2_custom_action),
+    ADD_TABLE(spf2_install_exec_seq),
+    ADD_TABLE(spf_install_ui_seq),
+    ADD_TABLE(shortcut)
 };
 
 static const msi_table sd_tables[] =
@@ -1094,7 +1173,7 @@ static void test_MsiGetFileHash(void)
     r = pMsiGetFileHashA(name, 0, NULL);
     ok(r == ERROR_INVALID_PARAMETER, "Expected ERROR_INVALID_PARAMETER, got %d\n", r);
 
-    for (i = 0; i < sizeof(hash_data) / sizeof(hash_data[0]); i++)
+    for (i = 0; i < ARRAY_SIZE(hash_data); i++)
     {
         int ret;
 
@@ -1148,8 +1227,8 @@ static BOOL squash_guid(LPCWSTR in, LPWSTR out)
 
 static void create_test_guid(LPSTR prodcode, LPSTR squashed)
 {
-    WCHAR guidW[MAX_PATH];
-    WCHAR squashedW[MAX_PATH];
+    WCHAR guidW[GUID_SIZE];
+    WCHAR squashedW[SQUASHED_GUID_SIZE];
     GUID guid;
     HRESULT hr;
     int size;
@@ -1157,14 +1236,14 @@ static void create_test_guid(LPSTR prodcode, LPSTR squashed)
     hr = CoCreateGuid(&guid);
     ok(hr == S_OK, "Expected S_OK, got %d\n", hr);
 
-    size = StringFromGUID2(&guid, guidW, MAX_PATH);
-    ok(size == 39, "Expected 39, got %d\n", hr);
+    size = StringFromGUID2(&guid, guidW, ARRAY_SIZE(guidW));
+    ok(size == GUID_SIZE, "Expected %d, got %d.\n", GUID_SIZE, size);
 
-    WideCharToMultiByte(CP_ACP, 0, guidW, size, prodcode, MAX_PATH, NULL, NULL);
+    WideCharToMultiByte(CP_ACP, 0, guidW, size, prodcode, GUID_SIZE, NULL, NULL);
     if (squashed)
     {
         squash_guid(guidW, squashedW);
-        WideCharToMultiByte(CP_ACP, 0, squashedW, -1, squashed, MAX_PATH, NULL, NULL);
+        WideCharToMultiByte(CP_ACP, 0, squashedW, -1, squashed, SQUASHED_GUID_SIZE, NULL, NULL);
     }
 }
 
@@ -1180,7 +1259,7 @@ static char *get_user_sid(void)
 
     user = HeapAlloc(GetProcessHeap(), 0, size);
     GetTokenInformation(token, TokenUser, user, size, &size);
-    pConvertSidToStringSidA(user->User.Sid, &usersid);
+    ConvertSidToStringSidA(user->User.Sid, &usersid);
     HeapFree(GetProcessHeap(), 0, user);
 
     CloseHandle(token);
@@ -3313,7 +3392,7 @@ static void test_MsiProvideComponent(void)
 
     create_test_files();
     create_file("msitest\\sourcedir.txt", 1000);
-    create_database(msifile, sd_tables, sizeof(sd_tables) / sizeof(msi_table));
+    create_database(msifile, sd_tables, ARRAY_SIZE(sd_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -13446,7 +13525,7 @@ static void test_MsiConfigureProductEx(void)
     create_file_data("msitest\\helium", "helium", 500);
     create_file_data("msitest\\lithium", "lithium", 500);
 
-    create_database(msifile, mcp_tables, sizeof(mcp_tables) / sizeof(msi_table));
+    create_database(msifile, mcp_tables, ARRAY_SIZE(mcp_tables));
 
     if (is_wow64)
         access |= KEY_WOW64_64KEY;
@@ -13574,7 +13653,7 @@ static void test_MsiConfigureProductEx(void)
     ok(!delete_pf("msitest\\lithium", TRUE), "File not removed\n");
     ok(!delete_pf("msitest", FALSE), "Directory not removed\n");
 
-    create_database(msifile, mcp_tables, sizeof(mcp_tables) / sizeof(msi_table));
+    create_database(msifile, mcp_tables, ARRAY_SIZE(mcp_tables));
 
     /* install the product, machine */
     r = MsiInstallProductA(msifile, "ALLUSERS=1 INSTALLLEVEL=10 PROPVAR=42");
@@ -13615,7 +13694,7 @@ static void test_MsiConfigureProductEx(void)
     ok(pf_exists("msitest"), "File not installed\n");
 
     RegCloseKey(props);
-    create_database(msifile, mcp_tables, sizeof(mcp_tables) / sizeof(msi_table));
+    create_database(msifile, mcp_tables, ARRAY_SIZE(mcp_tables));
 
     /* LastUsedSource can be used as a last resort */
     r = MsiConfigureProductExA("{38847338-1BBC-4104-81AC-2FAAC7ECDDCD}",
@@ -13723,7 +13802,7 @@ static void test_MsiSetFeatureAttributes(void)
         skip("process is limited\n");
         return;
     }
-    create_database( msifile, tables, sizeof(tables) / sizeof(tables[0]) );
+    create_database( msifile, tables, ARRAY_SIZE( tables ));
 
     strcpy( path, CURR_DIR );
     strcat( path, "\\" );
@@ -13805,7 +13884,7 @@ static void test_MsiGetFeatureInfo(void)
         skip("process is limited\n");
         return;
     }
-    create_database( msifile, tables, sizeof(tables) / sizeof(tables[0]) );
+    create_database( msifile, tables, ARRAY_SIZE( tables ));
 
     strcpy( path, CURR_DIR );
     strcat( path, "\\" );
@@ -13989,9 +14068,9 @@ static void test_lastusedsource(void)
     create_cab_file("test1.cab", MEDIA_SIZE, "maximus\0");
     DeleteFileA("maximus");
 
-    create_database("msifile0.msi", lus0_tables, sizeof(lus0_tables) / sizeof(msi_table));
-    create_database("msifile1.msi", lus1_tables, sizeof(lus1_tables) / sizeof(msi_table));
-    create_database("msifile2.msi", lus2_tables, sizeof(lus2_tables) / sizeof(msi_table));
+    create_database("msifile0.msi", lus0_tables, ARRAY_SIZE(lus0_tables));
+    create_database("msifile1.msi", lus1_tables, ARRAY_SIZE(lus1_tables));
+    create_database("msifile2.msi", lus2_tables, ARRAY_SIZE(lus2_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -14096,8 +14175,6 @@ error:
 static void test_setpropertyfolder(void)
 {
     UINT r;
-    CHAR path[MAX_PATH];
-    DWORD attr;
 
     if (is_process_limited())
     {
@@ -14105,13 +14182,10 @@ static void test_setpropertyfolder(void)
         return;
     }
 
-    lstrcpyA(path, PROG_FILES_DIR);
-    lstrcatA(path, "\\msitest\\added");
-
     CreateDirectoryA("msitest", NULL);
     create_file("msitest\\maximus", 500);
 
-    create_database(msifile, spf_tables, sizeof(spf_tables) / sizeof(msi_table));
+    create_database(msifile, spf_tables, ARRAY_SIZE(spf_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_FULL, NULL);
 
@@ -14122,19 +14196,30 @@ static void test_setpropertyfolder(void)
         goto error;
     }
     ok(r == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %u\n", r);
-    attr = GetFileAttributesA(path);
-    if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY))
-    {
-        ok(delete_pf("msitest\\added\\maximus", TRUE), "File not installed\n");
-        ok(delete_pf("msitest\\added", FALSE), "Directory not created\n");
-        ok(delete_pf("msitest", FALSE), "Directory not created\n");
-    }
-    else
-    {
-        trace("changing folder property not supported\n");
-        ok(delete_pf("msitest\\maximus", TRUE), "File not installed\n");
-        ok(delete_pf("msitest", FALSE), "Directory not created\n");
-    }
+    ok(delete_pf("msitest\\added\\added2\\maximus", TRUE), "File not installed\n");
+    ok(delete_pf("msitest\\added\\added2", FALSE), "Directory not created\n");
+    ok(delete_pf("msitest\\added", FALSE), "Directory not created\n");
+    ok(delete_pf("msitest", FALSE), "Directory not created\n");
+
+    CreateDirectoryA("parent", NULL);
+    CreateDirectoryA("parent\\child", NULL);
+    create_file("parent\\child\\maximus", 500);
+
+    create_database(msifile, spf2_tables, ARRAY_SIZE(spf2_tables));
+
+    r = MsiInstallProductA(msifile, "TARGETDIR=c:\\");
+    ok(r == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %u\n", r);
+
+    ok(delete_pf("msitest\\maximus", TRUE), "file not installed\n");
+    ok(delete_pf("msitest", FALSE), "directory not created\n");
+
+    ok(DeleteFileA("c:\\parent\\child\\Shortcut.lnk"), "file not installed\n");
+    ok(RemoveDirectoryA("c:\\parent\\child"), "directory not created\n");
+    ok(RemoveDirectoryA("c:\\parent"), "directory not created\n");
+
+    DeleteFileA("parent\\child\\maximus");
+    RemoveDirectoryA("parent\\child");
+    RemoveDirectoryA("parent");
 
 error:
     DeleteFileA(msifile);
@@ -14154,7 +14239,7 @@ static void test_sourcedir_props(void)
 
     create_test_files();
     create_file("msitest\\sourcedir.txt", 1000);
-    create_database(msifile, sd_tables, sizeof(sd_tables) / sizeof(msi_table));
+    create_database(msifile, sd_tables, ARRAY_SIZE(sd_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_FULL, NULL);
 
@@ -14221,11 +14306,11 @@ static void test_concurrentinstall(void)
     create_file("msitest\\maximus", 500);
     create_file("msitest\\msitest\\augustus", 500);
 
-    create_database(msifile, ci_tables, sizeof(ci_tables) / sizeof(msi_table));
+    create_database(msifile, ci_tables, ARRAY_SIZE(ci_tables));
 
     lstrcpyA(path, CURR_DIR);
     lstrcatA(path, "\\msitest\\concurrent.msi");
-    create_database(path, ci2_tables, sizeof(ci2_tables) / sizeof(msi_table));
+    create_database(path, ci2_tables, ARRAY_SIZE(ci2_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_FULL, NULL);
 
@@ -14269,7 +14354,7 @@ static void test_command_line_parsing(void)
     }
 
     create_test_files();
-    create_database(msifile, cl_tables, sizeof(cl_tables)/sizeof(msi_table));
+    create_database(msifile, cl_tables, ARRAY_SIZE(cl_tables));
 
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
@@ -14445,33 +14530,26 @@ START_TEST(msi)
     test_MsiGetFileHash();
     test_MsiSetInternalUI();
     test_MsiSetExternalUI();
-
-    if (!pConvertSidToStringSidA)
-        win_skip("ConvertSidToStringSidA not implemented\n");
-    else
-    {
-        /* These tests rely on get_user_sid that needs ConvertSidToStringSidA */
-        test_MsiQueryProductState();
-        test_MsiQueryFeatureState();
-        test_MsiQueryComponentState();
-        test_MsiGetComponentPath();
-        test_MsiGetComponentPathEx();
-        test_MsiProvideComponent();
-        test_MsiGetProductCode();
-        test_MsiEnumClients();
-        test_MsiGetProductInfo();
-        test_MsiGetProductInfoEx();
-        test_MsiGetUserInfo();
-        test_MsiOpenProduct();
-        test_MsiEnumPatchesEx();
-        test_MsiEnumPatches();
-        test_MsiGetPatchInfoEx();
-        test_MsiGetPatchInfo();
-        test_MsiEnumProducts();
-        test_MsiEnumProductsEx();
-        test_MsiEnumComponents();
-        test_MsiEnumComponentsEx();
-    }
+    test_MsiQueryProductState();
+    test_MsiQueryFeatureState();
+    test_MsiQueryComponentState();
+    test_MsiGetComponentPath();
+    test_MsiGetComponentPathEx();
+    test_MsiProvideComponent();
+    test_MsiGetProductCode();
+    test_MsiEnumClients();
+    test_MsiGetProductInfo();
+    test_MsiGetProductInfoEx();
+    test_MsiGetUserInfo();
+    test_MsiOpenProduct();
+    test_MsiEnumPatchesEx();
+    test_MsiEnumPatches();
+    test_MsiGetPatchInfoEx();
+    test_MsiGetPatchInfo();
+    test_MsiEnumProducts();
+    test_MsiEnumProductsEx();
+    test_MsiEnumComponents();
+    test_MsiEnumComponentsEx();
     test_MsiGetFileVersion();
     test_MsiGetFileSignatureInformation();
     test_MsiConfigureProductEx();

@@ -626,8 +626,7 @@ static HRESULT WINAPI HTMLWindow2_alert(IHTMLWindow2 *iface, BSTR message)
 
     TRACE("(%p)->(%s)\n", This, debugstr_w(message));
 
-    if(!LoadStringW(get_shdoclc(), IDS_MESSAGE_BOX_TITLE, title,
-                    sizeof(title)/sizeof(WCHAR))) {
+    if(!LoadStringW(get_shdoclc(), IDS_MESSAGE_BOX_TITLE, title, ARRAY_SIZE(title))) {
         WARN("Could not load message box title: %d\n", GetLastError());
         return S_OK;
     }
@@ -657,8 +656,7 @@ static HRESULT WINAPI HTMLWindow2_confirm(IHTMLWindow2 *iface, BSTR message,
 
     if(!confirmed) return E_INVALIDARG;
 
-    if(!LoadStringW(get_shdoclc(), IDS_MESSAGE_BOX_TITLE, wszTitle,
-                sizeof(wszTitle)/sizeof(WCHAR))) {
+    if(!LoadStringW(get_shdoclc(), IDS_MESSAGE_BOX_TITLE, wszTitle, ARRAY_SIZE(wszTitle))) {
         WARN("Could not load message box title: %d\n", GetLastError());
         *confirmed = VARIANT_TRUE;
         return S_OK;
@@ -689,8 +687,7 @@ static INT_PTR CALLBACK prompt_dlgproc(HWND hwnd, UINT msg,
             prompt_arg *arg = (prompt_arg*)lparam;
             WCHAR wszTitle[100];
 
-            if(!LoadStringW(get_shdoclc(), IDS_MESSAGE_BOX_TITLE, wszTitle,
-                        sizeof(wszTitle)/sizeof(WCHAR))) {
+            if(!LoadStringW(get_shdoclc(), IDS_MESSAGE_BOX_TITLE, wszTitle, ARRAY_SIZE(wszTitle))) {
                 WARN("Could not load message box title: %d\n", GetLastError());
                 EndDialog(hwnd, wparam);
                 return FALSE;
@@ -2315,16 +2312,39 @@ static HRESULT WINAPI HTMLWindow7_get_styleMedia(IHTMLWindow7 *iface, IHTMLStyle
 
 static HRESULT WINAPI HTMLWindow7_put_performance(IHTMLWindow7 *iface, VARIANT v)
 {
-    HTMLWindow *This = impl_from_IHTMLWindow7(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_variant(&v));
-    return E_NOTIMPL;
+    HTMLInnerWindow *This = impl_from_IHTMLWindow7(iface)->inner_window;
+
+    TRACE("(%p)->(%s)\n", This, debugstr_variant(&v));
+
+    if(!This->performance_initialized) {
+        V_VT(&This->performance) = VT_EMPTY;
+        This->performance_initialized = TRUE;
+    }
+
+    return VariantCopy(&This->performance, &v);
 }
 
 static HRESULT WINAPI HTMLWindow7_get_performance(IHTMLWindow7 *iface, VARIANT *p)
 {
-    HTMLWindow *This = impl_from_IHTMLWindow7(iface);
-    FIXME("(%p)->(%p)\n", This, p);
-    return E_NOTIMPL;
+    HTMLInnerWindow *This = impl_from_IHTMLWindow7(iface)->inner_window;
+    HRESULT hres;
+
+    TRACE("(%p)->(%p)\n", This, p);
+
+    if(!This->performance_initialized) {
+        IHTMLPerformance *performance;
+
+        hres = create_performance(&performance);
+        if(FAILED(hres))
+            return hres;
+
+        V_VT(&This->performance) = VT_DISPATCH;
+        V_DISPATCH(&This->performance) = (IDispatch*)performance;
+        This->performance_initialized = TRUE;
+    }
+
+    V_VT(p) = VT_NULL;
+    return VariantCopy(p, &This->performance);
 }
 
 static HRESULT WINAPI HTMLWindow7_get_innerWidth(IHTMLWindow7 *iface, LONG *p)
@@ -3418,11 +3438,10 @@ static void HTMLWindow_bind_event(DispatchEx *dispex, eventid_t eid)
 
 static void HTMLWindow_init_dispex_info(dispex_data_t *info, compat_mode_t compat_mode)
 {
-    /* FIXME: Expose getComputedStyle and performance once they are implemented.
+    /* FIXME: Expose getComputedStyle once it's implemented.
      * Stubs break existing web sites. */
     static const dispex_hook_t window7_hooks[] = {
         {DISPID_IHTMLWINDOW7_GETCOMPUTEDSTYLE, NULL},
-        {DISPID_IHTMLWINDOW7_PERFORMANCE, NULL},
         {DISPID_UNKNOWN}
     };
     if(compat_mode >= COMPAT_MODE_IE9)
